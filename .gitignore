@@ -1,0 +1,20 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Tauri / Rust / Node (app/)
+app/node_modules/
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.swp
+
+# Locally built third-party libraries (scripts/build-ffmpeg.sh)
+third_party/ffmpeg/
