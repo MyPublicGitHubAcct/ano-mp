@@ -1,6 +1,6 @@
 //! Which metadata sources are used, and in what order. Each kind of data
-//! (album details, album art, artist biographies) has an ordered list of the sources that can
-//! supply it, and the first with a result wins. Stored as one JSON value
+//! (album details, album art, album descriptions, artist biographies) has
+//! an ordered list of the sources that can supply it, and the first with a result wins. Stored as one JSON value
 //! under `metadata.services` in `settings`, read like `library.sort`:
 //! whatever is usable is kept and the rest falls back to the defaults.
 
@@ -24,10 +24,17 @@ pub enum Kind {
     /// An artist's biography. The artist's own match (on MusicBrainz, which
     /// links to the other sources) comes with the `Release` source.
     ArtistInfo,
+    /// A description of an album, reached through its `Release` match.
+    AlbumInfo,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 3] = [Kind::Release, Kind::AlbumArt, Kind::ArtistInfo];
+    pub const ALL: [Kind; 4] = [
+        Kind::Release,
+        Kind::AlbumArt,
+        Kind::ArtistInfo,
+        Kind::AlbumInfo,
+    ];
 }
 
 /// A metadata source. The serialized id is also what the `source` columns
@@ -43,8 +50,9 @@ pub enum SourceId {
     MusicBrainz,
     /// Album art for releases matched on MusicBrainz.
     CoverArtArchive,
-    /// Artist biographies: the lead of the English Wikipedia article that
-    /// the artist's MusicBrainz entry links to through Wikidata.
+    /// Artist biographies and album descriptions: the lead of the English
+    /// Wikipedia article that the artist's or album's MusicBrainz entry
+    /// links to through Wikidata.
     Wikipedia,
 }
 
@@ -60,7 +68,7 @@ pub struct SourceInfo {
     /// Needs an API key or token from the user before it can be used.
     pub needs_key: bool,
     /// Another source it relies on (the Cover Art Archive needs a
-    /// MusicBrainz match, and Wikipedia a MusicBrainz artist).
+    /// MusicBrainz match, and Wikipedia a MusicBrainz artist or album).
     pub requires: Option<SourceId>,
     pub homepage: Option<&'static str>,
     /// The hosts it contacts, as `metadata-progress` names those that
@@ -104,7 +112,7 @@ impl SourceId {
             ),
             SourceId::Wikipedia => (
                 "Wikipedia",
-                &[Kind::ArtistInfo],
+                &[Kind::ArtistInfo, Kind::AlbumInfo],
                 true,
                 Some(SourceId::MusicBrainz),
                 Some("https://en.wikipedia.org"),
@@ -422,6 +430,7 @@ mod tests {
             settings.sources_for(Kind::ArtistInfo),
             [SourceId::Wikipedia]
         );
+        assert_eq!(settings.sources_for(Kind::AlbumInfo), [SourceId::Wikipedia]);
     }
 
     #[test]
@@ -494,6 +503,7 @@ mod tests {
         assert!(!settings.is_usable(SourceId::CoverArtArchive));
         assert!(!settings.is_shown(SourceId::CoverArtArchive));
         assert!(!settings.is_usable(SourceId::Wikipedia));
+        assert!(settings.sources_for(Kind::AlbumInfo).is_empty());
         assert!(settings.is_usable(SourceId::Folder));
     }
 
@@ -536,6 +546,7 @@ mod tests {
         assert_eq!(settings.order[&Kind::Release], [SourceId::MusicBrainz]);
         // Settings stored before a kind existed get its default order.
         assert_eq!(settings.order[&Kind::ArtistInfo], [SourceId::Wikipedia]);
+        assert_eq!(settings.order[&Kind::AlbumInfo], [SourceId::Wikipedia]);
 
         for garbage in ["", "[]", "{", "null"] {
             store_json(&conn, garbage);

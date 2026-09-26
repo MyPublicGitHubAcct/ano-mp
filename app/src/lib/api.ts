@@ -126,8 +126,9 @@ export type MusicBrainzArtist = {
   homepage: string | null;
 };
 
-/** A biography, to be shown with its source credited and linked under its licence. */
-export type Biography = {
+/** An artist's biography or an album's description, to be shown with its
+    source credited and linked under its licence. */
+export type SourcedArticle = {
   source: SourceId;
   sourceName: string;
   license: string;
@@ -148,7 +149,7 @@ export type ArtistInfo = {
   /** The user chose the match, or "none of these". */
   chosenByUser: boolean;
   musicbrainz: MusicBrainzArtist | null;
-  biography: Biography | null;
+  biography: SourcedArticle | null;
   /** Whether a lookup can be asked for now. */
   canLookUp: boolean;
 };
@@ -192,7 +193,7 @@ export function artUrl(key: { albumId: number } | { trackId: number }, generatio
 
 // ---- Metadata sources ---------------------------------------------------------
 
-export type MetadataKind = "release" | "albumArt" | "artistInfo";
+export type MetadataKind = "release" | "albumArt" | "artistInfo" | "albumInfo";
 export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive" | "wikipedia";
 
 export type SourceInfo = {
@@ -298,6 +299,8 @@ export type AlbumDetails = {
   duration: number;
   /** One per album-details source shown that has a row. */
   links: AlbumLink[];
+  /** From the first album-description source shown that has one. */
+  description: SourcedArticle | null;
   /** Where the cover shown comes from; null if there is none. */
   cover: { source: SourceId; sourceName: string; chosen: boolean } | null;
   /** Whether a details source can be searched now. */

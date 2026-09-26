@@ -19,7 +19,7 @@ use super::http::Client;
 use super::matcher;
 use super::musicbrainz::{self, Artist, ArtistHit, VARIOUS_ARTISTS};
 use super::settings::{self, Kind, SourceId};
-use super::wikipedia::{self, Biography};
+use super::wikipedia::{self, Article};
 use super::Error;
 
 /// A search hit is accepted automatically at this MusicBrainz score (0 to
@@ -33,7 +33,7 @@ pub const ACCEPT_LEAD: u32 = 15;
 const RELEASE_SCORE: f64 = 0.95;
 
 /// An artist's row in `artist_links` for one source. `details` is the
-/// source's JSON: an `Artist` for MusicBrainz, a `Biography` for Wikipedia.
+/// source's JSON: an `Artist` for MusicBrainz, an `Article` for Wikipedia.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArtistLink {
     pub status: LinkStatus,
@@ -398,17 +398,29 @@ fn score_of(hit: &ArtistHit) -> f64 {
     f64::from(hit.score.min(100)) / 100.0
 }
 
-/// A biography as the artist page shows it: the text, the source, and the
-/// licence to credit it under.
+/// An artist's biography or an album's description as the UI shows it: the
+/// text, the source, and the licence to credit it under.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SourcedBiography {
+pub struct SourcedArticle {
     pub source: SourceId,
     pub source_name: &'static str,
     pub license: &'static str,
     pub license_url: &'static str,
     #[serde(flatten)]
-    pub biography: Biography,
+    pub article: Article,
+}
+
+impl SourcedArticle {
+    pub fn wikipedia(article: Article) -> SourcedArticle {
+        SourcedArticle {
+            source: SourceId::Wikipedia,
+            source_name: SourceId::Wikipedia.info().name,
+            license: wikipedia::LICENSE,
+            license_url: wikipedia::LICENSE_URL,
+            article,
+        }
+    }
 }
 
 /// What the metadata sources know about an artist, as the artist page
@@ -425,7 +437,7 @@ pub struct ArtistInfo {
     /// The matched artist, while MusicBrainz is shown.
     pub musicbrainz: Option<Artist>,
     /// The first biography found among the artist-info sources shown.
-    pub biography: Option<SourcedBiography>,
+    pub biography: Option<SourcedArticle>,
     /// Whether the user can ask for a lookup now (MusicBrainz usable).
     pub can_look_up: bool,
 }
@@ -441,13 +453,7 @@ pub fn artist_info(conn: &Connection, artist_id: i64) -> Result<ArtistInfo, Erro
     for source in settings.sources_shown(Kind::ArtistInfo) {
         let found = match source {
             SourceId::Wikipedia => {
-                wikipedia::biography(conn, artist_id)?.map(|biography| SourcedBiography {
-                    source,
-                    source_name: source.info().name,
-                    license: wikipedia::LICENSE,
-                    license_url: wikipedia::LICENSE_URL,
-                    biography,
-                })
+                wikipedia::biography(conn, artist_id)?.map(SourcedArticle::wikipedia)
             }
             _ => None,
         };

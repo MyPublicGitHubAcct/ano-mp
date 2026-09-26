@@ -3,8 +3,10 @@
 //! transport and clock.
 //!
 //! A job is an album to match on MusicBrainz (`Job::Match`, followed by its
-//! cover when one is wanted) or whose cover to fetch from the Cover Art
-//! Archive (`Job::Cover`), or an artist to match on MusicBrainz
+//! cover and then its description when they're wanted), whose cover to
+//! fetch from the Cover Art Archive (`Job::Cover`, followed by its
+//! description), or whose description to fetch from Wikipedia
+//! (`Job::Description`); or an artist to match on MusicBrainz
 //! (`Job::Artist`, followed by its biography) or whose biography to fetch
 //! from Wikipedia (`Job::Biography`). Jobs wait in `Jobs` by priority: what
 //! the user asked for, then the artist page being looked at, then the album
@@ -16,8 +18,8 @@
 //! decided when it runs, from the settings and the database as they are
 //! then. Automatic jobs (all but the user's requests) run only while "match
 //! automatically" is on, and follow the skip rules in
-//! `needs_match`, `needs_cover`, `needs_artist_match` and
-//! `needs_biography`; a user's request skips the waits in those rules.
+//! `needs_match`, `needs_cover`, `needs_description`, `needs_artist_match`
+//! and `needs_biography`; a user's request skips the waits in those rules.
 //!
 //! Offline: `http::Client` backs off from a host it couldn't reach.
 //! Automatic jobs for that host stay queued meanwhile, and `Worker::step`
@@ -67,10 +69,13 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Job {
     /// Match the album on MusicBrainz if it needs it, then fetch its cover
-    /// if that's wanted.
+    /// and description if they're wanted.
     Match(i64),
-    /// Fetch the album's cover from the Cover Art Archive if it needs it.
+    /// Fetch the album's cover from the Cover Art Archive if it needs it,
+    /// then its description if that's wanted.
     Cover(i64),
+    /// Fetch the album's description from Wikipedia if it needs it.
+    Description(i64),
     /// Match the artist on MusicBrainz if it needs it, then fetch its
     /// biography if that's wanted.
     Artist(i64),
@@ -88,7 +93,7 @@ pub enum Subject {
 impl Job {
     pub fn subject(self) -> Subject {
         match self {
-            Job::Match(id) | Job::Cover(id) => Subject::Album(id),
+            Job::Match(id) | Job::Cover(id) | Job::Description(id) => Subject::Album(id),
             Job::Artist(id) | Job::Biography(id) => Subject::Artist(id),
         }
     }
@@ -98,6 +103,8 @@ impl Job {
         match self {
             Job::Match(_) | Job::Artist(_) => &[musicbrainz::HOST],
             Job::Cover(_) => &[coverartarchive::HOST],
+            // The release group's links come from MusicBrainz.
+            Job::Description(_) => &[musicbrainz::HOST, wikipedia::WIKIDATA_HOST, wikipedia::HOST],
             Job::Biography(_) => &[wikipedia::WIKIDATA_HOST, wikipedia::HOST],
         }
     }
@@ -116,8 +123,8 @@ pub enum Priority {
     User,
 }
 
-/// Where a user's request gets its answer once the job, and the cover job
-/// after a match, are done.
+/// Where a user's request gets its answer once the job, and the jobs that
+/// follow it (an album's cover and description after its match), are done.
 pub type Reply = mpsc::Sender<Result<(), Error>>;
 
 /// Work the user waits on, run on the worker with its client and
@@ -535,8 +542,9 @@ impl<H: Host> Worker<H> {
         }
     }
 
-    /// Queues every album that needs matching or a cover, then every album
-    /// artist that needs matching or a biography, as background work, if
+    /// Queues every album that needs matching, a cover or a description,
+    /// then every album artist that needs matching or a biography, as
+    /// background work, if
     /// the settings allow it. Albums go first, since their matches help
     /// match their artists. Artists are looked up in the background only
     /// for a biography; the artist page looks them up when shown anyway.
@@ -560,6 +568,8 @@ impl<H: Host> Worker<H> {
                 && needs_cover(&self.conn, &self.images, album_id, now, false)?
             {
                 jobs.push(Job::Cover(album_id));
+            } else if usable.description && needs_description(&self.conn, album_id, now, false)? {
+                jobs.push(Job::Description(album_id));
             }
         }
         if usable.biography {
@@ -625,7 +635,7 @@ impl<H: Host> Worker<H> {
             state.jobs.insert(job, entry, true);
         };
         let replies = match result {
-            // The cover next, right away, with the replies waiting for it.
+            // What follows next, right away, with the replies waiting for it.
             Ok(Some(next)) => {
                 self.shared.lock().jobs.insert(next, entry, true);
                 Vec::new()
@@ -700,9 +710,10 @@ impl<H: Host> Worker<H> {
                 if needs_match(&self.conn, album_id, now, user)? {
                     self.match_album(album_id)?;
                 }
-                let cover =
-                    usable.cover_art && needs_cover(&self.conn, &self.images, album_id, now, user)?;
-                Ok(cover.then_some(Job::Cover(album_id)))
+                if usable.cover_art && needs_cover(&self.conn, &self.images, album_id, now, user)? {
+                    return Ok(Some(Job::Cover(album_id)));
+                }
+                self.description_next(&usable, album_id, now, user)
             }
             Job::Cover(album_id) => {
                 if !usable.cover_art {
@@ -720,6 +731,22 @@ impl<H: Host> Worker<H> {
                     )? == Fetched::Downloaded
                 {
                     self.art_changed(album_id);
+                }
+                self.description_next(&usable, album_id, now, user)
+            }
+            Job::Description(album_id) => {
+                if !usable.description {
+                    return match user {
+                        true => Err(turned_off(&settings, SourceId::Wikipedia)),
+                        false => Ok(None),
+                    };
+                }
+                if needs_description(&self.conn, album_id, now, user)? {
+                    let before = wikipedia::description(&self.conn, album_id)?;
+                    wikipedia::fetch_description(&self.client, &self.conn, album_id)?;
+                    if wikipedia::description(&self.conn, album_id)? != before {
+                        self.albums_changed.insert(album_id);
+                    }
                 }
                 Ok(None)
             }
@@ -754,6 +781,19 @@ impl<H: Host> Worker<H> {
                 Ok(None)
             }
         }
+    }
+
+    /// The description job that follows album `album_id`'s match or cover,
+    /// if its description is wanted.
+    fn description_next(
+        &self,
+        usable: &Usable,
+        album_id: i64,
+        now: i64,
+        user: bool,
+    ) -> Result<Option<Job>, Error> {
+        let wanted = usable.description && needs_description(&self.conn, album_id, now, user)?;
+        Ok(wanted.then_some(Job::Description(album_id)))
     }
 
     /// Matches the artist and notes whether the match changed.
@@ -861,6 +901,7 @@ impl<H: Host> Worker<H> {
 struct Usable {
     musicbrainz: bool,
     cover_art: bool,
+    description: bool,
     biography: bool,
 }
 
@@ -873,6 +914,9 @@ impl Usable {
             cover_art: settings
                 .sources_for(Kind::AlbumArt)
                 .contains(&SourceId::CoverArtArchive),
+            description: settings
+                .sources_for(Kind::AlbumInfo)
+                .contains(&SourceId::Wikipedia),
             biography: settings
                 .sources_for(Kind::ArtistInfo)
                 .contains(&SourceId::Wikipedia),
@@ -1000,6 +1044,33 @@ pub fn needs_cover(
             && now - check.checked_at < RETRY_AFTER
     });
     Ok(force || !missing_lately)
+}
+
+/// Whether album `album_id`'s description should be fetched: it's matched to
+/// a MusicBrainz release (by the user or not), and no description was
+/// fetched for that release's release group, or none was found more than
+/// `RETRY_AFTER` seconds before `now` (or at all with `force`).
+pub fn needs_description(
+    conn: &Connection,
+    album_id: i64,
+    now: i64,
+    force: bool,
+) -> Result<bool, Error> {
+    let Some(group_id) = albums::matched_release_group(conn, album_id)? else {
+        return Ok(false);
+    };
+    Ok(match wikipedia::description_check(conn, album_id)? {
+        Some(check) if check.external_id.as_deref() == Some(group_id.as_str()) => {
+            match check.status {
+                LinkStatus::Matched => false,
+                LinkStatus::Review | LinkStatus::None => {
+                    force || now - check.checked_at >= RETRY_AFTER
+                }
+            }
+        }
+        // Never fetched, or for another album.
+        _ => true,
+    })
 }
 
 /// Whether artist `artist_id` should be matched on MusicBrainz, by the
@@ -1838,6 +1909,24 @@ mod tests {
         transport.push_status(&extract_url("Radiohead"), 200, wp::EXTRACT);
     }
 
+    /// Serves the description of "In Rainbows": its release group's links,
+    /// and the article.
+    fn serve_in_rainbows(transport: &FakeTransport) {
+        use crate::metadata::musicbrainz::{fixtures as mb, release_group_url};
+        use crate::metadata::wikipedia::{extract_url, fixtures as wp, sitelink_url};
+        transport.push_status(
+            &release_group_url(mb::RELEASE_GROUP),
+            200,
+            mb::RELEASE_GROUP_JSON,
+        );
+        transport.push_status(
+            &sitelink_url(wp::ALBUM_WIKIDATA_ID),
+            200,
+            wp::ALBUM_SITELINK,
+        );
+        transport.push_status(&extract_url("In Rainbows"), 200, wp::ALBUM_EXTRACT);
+    }
+
     #[test]
     fn enriches_album_artists_after_their_albums() {
         let mut test = Test::with_biographies(library(&[]));
@@ -1845,6 +1934,7 @@ mod tests {
         for (id, _) in RELEASES {
             test.serve_jpeg(&release_front_url(id));
         }
+        serve_in_rainbows(&test.transport);
         serve_radiohead(&test.transport);
         test.shared.enrich_library();
         assert_eq!(test.run(), Step::Idle);
@@ -1860,6 +1950,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(biography.title, "Radiohead");
+        assert!(wikipedia::description(test.conn(), 1).unwrap().is_some());
         let recorded = test.host.take();
         let artists: Vec<i64> = recorded
             .changed
@@ -1942,6 +2033,108 @@ mod tests {
             answer.recv().unwrap().unwrap_err().to_string(),
             "No artist with id 99"
         );
+    }
+
+    #[test]
+    fn describes_albums_after_their_covers() {
+        let mut test = Test::with_biographies(library(&[]));
+        serve_search(&test.transport);
+        for (id, _) in RELEASES {
+            test.serve_jpeg(&release_front_url(id));
+        }
+        serve_in_rainbows(&test.transport);
+        let answer = test.request(Job::Match(1));
+        test.run();
+        answer.recv().unwrap().unwrap();
+        let description = wikipedia::description(test.conn(), 1).unwrap().unwrap();
+        assert_eq!(description.title, "In Rainbows");
+        // Match, cover, then description, answered once all were done.
+        let urls = test.transport.urls();
+        let at = |part: &str| urls.iter().position(|url| url.contains(part)).unwrap();
+        assert!(at("front-500") < at("/release-group/"), "{urls:?}");
+        assert!(at("/release-group/") < at("wikidata.org"), "{urls:?}");
+        let changed: Vec<i64> = test
+            .host
+            .take()
+            .changed
+            .iter()
+            .flat_map(|changed| changed.albums.clone())
+            .collect();
+        assert!(changed.contains(&1));
+
+        // Asked for again: nothing to do.
+        let requests = urls.len();
+        let answer = test.request(Job::Description(1));
+        test.run();
+        answer.recv().unwrap().unwrap();
+        assert_eq!(test.transport.urls().len(), requests);
+
+        // A user's request fails while the source is off.
+        test.set_settings(|settings| settings.sources[4].enabled = false);
+        let answer = test.request(Job::Description(1));
+        test.run();
+        let error = answer.recv().unwrap().unwrap_err();
+        assert_eq!(error.to_string(), "Wikipedia is turned off");
+    }
+
+    #[test]
+    fn description_skip_rules() {
+        use crate::metadata::musicbrainz::{self, fixtures::RELEASE_GROUP};
+        let library = library(&[]);
+        let conn = &library.conn;
+        let now = unix_now();
+        let needs = |force: bool| needs_description(conn, 1, now, force).unwrap();
+        let release = musicbrainz::parse_release(RELEASES[1].1).unwrap();
+        let matched = |status: LinkStatus| {
+            albums::store_source_link(
+                conn,
+                1,
+                SourceId::MusicBrainz,
+                status,
+                Some(&release.id),
+                1.0,
+                Some(&release),
+            )
+            .unwrap();
+        };
+        assert!(!needs(true), "not matched");
+        matched(LinkStatus::Review);
+        assert!(!needs(true), "only a candidate");
+        matched(LinkStatus::Matched);
+        assert!(needs(false), "never fetched");
+        set_link(
+            conn,
+            1,
+            "wikipedia",
+            "matched",
+            Some(RELEASE_GROUP),
+            "auto",
+            now - 100 * DAY,
+        );
+        assert!(!needs(true), "fetched");
+        set_link(
+            conn,
+            1,
+            "wikipedia",
+            "none",
+            Some(RELEASE_GROUP),
+            "auto",
+            now - DAY,
+        );
+        assert!(!needs(false), "not found lately");
+        assert!(needs(true));
+        set_link(
+            conn,
+            1,
+            "wikipedia",
+            "none",
+            Some(RELEASE_GROUP),
+            "auto",
+            now - 31 * DAY,
+        );
+        assert!(needs(false), "not found long ago");
+        set_link(conn, 1, "wikipedia", "matched", Some(&mbid(1)), "auto", now);
+        assert!(needs(false), "fetched for another album");
     }
 
     #[test]

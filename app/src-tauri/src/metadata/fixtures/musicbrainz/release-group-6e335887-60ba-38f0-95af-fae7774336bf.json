@@ -1,0 +1,48 @@
+{
+  "first-release-date": "2007-10-10",
+  "disambiguation": "",
+  "secondary-type-ids": [],
+  "title": "In Rainbows",
+  "secondary-types": [],
+  "primary-type": "Album",
+  "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+  "id": "6e335887-60ba-38f0-95af-fae7774336bf",
+  "relations": [
+    {
+      "end": null,
+      "ended": false,
+      "source-credit": "",
+      "attribute-ids": {},
+      "target-credit": "",
+      "attributes": [],
+      "url": {
+        "resource": "https://www.discogs.com/master/21520",
+        "id": "66d8c20e-4504-4896-a4bb-eab05fc83fa9"
+      },
+      "type-id": "99e550f3-5ab4-3110-b5b9-fe01d970b126",
+      "type": "discogs",
+      "direction": "forward",
+      "target-type": "url",
+      "begin": null,
+      "attribute-values": {}
+    },
+    {
+      "ended": false,
+      "end": null,
+      "attribute-ids": {},
+      "source-credit": "",
+      "target-credit": "",
+      "attributes": [],
+      "type-id": "b988d08c-5d86-4a57-9557-c83b399e3580",
+      "url": {
+        "id": "10156fdb-ad24-4cda-b8c2-be2de3881808",
+        "resource": "https://www.wikidata.org/wiki/Q223295"
+      },
+      "type": "wikidata",
+      "direction": "forward",
+      "target-type": "url",
+      "begin": null,
+      "attribute-values": {}
+    }
+  ]
+}

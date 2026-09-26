@@ -1,6 +1,7 @@
 //! The MusicBrainz web service (https://musicbrainz.org/doc/MusicBrainz_API):
-//! release search and lookup, parsed into `Release`, and artist search and
-//! lookup, parsed into `Artist`. Requests go through
+//! release search and lookup, parsed into `Release`, artist search and
+//! lookup, parsed into `Artist`, and release group lookup, parsed into
+//! `ReleaseGroup` for its links. Requests go through
 //! `http::Client`, which keeps to MusicBrainz's one request a second, and
 //! responses are cached (`cache`).
 
@@ -22,6 +23,9 @@ const RELEASE_INC: &str = "recordings+artist-credits+labels+release-groups+genre
 /// What an artist lookup includes: links to other sites (Wikidata, the
 /// homepage), and genres.
 const ARTIST_INC: &str = "url-rels+genres";
+
+/// What a release group lookup includes: links to other sites (Wikidata).
+const RELEASE_GROUP_INC: &str = "url-rels";
 
 /// The artist MusicBrainz credits "Various Artists" releases to.
 pub const VARIOUS_ARTISTS: &str = "89ad4ac3-39f7-470e-963a-56509c546377";
@@ -149,6 +153,20 @@ pub struct Artist {
     pub homepage: Option<String>,
 }
 
+/// A release group (an album, across all its releases) as the app keeps it:
+/// the links that lead to a description of the album. The rest of it comes
+/// with each `Release`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseGroup {
+    pub id: String,
+    pub title: String,
+    /// The album's Wikidata item, e.g. "Q223295".
+    pub wikidata: Option<String>,
+    /// An English Wikipedia article linked directly (older entries).
+    pub wikipedia: Option<String>,
+}
+
 /// An artist search hit, with MusicBrainz's score (0 to 100).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArtistHit {
@@ -208,6 +226,10 @@ pub fn search_url(title: &str, artist: Option<&str>, track_count: Option<u32>) -
 
 pub fn artist_url(id: &str) -> String {
     format!("{BASE}/artist/{id}?inc={ARTIST_INC}&fmt=json")
+}
+
+pub fn release_group_url(id: &str) -> String {
+    format!("{BASE}/release-group/{id}?inc={RELEASE_GROUP_INC}&fmt=json")
 }
 
 /// The search for artists called `name` (or with it as an alias).
@@ -270,6 +292,39 @@ pub fn search_artists(
 ) -> Result<Vec<ArtistHit>, Error> {
     let body = client.get_json(conn, &artist_search_url(name), SEARCH_MAX_AGE)?;
     parse_artist_search(&body)
+}
+
+pub fn lookup_release_group(
+    client: &Client,
+    conn: &Connection,
+    id: &str,
+) -> Result<ReleaseGroup, Error> {
+    if !is_mbid(id) {
+        return Err(Error::Invalid(format!("Not a MusicBrainz id: {id}")));
+    }
+    let body = client.get_json(conn, &release_group_url(id), LOOKUP_MAX_AGE)?;
+    parse_release_group(&body)
+}
+
+pub fn parse_release_group(json: &str) -> Result<ReleaseGroup, Error> {
+    #[derive(Deserialize)]
+    struct RawGroup {
+        id: String,
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        relations: Vec<RawRelation>,
+    }
+    let raw: RawGroup = serde_json::from_str(json).map_err(|error| {
+        Error::Invalid(format!("Unexpected MusicBrainz release group: {error}"))
+    })?;
+    let links = Links(&raw.relations);
+    Ok(ReleaseGroup {
+        wikidata: links.wikidata(),
+        wikipedia: links.wikipedia(),
+        id: raw.id,
+        title: raw.title,
+    })
 }
 
 pub fn parse_artist(json: &str) -> Result<Artist, Error> {
@@ -479,24 +534,41 @@ struct RawUrl {
     resource: String,
 }
 
+/// An entity's links to other sites: current ones only, of the kinds the
+/// app follows.
+struct Links<'a>(&'a [RawRelation]);
+
+impl Links<'_> {
+    fn of(&self, kind: &'static str) -> impl Iterator<Item = &str> {
+        self.0
+            .iter()
+            .filter(move |relation| relation.relation_type == kind && !relation.ended)
+            .filter_map(|relation| relation.url.as_ref())
+            .map(|url| url.resource.as_str())
+    }
+
+    fn wikidata(&self) -> Option<String> {
+        self.of("wikidata").find_map(wikidata_id)
+    }
+
+    fn wikipedia(&self) -> Option<String> {
+        self.of("wikipedia")
+            .find(|url| url.starts_with("https://en.wikipedia.org/wiki/"))
+            .map(String::from)
+    }
+
+    fn homepage(&self) -> Option<String> {
+        self.of("official homepage")
+            .find(|url| url.starts_with("https://") || url.starts_with("http://"))
+            .map(String::from)
+    }
+}
+
 impl RawArtistEntry {
     fn into_artist(self) -> Artist {
-        // Current links only, of the kinds the app follows.
-        let relations = &self.relations;
-        let links = |kind: &'static str| {
-            relations
-                .iter()
-                .filter(move |relation| relation.relation_type == kind && !relation.ended)
-                .filter_map(|relation| relation.url.as_ref())
-                .map(|url| url.resource.as_str())
-        };
-        let wikidata = links("wikidata").find_map(wikidata_id);
-        let wikipedia = links("wikipedia")
-            .find(|url| url.starts_with("https://en.wikipedia.org/wiki/"))
-            .map(String::from);
-        let homepage = links("official homepage")
-            .find(|url| url.starts_with("https://") || url.starts_with("http://"))
-            .map(String::from);
+        let links = Links(&self.relations);
+        let (wikidata, wikipedia, homepage) =
+            (links.wikidata(), links.wikipedia(), links.homepage());
         let area = |area: Option<RawArea>| non_empty(area.and_then(|area| area.name));
         let (begin, end, ended) = match self.life_span {
             Some(span) => (span.begin, span.end, span.ended.unwrap_or(false)),
@@ -663,6 +735,12 @@ pub mod fixtures {
         include_str!("fixtures/musicbrainz/artist-a74b1b7f-71a5-4011-9441-d0b5e4122711.json");
     pub const ARTIST_SEARCH: &str =
         include_str!("fixtures/musicbrainz/search-artist-radiohead.json");
+
+    /// The release group of "In Rainbows" (`RELEASE_GROUP`), with its link
+    /// to Wikidata and one the app ignores.
+    pub const RELEASE_GROUP_JSON: &str = include_str!(
+        "fixtures/musicbrainz/release-group-6e335887-60ba-38f0-95af-fae7774336bf.json"
+    );
 }
 
 #[cfg(test)]
@@ -824,6 +902,18 @@ mod tests {
             Some("https://en.wikipedia.org/wiki/X")
         );
         assert_eq!(artist.homepage, None);
+    }
+
+    #[test]
+    fn parses_a_release_group_and_its_links() {
+        let group = parse_release_group(fixtures::RELEASE_GROUP_JSON).unwrap();
+        assert_eq!(group.id, fixtures::RELEASE_GROUP);
+        assert_eq!(group.title, "In Rainbows");
+        assert_eq!(group.wikidata.as_deref(), Some("Q223295"));
+        assert_eq!(group.wikipedia, None);
+        let bare = parse_release_group(r#"{"id": "x"}"#).unwrap();
+        assert_eq!((bare.wikidata, bare.wikipedia), (None, None));
+        assert!(parse_release_group("[]").is_err());
     }
 
     #[test]

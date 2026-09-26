@@ -3,6 +3,7 @@
 //! the user chose.
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::cache::unix_now;
@@ -62,8 +63,29 @@ pub struct AlbumLink {
     pub external_id: Option<String>,
     pub score: f64,
     pub chosen_by_user: bool,
+    /// The release, for a MusicBrainz link.
     pub release: Option<Release>,
     pub checked_at: i64,
+    /// The source's JSON, as stored: a `Release` for MusicBrainz, an
+    /// `Article` for Wikipedia.
+    #[serde(skip)]
+    pub details: Option<String>,
+}
+
+impl AlbumLink {
+    /// The details, if there are any and they parse (details stored by
+    /// another version may not; they are fetched again then).
+    pub fn details<T: DeserializeOwned>(&self) -> Option<T> {
+        serde_json::from_str(self.details.as_deref()?).ok()
+    }
+
+    /// The external id if the link is an accepted match.
+    pub fn matched_id(&self) -> Option<&str> {
+        match self.status {
+            LinkStatus::Matched => self.external_id.as_deref(),
+            _ => None,
+        }
+    }
 }
 
 /// What the library knows about album `album_id`, and the release MBID in
@@ -324,10 +346,55 @@ fn store_link(
     score: f64,
     by_user: bool,
 ) -> Result<(), Error> {
-    let details =
-        release.map(|release| serde_json::to_string(release).expect("a release serializes"));
+    store(
+        conn,
+        album_id,
+        SourceId::MusicBrainz,
+        status,
+        release.map(|release| release.id.as_str()),
+        score,
+        release,
+        by_user,
+    )
+}
+
+/// Stores what `source` has for album `album_id`, as an automatic result,
+/// which never replaces the user's.
+pub fn store_source_link(
+    conn: &Connection,
+    album_id: i64,
+    source: SourceId,
+    status: LinkStatus,
+    external_id: Option<&str>,
+    score: f64,
+    details: Option<&impl Serialize>,
+) -> Result<(), Error> {
+    store(
+        conn,
+        album_id,
+        source,
+        status,
+        external_id,
+        score,
+        details,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn store(
+    conn: &Connection,
+    album_id: i64,
+    source: SourceId,
+    status: LinkStatus,
+    external_id: Option<&str>,
+    score: f64,
+    details: Option<&impl Serialize>,
+    by_user: bool,
+) -> Result<(), Error> {
+    let details = details.map(|details| serde_json::to_string(details).expect("details serialize"));
     // An automatic result never replaces the user's.
-    conn.execute(
+    conn.prepare_cached(
         "INSERT INTO album_links
              (album_id, source, status, external_id, score, chosen_by, details, checked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -336,18 +403,27 @@ fn store_link(
              score = excluded.score, chosen_by = excluded.chosen_by,
              details = excluded.details, checked_at = excluded.checked_at
          WHERE album_links.chosen_by = 'auto' OR excluded.chosen_by = 'user'",
-        params![
-            album_id,
-            SourceId::MusicBrainz.as_str(),
-            status.as_str(),
-            release.map(|release| &release.id),
-            score,
-            if by_user { "user" } else { "auto" },
-            details,
-            unix_now()
-        ],
-    )?;
+    )?
+    .execute(params![
+        album_id,
+        source.as_str(),
+        status.as_str(),
+        external_id,
+        score,
+        if by_user { "user" } else { "auto" },
+        details,
+        unix_now()
+    ])?;
     Ok(())
+}
+
+/// The MusicBrainz release group of the release album `album_id` is matched
+/// to (not one that only awaits review): the album across all its releases.
+pub fn matched_release_group(conn: &Connection, album_id: i64) -> Result<Option<String>, Error> {
+    Ok(album_link(conn, album_id, SourceId::MusicBrainz)?
+        .filter(|link| link.matched_id().is_some())
+        .and_then(|link| link.release?.release_group_id)
+        .filter(|id| musicbrainz::is_mbid(id)))
 }
 
 pub fn album_link(
@@ -381,8 +457,14 @@ pub fn album_link(
             chosen_by_user: chosen_by == "user",
             // Details stored by another version may not parse; they are
             // fetched again then.
-            release: details.and_then(|json| serde_json::from_str(&json).ok()),
+            release: match source {
+                SourceId::MusicBrainz => details
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
+                _ => None,
+            },
             checked_at,
+            details,
         },
     ))
 }

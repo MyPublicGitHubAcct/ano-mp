@@ -36,12 +36,15 @@ while a service is unreachable, and emits `metadata-changed` and
 `metadata-progress`. Artist pages (`library/artists.rs`,
 `ArtistPage.svelte`) show MusicBrainz facts (`metadata/artists.rs`) and a
 Wikipedia biography (`metadata/wikipedia.rs`, CC BY-SA: always credit the
-article and licence where it's shown). The album details
+article and licence where it's shown); the album header shows a Wikipedia
+description of the album the same way, found through its MusicBrainz
+release group. The album details
 (`library/albums.rs`), the "Find details", "Choose cover" and "Find artist"
 dialogs (commands in `metadata/commands.rs`) and the Online sources panel
 (`ServicesPanel.svelte`) are done; anything a command needs from a service
-runs on the worker through `worker::call`. See `PLAN.md` Phase 4 for the
-remaining steps.
+runs on the worker through `worker::call`. Discogs is not used: its API
+terms (images not for commercial use, data at most 6 hours old) are for
+4.8 to settle. See `PLAN.md` Phase 4 for the remaining steps.
 `docs/` is empty.
 
 ## Build & test

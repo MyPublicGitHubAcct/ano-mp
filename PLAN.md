@@ -18,8 +18,10 @@ started (2026-09-26): steps 4.1–4.6 (source settings, HTTP client, folder
 art, MusicBrainz matching, Cover Art Archive and the image cache, the
 metadata worker that enriches the library in the background, and the album
 details, "Find details", "Choose cover" and "Find artist" dialogs and the
-Online sources panel) are done, and of 4.7 the artist pages with Wikipedia
-biographies.
+Online sources panel) are done, and 4.7: artist pages with Wikipedia
+biographies, and Wikipedia descriptions of albums. Discogs, planned for 4.7,
+moved to 4.8 when its API terms turned out not to fit (see the sources
+table).
 
 ## 1. Architecture
 
@@ -85,7 +87,7 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks | `app/src-tauri/src/metadata/` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions | `app/src-tauri/src/metadata/` |
 | 200 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
@@ -922,7 +924,7 @@ before release, §8.1):
 | MusicBrainz | Release, recording and artist metadata (dates, label, catalogue number, country, release type, genres), and links to Wikidata, Discogs etc. | No key; a `User-Agent` with contact details; **~1 request/s per IP**, 503 when exceeded | Core data CC0; MetaBrainz asks commercial users to become supporters | On, the primary source |
 | Cover Art Archive | Album art by release or release-group MBID; 250/500/1200 px thumbnails | No key; no limits today; images redirect (307) to archive.org | Images belong to their owners; showing them in a player is the norm | On |
 | Wikidata + Wikipedia | Artist and album descriptions, reached through MusicBrainz URL relationships | No key; `User-Agent` | Text CC BY-SA: show attribution and a link with it | On |
-| Discogs | Release metadata (credits, labels, catalogue numbers, styles) and images | 60 requests/min authenticated, 25 unauthenticated; images need authentication. A personal access token supplied by the user, since a secret shipped in a desktop app isn't secret | API terms require attribution; check caching rules | Off until a token is entered |
+| Discogs | Release metadata (credits, labels, catalogue numbers, styles) and images | 60 requests/min authenticated, 25 unauthenticated; images need authentication. A personal access token supplied by the user, since a secret shipped in a desktop app isn't secret | As reported second-hand on 2026-09-26 (the terms page answered 403 to a script; read it in a browser before deciding): images are "Restricted Data", not for commercial use; data may not be shown more than 6 hours behind discogs.com nor cached longer than necessary; "Data provided by Discogs" next to the data, linked to its page, plus a non-affiliation notice | Deferred to 4.8: covers are out for a commercial app, and details would have to be fetched when shown (no offline copy) |
 | fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | Project API key, optional personal key | Check | Off (later) |
 | TheAudioDB | Artist bios and images, album descriptions | Free key "123" limited to 30 requests/min and one result per search; $8/month premium | Not stated; check | Off (later), user-supplied key |
 | iTunes Search API | Large album art, release dates | No key; low rate limit | Tied to Apple's affiliate/promotion terms | Off; only after a terms check |
@@ -1348,13 +1350,21 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     source takes one, are stored in the settings JSON (4.8 decides on the
     keychain); "Use automatic" while offline leaves the album unmatched
     until the worker can reach MusicBrainz again.
-- [ ] 4.7 More sources: Wikidata/Wikipedia descriptions, then Discogs
+- [x] 4.7 More sources: Wikidata/Wikipedia descriptions, then Discogs
   (user token). fanart.tv, TheAudioDB, iTunes and Deezer after their terms
   are checked.
 
+  Done 2026-09-26: artist biographies and album descriptions from
+  Wikipedia. Discogs moved to 4.8 (below), with fanart.tv and the rest:
+  its API terms, as far as they could be checked, rule out its covers in a
+  commercial app and any offline copy of its data, so whether and how it
+  ships is 4.8's decision, not an implementation step. The provider traits
+  planned in 4.1 wait for it too, since no second source of the same kind
+  exists yet.
+
   Artist pages with Wikipedia biographies done 2026-09-26
   (`metadata/artists.rs`, `wikipedia.rs`, `library/artists.rs`,
-  `ArtistPage.svelte`); album descriptions and Discogs remain:
+  `ArtistPage.svelte`), then album descriptions:
   - Settings: source `wikipedia` (requires MusicBrainz) and kind
     `artistInfo` (an artist's biography). Stored settings from before get
     its default order. Artists are matched on MusicBrainz whenever
@@ -1413,15 +1423,58 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     artists of a 16-album library were matched through their releases and
     got biographies; "Various Artists" made no request; the page for
     Swans showed its facts, biography, credit and five albums.
-  - Known limits: English Wikipedia only; a biography and the artist's
-    MusicBrainz details aren't refreshed once found (an accepted match is
-    kept, like albums'); a 'review' candidate is confirmed in the "Find
+  - Album descriptions (done 2026-09-26; `wikipedia::fetch_description`,
+    `musicbrainz::lookup_release_group`): kind `albumInfo`, supplied by
+    Wikipedia (settings stored before get its default order). The album's
+    matched release (not a 'review' candidate) gives its release group,
+    looked up with `url-rels` (cached 30 days) for its Wikidata item or a
+    direct English Wikipedia link, then the same sitelink and extract
+    requests as biographies. A separate release group lookup rather than
+    more `inc` on the release lookup, so albums matched before get
+    descriptions without their releases being fetched again. Stored as
+    the album's `wikipedia` row in `album_links` with the release group
+    as `external_id`: another release of the same album keeps the
+    description, and a match to another album hides it; 'none' is retried
+    after 30 days. `AlbumLink` keeps the stored JSON (`details`, not sent
+    to the UI) and parses `release` only for MusicBrainz;
+    `albums::store_source_link` stores another source's row. `Biography`
+    became `wikipedia::Article`, and `SourcedBiography` `SourcedArticle`
+    (both in the UI too), used for both.
+  - Worker: `Job::Description`, following an album's `Match` (after its
+    `Cover`, if one is wanted) and `Cover`, so the user's "update" and a
+    chosen release get one too; background enrichment queues it for
+    albums needing nothing else. It pauses while MusicBrainz or either
+    Wikimedia host is backing off. Skip rules in `needs_description`,
+    like `needs_biography`'s.
+  - UI: `AlbumDetails.description`; the album header shows its first
+    paragraph with "Read more", credited like the biography ("From the
+    Wikipedia article “…”, under CC BY-SA 4.0", both linked), and the
+    details table names it. The Online sources panel lists "Album
+    descriptions" with its order.
+  - Tests: a recorded MusicBrainz release group (trimmed, CC0), a recorded
+    Wikidata response, and a stand-in extract, as for artists; fetching,
+    'none', the release group rule, the worker's chain and skip rules,
+    and the album details. `live_description` (ignored) passed against the
+    real services, as did `live_biography`. Checked in the app
+    (2026-09-26): at launch the 15 matched albums of the 16-album library
+    were looked up; 11 got the right article (disambiguated ones such as
+    "Decay (Godflesh album)" and "Godflesh (EP)" included) and 4 have none.
+    Not checked by eye: the album header showing the description.
+  - Known limits: English Wikipedia only; a biography, a description and
+    the artist's MusicBrainz details aren't refreshed once found (an
+    accepted match is kept, like albums'); an album gets a description
+    only once matched, not while it awaits review; a 'review' candidate is confirmed in the "Find
     artist" dialog (4.6); an artist found only as a track artist is looked up only
     when their page is opened; several artists in one tag ("A; B") are one
     name and rarely match.
 - [ ] 4.8 Select and configure the alternative sources. Go through the
   sources table above and decide which ones ship, recording each decision
-  and its reason in the table. For each source that ships:
+  and its reason in the table. Start with Discogs (moved from 4.7): read
+  its API terms first-hand, and decide whether a details-only source that
+  stores only the match (the Discogs release id) and fetches details when
+  shown, cached at most 6 hours, with no pictures and with its
+  attribution, is worth shipping. The provider traits (4.1) come with the
+  first second source of a kind. For each source that ships:
   - Settle its terms (commercial use, attribution, caching, image display)
     and record the outcome; §8.1 still re-checks them before release.
   - Add its `SourceId`, the kinds it supplies, what it relies on, and

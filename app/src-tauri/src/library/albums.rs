@@ -1,6 +1,7 @@
 //! An album's details as the album header and the "Find details" dialog show
-//! them: what its tags say, what the metadata sources know about it, and
-//! where its cover comes from, each labelled with its source.
+//! them: what its tags say, what the metadata sources know about it (its
+//! match, and a description), and where its cover comes from, each
+//! labelled with its source.
 
 use rusqlite::OptionalExtension;
 use serde::Serialize;
@@ -10,7 +11,9 @@ use super::commands::LibraryState;
 use super::{genres, Error};
 use crate::library::sort_key::fold;
 use crate::metadata::albums::{self, AlbumLink};
+use crate::metadata::artists::SourcedArticle;
 use crate::metadata::settings::{self, Kind, SourceId};
+use crate::metadata::wikipedia;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +34,9 @@ pub struct AlbumDetails {
     /// Its link to each album-details source that is shown, in the
     /// configured order.
     pub links: Vec<SourcedLink>,
+    /// The first description found among the album-description sources
+    /// shown.
+    pub description: Option<SourcedArticle>,
     pub cover: Option<CoverSource>,
     /// Whether a details source can be searched now.
     pub can_look_up: bool,
@@ -132,6 +138,18 @@ pub fn album_details(library: &LibraryState, album_id: i64) -> Result<Option<Alb
                 });
             }
         }
+        let mut description = None;
+        for source in settings.sources_shown(Kind::AlbumInfo) {
+            description = match source {
+                SourceId::Wikipedia => {
+                    wikipedia::description(&conn, album_id)?.map(SourcedArticle::wikipedia)
+                }
+                _ => None,
+            };
+            if description.is_some() {
+                break;
+            }
+        }
         AlbumDetails {
             id: album_id,
             title,
@@ -143,6 +161,7 @@ pub fn album_details(library: &LibraryState, album_id: i64) -> Result<Option<Alb
             duration: tracks.iter().map(|track| track.duration).sum(),
             tracks,
             links,
+            description,
             cover: None,
             can_look_up: !settings.sources_for(Kind::Release).is_empty(),
         }
@@ -214,6 +233,7 @@ mod tests {
         assert_eq!(details.links[0].link.external_id.as_deref(), Some("x"));
         // The files don't exist, so there is no cover.
         assert_eq!(details.cover, None);
+        assert_eq!(details.description, None);
         assert!(details.can_look_up);
         assert!(album_details(&state, 9).unwrap().is_none());
 
@@ -228,5 +248,53 @@ mod tests {
         let details = album_details(&state, 1).unwrap().unwrap();
         assert!(details.links.is_empty());
         assert!(!details.can_look_up);
+    }
+
+    #[test]
+    fn shows_the_description_of_the_matched_album() {
+        use crate::metadata::albums::LinkStatus;
+        use crate::metadata::musicbrainz::{self, fixtures::RELEASES};
+        use crate::metadata::wikipedia::{fixtures, parse_extract};
+        let library = Library::new([track("Radiohead/In Rainbows/01.flac")
+            .artist("Radiohead")
+            .album("In Rainbows")]);
+        let release = musicbrainz::parse_release(RELEASES[1].1).unwrap();
+        let article = parse_extract(fixtures::ALBUM_EXTRACT).unwrap().unwrap();
+        albums::store_source_link(
+            &library.conn,
+            1,
+            SourceId::MusicBrainz,
+            LinkStatus::Matched,
+            Some(&release.id),
+            1.0,
+            Some(&release),
+        )
+        .unwrap();
+        albums::store_source_link(
+            &library.conn,
+            1,
+            SourceId::Wikipedia,
+            LinkStatus::Matched,
+            release.release_group_id.as_deref(),
+            1.0,
+            Some(&article),
+        )
+        .unwrap();
+        let state = LibraryState::for_tests(library.conn);
+        let details = album_details(&state, 1).unwrap().unwrap();
+        let description = details.description.unwrap();
+        assert_eq!(description.source, SourceId::Wikipedia);
+        assert_eq!(description.license, "CC BY-SA 4.0");
+        assert_eq!(description.article.title, "In Rainbows");
+        assert_eq!(details.links.len(), 1, "only album-details sources");
+
+        // Wikipedia turned off: not shown.
+        {
+            let conn = state.conn();
+            let mut settings = settings::service_settings(&conn).unwrap();
+            settings.sources[4].enabled = false;
+            settings::save_service_settings(&conn, settings).unwrap();
+        }
+        assert_eq!(album_details(&state, 1).unwrap().unwrap().description, None);
     }
 }

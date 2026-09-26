@@ -25,6 +25,7 @@
     { kind: "release", name: "Album details", about: "Release dates, labels, formats and genres." },
     { kind: "albumArt", name: "Album art", about: "The first source with a picture for an album is shown." },
     { kind: "artistInfo", name: "Artist biographies", about: "The first source with a biography is shown." },
+    { kind: "albumInfo", name: "Album descriptions", about: "The first source with a description is shown." },
   ];
 
   let data = $state.raw<MetadataSettings | null>(null);

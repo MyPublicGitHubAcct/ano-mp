@@ -1,13 +1,16 @@
 <script lang="ts">
   // The album being browsed: its cover (click to choose another), what the
   // details sources say about it with the source named, its match status,
-  // and "Find details…" and "Choose cover…". "Details" opens a table of
+  // and "Find details…" and "Choose cover…"; then its description (from
+  // Wikipedia, credited under its licence). "Details" opens a table of
   // every field with where it comes from: the tags, or a source. Reloads
   // after a scan and when `metadata-changed` names the album.
   import { untrack } from "svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { metadata, type AlbumDetails, type AlbumLink } from "$lib/api";
   import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent, plural } from "$lib/format";
   import { library } from "$lib/state/library.svelte";
+  import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui, type AlbumRef } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
@@ -15,17 +18,27 @@
   let { album }: { album: AlbumRef } = $props();
 
   const GENRES_SHOWN = 5;
+  /** Paragraphs of a description shown before "Read more". */
+  const SHORT_DESCRIPTION = 1;
 
   let details = $state.raw<AlbumDetails | null>(null);
   let open = $state(loadPreference("albumDetailsOpen", false));
+  let expanded = $state(false);
   let request = 0;
+  let shownId: number | null = null;
 
   $effect(() => savePreference("albumDetailsOpen", open));
 
   $effect(() => {
     const id = album.id;
     void [library.version, library.artVersions.get(id)];
-    untrack(() => load(id));
+    untrack(() => {
+      if (id !== shownId) {
+        shownId = id;
+        expanded = false;
+      }
+      load(id);
+    });
   });
 
   async function load(id: number) {
@@ -42,6 +55,14 @@
   /** The first link with a release that's matched, for the summary. */
   const matched = $derived(details?.links.find((link) => link.status === "matched" && link.release) ?? null);
   const first = $derived(details?.links[0] ?? null);
+  const description = $derived(details?.description ?? null);
+  const paragraphs = $derived(
+    description === null
+      ? []
+      : expanded
+        ? description.paragraphs
+        : description.paragraphs.slice(0, SHORT_DESCRIPTION),
+  );
   const genres = $derived(
     matched?.release?.genres.length ? matched.release.genres : (details?.genres ?? []),
   );
@@ -138,6 +159,13 @@
       add("Barcode", release.barcode);
       add("Genres", release.genres.join(", "));
     }
+    if (details.description) {
+      rows.push({
+        field: "Description",
+        value: `The article “${details.description.title}”`,
+        source: details.description.sourceName,
+      });
+    }
     if (details.cover) {
       rows.push({
         field: "Cover",
@@ -147,6 +175,12 @@
     }
     return rows;
   });
+
+  function openLink(event: MouseEvent) {
+    event.preventDefault();
+    const href = (event.currentTarget as HTMLAnchorElement).href;
+    attempt(() => openUrl(href));
+  }
 
   const findDetails = () => (ui.dialog = { kind: "findDetails", album });
   const chooseCover = () => (ui.dialog = { kind: "chooseCover", album });
@@ -188,6 +222,21 @@
       </div>
     </div>
   </div>
+  {#if description}
+    <div class="description">
+      {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
+      {#if description.paragraphs.length > SHORT_DESCRIPTION}
+        <button class="link" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      {/if}
+      <p class="credit muted small">
+        From the {description.sourceName} article
+        <a href={description.url} onclick={openLink}>“{description.title}”</a>, under
+        <a href={description.licenseUrl} onclick={openLink}>{description.license}</a>.
+      </p>
+    </div>
+  {/if}
   {#if open && rows.length > 0}
     <div class="table">
       <table>
@@ -294,6 +343,30 @@
     align-items: center;
     gap: 0.4rem 0.6rem;
     margin-top: 0.35rem;
+  }
+
+  .description {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    max-width: 46rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .description .credit {
+    margin-top: 0.1rem;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
   }
 
   .table {

@@ -1,0 +1,23 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 8642505,
+        "ns": 0,
+        "title": "In Rainbows",
+        "extract": "In Rainbows is the seventh studio album by the English rock band Radiohead.\n\nThis paragraph stands in for the rest of the article's lead, which isn't copied into the tests.",
+        "contentmodel": "wikitext",
+        "pagelanguage": "en",
+        "pagelanguagehtmlcode": "en",
+        "pagelanguagedir": "ltr",
+        "touched": "2026-09-25T20:15:01Z",
+        "lastrevid": 1375456377,
+        "length": 130670,
+        "fullurl": "https://en.wikipedia.org/wiki/In_Rainbows",
+        "editurl": "https://en.wikipedia.org/w/index.php?title=In_Rainbows&action=edit",
+        "canonicalurl": "https://en.wikipedia.org/wiki/In_Rainbows"
+      }
+    ]
+  }
+}
