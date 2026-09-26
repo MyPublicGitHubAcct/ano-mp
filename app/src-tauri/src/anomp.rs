@@ -120,7 +120,6 @@ pub fn version() -> String {
 }
 
 /// Whether the core can decode files with the given extension ("flac", ".mp3").
-#[allow(dead_code)]
 pub fn can_decode_extension(extension: &str) -> bool {
     let Ok(extension) = CString::new(extension) else {
         return false;
@@ -131,7 +130,6 @@ pub fn can_decode_extension(extension: &str) -> bool {
 
 /// A file's tags and audio properties. Fields the file doesn't have are
 /// `None`; several values of one field are joined with "; ".
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tags {
     pub title: Option<String>,
@@ -175,7 +173,6 @@ pub struct Picture {
 /// Reads the tags of the file at `path` without modifying it, copying the
 /// embedded picture only if `include_picture`. Unlike the engine, this may be
 /// called from any thread.
-#[allow(dead_code)]
 pub fn read_tags(path: &Path, include_picture: bool) -> Result<Tags, String> {
     let path = path_to_cstring(path)?;
     let flags = if include_picture { ANOMP_TAGS_PICTURE } else { 0 };

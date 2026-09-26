@@ -15,8 +15,10 @@ anything non-trivial, and update it when a phase completes or a decision is made
 Current state: Phases 0 and 1 are complete. The C++ core plays any supported file
 with gapless hand-off to a queued next track, and the Tauri dev UI drives it
 (file picker, transport, seek, volume). Phase 2 (metadata and library) is in progress:
-the core reads tags and art (`anomp_read_tags`, TagLib); the Rust library DB and
-scanner are next. `docs/` is empty.
+the core reads tags and art (`anomp_read_tags`, TagLib), and the Rust library
+(`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
+from it. Sort/grouping rules and security-scoped bookmarks are next. `docs/` is
+empty.
 
 ## Build & test
 
@@ -68,6 +70,11 @@ into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo b
 fetches JUCE again. `build.rs` reruns when `core/` or the top-level `CMakeLists.txt`
 changes. FFI declarations and their safe wrappers live only in
 `app/src-tauri/src/anomp.rs`; add a wrapper there for each new C API function.
+
+The library DB schema changes only by appending a numbered SQL file to
+`app/src-tauri/src/library/migrations/` and listing it in `MIGRATIONS`
+(`library/db.rs`); never edit a migration that has shipped. Tracks store paths
+relative to their folder, '/'-separated (`library::track_path` joins them).
 
 `PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
 device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling

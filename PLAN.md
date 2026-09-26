@@ -7,7 +7,8 @@ the Tauri process, and device-change events reach the UI. Phase 1 complete:
 FFmpeg decodes every format through `FFmpegAudioFormat`, and `PlayerEngine`
 plays, pauses, seeks and hands off gaplessly to a queued next track, checked
 by offline tests and by ear in the app. Phase 2 (metadata and library) is in
-progress: the core reads tags and embedded art with TagLib (2026-09-26).
+progress: the core reads tags and embedded art with TagLib, and the Rust
+library database and incremental folder scanner are in place (2026-09-26).
 
 ## 1. Architecture
 
@@ -68,11 +69,13 @@ Why this split:
 | 35 passing Catch2 tests (~1870 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
-| Safe Rust wrappers over the C API, 7 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
+| Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
+| Library: SQLite schema and migrations, folders, incremental parallel scanner, `library_*` commands | `app/src-tauri/src/library/` |
+| 25 passing `cargo test` tests (C API wrappers, schema, folders, scanner) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
-| Dev UI: device name, test tone, player panel (file picker or typed paths, transport, seek, volume, next track) | `app/src/routes/+page.svelte` |
+| Dev UI: device name, test tone, player panel (file picker or typed paths, transport, seek, volume, next track), library panel (add/scan/remove folders, track list) | `app/src/routes/+page.svelte` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
 
 Build and test:
@@ -371,14 +374,63 @@ Rules from the start, so the later ports stay cheap:
     FFmpeg (non-ASCII text, MusicBrainz IDs, PNG cover), checks untagged
     fixtures' properties, round-trips tags and two pictures written by TagLib
     through all ten formats, and checks errors and that files are untouched.
-- Rust: SQLite schema (tracks, albums, artists, folders, settings, mb_cache),
+- [x] Rust: SQLite schema (tracks, albums, artists, folders, settings, mb_cache),
   migrations, and an incremental folder scanner (mtime/size change detection).
+
+  Done 2026-09-26 (`app/src-tauri/src/library/`):
+  - `rusqlite` with its bundled SQLite (the same version on every platform,
+    iOS included). The database is `library.sqlite3` in the app data folder,
+    in WAL mode with foreign keys on. Migrations are numbered SQL files in
+    `library/migrations/`, applied in order and counted in `PRAGMA
+    user_version`. A database from a newer app version is refused, not
+    touched. Tables are `STRICT`.
+  - **Tracks store their path relative to their folder** ('/'-separated), so
+    a folder that moves keeps its tracks. On iOS the app container path
+    changes between installs, and bookmarks resolve to the new path.
+    `folders.bookmark` (a BLOB, unused so far) is ready for the sandbox item
+    below. Adding a folder canonicalizes its path and refuses one that is
+    inside, or contains, a folder already in the library.
+  - Artists have one row per name (`COLLATE NOCASE`, ASCII only). An album is
+    (album artist, title), and the album artist falls back to the track
+    artist. A unique index on `IFNULL(artist_id, 0)` covers albums without
+    one. Tracks point at their artist, album and effective album artist.
+    Release MBIDs go on albums, artist MBIDs on artists, recording and
+    release-track MBIDs on tracks. Albums and artists that no track uses are
+    deleted after each scan and folder removal. `settings` (key → JSON) and
+    `mb_cache` (request → response) are schema only, for Phases 4 and 6.
+  - **Scanner:** walks the folder with `walkdir`, following symlinks (loops
+    are detected and reported) and skipping dotfiles and dot-folders (which
+    also skips macOS's `._` AppleDouble files). It keeps the files whose
+    extension the core decodes. A file is re-read when its size or
+    modification time (ns) differs. Tags are read without pictures, on one
+    thread per core, and written 256 files per transaction, with a progress
+    callback after each batch. Updates are upserts, so track IDs stay stable.
+    Unreadable files are reported and left out (a track that becomes
+    unreadable is removed). If the folder itself is missing (e.g. an
+    unmounted drive), the scan fails and changes nothing. Tracks under a
+    subfolder that can't be read are kept.
+  - Tauri: `library_folders`, `library_add_folder`, `library_remove_folder`,
+    `library_tracks` and `library_scan` (one folder or all; one scan at a
+    time; runs on a blocking thread with its own connection and emits
+    `library-scan-progress`). The dev UI has a library panel; double-clicking
+    a track plays it.
+  - Speed (release build on the dev Mac, warm cache): 5,000 small fixture
+    files take 0.46 s to scan the first time and 27 ms to rescan. Phase 7
+    measures real libraries.
+  - Known limits: compilations tagged without an album artist split into one
+    album per track artist. Several artists in one tag ("A; B") count as one
+    artist. Folder overlap checks compare paths case-sensitively.
+    `library_tracks` returns every row, unsorted beyond folder and path;
+    paging and ordering come with the sort rules and Phase 3. Scans run only
+    when asked, with no rescan at launch and no file watching yet.
 - Logical sort/grouping rules: by album artist → album → disc/track, by folder,
   by genre, by year. Rules are configurable (feeds the admin screen).
 - macOS sandbox: user-selected folders plus security-scoped bookmarks. Store
   bookmarks, not raw paths, so the same model works on iOS later.
 - **Tests:** Catch2 tests for tag reading over fixture files (done, above);
-  `cargo test` for schema, scanner and sort rules.
+  `cargo test` for schema, scanner (done: `library/db.rs`, `library/mod.rs`
+  and `library/scanner.rs`, over temp folders of fixture copies) and sort
+  rules.
 
 ### Phase 3 — Frontend: core player UI
 - Library browser (artists / albums / tracks / folders), search, queue view,

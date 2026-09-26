@@ -22,6 +22,35 @@
   let volume = $state(1);
   let seeking = $state(false);
 
+  type Folder = { id: number; path: string; trackCount: number; lastScanAt: number | null };
+  type Track = {
+    id: number;
+    path: string;
+    title: string | null;
+    artist: string | null;
+    album: string | null;
+    albumArtist: string | null;
+    discNumber: number | null;
+    trackNumber: number | null;
+    duration: number;
+  };
+  type ScanReport = {
+    folderId: number;
+    added: number;
+    updated: number;
+    removed: number;
+    unchanged: number;
+    failed: { path: string; error: string }[];
+  };
+
+  // Dev UI only: the real library browser (Phase 3) will page its queries.
+  const shownTracks = 500;
+
+  let folders = $state<Folder[]>([]);
+  let tracks = $state<Track[]>([]);
+  let scanning = $state(false);
+  let scanProgress = $state<{ read: number; toRead: number } | null>(null);
+
   /** Accepts paths copied from Terminal: surrounding quotes, or backslash
       escapes as in `My\ Music/Spock\'s\ Beard`. */
   function cleanPath(text: string) {
@@ -55,6 +84,8 @@
 
   const formatTime = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
+
+  const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
   function log(message: string) {
     deviceEvents = [`${new Date().toLocaleTimeString()} ${message}`, ...deviceEvents];
@@ -92,6 +123,55 @@
 
   const setVolume = () => run(() => invoke("player_set_volume", { volume }));
 
+  async function refreshLibrary() {
+    folders = await invoke<Folder[]>("library_folders");
+    tracks = await invoke<Track[]>("library_tracks");
+  }
+
+  /** Scans one folder, or all of them when `folderId` is null. */
+  async function scan(folderId: number | null) {
+    scanning = true;
+    try {
+      const reports = await invoke<ScanReport[]>("library_scan", { folderId });
+      for (const r of reports) {
+        const path = folders.find((f) => f.id === r.folderId)?.path ?? `folder ${r.folderId}`;
+        log(`scanned ${path}: ${r.added} added, ${r.updated} updated, ${r.removed} removed, ` +
+          `${r.unchanged} unchanged, ${r.failed.length} failed`);
+        for (const failure of r.failed.slice(0, 10)) log(`  ${failure.path}: ${failure.error}`);
+      }
+    } finally {
+      scanning = false;
+      scanProgress = null;
+      await refreshLibrary();
+    }
+  }
+
+  const addFolder = () =>
+    run(async () => {
+      const path = await open({ multiple: false, directory: true });
+      if (path === null) return;
+      const folder = await invoke<Folder>("library_add_folder", { path });
+      folders = [...folders, folder];
+      await scan(folder.id);
+    });
+
+  const rescan = (folderId: number | null) => run(() => scan(folderId));
+
+  const removeFolder = (folderId: number) =>
+    run(async () => {
+      await invoke("library_remove_folder", { folderId });
+      await refreshLibrary();
+    });
+
+  const playTrack = (track: Track) =>
+    run(async () => {
+      trackPath = track.path;
+      await invoke("player_load", { path: track.path });
+      nextQueued = false;
+      await invoke("player_play");
+      await refreshPlayer();
+    });
+
   async function refreshDevice() {
     deviceName = await invoke<string | null>("audio_device_name");
   }
@@ -122,6 +202,7 @@
       coreVersion = await invoke<string>("core_version");
       await refreshDevice();
       await refreshPlayer();
+      await refreshLibrary();
     });
 
     const listeners = [
@@ -140,6 +221,9 @@
       listen<{ advanced: boolean }>("player-track-ended", ({ payload }) => {
         log(payload.advanced ? "track ended, next track playing" : "track ended, stopped");
         if (payload.advanced) nextQueued = false;
+      }),
+      listen<{ folderId: number; read: number; toRead: number }>("library-scan-progress", ({ payload }) => {
+        scanProgress = payload;
       }),
     ];
 
@@ -213,6 +297,50 @@
     <p class="error">{error}</p>
   {/if}
 
+  <h2>Library</h2>
+  <div class="row">
+    <button onclick={addFolder} disabled={scanning}>Add folder…</button>
+    <button onclick={() => rescan(null)} disabled={scanning || folders.length === 0}>Rescan all</button>
+    {#if scanning}
+      <span>Scanning{scanProgress ? `: read ${scanProgress.read} of ${scanProgress.toRead} new or changed files` : "…"}</span>
+    {/if}
+  </div>
+  {#if folders.length > 0}
+    <ul class="folders">
+      {#each folders as folder (folder.id)}
+        <li>
+          <span class="folder-path">{folder.path}</span>
+          <span>
+            {folder.trackCount} tracks{folder.lastScanAt === null ? ", not scanned" : ""}
+          </span>
+          <button onclick={() => rescan(folder.id)} disabled={scanning}>Rescan</button>
+          <button onclick={() => removeFolder(folder.id)} disabled={scanning}>Remove</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if tracks.length > 0}
+    <table class="tracks">
+      <thead>
+        <tr><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th>Time</th></tr>
+      </thead>
+      <tbody>
+        {#each tracks.slice(0, shownTracks) as track (track.id)}
+          <tr ondblclick={() => playTrack(track)} title="Double-click to play">
+            <td>{track.trackNumber ?? ""}</td>
+            <td>{track.title ?? fileName(track.path)}</td>
+            <td>{track.artist ?? ""}</td>
+            <td>{track.album ?? ""}</td>
+            <td>{formatTime(track.duration)}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    {#if tracks.length > shownTracks}
+      <p>First {shownTracks} of {tracks.length} tracks.</p>
+    {/if}
+  {/if}
+
   {#if deviceEvents.length > 0}
     <h2>Events</h2>
     <ul>
@@ -280,5 +408,46 @@
 
   .error {
     color: #c62828;
+  }
+
+  .folders {
+    padding: 0;
+    list-style: none;
+  }
+
+  .folders li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .folder-path {
+    overflow-wrap: anywhere;
+  }
+
+  .tracks {
+    width: 100%;
+    margin-top: 1rem;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .tracks th {
+    text-align: left;
+  }
+
+  .tracks td,
+  .tracks th {
+    padding: 0.2rem 0.5rem;
+  }
+
+  .tracks tbody tr {
+    cursor: default;
+  }
+
+  .tracks tbody tr:hover {
+    background-color: rgb(128 128 128 / 0.15);
   }
 </style>

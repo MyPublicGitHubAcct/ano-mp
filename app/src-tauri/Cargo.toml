@@ -21,6 +21,12 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
+# Bundled so every platform (including iOS) gets the same SQLite.
+rusqlite = { version = "0.40", features = ["bundled"] }
+walkdir = "2.5"
+
+[dev-dependencies]
+tempfile = "3"
 
 # See https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
@@ -29,3 +35,4 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+

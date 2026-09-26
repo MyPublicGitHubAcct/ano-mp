@@ -1,5 +1,6 @@
 mod anomp;
 mod audio;
+mod library;
 
 #[tauri::command]
 fn core_version() -> String {
@@ -13,6 +14,9 @@ pub fn run() {
         .setup(|app| {
             if let Err(error) = audio::init(app.handle()) {
                 eprintln!("[audio] {error}");
+            }
+            if let Err(error) = library::commands::init(app.handle()) {
+                eprintln!("[library] {error}");
             }
             Ok(())
         })
@@ -28,7 +32,12 @@ pub fn run() {
             audio::player_stop,
             audio::player_seek,
             audio::player_set_volume,
-            audio::player_status
+            audio::player_status,
+            library::commands::library_folders,
+            library::commands::library_add_folder,
+            library::commands::library_remove_folder,
+            library::commands::library_scan,
+            library::commands::library_tracks
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
