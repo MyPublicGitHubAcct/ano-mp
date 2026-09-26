@@ -3,9 +3,10 @@
 Status as of 2026-09-25: repository skeleton in place, C++ core builds and its
 Catch2 suite passes on macOS. The Phase 0–7 toolchain (§3) is installed.
 Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
-the Tauri process, and device-change events reach the UI. Phase 1 in progress:
-FFmpeg is built and decodes every format through `FFmpegAudioFormat`;
-`PlayerEngine` is next.
+the Tauri process, and device-change events reach the UI. Phase 1 complete:
+FFmpeg decodes every format through `FFmpegAudioFormat`, and `PlayerEngine`
+plays, pauses, seeks and hands off gaplessly to a queued next track, checked
+by offline tests and by ear in the app. Phase 2 (metadata and library) is next.
 
 ## 1. Architecture
 
@@ -60,14 +61,17 @@ Why this split:
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 19 committed audio fixtures (700 KB) of one deterministic chirp, and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension` | `core/include/anomp/anomp.h` |
-| 17 passing Catch2 tests (~1000 assertions) | `core/tests` |
+| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_engine_*` (device, player, events) | `core/include/anomp/anomp.h` |
+| `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
+| 28 passing Catch2 tests (~1350 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
-| Safe Rust wrappers over the C API, 2 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
+| Safe Rust wrappers over the C API, 4 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
-| Main-thread engine host and `audio_device_name` / `play_test_tone` / `stop_test_tone` commands | `app/src-tauri/src/audio.rs` |
+| Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
+| Dev UI: device name, test tone, player panel (file picker or typed paths, transport, seek, volume, next track) | `app/src/routes/+page.svelte` |
+| Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
 
 Build and test:
 
@@ -176,7 +180,8 @@ Rules from the start, so the later ports stay cheap:
   case-sensitive paths.
 - The core links only JUCE modules that avoid GUI dependencies where
   possible (`juce_audio_utils` pulls in `juce_gui_basics`, which means X11
-  and freetype on Linux). Drop it in Phase 1 if nothing needs it.
+  and freetype on Linux). Done in Phase 1: the core links only
+  `juce_audio_formats` and `juce_audio_devices` (plus their dependencies).
 
 ### Phase 0 — Toolchain and integration spike (highest risk first)
 - [x] Install the prerequisites in §3.
@@ -268,16 +273,46 @@ Rules from the start, so the later ports stay cheap:
 - [x] Replace `registerBasicFormats()` in `FormatRegistry` with
   `FFmpegAudioFormat`. Keep JUCE's WAV writer only for generating test
   fixtures. JUCE's own MP3/FLAC/Ogg decoders are now compiled out.
-- `PlayerEngine`: `AudioDeviceManager` → `AudioSourcePlayer` →
-  `AudioTransportSource` fed by `AudioFormatReaderSource` with a read-ahead
-  background thread.
-- Commands: load, play, pause, stop, seek, volume. State machine with
+- [x] `PlayerEngine`: `AudioDeviceManager` → `AudioSourcePlayer` →
+  `PlayerEngine`, each track an `AudioFormatReaderSource` behind a
+  `BufferingAudioSource` on a shared read-ahead thread.
+- [x] Commands: load, play, pause, stop, seek, volume. State machine with
   thread-safe status reads.
-- Queue with gapless transition: pre-open the next reader and hand it off at
+- [x] Queue with gapless transition: pre-open the next reader and hand it off at
   end of stream.
-- C API: engine create/destroy, commands, `anomp_set_event_callback`
-  (state/position/track-ended/error).
-- **Tests:** decode every format in §4.3 from small fixture files (checking
+- [x] C API: engine create/destroy, commands, `anomp_engine_set_event_callback`
+  (state/position/track-ended).
+
+  Done 2026-09-25. Design:
+  - **No `AudioTransportSource`** (the original plan). It wraps one source
+    with its own resampler, so two tracks can't be joined sample-exactly.
+    `PlayerEngine` is itself the `AudioSource`: it joins the current and
+    next track at the file rate, then resamples the joined stream once to
+    the device rate. A 44.1 kHz album on a 48 kHz device is still gapless.
+    Consecutive tracks at different rates switch at a chunk boundary (a few
+    ms of silence).
+  - **Resampling** uses JUCE's `WindowedSincInterpolator` (200 taps), not
+    `ResamplingAudioSource` (linear interpolation, audible aliasing). It is
+    bypassed when the rates match, so output is then bit-exact. The sinc
+    doesn't lower its cutoff when downsampling (e.g. 96 kHz files on a
+    48 kHz device), so content above the device's Nyquist can alias.
+    Replace it if that proves audible.
+  - **The host owns the queue.** The core holds the current track and one
+    pre-opened next track; on `TRACK_ENDED` with `advanced` the host sets
+    the following one. Order, shuffle, repeat and persistence belong with
+    the library in Rust (Phase 2/3).
+  - **Threading:** commands take a lock that the audio callback also
+    holds, and they never open or free a file inside it. Tracks are opened
+    and freed on the message thread. A track retired by a hand-off on the
+    audio thread is freed at the next event dispatch. Events are polled
+    every 50 ms by a timer and never fire from inside a command.
+  - Play and pause fade over one audio block; volume changes ramp the same
+    way. Stop, seek and load cut.
+  - Known limits: the resampler's ~100-sample latency and its last few
+    input samples are dropped when the last track ends (about 2 ms). Files
+    with more than two channels play their first two. Opens are
+    synchronous on the main thread (7 ms for a 5-minute VBR MP3).
+- [x] **Tests:** decode every format in §4.3 from small fixture files (checking
   sample rate, channels, length and a checksum of the decoded samples), plus
   state transitions, seek accuracy, and the gapless handoff, run
   against generated WAV/FLAC fixtures with a null/offline device
@@ -287,7 +322,17 @@ Rules from the start, so the later ports stay cheap:
   against the source signal (lossless bit-exact; lossy aligned to the exact
   sample by cross-correlation, since lossy float output isn't bit-stable
   across CPUs), exact lengths, seeks against a straight decode, memory
-  streams and bad input. Engine tests remain.
+  streams and bad input. `PlayerEngineTests.cpp` renders `PlayerEngine`
+  offline, with and without read-ahead. It checks state transitions,
+  bit-exact playback and seeks, fades, volume, and gapless hand-offs across
+  formats against the decoded files joined end to end. A 44.1 kHz pair on a
+  48 kHz device matches the joined files resampled as one stream, and a
+  next track at a different rate is also covered. `CApiTests.cpp` covers
+  the player C API, including a null engine.
+- [x] **Exit:** a library of MP3/FLAC files plays through the app with
+  working seek and volume, and a gapless album plays without clicks at track
+  boundaries. Confirmed by ear 2026-09-26 (MP3 album with continuous tracks,
+  queued one at a time through the dev UI). **Phase 1 complete.**
 
 ### Phase 2 — Metadata and library
 - Core: add TagLib (FetchContent) with `anomp_read_tags(path) → struct` for

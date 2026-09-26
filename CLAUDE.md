@@ -12,8 +12,9 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
-Current state: the C++ core plus a scaffolded Tauri app that links it and shows
-`anomp_version()`, plays a test tone and reports device changes (Phase 0 done); `docs/` is empty.
+Current state: Phases 0 and 1 are complete. The C++ core plays any supported file
+with gapless hand-off to a queued next track, and the Tauri dev UI drives it
+(file picker, transport, seek, volume). Phase 2 (metadata and library) is next. `docs/` is empty.
 
 ## Build & test
 
@@ -61,6 +62,11 @@ into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo b
 fetches JUCE again. `build.rs` reruns when `core/` or the top-level `CMakeLists.txt`
 changes. FFI declarations and their safe wrappers live only in
 `app/src-tauri/src/anomp.rs`; add a wrapper there for each new C API function.
+
+`PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
+device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling
+`getNextAudioBlock` directly (`core/tests/PlayerEngineTests.cpp`); `PLAN.md` Phase 1
+records its design (why not `AudioTransportSource`, the host-owned queue, threading).
 
 **The engine is main-thread only.** JUCE's message loop rides on the main run loop
 that Tauri runs, so `anomp_engine_*` calls must happen on the main thread and event

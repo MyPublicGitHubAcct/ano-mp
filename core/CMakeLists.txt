@@ -4,6 +4,7 @@ add_library(anomp_core STATIC
     src/AudioEngine.cpp
     src/FFmpegAudioFormat.cpp
     src/FormatRegistry.cpp
+    src/PlayerEngine.cpp
     src/anomp_c_api.cpp)
 
 target_include_directories(anomp_core
@@ -24,7 +25,6 @@ target_link_libraries(anomp_core
     PUBLIC
         juce::juce_audio_formats
         juce::juce_audio_devices
-        juce::juce_audio_utils
     PRIVATE
         FFmpeg::avformat
         juce::juce_recommended_config_flags

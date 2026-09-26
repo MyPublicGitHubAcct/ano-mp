@@ -2,7 +2,8 @@ add_executable(anomp_core_tests
     FormatRegistryTests.cpp
     CApiTests.cpp
     FFmpegAudioFormatTests.cpp
-    FFmpegBuildTests.cpp)
+    FFmpegBuildTests.cpp
+    PlayerEngineTests.cpp)
 
 target_compile_definitions(anomp_core_tests
     PRIVATE ANOMP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")

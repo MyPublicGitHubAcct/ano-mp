@@ -1,19 +1,22 @@
 #pragma once
 
+#include "FormatRegistry.h"
+#include "PlayerEngine.h"
+
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include <functional>
 
 namespace anomp
 {
-/** Owns JUCE's runtime and the audio output device.
+/** Owns JUCE's runtime, the audio output device and the player.
 
-    Phase 0 only plays a test tone; Phase 1 grows this into the player.
     Must be created, used and destroyed on the main thread: the constructor
-    starts JUCE's message loop integration there, and device-change
-    notifications are delivered on that thread.
+    starts JUCE's message loop integration there, and device-change and
+    player notifications are delivered on that thread.
 */
-class AudioEngine final : private juce::ChangeListener
+class AudioEngine final : private juce::ChangeListener,
+                          private juce::Timer
 {
 public:
     AudioEngine();
@@ -26,10 +29,15 @@ public:
     /** Name of the open output device, or empty if none is open. */
     juce::String currentDeviceName() const;
 
-    /** Starts a sine tone at the given frequency on the open device.
-        Returns false if no device is open or the frequency is not positive. */
+    /** The player's events are dispatched from a timer on the main thread. */
+    PlayerEngine& player() noexcept { return playerEngine; }
+
+    /** Pauses the player and plays a sine tone at the given frequency on the
+        open device instead. Returns false if no device is open or the
+        frequency is not positive. */
     bool playTestTone (double frequencyHz);
 
+    /** Stops the tone and reconnects the player. */
     void stopTestTone();
 
     /** Called on the main thread when the device list or the open device changes. */
@@ -37,10 +45,14 @@ public:
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
+    void timerCallback() override;
 
     // Declared first so JUCE is initialised before, and shut down after,
     // everything else here.
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
+    FormatRegistry formats;
+    juce::TimeSliceThread readAheadThread { "anomp read-ahead" };
+    PlayerEngine playerEngine { formats.manager(), &readAheadThread }; // Freed before the thread stops.
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer sourcePlayer;
     juce::ToneGeneratorAudioSource tone;
