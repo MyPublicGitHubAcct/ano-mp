@@ -14,8 +14,9 @@ security-scoped bookmarks in a sandboxed app bundle. Phase 3 complete
 (2026-09-26): the queue (with gapless hand-off across it, shuffle, repeat
 and persistence), full-text search, cover art, the responsive player UI,
 and macOS Now Playing and media keys through `MediaControls`. Phase 4
-started (2026-09-26): steps 4.1–4.4 (source settings, HTTP client, folder
-art, MusicBrainz matching, Cover Art Archive and the image cache) are done.
+started (2026-09-26): steps 4.1–4.5 (source settings, HTTP client, folder
+art, MusicBrainz matching, Cover Art Archive and the image cache, and the
+metadata worker that enriches the library in the background) are done.
 
 ## 1. Architecture
 
@@ -81,8 +82,8 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache | `app/src-tauri/src/metadata/` |
-| 148 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events) | `app/src-tauri/src/metadata/` |
+| 165 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -184,9 +185,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
 Each phase ends with a demonstrable result and green tests. Platform order:
 macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9), then
-Windows (Phase 10). Xcode is not needed until Phase 8. The phases cover
-making the app work on each platform; packaging, signing and shipping it are
-all in §8.
+Windows (Phase 10). Xcode is not needed until Phase 8. Phase 11 (Bandcamp
+streaming) is a feature, not a platform, and depends on Bandcamp's
+permission. Its engineering starts after Phase 7. The phases cover making
+the app work on each platform; packaging, signing and shipping it are all
+in §8.
 
 Rules from the start, so the later ports stay cheap:
 - Keep platform code behind small interfaces in the core (media controls,
@@ -923,6 +926,7 @@ before release, §8.1):
 | Deezer | Album art up to 1000 px, search | No key | Check | Off; only after a terms check |
 | AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan | Deferred (after Phase 4) |
 | Last.fm | Artist bios, tags, similar artists | API key | **Non-commercial only** without written permission, 100 MB storage cap, mandatory branding | Excluded |
+| Bandcamp | Details and art for albums bought there | No API for fans (only label and merch-partner APIs); the Acceptable Use Policy forbids scraping | Personal, non-commercial use only | Only under the Phase 11 agreement |
 | Spotify | — | OAuth; endpoints cut back in 2024 | Terms don't fit enriching a local library | Excluded |
 
 Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
@@ -1127,9 +1131,109 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     so the old release's cover stays until evicted; with the online
     switch off, `sources_for` leaves the archive out, so downloaded covers
     aren't shown either.
-- [ ] 4.5 The metadata worker: job queue, priorities, background
+- [x] 4.5 The metadata worker: job queue, priorities, background
   enrichment after a scan (if enabled), progress and `metadata-changed`
   events, offline backoff.
+
+  Done 2026-09-26 (`metadata/jobs.rs`, `worker.rs`, `commands.rs`):
+  - `jobs.rs` holds the logic, tested without Tauri or a thread: the
+    queue, the skip rules, and `Worker::step`, which runs one job and
+    reports through a `Host` trait (like `media.rs`'s `Publisher`).
+    `worker.rs` runs it on a "metadata" thread that owns the
+    `http::Client` (ureq, system clock) and a connection from `db::open`;
+    other threads only queue requests, so nothing waits on the network
+    while holding the shared connection, and nothing runs on the main
+    thread. Started at setup; on `RunEvent::Exit` it's told to stop and
+    not joined, since a request can take its 30 s timeout. Queued replies
+    are dropped then, so a waiting caller hears at once.
+  - Jobs: `Match(album)` matches the album if it needs it, then queues
+    its cover at the front of its priority; `Cover(album)` fetches the
+    cover. Priorities: user requests, then the album playing (queued from
+    `queue::publish` when the current album changes), then background
+    enrichment; first come first served within each. A job is queued once;
+    a higher request moves it forward and adds its reply. Whether a job
+    is needed and its source usable (`sources_for`) is decided when it
+    runs, from the settings and the database then. Automatic jobs (the
+    album playing, background) need "match automatically"; a user request
+    doesn't, skips the 30-day waits, and gets an error if the source is
+    off.
+  - Background enrichment is queued after each scan, after the settings
+    are saved, and at launch (for a run cut short by quitting, and albums
+    due for a retry); the worker checks `auto_match` when it gets to it.
+    Skip rules (`needs_match`, `needs_cover`): an album the user chose a
+    match for is never re-matched, but its cover is still fetched if
+    missing, since that follows their choice; an accepted match whose
+    cover is downloaded is left alone; 'none' **and 'review'** are retried
+    30 days after the check. 'review' is retried because MusicBrainz grows
+    and a better release may appear. Meanwhile its candidate waits for the
+    4.6 dialog and gets no cover. No cover is fetched when the user picked
+    a picture from another source.
+  - "No cover found" is recorded as the album's `album_links` row for
+    `cover-art-archive` ('matched' or 'none', `external_id` = the release
+    asked about), written by `fetch_album_art`; so no migration. A record
+    for a release the album is no longer matched to doesn't count.
+  - A changed match: the worker compares the album's cover URLs before
+    and after matching. They're derived from the link, so the old
+    release's cover is never picked again. When they differ, the album is
+    dropped from `ArtCache` (new `ArtCache::remove`) and named in
+    `metadata-changed`. The old file stays in the image cache until
+    evicted; that's harmless.
+  - Offline: while `http::Client` backs off from a host, automatic jobs
+    for it stay queued and jobs for other hosts go on (covers keep coming
+    while MusicBrainz is down). With only waiting jobs left, `step`
+    returns how long until the first host is tried again (`Client::retry_at`)
+    and the thread sleeps that long or until a request. A background job
+    that fails offline goes back to the front of the queue, not counted
+    as failed. A user request fails at once with `Error::Offline`. If it had
+    also been queued automatically, it stays queued for that.
+    `metadata_retry_now` clears the backoff.
+  - Events: `metadata-changed` (`{albums, artists}`; no artist ids until
+    4.7) is batched at most once a second, sent at once after a user
+    request (before its answer) and when the worker goes idle or pauses.
+    `metadata-progress` (`{done, total, current, paused, unreachable}`,
+    counted in albums since the worker was last idle; zeros when idle) is
+    sent at most four times a second, and at once on pausing and going
+    idle. Changed art is dropped from `ArtCache` at once, and Now Playing
+    looks up its artwork again if it shows that album
+    (`media::art_changed`).
+  - Reloading art in the webview: the UI keeps a count per album of the
+    `metadata-changed` events that named it, and adds it to the art URL
+    next to the scan count (`artUrl(key, generation, version)`), so
+    `max-age=86400` stays.
+  - Downloaded covers stay visible with the online switch off
+    (`ServiceSettings::sources_shown`, used by `art::lookup`): the switch
+    stops the app contacting services, and the Phase 4 exit asks for the
+    app to behave the same with the network off. Turning the Cover Art
+    Archive (or MusicBrainz, which it needs) off hides them.
+  - Commands: `metadata_status`, `metadata_retry_now`, and
+    `metadata_update_album` (a user request that waits for the match and
+    cover); wrappers and payload types in `api.ts`. The dialogs and the
+    Services panel are 4.6.
+  - The online modules' `#[allow(dead_code)]` is gone. It's kept only on
+    `choose_release`, `clear_link` and the image listing (for the 4.6
+    dialogs), and on `cache::prune`.
+  - Checked in the app (2026-09-26) on a 16-album library: with requests
+    failing as unreachable (`ALL_PROXY` pointed at a closed port) the
+    worker paused at once, nothing was written, and the app worked on
+    local data. Online, 13 albums were matched and got covers in about 80
+    s; one was 'none', and two searches failed with MusicBrainz 503s
+    after three tries. The next launch matched those two and requested
+    nothing else. Not checked by eye: covers appearing in an album list
+    during a run (the window was on a view without art, and the check
+    didn't drive the UI), and adding a folder through the picker and
+    scanning it.
+  - Known limits: a job that fails with an HTTP error (e.g. a 503 after
+    three tries) is logged and dropped until the next enrichment; nothing
+    prunes `mb_cache` yet; a rescan that changes an album's tracks
+    doesn't make an accepted match be looked at again; covers are
+    downloaded even when a local picture comes first in the order (the
+    DB doesn't record which albums have embedded art), so a library of
+    more than about 5,000 albums can churn the 500 MB image cache; 4.6's
+    "Use automatic" (`clear_link`) should drop the album from `ArtCache`
+    itself, since the worker only does that once it has re-matched; on
+    Windows (WebView2's HTTP cache persists across launches) the scan
+    count and per-album count restart at 0 each launch, so an art URL may
+    repeat one cached in an earlier run (Phase 10).
 - [ ] 4.6 Commands and UI: album details with source labels, "Find
   details" and "Choose cover" dialogs with candidates per source, and a
   Services panel (master switch, enable, order, keys, status) that Phase 6
@@ -1242,6 +1346,133 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 - **Exit:** a release build plays a library on Windows 11, with media
   keys working. Installer and signing are in §8.6.
 
+### Phase 11 — Bandcamp streaming
+Goal: play the user's **Bandcamp collection** (what they have bought there)
+next to the local library, streamed on demand. It uses the same browser,
+search, queue, gapless hand-off and Now Playing as local files. Previewing
+albums the user doesn't own is a later extension, and only if Bandcamp's
+terms allow it.
+
+Scheduling: this is a feature, not a platform. Engineering starts after
+Phase 7, so it doesn't hold up the first macOS release. It is built
+platform-neutral, so it works on every platform ported by then. Step 11.1 is
+for the owner and can take months to answer, so start it early.
+
+**Where things stand** (checked 2026-09-26):
+- **Bandcamp has no API for fans.** `bandcamp.com/developer` lists only the
+  Account, Sales Report and Merch Orders APIs, for labels and merchandise
+  fulfilment partners. Access is granted on request and uses OAuth 2 client
+  credentials.
+- **Scraping is prohibited.** The Acceptable Use and Content Moderation
+  Policy forbids scraping text, media or data by scripts, bots, scrapers or
+  other automated means. Bandcamp's own pages and apps stream through
+  private endpoints (signed, expiring 128 kbps MP3 URLs in the album page
+  data), so calling those from ano-mp would be scraping. Some open-source
+  players do that. We won't: the app is closed-source and commercial (§4.1),
+  and a block or takedown would leave users with a broken feature.
+- The Terms of Use (updated 2026-05-07) license content for personal,
+  non-commercial use, and let fans preview it "by way of streaming" through
+  the Service.
+- **App Store Review Guideline 5.2.3** forbids saving or downloading media
+  from third-party sources without their explicit authorization, and warns
+  that streaming may break their terms. iOS therefore needs the same
+  permission, in writing.
+
+So the whole phase depends on Bandcamp's permission (11.1). The design
+below assumes the permission covers a fan's collection and its streams.
+Revisit it against whatever the agreement actually provides.
+
+**Design:**
+- **Rust fetches, the core decodes.** FFmpeg stays built without network
+  protocols (§4.3), and the core never goes online. A `bandcamp` module in
+  Rust downloads audio through the HTTP layer (a streaming GET on the same
+  `Transport`, so it shares the offline backoff and the test fake) into an
+  audio cache. The core opens the cached file like any other.
+- **Download first, then play.** On open, the reader measures the length by
+  decoding the last ~2 s and indexes MP3s (Phase 1), so it needs the whole
+  file. A 5-minute track at 128 kbps is about 5 MB, roughly a second on a
+  typical connection. The queue already arms the next track ahead of time,
+  so the next streamed track downloads while the current one plays, and
+  gapless hand-off works unchanged. Starting playback before the download
+  finishes (progressive playback) is optional (11.6) and needs three things:
+  a core `InputStream` over a growing file that waits for unread bytes; a
+  reader mode that trusts the header length and skips the index scan until
+  the file is complete; and a C API through which Rust reports bytes
+  available, end of file or failure.
+- **Library model: a Bandcamp account is a library source.** Proposal
+  (settle it in 11.2): a new migration adds a `kind` column to `folders`
+  (`local`, `bandcamp`). Tracks, albums, artists, the browse rules, FTS
+  search and the queue then work unchanged. A Bandcamp track's `path` is its
+  stable Bandcamp track id, never a URL. Everything that opens a track
+  (`player_load`, `player_set_next`, the scanner, `art::lookup`) branches on
+  the kind. A local track goes through `access::open_folder` as now. A
+  Bandcamp track gets a fresh stream URL, is downloaded to the cache, and
+  the engine receives the cached path.
+- **Sync instead of scan.** For a Bandcamp source, "Refresh" lists the
+  collection and upserts albums and tracks with Bandcamp's metadata: title,
+  artist, album, track number, length, release date, tags as genres, and art.
+  It stops at the first purchase already synced. Items no longer in the
+  collection are removed, as a rescan removes deleted files.
+- **Stream URLs are never stored.** They are signed and expire, so each one
+  is fetched when the track is about to be downloaded.
+- **Audio cache.** It is kept apart from the image cache but built the same
+  way (`images.rs`): files named by SHA-256, written to `.part` and then
+  renamed, least recently used evicted first, with its own budget
+  (default 1 GB, set in the settings). The agreement decides whether cached
+  audio may outlive the session and play offline. If it may not, the cache
+  is cleared at exit and Bandcamp tracks show as unavailable while offline.
+- **Sign-in** uses the flow the agreement provides (OAuth in the system
+  browser redirecting back to the app, if offered). Tokens go in the OS
+  keychain, never the settings JSON. Signing out deletes the tokens, the
+  audio cache and the source's rows.
+- **Art and details:** Bandcamp album art goes through the image cache and
+  `anomp-art`, and details are labelled "Bandcamp", as Phase 4 labels its
+  sources. Each album has a "View on Bandcamp" link, and any branding the
+  agreement requires is shown. Later, Bandcamp could also be a Phase 4
+  metadata source for local albums bought there, if the agreement allows
+  it. Bandcamp downloads usually carry the album URL in their comment tag;
+  check this.
+- **Failures:** a track that can't be fetched (offline, session expired, no
+  longer in the collection) fails to load with a reason. The queue skips it
+  the way it skips a missing file.
+- **Tests never touch the network**, as in Phase 4: the fake `Transport`
+  serves recorded collection, track and audio responses (the audio is a
+  committed fixture). An `#[ignore]`d live test reads a test account's token
+  from an environment variable.
+
+**Steps:**
+- [ ] 11.1 **Permission (owner).** Contact Bandcamp through
+  `bandcamp.com/developer`. Describe the app: a closed-source player that
+  streams only the signed-in user's purchases, keeps audio only in a
+  bounded cache, and links back to Bandcamp. Ask for API access to a fan's
+  collection and streams, and for their rules on caching and offline play,
+  on iOS and the App Store, on attribution, and on any commercial terms.
+  Record the answer and its date here. No engineering starts without a yes.
+- [ ] 11.2 Design against the real API: the library model (a `kind` on
+  `folders`, or separate tables), the sign-in flow, the cache rules. Write
+  the migration.
+- [ ] 11.3 Sign-in, token storage and collection sync. Bandcamp albums show
+  up in browse, search and the queue.
+- [ ] 11.4 Playback: get the stream URL, download it to the audio cache,
+  then `player_load`/`player_set_next`. Download the next track in the
+  queue ahead of time. Failures and offline behaviour as designed.
+- [ ] 11.5 UI: the Bandcamp account in the sidebar with its sync status,
+  badges for tracks unavailable offline, "View on Bandcamp", and the
+  account's settings in the Services panel (4.6) or admin screen (Phase 6).
+- [ ] 11.6 Optional: progressive playback, if download-first start-up
+  proves too slow.
+- [ ] 11.7 **Fallback if 11.1 is refused:** Bandcamp purchases as local
+  files. The user downloads their purchases (e.g. FLAC) from Bandcamp and
+  puts them in a library folder. The app recognises Bandcamp downloads by
+  their tags and links each album to its Bandcamp page. No Bandcamp
+  endpoint is called.
+- **Exit:** after signing in, the user's Bandcamp collection appears in the
+  library and plays through the queue alongside local tracks. Hand-off
+  between streamed tracks is gapless, and Now Playing and media keys work.
+  Losing the network is handled as designed, and every test runs offline.
+  With 11.7 instead: Bandcamp downloads in a library folder are recognised
+  and linked to their Bandcamp pages.
+
 ## 6. Key risks
 
 | Risk | Mitigation |
@@ -1255,6 +1486,7 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 | MusicBrainz rate limits and bans | Strict limiter, caching, User-Agent with contact info |
 | Decoder behaviour differing across platforms | Same FFmpeg version and flags everywhere; the Phase 1 format tests run on every CI OS |
 | WebKitGTK (Linux) and WebView2 (Windows) behave differently from WKWebView | Keep the frontend to standard web APIs; run frontend smoke tests on each OS in CI |
+| Bandcamp refuses, limits or withdraws access (no API for fans; scraping forbidden) | Phase 11 starts only with written permission; the Bandcamp code is one Rust module behind the library-source kind, so it can be dropped without touching local playback; fallback 11.7 (purchases as local files) |
 | iOS sandbox limits on music files | Document picker import and bookmarks; the Apple Music library (DRM) is out of scope |
 
 ## 7. Proposed repo layout
@@ -1316,6 +1548,10 @@ These need answers first; most need the owner rather than engineering.
       source that is on by default or selectable, for commercial use,
       attribution, caching and image display. Decide on a MetaBrainz
       supporter plan. Set the `User-Agent` contact to a real address.
+- [ ] **Bandcamp agreement** (Phase 11, if it ships): written permission
+      covering every platform it ships on, including the App Store (Review
+      Guideline 5.2.3), with its caching and attribution rules followed. The
+      privacy policy covers the Bandcamp sign-in.
 - [ ] **Crash reporting:** decide none vs. opt-in (e.g. Sentry). Anything
       opt-in must appear in the privacy policy.
 
@@ -1374,7 +1610,8 @@ Build once (after Phase 7), reused for every platform.
   - screenshots for the required iPhone and iPad sizes, age rating,
     description and keywords;
   - review notes explaining background audio and how to add music (reviewers
-    start with an empty library).
+    start with an empty library); if Bandcamp streaming ships, a demo
+    Bandcamp account and Bandcamp's authorization (Guideline 5.2.3).
 
 ### 8.5 Linux
 - `.deb` and AppImage via the Tauri bundler, with FFmpeg bundled and found via

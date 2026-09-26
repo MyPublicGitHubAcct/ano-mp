@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -29,8 +29,9 @@ pub struct LibraryState {
     conn: Mutex<Connection>,
     scanning: AtomicBool,
     pub art: ArtCache,
-    /// Pictures downloaded from online sources.
-    pub images: ImageCache,
+    /// Pictures downloaded from online sources; the metadata worker stores
+    /// them.
+    pub images: Arc<ImageCache>,
 }
 
 impl LibraryState {
@@ -42,6 +43,11 @@ impl LibraryState {
         self.conn
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The database file, for threads that open their own connection.
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
     }
 
     /// Opens the library folder holding the file at `path`, if any; files in
@@ -78,7 +84,9 @@ impl LibraryState {
             art: ArtCache::default(),
             // Empty and never written to; a test that needs pictures sets
             // its own.
-            images: ImageCache::new(std::env::temp_dir().join("ano-mp-tests-no-images")),
+            images: Arc::new(ImageCache::new(
+                std::env::temp_dir().join("ano-mp-tests-no-images"),
+            )),
         }
     }
 }
@@ -112,7 +120,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         conn: Mutex::new(conn),
         scanning: AtomicBool::new(false),
         art: ArtCache::default(),
-        images: ImageCache::new(cache_dir.join("images")),
+        images: Arc::new(ImageCache::new(cache_dir.join("images"))),
     });
     Ok(())
 }
@@ -233,6 +241,8 @@ pub async fn library_scan<R: Runtime>(
     // Files may have new art or tags.
     state.art.clear();
     crate::queue::refresh_tracks(&app).await;
+    // New albums to look up, if the settings say so.
+    crate::metadata::worker::enrich_library(&app);
     Ok(reports)
 }
 

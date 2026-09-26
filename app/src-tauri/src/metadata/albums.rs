@@ -26,7 +26,7 @@ pub enum LinkStatus {
 }
 
 impl LinkStatus {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             LinkStatus::Matched => "matched",
             LinkStatus::Review => "review",
@@ -205,6 +205,7 @@ pub fn match_album(client: &Client, conn: &Connection, album_id: i64) -> Result<
 
 /// Links album `album_id` to the release the user picked, which automatic
 /// matching then leaves alone.
+#[allow(dead_code)] // For the "Find details" dialog (Phase 4.6).
 pub fn choose_release(
     client: &Client,
     conn: &Connection,
@@ -225,6 +226,7 @@ pub fn choose_release(
 
 /// Forgets album `album_id`'s link to `source`, chosen or not, so the next
 /// automatic run matches it afresh.
+#[allow(dead_code)] // For "Use automatic" in the Phase 4.6 dialogs; tests use it.
 pub fn clear_link(conn: &Connection, album_id: i64, source: SourceId) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM album_links WHERE album_id = ?1 AND source = ?2",

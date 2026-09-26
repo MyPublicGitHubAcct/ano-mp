@@ -187,26 +187,42 @@ impl ServiceSettings {
     /// online switch is on, with a key if it needs one, and with the source
     /// it relies on usable too.
     pub fn is_usable(&self, id: SourceId) -> bool {
+        self.is_enabled(id, self.online)
+    }
+
+    /// Whether what `id` supplied is shown: as `is_usable`, but whatever
+    /// the online switch says. The switch stops the app contacting
+    /// services; what it already fetched keeps showing, as it does when
+    /// the network is down.
+    pub fn is_shown(&self, id: SourceId) -> bool {
+        self.is_enabled(id, true)
+    }
+
+    fn is_enabled(&self, id: SourceId, online: bool) -> bool {
         let info = id.info();
         self.source(id)
             .is_some_and(|source| source.enabled && (!info.needs_key || source.api_key.is_some()))
-            && (!info.online || self.online)
+            && (!info.online || online)
             && info
                 .requires
-                .is_none_or(|required| self.is_usable(required))
+                .is_none_or(|required| self.is_enabled(required, online))
     }
 
     /// The usable sources for `kind`, in priority order.
     pub fn sources_for(&self, kind: Kind) -> Vec<SourceId> {
+        self.ordered(kind, |id| self.is_usable(id))
+    }
+
+    /// The sources whose data for `kind` is shown, in priority order: the
+    /// usable ones, and online ones while the online switch is off.
+    pub fn sources_shown(&self, kind: Kind) -> Vec<SourceId> {
+        self.ordered(kind, |id| self.is_shown(id))
+    }
+
+    fn ordered(&self, kind: Kind, keep: impl Fn(SourceId) -> bool) -> Vec<SourceId> {
         self.order
             .get(&kind)
-            .map(|order| {
-                order
-                    .iter()
-                    .copied()
-                    .filter(|&id| self.is_usable(id))
-                    .collect()
-            })
+            .map(|order| order.iter().copied().filter(|&id| keep(id)).collect())
             .unwrap_or_default()
     }
 
@@ -429,11 +445,17 @@ mod tests {
             [SourceId::Embedded, SourceId::Folder]
         );
         assert!(settings.sources_for(Kind::Release).is_empty());
+        // What was fetched still shows.
+        assert_eq!(
+            settings.sources_shown(Kind::AlbumArt),
+            default_order(Kind::AlbumArt)
+        );
 
         // The Cover Art Archive needs a MusicBrainz match.
         let mut settings = ServiceSettings::default();
         settings.sources[2].enabled = false; // MusicBrainz.
         assert!(!settings.is_usable(SourceId::CoverArtArchive));
+        assert!(!settings.is_shown(SourceId::CoverArtArchive));
         assert!(settings.is_usable(SourceId::Folder));
     }
 

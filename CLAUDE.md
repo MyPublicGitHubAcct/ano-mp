@@ -28,9 +28,12 @@ rules (stored in `settings`). Each folder keeps a security-scoped bookmark
 sandboxed (`Entitlements.plist`). Phase 4 (online metadata) is in progress:
 `app/src-tauri/src/metadata/` has the source settings (which sources supply
 each kind of data, in what order), the rate-limited HTTP client, folder-image
-art, MusicBrainz matching, and Cover Art Archive covers downloaded into an
-on-disk image cache (`metadata/images.rs`); see `PLAN.md` Phase 4 for the
-remaining steps.
+art, MusicBrainz matching, Cover Art Archive covers downloaded into an
+on-disk image cache (`metadata/images.rs`), and the metadata worker: a
+thread (`metadata/worker.rs`) running `metadata/jobs.rs`, which matches
+albums and fetches covers by priority, pauses while a service is
+unreachable, and emits `metadata-changed` and `metadata-progress`; see
+`PLAN.md` Phase 4 for the remaining steps.
 `docs/` is empty.
 
 ## Build & test

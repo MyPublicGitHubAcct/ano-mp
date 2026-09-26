@@ -26,6 +26,7 @@ pub fn store(conn: &Connection, url: &str, body: &str, fetched_at: i64) -> rusql
 }
 
 /// Removes copies fetched before `before` (Unix seconds); returns how many.
+#[allow(dead_code)] // Nothing prunes the cache yet (PLAN.md 4.5, known limits).
 pub fn prune(conn: &Connection, before: i64) -> rusqlite::Result<usize> {
     conn.execute("DELETE FROM mb_cache WHERE fetched_at < ?1", [before])
 }

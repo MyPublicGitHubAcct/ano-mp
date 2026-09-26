@@ -29,6 +29,9 @@ pub fn run() {
             if let Err(error) = media::init(app.handle()) {
                 eprintln!("[media] {error}");
             }
+            if let Err(error) = metadata::worker::init(app.handle()) {
+                eprintln!("[metadata] {error}");
+            }
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(
@@ -69,6 +72,9 @@ pub fn run() {
             metadata::commands::metadata_settings,
             metadata::commands::metadata_save_settings,
             metadata::commands::metadata_reset_settings,
+            metadata::commands::metadata_status,
+            metadata::commands::metadata_retry_now,
+            metadata::commands::metadata_update_album,
             queue::queue_state,
             queue::queue_play,
             queue::queue_play_node,
@@ -89,6 +95,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                metadata::worker::shutdown(app);
                 queue::shutdown(app);
                 media::shutdown();
                 audio::shutdown();

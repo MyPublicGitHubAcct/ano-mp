@@ -305,6 +305,16 @@ impl Client {
         }
     }
 
+    /// While `host` is considered unreachable, when it will be tried again.
+    pub fn retry_at(&self, host: &str) -> Option<Instant> {
+        let now = self.clock.now();
+        self.hosts()
+            .get(host)
+            .and_then(|state| state.unreachable)
+            .map(|(until, _)| until)
+            .filter(|until| now < *until)
+    }
+
     /// The hosts currently considered unreachable.
     pub fn unreachable_hosts(&self) -> Vec<String> {
         let now = self.clock.now();
@@ -582,8 +592,14 @@ mod tests {
         assert!(client.get(MB, "application/json", JSON_LIMIT).is_err());
         clock.advance(UNREACHABLE_FIRST);
         assert_eq!(client.unreachable_hosts(), ["musicbrainz.org"]);
+        assert_eq!(
+            client.retry_at("musicbrainz.org"),
+            Some(clock.now() + UNREACHABLE_FIRST)
+        );
+        assert_eq!(client.retry_at("coverartarchive.org"), None);
         clock.advance(UNREACHABLE_FIRST);
         assert!(client.unreachable_hosts().is_empty());
+        assert_eq!(client.retry_at("musicbrainz.org"), None);
 
         // A success clears it; so does asking to retry.
         transport.push_status(MB, 200, "{}");

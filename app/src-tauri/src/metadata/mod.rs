@@ -7,32 +7,22 @@
 //! tables, and the metadata code owns `album_links`, `artist_links` and
 //! `album_art` (migration 003).
 
-// The online parts have no caller in the app until the metadata worker
-// lands (PLAN.md Phase 4.5); only tests use them so far.
-#[allow(dead_code)]
 pub mod albums;
-#[allow(dead_code)]
 pub mod cache;
 pub mod commands;
-// The art handler reads the cache and works out cover URLs; the rest waits
-// for the worker.
-#[allow(dead_code)]
 pub mod coverartarchive;
 pub mod folder_art;
-#[allow(dead_code)]
 pub mod http;
-#[allow(dead_code)]
 pub mod images;
-#[allow(dead_code)]
+pub mod jobs;
 pub mod matcher;
-#[allow(dead_code)]
 pub mod musicbrainz;
 pub mod settings;
+pub mod worker;
 
 use std::fmt;
 
 #[derive(Debug)]
-#[allow(dead_code)] // Offline and Status until Phase 4.5.
 pub enum Error {
     Db(rusqlite::Error),
     /// The service can't be reached (no network, DNS, timeouts), or is

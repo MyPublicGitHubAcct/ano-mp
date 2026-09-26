@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use super::http::Client;
 use super::Error;
 
+pub const HOST: &str = "musicbrainz.org";
+
 const BASE: &str = "https://musicbrainz.org/ws/2";
 
 /// What a release lookup includes.

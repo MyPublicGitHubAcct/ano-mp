@@ -108,11 +108,12 @@ export const library = {
 };
 
 /** The URL of an album's (or an album-less track's) art. `generation`
-    changes after each scan, so changed art isn't served from the webview's
-    cache. The request fails (404) when there is none. */
-export function artUrl(key: { albumId: number } | { trackId: number }, generation: number) {
+    changes after each scan, and an album's `version` with each
+    `metadata-changed` naming it, so changed art isn't served from the
+    webview's cache. The request fails (404) when there is none. */
+export function artUrl(key: { albumId: number } | { trackId: number }, generation: number, version = 0) {
   const name = "albumId" in key ? `album-${key.albumId}` : `track-${key.trackId}`;
-  return `${convertFileSrc(name, "anomp-art")}?g=${generation}`;
+  return `${convertFileSrc(name, "anomp-art")}?g=${generation}.${version}`;
 }
 
 // ---- Metadata sources ---------------------------------------------------------
@@ -144,12 +145,32 @@ export type ServiceSettings = {
 
 export type MetadataSettings = { sources: SourceInfo[]; settings: ServiceSettings };
 
+/** Albums and artists whose details or art changed; sent in batches. */
+export type MetadataChanged = { albums: number[]; artists: number[] };
+
+/** What the metadata worker is doing. */
+export type MetadataProgress = {
+  /** Albums finished and in all since the worker was last idle; both 0 when it is. */
+  done: number;
+  total: number;
+  current: { albumId: number; title: string; artist: string | null } | null;
+  /** Automatic work waits for a service that couldn't be reached. */
+  paused: boolean;
+  /** Hosts that couldn't be reached, which are tried again later. */
+  unreachable: string[];
+};
+
 export const metadata = {
   settings: () => invoke<MetadataSettings>("metadata_settings"),
   /** Art may come from other sources afterwards; reload it. */
   saveSettings: (settings: ServiceSettings) =>
     invoke<MetadataSettings>("metadata_save_settings", { settings }),
   resetSettings: () => invoke<MetadataSettings>("metadata_reset_settings"),
+  status: () => invoke<MetadataProgress>("metadata_status"),
+  /** Tries unreachable services again now. */
+  retryNow: () => invoke<void>("metadata_retry_now"),
+  /** Matches an album and fetches its cover now, as far as needed; fails at once offline. */
+  updateAlbum: (albumId: number) => invoke<void>("metadata_update_album", { albumId }),
 };
 
 // ---- Player and queue ---------------------------------------------------------
@@ -239,6 +260,8 @@ type Events = {
   "player-track-ended": { advanced: boolean };
   "queue-changed": QueueState;
   "library-scan-progress": ScanProgress;
+  "metadata-changed": MetadataChanged;
+  "metadata-progress": MetadataProgress;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

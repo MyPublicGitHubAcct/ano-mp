@@ -2,9 +2,11 @@
 // query, and scanning.
 
 import { open } from "@tauri-apps/plugin-dialog";
+import { SvelteMap } from "svelte/reactivity";
 import {
   library as api,
   on,
+  onAll,
   type AlbumOrder,
   type BrowsePath,
   type Folder,
@@ -29,6 +31,8 @@ class LibraryStore {
   scanProgress = $state.raw<ScanProgress | null>(null);
   /** Increases when the library's contents may have changed (after a scan). */
   version = $state(0);
+  /** Per album, the number of `metadata-changed` events naming it, so its art reloads. */
+  artVersions = new SvelteMap<number, number>();
 
   get rule(): SortRule | undefined {
     return this.rules.find((rule) => rule.id === this.ruleId);
@@ -43,11 +47,16 @@ class LibraryStore {
     return this.rule?.levels[this.crumbs.length] ?? null;
   }
 
-  /** Follows scan progress; returns a function that stops. */
+  /** Follows scan progress and metadata changes; returns a function that stops. */
   connect() {
-    const listener = on("library-scan-progress", (progress) => (this.scanProgress = progress));
+    const listeners = [
+      on("library-scan-progress", (progress) => (this.scanProgress = progress)),
+      on("metadata-changed", ({ albums }) => {
+        for (const id of albums) this.artVersions.set(id, (this.artVersions.get(id) ?? 0) + 1);
+      }),
+    ];
     attempt(() => this.refresh());
-    return () => listener.then((stop) => stop());
+    return onAll(listeners);
   }
 
   async refresh() {

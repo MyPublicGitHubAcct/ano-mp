@@ -188,6 +188,9 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         }
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
         crate::media::queue_changed(app, &state);
+        // The album playing is looked up ahead of background work.
+        let playing = state.current_item.as_ref().filter(|_| state.loaded);
+        crate::metadata::worker::playing(app, playing.and_then(|item| item.track.album_id));
         save(app, queue);
     }
 }

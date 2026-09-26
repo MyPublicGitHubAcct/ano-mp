@@ -99,6 +99,14 @@ impl ArtCache {
         }
     }
 
+    /// Forgets `key`'s art, e.g. after a cover was downloaded for it.
+    pub fn remove(&self, key: ArtKey) {
+        let mut cache = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((art, _)) = cache.entries.remove(&key) {
+            cache.bytes -= art.map_or(0, |art| art.data.len());
+        }
+    }
+
     /// Forgets everything, e.g. after a scan may have changed the files.
     pub fn clear(&self) {
         let mut cache = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -144,7 +152,9 @@ impl Folders<'_> {
 
 /// The user's choice of picture, if any, then the first picture from the
 /// album-art sources in the configured order. Only local sources and
-/// pictures already downloaded are used; this never goes online.
+/// pictures already downloaded are used; this never goes online. Downloaded
+/// pictures are shown while the online switch is off too
+/// (`ServiceSettings::sources_shown`).
 fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
     let (settings, choice, files, covers) = {
         let conn = library.conn();
@@ -177,7 +187,7 @@ fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
         }
     }
     Ok(settings
-        .sources_for(Kind::AlbumArt)
+        .sources_shown(Kind::AlbumArt)
         .into_iter()
         .find_map(|source| from_source(source, None, &mut album)))
 }
@@ -299,8 +309,9 @@ pub fn respond(library: Option<&LibraryState>, path: &str) -> Response<Vec<u8>> 
     match lookup(library, key) {
         Ok(Some(art)) => Response::builder()
             .header(header::CONTENT_TYPE, art.mime_type.as_str())
-            // The UI adds the library's scan count to the URL, so a rescan
-            // that changed the art gets a new one.
+            // The UI adds the library's scan count and the album's count of
+            // `metadata-changed` events to the URL, so a rescan or a
+            // download that changed the art gets a new one.
             .header(header::CACHE_CONTROL, "max-age=86400")
             .body(art.data.clone())
             .expect("a valid response"),
@@ -354,8 +365,12 @@ mod tests {
             Some(None),
             "no art is remembered"
         );
-        cache.clear();
+        cache.remove(ArtKey::Album(1));
         assert!(cache.get(ArtKey::Album(1)).is_none());
+        assert!(cache.get(ArtKey::Album(4)).is_some(), "only that key");
+        assert_eq!(cache.0.lock().unwrap().bytes, 1);
+        cache.clear();
+        assert!(cache.get(ArtKey::Album(4)).is_none());
     }
 
     /// A library folder holding one album, "Artist/Album/CD1/01.flac" with
@@ -455,7 +470,7 @@ mod tests {
 
         let (_dir, mut library, album_id) = album_with_two_pictures();
         let images = tempfile::tempdir().unwrap();
-        library.images = ImageCache::new(images.path().to_path_buf());
+        library.images = Arc::new(ImageCache::new(images.path().to_path_buf()));
         let album = ArtKey::Album(album_id);
         let (release_id, details) = RELEASES[0];
         let link = |status: &str| {
@@ -530,6 +545,22 @@ mod tests {
         assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
         library.images.store(chosen, JPEG).unwrap();
         assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+
+        // Still shown with the online switch off, but not with the archive
+        // turned off.
+        let set = |change: &dyn Fn(&mut settings::ServiceSettings)| {
+            let conn = library.conn();
+            let mut settings = settings::service_settings(&conn).unwrap();
+            change(&mut settings);
+            settings::save_service_settings(&conn, settings).unwrap();
+        };
+        set(&|settings| settings.online = false);
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+        library.conn().execute("DELETE FROM album_art", []).unwrap();
+        link("matched");
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+        set(&|settings| settings.sources[3].enabled = false);
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
     }
 
     #[test]

@@ -13,7 +13,7 @@
 
   const src = $derived(
     albumId !== null
-      ? artUrl({ albumId }, library.version)
+      ? artUrl({ albumId }, library.version, library.artVersions.get(albumId))
       : trackId !== null
         ? artUrl({ trackId }, library.version)
         : null,

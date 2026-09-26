@@ -4,6 +4,12 @@
 //! redirect (307) to archive.org, which the transport follows. Pictures are
 //! downloaded into the image cache (`images`), and the art handler serves
 //! them from there; it never comes here except to work out the URLs.
+//!
+//! Each automatic fetch is recorded as the album's `album_links` row for
+//! this source: 'matched' if the archive had a cover, 'none' if not, with
+//! the MusicBrainz release it was for as `external_id`. So an album whose
+//! cover the archive lacks isn't asked about on every run, and a record
+//! for a release the album is no longer matched to doesn't count.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -12,12 +18,15 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::albums::{self, LinkStatus};
+use super::albums::{self, AlbumLink, LinkStatus};
+use super::cache::unix_now;
 use super::http::{Client, IMAGE_LIMIT};
 use super::images::ImageCache;
 use super::musicbrainz::is_mbid;
 use super::settings::SourceId;
 use super::Error;
+
+pub const HOST: &str = "coverartarchive.org";
 
 const BASE: &str = "https://coverartarchive.org";
 
@@ -28,6 +37,7 @@ pub const COVER_SIZE: u32 = 500;
 
 /// How long a release's image listing is used before asking again. People
 /// add art to releases now and then, so sooner than a MusicBrainz lookup.
+#[allow(dead_code)] // Listings are for the "Choose cover" dialog (Phase 4.6).
 const LISTING_MAX_AGE: Duration = Duration::from_secs(7 * 86400);
 
 pub fn release_front_url(release_id: &str) -> String {
@@ -38,6 +48,7 @@ pub fn release_group_front_url(release_group_id: &str) -> String {
     format!("{BASE}/release-group/{release_group_id}/front-{COVER_SIZE}")
 }
 
+#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 pub fn listing_url(release_id: &str) -> String {
     format!("{BASE}/release/{release_id}/")
 }
@@ -47,12 +58,23 @@ pub fn listing_url(release_id: &str) -> String {
 /// release group's. Empty unless the album is matched to a release; one
 /// that only awaits review has none.
 pub fn cover_urls(conn: &Connection, album_id: i64) -> Result<Vec<String>, Error> {
-    let Some(link) = albums::album_link(conn, album_id, SourceId::MusicBrainz)? else {
-        return Ok(Vec::new());
-    };
-    let release_id = match (&link.status, &link.external_id) {
-        (LinkStatus::Matched, Some(id)) if is_mbid(id) => id,
-        _ => return Ok(Vec::new()),
+    Ok(albums::album_link(conn, album_id, SourceId::MusicBrainz)?
+        .map_or_else(Vec::new, |link| link_cover_urls(&link)))
+}
+
+/// The release a MusicBrainz link is matched to, if its covers can be
+/// fetched.
+pub fn matched_release(link: &AlbumLink) -> Option<&str> {
+    match (&link.status, &link.external_id) {
+        (LinkStatus::Matched, Some(id)) if is_mbid(id) => Some(id),
+        _ => None,
+    }
+}
+
+/// `cover_urls` for the album's MusicBrainz link.
+pub fn link_cover_urls(link: &AlbumLink) -> Vec<String> {
+    let Some(release_id) = matched_release(link) else {
+        return Vec::new();
     };
     // Details stored by another version may not parse: then the release is
     // still tried.
@@ -67,7 +89,7 @@ pub fn cover_urls(conn: &Connection, album_id: i64) -> Result<Vec<String>, Error
     {
         urls.push(release_group_front_url(group));
     }
-    Ok(urls)
+    urls
 }
 
 /// What `fetch_album_art` or `fetch_image` did.
@@ -86,7 +108,8 @@ pub enum Fetched {
 /// user chose for it, else its release's front cover, else its release
 /// group's. Does nothing if one is cached already. Offline, it fails with
 /// `Error::Offline` and changes nothing. Whether the source is enabled is up
-/// to the caller.
+/// to the caller. Unless it fetched the user's choice, what it found is
+/// recorded (see `cover_check`).
 pub fn fetch_album_art(
     client: &Client,
     conn: &Connection,
@@ -96,20 +119,64 @@ pub fn fetch_album_art(
     if let Some(url) = chosen_image(conn, album_id)? {
         return fetch_image(client, cache, &url);
     }
-    let urls = cover_urls(conn, album_id)?;
-    if urls.is_empty() {
+    let Some(link) = albums::album_link(conn, album_id, SourceId::MusicBrainz)? else {
         return Ok(Fetched::NotLinked);
-    }
-    if urls.iter().any(|url| cache.contains(url)) {
-        return Ok(Fetched::Cached);
-    }
-    for url in &urls {
-        match fetch_image(client, cache, url)? {
-            Fetched::NotFound => continue,
-            fetched => return Ok(fetched),
+    };
+    let (Some(release_id), urls) = (matched_release(&link), link_cover_urls(&link)) else {
+        return Ok(Fetched::NotLinked);
+    };
+    let fetched = if urls.iter().any(|url| cache.contains(url)) {
+        Fetched::Cached
+    } else {
+        let mut fetched = Fetched::NotFound;
+        for url in &urls {
+            fetched = fetch_image(client, cache, url)?;
+            if fetched != Fetched::NotFound {
+                break;
+            }
         }
-    }
-    Ok(Fetched::NotFound)
+        fetched
+    };
+    record_check(conn, album_id, release_id, fetched != Fetched::NotFound)?;
+    Ok(fetched)
+}
+
+/// What the archive said when album `album_id`'s cover was last fetched
+/// automatically: status 'matched' (it had one) or 'none', and the release
+/// asked about as `external_id`.
+pub fn cover_check(conn: &Connection, album_id: i64) -> Result<Option<AlbumLink>, Error> {
+    albums::album_link(conn, album_id, SourceId::CoverArtArchive)
+}
+
+fn record_check(
+    conn: &Connection,
+    album_id: i64,
+    release_id: &str,
+    found: bool,
+) -> Result<(), Error> {
+    let (status, score) = if found {
+        (LinkStatus::Matched, 1.0)
+    } else {
+        (LinkStatus::None, 0.0)
+    };
+    conn.prepare_cached(
+        "INSERT INTO album_links
+             (album_id, source, status, external_id, score, chosen_by, details, checked_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'auto', NULL, ?6)
+         ON CONFLICT (album_id, source) DO UPDATE SET
+             status = excluded.status, external_id = excluded.external_id,
+             score = excluded.score, checked_at = excluded.checked_at
+         WHERE album_links.chosen_by = 'auto'",
+    )?
+    .execute(params![
+        album_id,
+        SourceId::CoverArtArchive.as_str(),
+        status.as_str(),
+        release_id,
+        score,
+        unix_now()
+    ])?;
+    Ok(())
 }
 
 /// Downloads the picture at `url` into `cache` unless it's there already.
@@ -129,7 +196,7 @@ pub fn fetch_image(client: &Client, cache: &ImageCache, url: &str) -> Result<Fet
 
 /// The archive picture the user chose for album `album_id`, if any (see
 /// migration 003's `album_art`).
-fn chosen_image(conn: &Connection, album_id: i64) -> Result<Option<String>, Error> {
+pub fn chosen_image(conn: &Connection, album_id: i64) -> Result<Option<String>, Error> {
     let reference: Option<Option<String>> = conn
         .prepare_cached("SELECT reference FROM album_art WHERE album_id = ?1 AND source = ?2")?
         .query_row(
@@ -147,6 +214,7 @@ pub fn is_archive_url(url: &str) -> bool {
 }
 
 /// A picture in a release's listing.
+#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Image {
@@ -164,6 +232,7 @@ pub struct Image {
 
 /// The pictures of release `release_id`, in the archive's order (empty if it
 /// has none). The listing is cached like other JSON.
+#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 pub fn release_images(
     client: &Client,
     conn: &Connection,
@@ -181,6 +250,7 @@ pub fn release_images(
     }
 }
 
+#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 pub fn parse_listing(json: &str) -> Result<Vec<Image>, Error> {
     #[derive(Deserialize)]
     struct RawListing {
@@ -236,6 +306,7 @@ pub fn parse_listing(json: &str) -> Result<Vec<Image>, Error> {
 }
 
 /// Listings give `http://` URLs; the archive and archive.org serve https.
+#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 fn https(url: &str) -> String {
     match url.strip_prefix("http://") {
         Some(rest) => format!("https://{rest}"),
@@ -350,6 +421,9 @@ mod tests {
             Fetched::Cached
         );
         assert_eq!(transport.urls(), [url], "requested once");
+        let check = cover_check(&library.conn, 1).unwrap().unwrap();
+        assert_eq!(check.status, LinkStatus::Matched);
+        assert_eq!(check.external_id.as_deref(), Some(RELEASES[0].0));
     }
 
     #[test]
@@ -368,12 +442,19 @@ mod tests {
         assert!(cache.contains(&group));
         assert!(!cache.contains(&release_front_url(RELEASES[0].0)));
 
-        // Neither has one.
+        // Neither has one: recorded, for the release asked about.
         let (library, _dir, cache) = album("matched");
+        assert_eq!(cover_check(&library.conn, 1).unwrap(), None);
         assert_eq!(
             fetch_album_art(&client, &library.conn, &cache, 1).unwrap(),
             Fetched::NotFound
         );
+        let check = cover_check(&library.conn, 1).unwrap().unwrap();
+        assert_eq!(
+            (check.status, check.external_id.as_deref(), check.score),
+            (LinkStatus::None, Some(RELEASES[0].0), 0.0)
+        );
+        assert!(check.checked_at > 0);
     }
 
     #[test]
@@ -415,6 +496,7 @@ mod tests {
         );
         assert_eq!(transport.urls(), [chosen.clone()]);
         assert!(cache.contains(&chosen));
+        assert_eq!(cover_check(&library.conn, 1).unwrap(), None, "not recorded");
 
         // A reference that isn't the archive's is never requested.
         library
@@ -443,6 +525,15 @@ mod tests {
         let error = fetch_album_art(&client, &library.conn, &cache, 1).unwrap_err();
         assert!(matches!(error, Error::Offline(_)), "{error}");
         assert_eq!(transport.urls().len(), 1);
+        assert_eq!(cover_check(&library.conn, 1).unwrap(), None);
+    }
+
+    #[test]
+    fn hosts_are_those_of_the_urls() {
+        assert!(release_front_url("x").starts_with(&format!("https://{HOST}/")));
+        assert!(
+            musicbrainz::release_url("x").starts_with(&format!("https://{}/", musicbrainz::HOST))
+        );
     }
 
     #[test]

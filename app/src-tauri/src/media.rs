@@ -119,6 +119,22 @@ pub fn player_event(event: Event) {
     });
 }
 
+/// The art of albums `album_ids` may have changed (e.g. a cover was
+/// downloaded): it's looked up again if it's the current item's. Any thread.
+pub fn art_changed<R: Runtime>(app: &AppHandle<R>, album_ids: &[i64]) {
+    if album_ids.is_empty() {
+        return;
+    }
+    let album_ids = album_ids.to_vec();
+    let main_app = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let key = with_media(|now_playing, _, _| now_playing.art_changed(&album_ids)).flatten();
+        if let Some(key) = key {
+            fetch_artwork(&main_app, key);
+        }
+    });
+}
+
 /// Looks up the art for `key` off the main thread, then publishes it there
 /// if it is still the current item's.
 fn fetch_artwork<R: Runtime>(app: &AppHandle<R>, key: ArtKey) {
@@ -288,6 +304,15 @@ impl NowPlaying {
         self.player.position = position;
         self.player.duration = duration;
         self.sync_playback(p, now, false);
+    }
+
+    /// The art of albums `album_ids` may have changed. Returns the current
+    /// item's art to look up again if it's among them; hand the result to
+    /// `artwork`.
+    pub fn art_changed(&self, album_ids: &[i64]) -> Option<ArtKey> {
+        self.art.filter(|key| {
+            self.track.is_some() && matches!(key, ArtKey::Album(id) if album_ids.contains(id))
+        })
     }
 
     /// The art for `key` arrived; it is shown if it is still the current
@@ -659,6 +684,21 @@ mod tests {
             p.take().last(),
             Some(&Call::Playback(PlayerState::Stopped, 0.0, 180.0))
         );
+    }
+
+    #[test]
+    fn a_downloaded_cover_is_shown_if_it_is_the_current_albums() {
+        let (mut p, mut now_playing) = (Fake::default(), NowPlaying::default());
+        assert_eq!(now_playing.art_changed(&[7]), None, "nothing published");
+        let state = queue(Some(item(1, "One", Some(7))), true, false, false);
+        now_playing.queue_changed(&mut p, &state, playing(0.0), 0.0);
+        now_playing.artwork(&mut p, ArtKey::Album(7), None);
+        p.take();
+        assert_eq!(now_playing.art_changed(&[3, 8]), None);
+        let key = now_playing.art_changed(&[3, 7]).unwrap();
+        assert_eq!(key, ArtKey::Album(7));
+        now_playing.artwork(&mut p, key, Some(&art(b"cover")));
+        assert_eq!(p.take(), [Call::Artwork(Some(b"cover".to_vec()))]);
     }
 
     #[test]
