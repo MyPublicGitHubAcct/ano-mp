@@ -29,6 +29,13 @@ configure without it. `cmake/FFmpeg.cmake` exposes it as `FFmpeg::avformat`,
 demuxer/decoder/parser to the script's lists (the configure flags stay minimal on
 purpose) and extend `core/tests/FFmpegBuildTests.cpp`.
 
+Decoder tests use committed fixtures in `core/tests/fixtures/`, all encoding one
+deterministic chirp that the tests regenerate (`core/tests/TestSignal.h`, which must
+match `scripts/make-test-fixtures.py`). Regenerating needs `brew install ffmpeg
+vorbis-tools` — Homebrew's FFmpeg is only a fixture encoder, never linked. Lengths and
+lags in the tests' fixture table are properties of the encoded files, so update them if
+you regenerate.
+
 JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt` and fetched
 by FetchContent into `build/<preset>/_deps` — the first configure takes several minutes.
 The `release` preset sets `ANOMP_BUILD_TESTS=OFF`, so tests only run in `debug`.
@@ -85,9 +92,11 @@ Constraints that shape the code and must not be broken casually:
 - **Rust owns all non-audio services** (DB, HTTP, settings), keeping the core small
   and testable.
 - **FFmpeg will decode every format on every platform** (decided; see `PLAN.md` §4.3),
-  wrapped as a single JUCE `AudioFormat` so nothing else in the core knows FFmpeg
-  exists. `FormatRegistry` currently calls JUCE's `registerBasicFormats()` as a
-  placeholder and is replaced in Phase 1.
+  wrapped as a single JUCE `AudioFormat` (`core/src/FFmpegAudioFormat.*`) so nothing
+  else in the core knows FFmpeg exists; only that `.cpp` includes FFmpeg headers.
+  `PLAN.md` Phase 1 records its design and the container quirks behind it (why
+  rewinding reopens the demuxer, the seek margins, the length rule) — read that
+  before changing the reader.
 - **Keep the core platform-neutral.** Platform code (media controls, file access, audio
   session) lives behind small interfaces with one implementation per OS; no AppKit or
   CoreAudio calls elsewhere. UTF-8 across the C API, no assumed `/` separators or

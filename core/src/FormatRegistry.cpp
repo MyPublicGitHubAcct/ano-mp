@@ -1,11 +1,12 @@
 #include "FormatRegistry.h"
+#include "FFmpegAudioFormat.h"
 
 namespace anomp
 {
 FormatRegistry::FormatRegistry()
 {
-    // WAV, AIFF, FLAC, Ogg Vorbis, MP3, plus CoreAudio (AAC/ALAC/M4A) on Apple.
-    formats.registerBasicFormats();
+    // FFmpeg decodes every format on every platform (PLAN.md §4.3).
+    formats.registerFormat (new FFmpegAudioFormat(), true);
 }
 
 bool FormatRegistry::canDecodeExtension (juce::String extension) const

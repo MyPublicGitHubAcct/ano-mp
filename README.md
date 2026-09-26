@@ -78,6 +78,7 @@ build.
 | Backend tests (Rust) | `cargo test` | `app/src-tauri/` |
 | Frontend type check | `npm run check` | `app/` |
 | Rebuild FFmpeg from scratch | `scripts/build-ffmpeg.sh --force` | repo root |
+| Regenerate decoder test fixtures (rarely; needs `brew install ffmpeg vorbis-tools`) | `scripts/make-test-fixtures.py` | repo root |
 
 ## Troubleshooting
 

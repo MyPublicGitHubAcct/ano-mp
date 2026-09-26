@@ -2,6 +2,7 @@
 # through the plain C API in include/anomp/anomp.h.
 add_library(anomp_core STATIC
     src/AudioEngine.cpp
+    src/FFmpegAudioFormat.cpp
     src/FormatRegistry.cpp
     src/anomp_c_api.cpp)
 
@@ -13,9 +14,10 @@ target_compile_definitions(anomp_core
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_USE_MP3AUDIOFORMAT=1
-        JUCE_USE_FLAC=1
-        JUCE_USE_OGGVORBIS=1
+        # FFmpeg decodes everything; JUCE's own decoders are not built.
+        JUCE_USE_MP3AUDIOFORMAT=0
+        JUCE_USE_FLAC=0
+        JUCE_USE_OGGVORBIS=0
         JUCE_STANDALONE_APPLICATION=0)
 
 target_link_libraries(anomp_core
@@ -24,5 +26,6 @@ target_link_libraries(anomp_core
         juce::juce_audio_devices
         juce::juce_audio_utils
     PRIVATE
+        FFmpeg::avformat
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)

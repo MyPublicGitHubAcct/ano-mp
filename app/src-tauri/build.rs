@@ -28,6 +28,8 @@ fn build_core() {
     println!("cargo:rustc-link-lib=static=anomp_core");
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+    link_ffmpeg(&repo_root, &target_os);
+
     if target_os == "macos" {
         println!("cargo:rustc-link-lib=dylib=c++");
         for framework in [
@@ -42,4 +44,29 @@ fn build_core() {
             println!("cargo:rustc-link-lib=framework={framework}");
         }
     }
+}
+
+/// Links the shared FFmpeg built by scripts/build-ffmpeg.sh (LGPL requires it
+/// to stay replaceable, so it is never linked statically).
+fn link_ffmpeg(repo_root: &std::path::Path, target_os: &str) {
+    let platform = match target_os {
+        "macos" => "macos-universal",
+        other => panic!("no FFmpeg build for {other} yet (PLAN.md Phases 8-10)"),
+    };
+    let lib_dir = repo_root.join("third_party/ffmpeg").join(platform).join("lib");
+    assert!(
+        lib_dir.exists(),
+        "FFmpeg not found in {}; run scripts/build-ffmpeg.sh from the repository root",
+        lib_dir.display()
+    );
+
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    for lib in ["avformat", "avcodec", "swresample", "avutil"] {
+        println!("cargo:rustc-link-lib=dylib={lib}");
+    }
+
+    // The dylibs' install names are @rpath/...: find them in the build tree
+    // during development. Bundling them into Contents/Frameworks (with an
+    // @executable_path/../Frameworks rpath) is release work, PLAN.md §8.3.
+    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
 }

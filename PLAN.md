@@ -4,7 +4,8 @@ Status as of 2026-09-25: repository skeleton in place, C++ core builds and its
 Catch2 suite passes on macOS. The Phase 0–7 toolchain (§3) is installed.
 Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
 the Tauri process, and device-change events reach the UI. Phase 1 in progress:
-the pinned FFmpeg build is done; `FFmpegAudioFormat` is next.
+FFmpeg is built and decodes every format through `FFmpegAudioFormat`;
+`PlayerEngine` is next.
 
 ## 1. Architecture
 
@@ -56,9 +57,11 @@ Why this split:
 | git repo, `.gitignore` | `/` |
 | Top-level CMake with JUCE 9.0.2 + Catch2 v3.16.0 via FetchContent | `CMakeLists.txt` |
 | Presets `debug` / `release` (Ninja) | `CMakePresets.json` |
-| `anomp_core` static lib, `FormatRegistry` (JUCE built-in decoders for now; replaced by FFmpeg in Phase 1) | `core/src` |
+| `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
+| `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
+| 19 committed audio fixtures (700 KB) of one deterministic chirp, and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
 | C API: `anomp_version`, `anomp_can_decode_extension` | `core/include/anomp/anomp.h` |
-| 12 passing Catch2 tests | `core/tests` |
+| 17 passing Catch2 tests (~1000 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API, 2 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
@@ -226,17 +229,45 @@ Rules from the start, so the later ports stay cheap:
     overrides the location); configure fails with instructions if the
     script hasn't run.
   - `core/tests/FFmpegBuildTests.cpp` checks LGPL, every planned demuxer and
-    decoder, and no encoders. Nothing else links FFmpeg yet.
-- `FFmpegAudioFormat` / `FFmpegAudioFormatReader`: a JUCE `AudioFormat` backed
+    decoder, and no encoders.
+- [x] `FFmpegAudioFormat` / `FFmpegAudioFormatReader`: a JUCE `AudioFormat` backed
   by libavformat + libavcodec, converting to float with libswresample.
   Requirements:
   - sample-accurate seeking;
   - encoder delay/padding trimming for gapless MP3/AAC/Opus;
   - accurate duration;
   - opens from a path (UTF-8) or a JUCE `InputStream` via a custom `AVIOContext`.
-- Replace `registerBasicFormats()` in `FormatRegistry` with
+
+  Done 2026-09-25. How it works, and what the probes of each container found:
+  - Every read goes through an `AVIOContext` over the JUCE `InputStream`
+    (files, bookmarks and memory alike). Output is planar float at the
+    file's own rate; JUCE resamples to the device.
+  - Positions count from the first decoded sample, anchored on its timestamp.
+    Libavcodec already trims encoder delay (LAME header, M4A edit list, Opus
+    pre-skip), so trimming falls out of that.
+  - **Length** = min(header duration, measured end of decoded output). The
+    header over-reports for Opus (includes pre-skip) and FFmpeg misses the
+    end trim for some Vorbis files; neither under-reports. The end is
+    measured by decoding the last ~2 s.
+  - **Seeking**: timestamp seek to `target − preroll` (16384 samples for
+    lossy codecs; VBR MP3 and Opus need more than 4096 to match a straight
+    decode), then decode and discard. Targets within 1 s of either end
+    rewind or seek earlier instead, because timestamps there are unreliable
+    (a seek into the first or last Ogg page comes back mislabelled by up to
+    a block). Rewinding reopens the demuxer: seeking to 0 is *not* the same
+    for AAC/Vorbis (need the previous packet) or MP3/Opus (start trimming).
+  - MP3 and raw ADTS files get a demux-only scan on open that builds an
+    exact seek index (the Xing TOC is approximate on VBR files; FFmpeg's
+    `usetoc` is off). Cost on a 5-minute VBR MP3: 7 ms to open, <1 ms per
+    seek.
+  - Known limits, inherent in the files: ADTS AAC and header-less MP3 carry
+    no gapless info, so their encoder priming (1024 / 1105 samples) stays
+    in; WMA (ASF) timestamps are in milliseconds, so WMA seeks decode from
+    the start; AAC noise substitution (PNS) is random, so AAC output after
+    a seek differs slightly (not in position) from a straight decode.
+- [x] Replace `registerBasicFormats()` in `FormatRegistry` with
   `FFmpegAudioFormat`. Keep JUCE's WAV writer only for generating test
-  fixtures.
+  fixtures. JUCE's own MP3/FLAC/Ogg decoders are now compiled out.
 - `PlayerEngine`: `AudioDeviceManager` → `AudioSourcePlayer` →
   `AudioTransportSource` fed by `AudioFormatReaderSource` with a read-ahead
   background thread.
@@ -252,6 +283,11 @@ Rules from the start, so the later ports stay cheap:
   against generated WAV/FLAC fixtures with a null/offline device
   (`AudioProcessorGraph` or direct `getNextAudioBlock` calls, so no hardware
   is needed in CI).
+  Decoding part done: `FFmpegAudioFormatTests.cpp` checks every fixture
+  against the source signal (lossless bit-exact; lossy aligned to the exact
+  sample by cross-correlation, since lossy float output isn't bit-stable
+  across CPUs), exact lengths, seeks against a straight decode, memory
+  streams and bad input. Engine tests remain.
 
 ### Phase 2 — Metadata and library
 - Core: add TagLib (FetchContent) with `anomp_read_tags(path) → struct` for
