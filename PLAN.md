@@ -14,8 +14,8 @@ security-scoped bookmarks in a sandboxed app bundle. Phase 3 complete
 (2026-09-26): the queue (with gapless hand-off across it, shuffle, repeat
 and persistence), full-text search, cover art, the responsive player UI,
 and macOS Now Playing and media keys through `MediaControls`. Phase 4
-started (2026-09-26): steps 4.1–4.3 (source settings, HTTP client, folder
-art, MusicBrainz matching) are done.
+started (2026-09-26): steps 4.1–4.4 (source settings, HTTP client, folder
+art, MusicBrainz matching, Cover Art Archive and the image cache) are done.
 
 ## 1. Architecture
 
@@ -81,8 +81,8 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching | `app/src-tauri/src/metadata/` |
-| 133 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching), plus 3 ignored 50,000-track benchmarks and 1 ignored live MusicBrainz test | `app/src-tauri/src` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache | `app/src-tauri/src/metadata/` |
+| 148 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -1075,7 +1075,58 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     the fake transport. `live_search_and_lookup` (ignored; `cargo test
     live_ -- --ignored`) checks the real service, TLS and `User-Agent`.
   - Artist links (`artist_links`) are filled with artist info in 4.7.
-- [ ] 4.4 Cover Art Archive provider and the image cache.
+- [x] 4.4 Cover Art Archive provider and the image cache.
+
+  Done 2026-09-26 (`metadata/coverartarchive.rs`, `images.rs`,
+  `library/art.rs`):
+  - `fetch_album_art(client, conn, cache, album_id)`, for the 4.5 worker:
+    the archive picture the user chose (an `album_art` reference on
+    `coverartarchive.org`), else for an album with a *matched*
+    MusicBrainz link the release's `front-500` (skipped when MusicBrainz
+    says the release has no front cover), else the release group's. It
+    does nothing for an album that isn't linked or only awaits review, or
+    whose cover is cached; a 404 moves on to the next URL. Offline it
+    fails with `Error::Offline` and writes nothing. It returns what it did
+    (`NotLinked`, `Cached`, `Downloaded`, `NotFound`); `fetch_image` does
+    one URL, for the "Choose cover" dialog. Whether the source is enabled
+    is the caller's check. Requests go through `http::Client` with
+    `IMAGE_LIMIT`; ureq follows the 307 to archive.org.
+  - 500 px, of the archive's 250/500/1200: sharp at the largest size the
+    player shows art, at around 100 KB.
+  - `release_images` lists a release's pictures (`/release/{mbid}/`,
+    cached 7 days, a 404 meaning none) with types, the front flag,
+    comment, and thumbnails by width. Older pictures only have `small`
+    and `large`, read as 250 and 500; ids are sometimes numbers, sometimes
+    strings; `http://` URLs are made `https://`. For the 4.6 dialog.
+  - `images::ImageCache`: `<app cache dir>/images` (inside the container
+    under the sandbox), one file per URL named by the **SHA-256** of the
+    URL in hex, from `ring`, which rustls already links in, so no new
+    code; SHA-256 is fixed by its standard, unlike `DefaultHasher`.
+    Written to a `.part` file, synced, then renamed into place; `.part`
+    files over an hour old are left by a crash and removed. Only data
+    starting like a JPEG, PNG, GIF or WebP is stored or served, so an
+    error page served with a 200 is refused. Budget 500 MB (about 5,000
+    covers at 500 px): beyond it the least recently used files go, down
+    to 90% so eviction doesn't run on every download. Recency is the
+    file's modification time, moved on by a read at most once a day so
+    browsing doesn't write; the total is counted by one directory scan at
+    the first store and kept in memory after that.
+  - `art::lookup` serves the `CoverArtArchive` source from the cache
+    only: the user's picked URL, or the first cached of the album's
+    cover URLs, which are derived from its matched link, so no schema
+    change. It never goes online.
+  - Tests: recorded listings for two "In Rainbows" releases and an 8×8
+    JPEG in `metadata/fixtures/coverartarchive/`. `live_cover_and_listing`
+    (ignored) fetches a real cover through the redirect and a listing.
+  - Known limits, for 4.5: an album whose cover the archive doesn't have
+    costs up to two requests every time it's fetched, since no "not
+    found" is recorded (an `album_links` row for `cover-art-archive`
+    could hold it); after a download the worker must drop that album from
+    `ArtCache`, which may remember it as having no art or a local
+    picture; the cache isn't cleared when the MusicBrainz match changes,
+    so the old release's cover stays until evicted; with the online
+    switch off, `sources_for` leaves the archive out, so downloaded covers
+    aren't shown either.
 - [ ] 4.5 The metadata worker: job queue, priorities, background
   enrichment after a scan (if enabled), progress and `metadata-changed`
   events, offline backoff.

@@ -48,6 +48,7 @@ dependencies = [
  "cmake",
  "icu_normalizer",
  "icu_properties",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

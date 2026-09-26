@@ -14,9 +14,15 @@ pub mod albums;
 #[allow(dead_code)]
 pub mod cache;
 pub mod commands;
+// The art handler reads the cache and works out cover URLs; the rest waits
+// for the worker.
+#[allow(dead_code)]
+pub mod coverartarchive;
 pub mod folder_art;
 #[allow(dead_code)]
 pub mod http;
+#[allow(dead_code)]
+pub mod images;
 #[allow(dead_code)]
 pub mod matcher;
 #[allow(dead_code)]

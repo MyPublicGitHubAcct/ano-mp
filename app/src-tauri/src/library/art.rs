@@ -5,8 +5,8 @@
 //!
 //! `lookup` is the one place art comes from: the picture the user chose for
 //! the album, else the first found among the album-art sources in the order
-//! set in `metadata::settings` (embedded pictures and images in the album's
-//! folder so far; downloaded online art comes with PLAN.md Phase 4.4).
+//! set in `metadata::settings`: embedded pictures, images in the album's
+//! folder, and covers already downloaded from the Cover Art Archive.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -19,8 +19,8 @@ use super::access::{self, OpenFolder};
 use super::commands::LibraryState;
 use super::{track_path, Error};
 use crate::anomp;
-use crate::metadata::folder_art;
 use crate::metadata::settings::{self, Kind, SourceId};
+use crate::metadata::{coverartarchive, folder_art};
 
 /// The URI scheme the webview loads art from.
 pub const SCHEME: &str = "anomp-art";
@@ -146,32 +146,48 @@ impl Folders<'_> {
 /// album-art sources in the configured order. Only local sources and
 /// pictures already downloaded are used; this never goes online.
 fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
-    let (settings, choice, files) = {
+    let (settings, choice, files, covers) = {
         let conn = library.conn();
-        let choice = match key {
-            ArtKey::Album(id) => chosen_art(&conn, id)?,
-            ArtKey::Track(_) => None,
+        let (choice, covers) = match key {
+            ArtKey::Album(id) => (
+                chosen_art(&conn, id)?,
+                coverartarchive::cover_urls(&conn, id)?,
+            ),
+            ArtKey::Track(_) => (None, Vec::new()),
         };
         (
             settings::service_settings(&conn)?,
             choice,
             track_files(&conn, key)?,
+            covers,
         )
     };
-    let mut folders = Folders {
-        library,
-        open: HashMap::new(),
+    let mut album = AlbumSources {
+        files,
+        covers,
+        folders: Folders {
+            library,
+            open: HashMap::new(),
+        },
     };
     if let Some((source, reference)) = choice {
         // A choice whose picture has gone falls back to the order.
-        if let Some(art) = from_source(source, reference.as_deref(), &files, &mut folders) {
+        if let Some(art) = from_source(source, reference.as_deref(), &mut album) {
             return Ok(Some(art));
         }
     }
     Ok(settings
         .sources_for(Kind::AlbumArt)
         .into_iter()
-        .find_map(|source| from_source(source, None, &files, &mut folders)))
+        .find_map(|source| from_source(source, None, &mut album)))
+}
+
+/// Where the sources look for an album's (or a track's) picture.
+struct AlbumSources<'a> {
+    files: Vec<TrackFile>,
+    /// Cover Art Archive URLs that may hold its cover, best first.
+    covers: Vec<String>,
+    folders: Folders<'a>,
 }
 
 /// The picture the user chose for album `album_id`: its source and reference
@@ -213,12 +229,12 @@ fn track_files(conn: &Connection, key: ArtKey) -> Result<Vec<TrackFile>, Error> 
 }
 
 /// A picture from `source`: the one `reference` names, or the best it has.
-fn from_source(
-    source: SourceId,
-    reference: Option<&str>,
-    files: &[TrackFile],
-    folders: &mut Folders,
-) -> Option<Art> {
+fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSources) -> Option<Art> {
+    let AlbumSources {
+        files,
+        covers,
+        folders,
+    } = album;
     match source {
         SourceId::Embedded => files.iter().find_map(|file| {
             let path = track_path(folders.root(file.folder_id)?, &file.relative);
@@ -251,8 +267,20 @@ fn from_source(
                 })
             })
         }
-        // Online pictures are served once downloaded (PLAN.md Phase 4.4).
-        SourceId::MusicBrainz | SourceId::CoverArtArchive => None,
+        // Only pictures already downloaded; the metadata worker fetches them.
+        SourceId::CoverArtArchive => {
+            let images = &folders.library.images;
+            let (mime_type, data) = match reference {
+                Some(url) => images.get(url),
+                None => covers.iter().find_map(|url| images.get(url)),
+            }?;
+            Some(Art {
+                mime_type: mime_type.into(),
+                data,
+            })
+        }
+        // Supplies no art.
+        SourceId::MusicBrainz => None,
     }
 }
 
@@ -417,6 +445,91 @@ mod tests {
         assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
         library.conn().execute("DELETE FROM album_art", []).unwrap();
         assert_eq!(mime(&library, album), None);
+    }
+
+    #[test]
+    fn serves_downloaded_covers_from_the_image_cache() {
+        use crate::metadata::coverartarchive::{release_front_url, release_group_front_url};
+        use crate::metadata::images::{testing::JPEG, ImageCache};
+        use crate::metadata::musicbrainz::fixtures::{RELEASES, RELEASE_GROUP};
+
+        let (_dir, mut library, album_id) = album_with_two_pictures();
+        let images = tempfile::tempdir().unwrap();
+        library.images = ImageCache::new(images.path().to_path_buf());
+        let album = ArtKey::Album(album_id);
+        let (release_id, details) = RELEASES[0];
+        let link = |status: &str| {
+            let details = crate::metadata::musicbrainz::parse_release(details).unwrap();
+            library
+                .conn()
+                .execute(
+                    "INSERT OR REPLACE INTO album_links
+                         (album_id, source, status, external_id, score, chosen_by, details,
+                          checked_at)
+                     VALUES (?1, 'musicbrainz', ?2, ?3, 1.0, 'auto', ?4, 0)",
+                    params![
+                        album_id,
+                        status,
+                        release_id,
+                        serde_json::to_string(&details).unwrap()
+                    ],
+                )
+                .unwrap();
+        };
+        link("matched");
+        {
+            let conn = library.conn();
+            let mut settings = settings::service_settings(&conn).unwrap();
+            settings.order.insert(
+                Kind::AlbumArt,
+                vec![SourceId::CoverArtArchive, SourceId::Embedded],
+            );
+            settings::save_service_settings(&conn, settings).unwrap();
+        }
+        // Nothing downloaded yet: the next source.
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+
+        // The release group's cover, then the release's, which is better.
+        library
+            .images
+            .store(
+                &release_group_front_url(RELEASE_GROUP),
+                &JPEG[..JPEG.len() - 1],
+            )
+            .unwrap();
+        library.art.clear();
+        assert_eq!(
+            lookup(&library, album).unwrap().unwrap().data.len(),
+            JPEG.len() - 1
+        );
+        library
+            .images
+            .store(&release_front_url(release_id), JPEG)
+            .unwrap();
+        library.art.clear();
+        let art = lookup(&library, album).unwrap().unwrap();
+        assert_eq!(
+            (art.mime_type.as_str(), &art.data[..]),
+            ("image/jpeg", JPEG)
+        );
+
+        // Not for a match that awaits review.
+        link("review");
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+
+        // The user's pick of an archive image, by URL, once it's downloaded.
+        let chosen = "https://coverartarchive.org/release/x/1-500.jpg";
+        library
+            .conn()
+            .execute(
+                "INSERT INTO album_art (album_id, source, reference)
+                 VALUES (?1, 'cover-art-archive', ?2)",
+                params![album_id, chosen],
+            )
+            .unwrap();
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+        library.images.store(chosen, JPEG).unwrap();
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
     }
 
     #[test]

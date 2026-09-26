@@ -19,6 +19,7 @@ use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
 use super::search::{self, SearchKind, SearchResults};
 use super::{db, track_path, Error, Folder};
+use crate::metadata::images::ImageCache;
 
 /// Frontend event with a `ScanProgress` payload.
 pub const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
@@ -28,6 +29,8 @@ pub struct LibraryState {
     conn: Mutex<Connection>,
     scanning: AtomicBool,
     pub art: ArtCache,
+    /// Pictures downloaded from online sources.
+    pub images: ImageCache,
 }
 
 impl LibraryState {
@@ -73,6 +76,9 @@ impl LibraryState {
             conn: Mutex::new(conn),
             scanning: AtomicBool::new(false),
             art: ArtCache::default(),
+            // Empty and never written to; a test that needs pictures sets
+            // its own.
+            images: ImageCache::new(std::env::temp_dir().join("ano-mp-tests-no-images")),
         }
     }
 }
@@ -94,16 +100,19 @@ pub async fn on_library<R: Runtime, T: Send + 'static>(
 }
 
 /// Opens (or creates) the library database and registers `LibraryState`.
+/// Downloaded pictures go in the app cache dir, which the OS may clear.
 pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
     let db_path = dir.join("library.sqlite3");
     let conn = db::open(&db_path).map_err(|e| e.to_string())?;
+    let cache_dir = app.path().app_cache_dir().map_err(|e| e.to_string())?;
     app.manage(LibraryState {
         db_path,
         conn: Mutex::new(conn),
         scanning: AtomicBool::new(false),
         art: ArtCache::default(),
+        images: ImageCache::new(cache_dir.join("images")),
     });
     Ok(())
 }
