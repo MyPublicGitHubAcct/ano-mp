@@ -50,6 +50,7 @@ TEST_CASE ("C API engine functions accept a null engine", "[c-api][engine]")
     CHECK (anomp_engine_state (nullptr) == ANOMP_STATE_EMPTY);
     CHECK (anomp_engine_position (nullptr) == 0.0);
     CHECK (anomp_engine_duration (nullptr) == 0.0);
+    CHECK (anomp_engine_advance_count (nullptr) == 0);
 }
 
 TEST_CASE ("C API engine without an open device", "[c-api][engine]")
@@ -85,6 +86,7 @@ TEST_CASE ("C API player commands without an open device", "[c-api][engine]")
     CHECK (std::string_view (error).empty());
     CHECK (anomp_engine_state (engine) == ANOMP_STATE_STOPPED);
     CHECK (anomp_engine_duration (engine) == Catch::Approx (22371 / 44100.0));
+    CHECK (anomp_engine_advance_count (engine) == 0);
 
     CHECK (anomp_engine_set_next (engine, fixturePath ("wav-s16-44k.wav").c_str(), error, sizeof (error)) == 1);
     CHECK (anomp_engine_set_next (engine, nullptr, error, sizeof (error)) == 1);

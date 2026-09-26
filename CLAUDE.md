@@ -12,9 +12,13 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
-Current state: Phases 0, 1 and 2 are complete; Phase 3 (the player UI) is next.
-The C++ core plays any supported file with gapless hand-off to a queued next
-track, and the Tauri dev UI drives it (file picker, transport, seek, volume).
+Current state: Phases 0, 1 and 2 are complete; Phase 3's player UI is built
+and checked by hand (queue, browser, search, cover art, now-playing bar);
+OS media integration (Now Playing, media keys) is the last Phase 3 item. The C++ core
+plays any supported file with gapless hand-off to a pre-opened next track;
+the Rust queue (`app/src-tauri/src/queue/`) keeps it armed across the whole
+queue. The Svelte UI is in `app/src/lib/` (`api.ts` has the payload types) and
+`app/src/routes/`; the old dev panels are at `/dev`.
 The core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 (`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
 from it, and `library_browse` pages through it under configurable sort/grouping
@@ -112,7 +116,14 @@ records its design (why not `AudioTransportSource`, the host-owned queue, thread
 that Tauri runs, so `anomp_engine_*` calls must happen on the main thread and event
 callbacks arrive there. `app/src-tauri/src/audio.rs` enforces this: the engine lives
 in a main-thread `thread_local`, commands go through `with_engine` (which hops to
-the main thread if needed), and the engine is dropped on `RunEvent::Exit`.
+the main thread if needed), and the engine is dropped on `RunEvent::Exit`. The queue
+lives on the main thread too (`queue::run`); do database work before hopping there,
+and never hold the library connection while waiting for the main thread. Queue logic
+goes in `queue/model.rs` behind the `Player` trait, tested against a fake engine.
+
+Search uses FTS5 tables kept in step by triggers (migration 002); a schema change
+to `tracks`, `artists` or `albums` columns they index must update those triggers
+in a new migration.
 
 ## Architecture
 

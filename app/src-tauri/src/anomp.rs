@@ -134,6 +134,7 @@ extern "C" {
     fn anomp_engine_state(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_position(engine: *mut RawEngine) -> f64;
     fn anomp_engine_duration(engine: *mut RawEngine) -> f64;
+    fn anomp_engine_advance_count(engine: *mut RawEngine) -> i64;
     fn anomp_engine_play_test_tone(engine: *mut RawEngine, frequency_hz: f64) -> c_int;
     fn anomp_engine_stop_test_tone(engine: *mut RawEngine);
 }
@@ -501,6 +502,13 @@ impl Engine {
     pub fn duration(&self) -> f64 {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_duration(self.raw.as_ptr()) }
+    }
+
+    /// How many times a next track has taken over since the engine was
+    /// created, counted as it happens rather than when `TrackEnded` reports it.
+    pub fn advance_count(&self) -> i64 {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_advance_count(self.raw.as_ptr()) }
     }
 
     /// Name of the open output device, or `None` if none is open.

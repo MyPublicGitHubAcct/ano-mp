@@ -64,6 +64,12 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 PositionPayload { position, duration },
             ),
             Event::TrackEnded { advanced } => {
+                // The queue arms the next track. Not from inside the engine's
+                // own callback: deferred to the next turn of the main loop.
+                let queue_app = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    crate::queue::on_track_ended(&queue_app, advanced);
+                });
                 app.emit(PLAYER_TRACK_ENDED_EVENT, TrackEndedPayload { advanced })
             }
         };
@@ -87,24 +93,40 @@ where
     R: Runtime,
     T: Send + 'static,
 {
-    let run = move || {
-        ENGINE.with(|slot| match slot.try_borrow_mut() {
-            Ok(mut slot) => slot
-                .as_mut()
-                .map(f)
-                .ok_or_else(|| "Audio engine not running".to_string()),
-            Err(_) => Err("Audio engine busy".to_string()),
-        })
-    };
+    on_main(app, move || engine_mut(f))?
+}
+
+/// Runs `f` on the main thread, directly if already on it, and returns its
+/// result. Never call it while holding a lock the main thread may take.
+pub fn on_main<R, T>(
+    app: &AppHandle<R>,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String>
+where
+    R: Runtime,
+    T: Send + 'static,
+{
     if is_main_thread() {
-        return run();
+        return Ok(f());
     }
     let (tx, rx) = mpsc::sync_channel(1);
     app.run_on_main_thread(move || {
-        let _ = tx.send(run());
+        let _ = tx.send(f());
     })
     .map_err(|e| e.to_string())?;
-    rx.recv().map_err(|e| e.to_string())?
+    rx.recv().map_err(|e| e.to_string())
+}
+
+/// Runs `f` with the engine. Main thread only (see `on_main`).
+pub fn engine_mut<T>(f: impl FnOnce(&mut Engine) -> T) -> Result<T, String> {
+    debug_assert!(is_main_thread());
+    ENGINE.with(|slot| match slot.try_borrow_mut() {
+        Ok(mut slot) => slot
+            .as_mut()
+            .map(f)
+            .ok_or_else(|| "Audio engine not running".to_string()),
+        Err(_) => Err("Audio engine busy".to_string()),
+    })
 }
 
 fn is_main_thread() -> bool {
@@ -140,20 +162,25 @@ fn open_library_folder<R: Runtime>(
         .map_or(Ok(None), |library| library.open_folder_of(path))
 }
 
+/// Loads a file directly, for the dev page; the queue (`queue_*`) stops
+/// following the engine until it next starts a track itself.
 #[tauri::command]
 pub fn player_load<R: Runtime>(app: AppHandle<R>, path: PathBuf) -> Result<(), String> {
     let _folder = open_library_folder(&app, &path)?;
-    with_engine(&app, move |engine| engine.load(&path))?
+    with_engine(&app, move |engine| engine.load(&path))??;
+    crate::queue::detach(&app)
 }
 
-/// Sets the track that follows the current one gaplessly; `null` clears it.
+/// Sets the file that follows the current track gaplessly (`null` clears
+/// it), for the dev page; detaches the queue like `player_load`.
 #[tauri::command]
 pub fn player_set_next<R: Runtime>(app: AppHandle<R>, path: Option<PathBuf>) -> Result<(), String> {
     let _folder = path
         .as_deref()
         .map(|path| open_library_folder(&app, path))
         .transpose()?;
-    with_engine(&app, move |engine| engine.set_next(path.as_deref()))?
+    with_engine(&app, move |engine| engine.set_next(path.as_deref()))??;
+    crate::queue::detach(&app)
 }
 
 #[tauri::command]

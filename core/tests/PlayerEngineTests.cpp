@@ -411,6 +411,51 @@ TEST_CASE ("PlayerEngine next track can be cleared or replaced", "[player][gaple
     CHECK (h.takeEvents() == std::vector<std::string> { "ended", stateStopped });
 }
 
+TEST_CASE ("PlayerEngine counts hand-offs before it reports them", "[player][gapless]")
+{
+    Harness h (44100.0, false);
+    const auto first = decode ("flac-44k.flac");
+    const auto second = decode ("wav-s16-44k.wav");
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+    REQUIRE (h.player.play());
+    h.takeEvents();
+    CHECK (h.player.getAdvanceCount() == 0);
+
+    h.render (length (first) + 1);
+    CHECK (h.player.getAdvanceCount() == 1); // Counted before dispatchEvents() reports it.
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+    CHECK (h.player.getAdvanceCount() == 1);
+
+    // A load keeps the count, and a pending hand-off is still reported.
+    REQUIRE (h.player.setNext (fixtureFile ("flac-44k.flac")).isEmpty());
+    h.render (length (second));
+    CHECK (h.player.getAdvanceCount() == 2);
+    REQUIRE (h.player.load (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+    CHECK (h.player.getAdvanceCount() == 2);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced", stateStopped });
+}
+
+TEST_CASE ("PlayerEngine load drops an end it has not reported", "[player]")
+{
+    Harness h (44100.0, false);
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.play());
+    h.takeEvents();
+    h.renderUntilStopped (200000);
+
+    // Loaded before the end was dispatched: the end belonged to the old track.
+    REQUIRE (h.player.load (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+    REQUIRE (h.player.play());
+    CHECK (h.takeEvents().empty()); // Stopped and playing again since the last report.
+
+    h.renderUntilStopped (200000);
+    CHECK (h.takeEvents() == std::vector<std::string> { "ended", stateStopped });
+    CHECK (h.player.getAdvanceCount() == 0);
+}
+
 TEST_CASE ("PlayerEngine reports position changes", "[player]")
 {
     Harness h (44100.0, false);

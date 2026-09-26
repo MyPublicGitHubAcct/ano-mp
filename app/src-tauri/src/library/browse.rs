@@ -11,7 +11,8 @@ use rusqlite::types::{Value, ValueRef};
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
-use super::rules::{self, Level, SortRule, TrackKey};
+use super::rules::{self, AlbumOrder, Level, SortRule, TrackKey};
+use super::sort_key;
 use super::{track_from_row, Error, TrackSummary, TRACKS_FROM, TRACK_COLUMNS};
 
 /// Larger page sizes are reduced to this.
@@ -132,10 +133,177 @@ pub fn browse(
     Ok(page)
 }
 
+/// A stored rule, by id, or a rule given in full (e.g. to play an album
+/// found by search, whatever the stored rules are).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum RuleSpec {
+    Id(String),
+    Rule(SortRule),
+}
+
+/// `node_track_ids` for `rule` with the stored articles.
+pub fn node_track_ids_rule(
+    conn: &Connection,
+    rule: &RuleSpec,
+    path: &[Option<GroupKey>],
+    recursive: bool,
+) -> Result<Vec<i64>, Error> {
+    let settings = rules::sort_settings(conn)?;
+    let rule = match rule {
+        RuleSpec::Rule(rule) => rule,
+        RuleSpec::Id(rule_id) => settings
+            .rules
+            .iter()
+            .find(|rule| &rule.id == rule_id)
+            .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\"")))?,
+    };
+    node_track_ids(conn, rule, &settings.ignored_articles, path, recursive)
+}
+
+/// The ids of the tracks under the node at `path`, in the order browsing
+/// shows them: group by group, depth first, with each group's tracks in the
+/// rule's track order. A folder node lists only its own tracks, unless
+/// `recursive`, when its subfolders' come first (as browsing lists them).
+/// Under a genre level, a track tagged with several genres is listed once,
+/// ordered by its whole genre tag.
+pub fn node_track_ids(
+    conn: &Connection,
+    rule: &SortRule,
+    articles: &[String],
+    path: &[Option<GroupKey>],
+    recursive: bool,
+) -> Result<Vec<i64>, Error> {
+    rule.validate()?;
+    let mut params = Params::new(articles);
+    if rule.levels == [Level::Folder] {
+        return folder_track_ids(conn, rule, path, recursive, &mut params);
+    }
+    // Checks the path, and gives the filter and joins.
+    let node = tag_node(rule, path, &mut params)?;
+    let mut from = TRACKS_FROM.to_owned();
+    if rule.levels.contains(&Level::Year) {
+        from.push_str(" LEFT JOIN album_years ay ON ay.album_id = t.album_id");
+    }
+    let filter = node.filter;
+    let mut terms: Vec<String> = rule.levels[path.len()..]
+        .iter()
+        .map(|&level| level_order(level, rule.album_order))
+        .collect();
+    terms.extend(
+        track_order_terms(&rule.track_order)
+            .into_iter()
+            .map(String::from),
+    );
+    terms.push("t.id".into());
+    let sql = format!(
+        "{ALBUM_YEARS} SELECT t.id {from} WHERE {filter} ORDER BY {}",
+        terms.join(", ")
+    );
+    query(conn, &sql, &params, |row| row.get(0))
+}
+
+/// The year an album is listed under: the earliest among its tracks.
+const ALBUM_MIN_YEAR: &str = "(SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id)";
+
+/// ORDER BY terms that list tracks group by group at `level`, in the order
+/// `level_groups` lists the groups.
+fn level_order(level: Level, album_order: AlbumOrder) -> String {
+    if (level, album_order) == (Level::Album, AlbumOrder::Year) {
+        return format!(
+            "{ALBUM_MIN_YEAR} NULLS LAST, {}",
+            level_order(level, AlbumOrder::Title)
+        );
+    }
+    match level {
+        Level::AlbumArtist => {
+            "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_artist_id"
+        }
+        Level::Artist => "anomp_sort_key(artist.name, ?1) NULLS LAST, artist.name, t.artist_id",
+        // Tracks without an album are one group, whatever their artists.
+        Level::Album => {
+            "anomp_sort_key(album.title, ?1) NULLS LAST, album.title,
+             anomp_sort_key(IIF(t.album_id IS NULL, NULL, album_artist.name), ?1) NULLS LAST,
+             IIF(t.album_id IS NULL, NULL, album_artist.name), t.album_id"
+        }
+        Level::Year => "IFNULL(ay.year, t.year) NULLS LAST",
+        Level::Genre => "anomp_sort_key(t.genre, NULL) NULLS LAST, t.genre",
+        Level::Folder => unreachable!("rules::validate keeps the folder level on its own"),
+    }
+    .to_owned()
+}
+
+/// `node_track_ids` under the folder rule. SQL gives each folder's tracks in
+/// the rule's track order; a stable sort then puts each folder's subfolders
+/// before its own files, as `folder_node` lists them.
+fn folder_track_ids(
+    conn: &Connection,
+    rule: &SortRule,
+    path: &[Option<GroupKey>],
+    recursive: bool,
+    params: &mut Params,
+) -> Result<Vec<i64>, Error> {
+    let node = folder_node(rule, path, params)?;
+    let (filter, rest) = (node.filter, node.rest);
+    let mut terms = vec!["anomp_sort_key(f.path, NULL), f.path, f.id"];
+    terms.extend(track_order_terms(&rule.track_order));
+    terms.push("t.id");
+    let own_files = if recursive {
+        ""
+    } else {
+        " AND instr(RELATIVE, '/') = 0"
+    };
+    let sql = format!(
+        "{ALBUM_YEARS} SELECT t.id, t.folder_id, {rest} {TRACKS_FROM} WHERE {filter}{} ORDER BY {}",
+        own_files.replace("RELATIVE", &rest),
+        terms.join(", ")
+    );
+    let rows: Vec<(i64, i64, String)> = query(conn, &sql, params, |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    })?;
+    if !recursive {
+        return Ok(rows.into_iter().map(|(id, _, _)| id).collect());
+    }
+
+    // Folder names as `folder_node` orders them: by sort key, then text.
+    type Name = (Vec<u8>, String);
+    let mut folder_rank = std::collections::HashMap::new();
+    let mut keyed: Vec<(usize, Vec<Name>, i64)> = rows
+        .into_iter()
+        .map(|(id, folder_id, relative)| {
+            let next_rank = folder_rank.len();
+            let rank = *folder_rank.entry(folder_id).or_insert(next_rank);
+            let mut names: Vec<&str> = relative.split('/').collect();
+            names.pop(); // The file name.
+            let dirs = names
+                .into_iter()
+                .map(|name| (sort_key::sort_key(name, &[]), name.to_owned()))
+                .collect();
+            (rank, dirs, id)
+        })
+        .collect();
+    keyed.sort_by(|(rank_a, dirs_a, _), (rank_b, dirs_b, _)| {
+        rank_a.cmp(rank_b).then_with(|| {
+            dirs_a
+                .iter()
+                .zip(dirs_b)
+                .map(|(a, b)| a.cmp(b))
+                .find(|order| order.is_ne())
+                // One folder holds the other: the subfolder's tracks first.
+                .unwrap_or_else(|| dirs_b.len().cmp(&dirs_a.len()))
+        })
+    });
+    Ok(keyed.into_iter().map(|(_, _, id)| id).collect())
+}
+
 /// The groups and tracks in a node, either of which may be absent.
 struct Node {
     groups: Option<Groups>,
     tracks: Option<Listing>,
+    /// Matches every track under the node, in subgroups too.
+    filter: String,
+    /// Folder nodes only: the path of a track below the node's folder.
+    rest: String,
 }
 
 struct Groups {
@@ -213,12 +381,16 @@ fn tag_node(
     }
     Ok(match rule.levels.get(path.len()) {
         Some(&level) => Node {
-            groups: Some(level_groups(level, &from, &filter)),
+            groups: Some(level_groups(level, rule.album_order, &from, &filter)),
             tracks: None,
+            filter,
+            rest: String::new(),
         },
         None => Node {
             groups: None,
             tracks: Some(track_listing(&from, &filter, &rule.track_order)),
+            filter,
+            rest: String::new(),
         },
     })
 }
@@ -251,7 +423,7 @@ fn level_filter(
 }
 
 /// The groups of `level` among the tracks `from` matching `filter`.
-fn level_groups(level: Level, from: &str, filter: &str) -> Groups {
+fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str) -> Groups {
     if level == Level::Genre {
         // A row per track and genre (`genres`), grouped by exact spelling
         // first so each is folded once. Genres that differ only in case or
@@ -288,13 +460,19 @@ fn level_groups(level: Level, from: &str, filter: &str) -> Groups {
         ),
         // An album's artist is its tracks' album artist.
         Level::Album => (
-            "t.album_id, album.title, CASE WHEN t.album_id IS NOT NULL THEN album_artist.name END,
-             (SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id)"
-                .to_owned(),
+            format!(
+                "t.album_id, album.title, CASE WHEN t.album_id IS NOT NULL THEN album_artist.name END,
+                 {ALBUM_MIN_YEAR}"
+            ),
             "t.album_id".to_owned(),
-            "anomp_sort_key(album.title, ?1) NULLS LAST, album.title,
-             anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_id"
-                .to_owned(),
+            format!(
+                "{}anomp_sort_key(album.title, ?1) NULLS LAST, album.title,
+                 anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_id",
+                match album_order {
+                    AlbumOrder::Title => String::new(),
+                    AlbumOrder::Year => format!("{ALBUM_MIN_YEAR} NULLS LAST, "),
+                }
+            ),
             "Unknown album",
         ),
         Level::Year => (
@@ -317,7 +495,17 @@ fn level_groups(level: Level, from: &str, filter: &str) -> Groups {
 
 /// The tracks `from` matching `filter`, in `order`.
 fn track_listing(from: &str, filter: &str, order: &[TrackKey]) -> Listing {
-    let mut terms: Vec<&str> = order
+    let mut terms = track_order_terms(order);
+    terms.push("t.id");
+    Listing {
+        select: format!("SELECT {TRACK_COLUMNS} {from} WHERE {filter}"),
+        order_by: terms.join(", "),
+    }
+}
+
+/// ORDER BY terms for `order`, over `TRACKS_FROM`.
+fn track_order_terms(order: &[TrackKey]) -> Vec<&'static str> {
+    order
         .iter()
         .map(|key| match key {
             TrackKey::AlbumArtist => "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name",
@@ -331,12 +519,7 @@ fn track_listing(from: &str, filter: &str, order: &[TrackKey]) -> Listing {
                 "anomp_sort_key(f.path, NULL), f.path, anomp_sort_key(t.relative_path, NULL), t.relative_path"
             }
         })
-        .collect();
-    terms.push("t.id");
-    Listing {
-        select: format!("SELECT {TRACK_COLUMNS} {from} WHERE {filter}"),
-        order_by: terms.join(", "),
-    }
+        .collect()
 }
 
 /// A node of the folder rule: the library folders, or a folder's
@@ -348,6 +531,8 @@ fn folder_node(
 ) -> Result<Node, Error> {
     let Some((folder, names)) = path.split_first() else {
         return Ok(Node {
+            filter: "1".into(),
+            rest: "t.relative_path".into(),
             groups: Some(Groups {
                 listing: Listing {
                     select: "SELECT f.id, f.path, NULL, NULL,
@@ -414,6 +599,8 @@ fn folder_node(
             &format!("{filter} AND instr({rest}, '/') = 0"),
             &rule.track_order,
         )),
+        filter,
+        rest,
     })
 }
 
@@ -492,225 +679,10 @@ fn query<T>(
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::path::Path;
 
     use super::*;
-    use crate::library::db;
     use crate::library::rules::{default_rules, set_ignored_articles};
-
-    /// A track to add to a test library; unset tags are missing.
-    #[derive(Default)]
-    struct Track {
-        path: String,
-        title: Option<String>,
-        artist: Option<String>,
-        album_artist: Option<String>,
-        album: Option<String>,
-        genre: Option<String>,
-        year: Option<u32>,
-        disc: Option<u32>,
-        number: Option<u32>,
-    }
-
-    fn track(path: &str) -> Track {
-        Track {
-            path: path.into(),
-            ..Track::default()
-        }
-    }
-
-    impl Track {
-        fn title(self, title: &str) -> Self {
-            Track {
-                title: Some(title.into()),
-                ..self
-            }
-        }
-        fn artist(self, artist: &str) -> Self {
-            Track {
-                artist: Some(artist.into()),
-                ..self
-            }
-        }
-        fn album_artist(self, album_artist: &str) -> Self {
-            Track {
-                album_artist: Some(album_artist.into()),
-                ..self
-            }
-        }
-        fn album(self, album: &str) -> Self {
-            Track {
-                album: Some(album.into()),
-                ..self
-            }
-        }
-        fn genre(self, genre: &str) -> Self {
-            Track {
-                genre: Some(genre.into()),
-                ..self
-            }
-        }
-        fn year(self, year: u32) -> Self {
-            Track {
-                year: Some(year),
-                ..self
-            }
-        }
-        fn disc(self, disc: u32) -> Self {
-            Track {
-                disc: Some(disc),
-                ..self
-            }
-        }
-        fn number(self, number: u32) -> Self {
-            Track {
-                number: Some(number),
-                ..self
-            }
-        }
-    }
-
-    /// An in-memory library filled like the scanner fills it: the album
-    /// artist falls back to the artist, and an album is a title by an album
-    /// artist.
-    struct Library {
-        conn: Connection,
-        folder_id: i64,
-    }
-
-    impl Library {
-        fn new(tracks: impl IntoIterator<Item = Track>) -> Library {
-            let conn = db::open_in_memory().unwrap();
-            let mut library = Library { conn, folder_id: 0 };
-            library.folder_id = library.add_folder("/Music");
-            for track in tracks {
-                library.add(library.folder_id, track);
-            }
-            library
-        }
-
-        fn add_folder(&self, path: &str) -> i64 {
-            self.conn
-                .execute(
-                    "INSERT INTO folders (path, added_at) VALUES (?1, 0)",
-                    [path],
-                )
-                .unwrap();
-            self.conn.last_insert_rowid()
-        }
-
-        fn artist(&self, name: Option<&str>) -> Option<i64> {
-            name.map(|name| {
-                self.conn
-                    .query_row(
-                        "INSERT INTO artists (name) VALUES (?1)
-                         ON CONFLICT (name) DO UPDATE SET name = name RETURNING id",
-                        [name],
-                        |row| row.get(0),
-                    )
-                    .unwrap()
-            })
-        }
-
-        fn add(&self, folder_id: i64, track: Track) {
-            let artist_id = self.artist(track.artist.as_deref());
-            let album_artist_id = match track.album_artist.as_deref() {
-                Some(name) => self.artist(Some(name)),
-                None => artist_id,
-            };
-            let album_id: Option<i64> = track.album.as_deref().map(|title| {
-                self.conn
-                    .query_row(
-                        "INSERT INTO albums (title, artist_id) VALUES (?1, ?2)
-                         ON CONFLICT (IFNULL(artist_id, 0), title) DO UPDATE SET title = title
-                         RETURNING id",
-                        rusqlite::params![title, album_artist_id],
-                        |row| row.get(0),
-                    )
-                    .unwrap()
-            });
-            self.conn
-                .execute(
-                    "INSERT INTO tracks (folder_id, relative_path, file_size, file_mtime_ns, title,
-                                         artist_id, album_id, album_artist_id, genre, year,
-                                         disc_number, track_number, duration, sample_rate,
-                                         channels, scanned_at)
-                     VALUES (?1, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 60.0, 44100, 2, 0)",
-                    rusqlite::params![
-                        folder_id,
-                        track.path,
-                        track.title,
-                        artist_id,
-                        album_id,
-                        album_artist_id,
-                        track.genre,
-                        track.year,
-                        track.disc,
-                        track.number
-                    ],
-                )
-                .unwrap();
-        }
-
-        fn page(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> BrowsePage {
-            self.page_with(rule, &["The".into(), "A".into()], path)
-        }
-
-        fn page_with(
-            &self,
-            rule: &SortRule,
-            articles: &[String],
-            path: &[Option<GroupKey>],
-        ) -> BrowsePage {
-            let page = browse(&self.conn, rule, articles, path, 0, MAX_PAGE_SIZE).unwrap();
-            assert_eq!(page.total as usize, page.groups.len() + page.tracks.len());
-            page
-        }
-
-        fn groups(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> Vec<Group> {
-            let page = self.page(rule, path);
-            assert!(page.tracks.is_empty());
-            page.groups
-        }
-
-        /// The groups' names, with their track counts.
-        fn names(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> Vec<(String, u32)> {
-            self.groups(rule, path)
-                .into_iter()
-                .map(|group| (group.name, group.track_count))
-                .collect()
-        }
-
-        /// The key of the group called `name`.
-        fn key(&self, rule: &SortRule, path: &[Option<GroupKey>], name: &str) -> Option<GroupKey> {
-            let groups = self.groups(rule, path);
-            let group = groups.iter().find(|group| group.name == name);
-            group
-                .unwrap_or_else(|| panic!("no group {name} in {groups:?}"))
-                .key
-                .clone()
-        }
-
-        fn titles(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> Vec<String> {
-            titles(&self.page(rule, path).tracks)
-        }
-    }
-
-    /// Titles, or file names for tracks without one.
-    fn titles(tracks: &[TrackSummary]) -> Vec<String> {
-        tracks
-            .iter()
-            .map(|track| {
-                track.title.clone().unwrap_or_else(|| {
-                    Path::new(&track.path)
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned()
-                })
-            })
-            .collect()
-    }
+    use crate::library::test_library::{titles, track, Library};
 
     fn rule(id: &str) -> SortRule {
         default_rules()
@@ -725,6 +697,7 @@ mod tests {
             name: "Songs".into(),
             levels: Vec::new(),
             track_order: order.to_vec(),
+            album_order: AlbumOrder::Title,
         }
     }
 
@@ -1227,6 +1200,213 @@ mod tests {
         assert_eq!((past_the_end.tracks.len(), past_the_end.total), (0, 47));
         let capped = browse(&library.conn, &songs, &[], &[], 0, u32::MAX).unwrap();
         assert_eq!(capped.tracks.len(), 47);
+    }
+
+    /// Every track under a node, walking `browse` depth first.
+    fn walk(library: &Library, rule: &SortRule, path: &[Option<GroupKey>]) -> Vec<i64> {
+        let page = library.page(rule, path);
+        let mut ids = Vec::new();
+        for group in page.groups {
+            let mut inner = path.to_vec();
+            inner.push(group.key);
+            ids.extend(walk(library, rule, &inner));
+        }
+        ids.extend(page.tracks.iter().map(|track| track.id));
+        ids
+    }
+
+    #[test]
+    fn lists_a_nodes_tracks_in_browse_order() {
+        let library = Library::new([
+            track("Rock/Band/Album/02.flac")
+                .artist("Band")
+                .album("Album")
+                .number(2)
+                .year(2001),
+            track("Rock/Band/Album/01.flac")
+                .artist("Band")
+                .album("Album")
+                .number(1)
+                .year(2001),
+            track("Rock/Band/single.flac")
+                .artist("Band")
+                .title("Single")
+                .year(1999),
+            track("Rock/loose.flac").artist("The Other").album("Zed"),
+            track("Rock (live)/y.flac")
+                .artist("abba")
+                .album("Gold")
+                .year(1992),
+            track("Rock/Band/Album 2/1.flac")
+                .artist("Band")
+                .album("Album 2")
+                .year(2001),
+            track("Disc 10/a.flac")
+                .artist("Élodie")
+                .album("Vol. 10")
+                .genre("Pop"),
+            track("Disc 2/a.flac")
+                .artist("Élodie")
+                .album("Vol. 2")
+                .genre("Pop; Rock"),
+            track("top.flac"),
+            track("zzz/a.flac")
+                .artist("Band")
+                .album("Album")
+                .disc(2)
+                .number(1),
+        ]);
+        let other = library.add_folder("/Other");
+        library.add(other, track("x/elsewhere.flac").artist("Band"));
+        let articles = ["The".to_owned(), "A".to_owned()];
+        let ids = |rule: &SortRule, path: &[Option<GroupKey>], recursive| {
+            node_track_ids(&library.conn, rule, &articles, path, recursive).unwrap()
+        };
+
+        let mut rules = default_rules();
+        rules.retain(|rule| rule.id != "genre"); // A track can be under two genres.
+        rules.push(songs_rule(&[TrackKey::Year, TrackKey::Title]));
+        rules.push(SortRule {
+            id: "artist-year".into(),
+            name: "Artist, year".into(),
+            levels: vec![Level::Artist, Level::Year],
+            track_order: vec![TrackKey::Title, TrackKey::Path],
+            album_order: AlbumOrder::Title,
+        });
+        let mut by_year = rule("album-artist");
+        by_year.id = "album-artist-by-year".into();
+        by_year.album_order = AlbumOrder::Year;
+        rules.push(by_year);
+        for rule in &rules {
+            let all = walk(&library, rule, &[]);
+            assert_eq!(all.len(), 11, "{}", rule.id);
+            assert_eq!(ids(rule, &[], true), all, "{}", rule.id);
+            for group in library.page(rule, &[]).groups {
+                let path = [group.key];
+                assert_eq!(
+                    ids(rule, &path, true),
+                    walk(&library, rule, &path),
+                    "{}",
+                    rule.id
+                );
+            }
+        }
+
+        // A folder node's own tracks, or its whole subtree.
+        let folder = rule("folder");
+        let music = Some(GroupKey::Number(library.folder_id));
+        let rock = [music.clone(), text("Rock")];
+        let own: Vec<i64> = library
+            .page(&folder, &rock)
+            .tracks
+            .iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(ids(&folder, &rock, false), own);
+        assert_eq!(own.len(), 1);
+        assert_eq!(ids(&folder, &rock, true), walk(&library, &folder, &rock));
+        assert_eq!(ids(&folder, &rock, true).len(), 5);
+
+        // Every genre's tracks, each once.
+        let genre = rule("genre");
+        let mut every = ids(&genre, &[], true);
+        assert_eq!(every.len(), 11);
+        every.sort();
+        every.dedup();
+        assert_eq!(every.len(), 11);
+        assert_eq!(ids(&genre, &[text("rock")], true).len(), 1);
+
+        assert!(node_track_ids(&library.conn, &folder, &articles, &[text("x")], true).is_err());
+    }
+
+    #[test]
+    fn plays_a_stored_rule_or_one_given_in_full() {
+        let library = Library::new([
+            track("1.flac").artist("A").album("X").number(2),
+            track("2.flac").artist("A").album("X").number(1),
+            track("3.flac").artist("B").album("Y"),
+        ]);
+        let stored: RuleSpec = serde_json::from_str("\"album-artist\"").unwrap();
+        assert!(matches!(stored, RuleSpec::Id(_)));
+        let album: RuleSpec = serde_json::from_str(
+            r#"{"id": "search-album", "name": "Search", "levels": ["album"],
+                "trackOrder": ["trackNumber"]}"#,
+        )
+        .unwrap();
+        let x = library.key(
+            &rule("album-artist"),
+            &[library.key(&rule("album-artist"), &[], "A")],
+            "X",
+        );
+        let ids = node_track_ids_rule(&library.conn, &album, &[x], true).unwrap();
+        let first = library.page(
+            &rule("album-artist"),
+            &[library.key(&rule("album-artist"), &[], "A")],
+        );
+        assert_eq!(first.groups.len(), 1);
+        assert_eq!(ids.len(), 2);
+        let all = node_track_ids_rule(&library.conn, &stored, &[], true).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[..2], ids[..], "album order, by track number");
+        let missing = RuleSpec::Id("nope".into());
+        assert!(node_track_ids_rule(&library.conn, &missing, &[], true).is_err());
+    }
+
+    #[test]
+    fn orders_albums_by_title_or_year() {
+        let library = Library::new([
+            track("1.flac")
+                .artist("Band")
+                .album("The Zenith")
+                .year(1971),
+            track("2.flac")
+                .artist("Band")
+                .album("Zenith Live")
+                .year(1975),
+            track("3.flac").artist("Band").album("Debut").year(1975),
+            track("4.flac").artist("Band").album("Undated"),
+            track("5.flac").artist("Band").album("Middle").year(1990),
+            track("6.flac").artist("Band").album("Middle").year(1973), // A reissue track.
+            track("7.flac").artist("Band").title("Loose"),
+        ]);
+        let mut by_year = rule("album-artist");
+        let band = [library.key(&by_year, &[], "Band")];
+        let names = |rule: &SortRule| -> Vec<String> {
+            library
+                .groups(rule, &band)
+                .into_iter()
+                .map(|group| group.name)
+                .collect()
+        };
+        assert_eq!(
+            names(&by_year),
+            [
+                "Debut",
+                "Middle",
+                "Undated",
+                "The Zenith",
+                "Zenith Live",
+                "Unknown album"
+            ]
+        );
+        by_year.album_order = AlbumOrder::Year;
+        // By each album's earliest year, then title; undated albums last.
+        assert_eq!(
+            names(&by_year),
+            [
+                "The Zenith",
+                "Middle",
+                "Debut",
+                "Zenith Live",
+                "Undated",
+                "Unknown album"
+            ]
+        );
+        // Playing the artist follows the same order.
+        assert_eq!(
+            node_track_ids(&library.conn, &by_year, &["The".into()], &band, true).unwrap(),
+            walk(&library, &by_year, &band)
+        );
     }
 
     #[test]

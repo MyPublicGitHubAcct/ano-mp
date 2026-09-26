@@ -9,7 +9,10 @@ use super::{genres, sort_key, Error};
 
 /// Schema migrations in order. `PRAGMA user_version` records how many have
 /// been applied. Append new ones; never edit one that has shipped.
-const MIGRATIONS: &[&str] = &[include_str!("migrations/001_initial.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/001_initial.sql"),
+    include_str!("migrations/002_search.sql"),
+];
 
 /// Opens (creating if needed) the library database at `path` and brings its
 /// schema up to date. Each thread that needs the database opens its own
@@ -32,6 +35,19 @@ pub fn open_in_memory() -> Result<Connection, Error> {
     Ok(conn)
 }
 
+/// An in-memory database with only the first `version` migrations applied,
+/// for testing later ones.
+#[cfg(test)]
+pub fn open_in_memory_at(version: usize) -> Result<Connection, Error> {
+    let conn = Connection::open_in_memory()?;
+    configure(&conn)?;
+    for (index, sql) in MIGRATIONS.iter().take(version).enumerate() {
+        conn.execute_batch(sql)?;
+        conn.pragma_update(None, "user_version", index as i64 + 1)?;
+    }
+    Ok(conn)
+}
+
 /// Per-connection settings and functions.
 fn configure(conn: &Connection) -> Result<(), Error> {
     conn.pragma_update(None, "foreign_keys", true)?;
@@ -41,7 +57,7 @@ fn configure(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-fn migrate(conn: &mut Connection) -> Result<(), Error> {
+pub(super) fn migrate(conn: &mut Connection) -> Result<(), Error> {
     let applied: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let applied = usize::try_from(applied).unwrap_or(usize::MAX);
     if applied > MIGRATIONS.len() {
@@ -75,16 +91,28 @@ mod tests {
     fn creates_the_schema() {
         let conn = open_in_memory().unwrap();
         assert_eq!(user_version(&conn), MIGRATIONS.len());
-        let tables: Vec<String> = conn
-            .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
-            .unwrap()
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap();
+        let names = |sql: &str| -> Vec<String> {
+            conn.prepare(sql)
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        // Leaving out FTS5's own tables behind the search indexes.
         assert_eq!(
-            tables,
+            names(
+                "SELECT name FROM sqlite_schema WHERE type = 'table'
+                 AND name NOT LIKE '%search%' ORDER BY name"
+            ),
             ["albums", "artists", "folders", "mb_cache", "settings", "tracks"]
+        );
+        assert_eq!(
+            names(
+                "SELECT name FROM sqlite_schema
+                 WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%' ORDER BY name"
+            ),
+            ["albums_search", "artists_search", "tracks_search"]
         );
     }
 

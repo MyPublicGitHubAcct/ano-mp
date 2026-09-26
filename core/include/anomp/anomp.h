@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -190,7 +191,9 @@ size_t anomp_engine_device_name(anomp_engine* engine, char* buffer, size_t buffe
    there on failure, with the buffer rules of anomp_engine_device_name. */
 
 /** Opens `path` as the current track (clearing the next one) and stops at its
-    start. Returns 1 on success; on failure returns 0 and nothing changes. */
+    start. A TRACK_ENDED without `advanced` for the replaced track that has not
+    been dispatched yet is dropped. Returns 1 on success; on failure returns 0
+    and nothing changes. */
 int anomp_engine_load(anomp_engine* engine, const char* path, char* error, size_t error_size);
 
 /** Opens `path` as the track after the current one; a null `path` clears
@@ -223,6 +226,13 @@ double anomp_engine_position(anomp_engine* engine);
 
 /** Length of the current track in seconds, or 0 if none is loaded. */
 double anomp_engine_duration(anomp_engine* engine);
+
+/** How many times a next track has taken over gaplessly since the engine was
+    created. TRACK_ENDED reports a hand-off up to 50 ms late; this counts it
+    as it happens, so before changing the next track (or loading) the host
+    can tell whether the one it set has already become current. 0 for a null
+    engine. */
+int64_t anomp_engine_advance_count(anomp_engine* engine);
 
 /* ---- Test tone ---------------------------------------------------------- */
 

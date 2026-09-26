@@ -1,20 +1,24 @@
 //! Exposes the library as Tauri commands. The database lives in the app data
 //! folder. Commands share one connection for short queries; a scan runs on a
 //! blocking thread with a connection of its own, so the library stays
-//! readable while it writes.
+//! readable while it writes. Queries that can take tens of milliseconds
+//! (browsing, search) run on a blocking thread too, off the main thread
+//! that the engine and the queue use.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use super::access::{self, OpenFolder};
+use super::art::ArtCache;
 use super::browse::{self, BrowsePage, GroupKey};
 use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
-use super::{db, Error, Folder};
+use super::search::{self, SearchKind, SearchResults};
+use super::{db, track_path, Error, Folder};
 
 /// Frontend event with a `ScanProgress` payload.
 pub const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
@@ -23,10 +27,13 @@ pub struct LibraryState {
     db_path: PathBuf,
     conn: Mutex<Connection>,
     scanning: AtomicBool,
+    pub art: ArtCache,
 }
 
 impl LibraryState {
-    fn conn(&self) -> MutexGuard<'_, Connection> {
+    /// The shared connection. Hold it briefly, and never while waiting for
+    /// the main thread, which takes it for the queue.
+    pub fn conn(&self) -> MutexGuard<'_, Connection> {
         // A panic mid-query leaves nothing half-done that SQLite hasn't
         // rolled back, so a poisoned lock is still usable.
         self.conn
@@ -39,6 +46,38 @@ impl LibraryState {
     pub fn open_folder_of(&self, path: &Path) -> Result<Option<OpenFolder>, String> {
         access::open_folder_of(&self.conn(), path).map_err(|e| e.to_string())
     }
+
+    /// The file of track `track_id`.
+    pub fn track_file(&self, track_id: i64) -> Result<PathBuf, String> {
+        let row: Option<(String, String)> = self
+            .conn()
+            .query_row(
+                "SELECT f.path, t.relative_path FROM tracks t JOIN folders f ON f.id = t.folder_id
+                 WHERE t.id = ?1",
+                [track_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let (folder, relative) = row.ok_or("The track is no longer in the library")?;
+        Ok(track_path(Path::new(&folder), &relative))
+    }
+}
+
+/// Runs `f` with the library on a blocking thread.
+pub async fn on_library<R: Runtime, T: Send + 'static>(
+    app: &AppHandle<R>,
+    f: impl FnOnce(&LibraryState) -> Result<T, Error> + Send + 'static,
+) -> Result<T, String> {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let library = app
+            .try_state::<LibraryState>()
+            .ok_or("The library is not available")?;
+        f(&library).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Opens (or creates) the library database and registers `LibraryState`.
@@ -51,6 +90,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         db_path,
         conn: Mutex::new(conn),
         scanning: AtomicBool::new(false),
+        art: ArtCache::default(),
     });
     Ok(())
 }
@@ -77,14 +117,34 @@ pub fn library_remove_folder(state: State<'_, LibraryState>, folder_id: i64) -> 
 /// One page of the children of the node at `path` under the sort rule
 /// `rule_id`; see `library::browse::browse`.
 #[tauri::command]
-pub fn library_browse(
-    state: State<'_, LibraryState>,
+pub async fn library_browse<R: Runtime>(
+    app: AppHandle<R>,
     rule_id: String,
     path: Vec<Option<GroupKey>>,
     offset: u32,
     limit: u32,
 ) -> Result<BrowsePage, String> {
-    browse::browse_rule(&state.conn(), &rule_id, &path, offset, limit).map_err(|e| e.to_string())
+    on_library(&app, move |library| {
+        browse::browse_rule(&library.conn(), &rule_id, &path, offset, limit)
+    })
+    .await
+}
+
+/// Artists, albums and tracks matching `query`; see `library::search`. All
+/// three kinds unless `kinds` says otherwise.
+#[tauri::command]
+pub async fn library_search<R: Runtime>(
+    app: AppHandle<R>,
+    query: String,
+    kinds: Option<Vec<SearchKind>>,
+    offset: u32,
+    limit: u32,
+) -> Result<SearchResults, String> {
+    let kinds = kinds.unwrap_or_else(|| search::ALL_KINDS.to_vec());
+    on_library(&app, move |library| {
+        search::search(&library.conn(), &query, &kinds, offset, limit)
+    })
+    .await
 }
 
 /// The sort rules and ignored articles.
@@ -139,14 +199,19 @@ pub async fn library_scan<R: Runtime>(
     }
     let _scanning = ClearOnDrop(&state.scanning);
     let db_path = state.db_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let scan_app = app.clone();
+    let reports = tauri::async_runtime::spawn_blocking(move || {
         scan_folders(&db_path, folder_id, |progress| {
-            let _ = app.emit(SCAN_PROGRESS_EVENT, progress);
+            let _ = scan_app.emit(SCAN_PROGRESS_EVENT, progress);
         })
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    // Files may have new art or tags.
+    state.art.clear();
+    crate::queue::refresh_tracks(&app).await;
+    Ok(reports)
 }
 
 fn scan_folders(

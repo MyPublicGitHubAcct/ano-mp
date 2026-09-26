@@ -376,6 +376,11 @@ extern "C" double anomp_engine_duration (anomp_engine* engine)
     return engine != nullptr ? engine->engine.player().getDurationSeconds() : 0.0;
 }
 
+extern "C" int64_t anomp_engine_advance_count (anomp_engine* engine)
+{
+    return engine != nullptr ? engine->engine.player().getAdvanceCount() : 0;
+}
+
 extern "C" int anomp_engine_play_test_tone (anomp_engine* engine, double frequencyHz)
 {
     return engine != nullptr && engine->engine.playTestTone (frequencyHz) ? 1 : 0;

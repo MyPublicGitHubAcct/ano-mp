@@ -48,6 +48,18 @@ pub enum TrackKey {
     Path,
 }
 
+/// How albums are ordered where a rule lists them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AlbumOrder {
+    /// By title (ignoring leading articles), then album artist.
+    #[default]
+    Title,
+    /// By the album's year (the earliest among its tracks), oldest first;
+    /// albums without one last. Ties by title.
+    Year,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortRule {
@@ -56,6 +68,9 @@ pub struct SortRule {
     pub name: String,
     pub levels: Vec<Level>,
     pub track_order: Vec<TrackKey>,
+    /// Missing in rules saved before it existed.
+    #[serde(default)]
+    pub album_order: AlbumOrder,
 }
 
 impl SortRule {
@@ -65,6 +80,7 @@ impl SortRule {
             name: name.into(),
             levels: levels.to_vec(),
             track_order: track_order.to_vec(),
+            album_order: AlbumOrder::Title,
         }
     }
 
@@ -277,6 +293,28 @@ mod tests {
 
     fn ids(settings: &SortSettings) -> Vec<&str> {
         settings.rules.iter().map(|rule| rule.id.as_str()).collect()
+    }
+
+    #[test]
+    fn album_order_defaults_to_title_and_is_saved() {
+        let conn = db::open_in_memory().unwrap();
+        // A rule saved before album orders existed.
+        store_json(
+            &conn,
+            r#"{"rules": [{"id": "a", "name": "A", "levels": ["albumArtist", "album"],
+                           "trackOrder": ["trackNumber"]}]}"#,
+        );
+        let settings = sort_settings(&conn).unwrap();
+        assert_eq!(settings.rules[0].album_order, AlbumOrder::Title);
+
+        let mut rule = settings.rules[0].clone();
+        rule.album_order = AlbumOrder::Year;
+        let saved = save_sort_rule(&conn, rule).unwrap();
+        assert_eq!(saved.rules[0].album_order, AlbumOrder::Year);
+        assert_eq!(
+            sort_settings(&conn).unwrap().rules[0].album_order,
+            AlbumOrder::Year
+        );
     }
 
     #[test]

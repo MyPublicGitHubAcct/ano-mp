@@ -194,6 +194,7 @@ juce::String PlayerEngine::load (const juce::File& file)
         oldCurrent = std::exchange (current, std::move (track));
         oldNext = std::move (next);
         oldRetired = std::move (retired);
+        pendingEnded = false;
         state = State::stopped;
         appliedGain = 0.0f;
         configureRate();
@@ -453,6 +454,7 @@ void PlayerEngine::handOff()
     retired = std::move (current);
     current = std::move (next);
     ++pendingAdvances;
+    ++advanceCount;
 }
 
 void PlayerEngine::configureRate()

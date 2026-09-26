@@ -3,13 +3,19 @@
 //! browsing it under configurable sort rules.
 
 pub mod access;
+pub mod art;
+#[cfg(test)]
+mod bench;
 pub mod browse;
 pub mod commands;
 pub mod db;
 pub mod genres;
 pub mod rules;
 pub mod scanner;
+pub mod search;
 pub mod sort_key;
+#[cfg(test)]
+pub mod test_library;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -159,6 +165,7 @@ pub struct TrackSummary {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub album_id: Option<i64>,
     pub album_artist: Option<String>,
     pub genre: Option<String>,
     pub year: Option<u32>,
@@ -168,11 +175,12 @@ pub struct TrackSummary {
 }
 
 /// The columns `track_from_row` reads, from `TRACKS_FROM`.
-const TRACK_COLUMNS: &str = "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
-     album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration";
+pub(super) const TRACK_COLUMNS: &str =
+    "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
+     album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
-const TRACKS_FROM: &str = "FROM tracks t
+pub(super) const TRACKS_FROM: &str = "FROM tracks t
      JOIN folders f ON f.id = t.folder_id
      LEFT JOIN artists artist ON artist.id = t.artist_id
      LEFT JOIN albums album ON album.id = t.album_id
@@ -195,6 +203,7 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         disc_number: row.get(9)?,
         track_number: row.get(10)?,
         duration: row.get(11)?,
+        album_id: row.get(12)?,
     })
 }
 

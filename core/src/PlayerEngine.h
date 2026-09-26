@@ -44,8 +44,9 @@ public:
 
     //==============================================================================
     /** Replaces the current track (and clears the next one), leaving the
-        player stopped at the start. Returns an empty string on success,
-        otherwise the error; on failure nothing changes. */
+        player stopped at the start. An end of the replaced track that
+        dispatchEvents() has not yet reported is dropped. Returns an empty
+        string on success, otherwise the error; on failure nothing changes. */
     juce::String load (const juce::File& file);
 
     /** Opens `file` as the track that follows the current one gaplessly.
@@ -76,6 +77,12 @@ public:
     double getDurationSeconds() const noexcept { return durationSeconds.load(); }
     float getVolume() const noexcept { return volume.load(); }
     bool hasNext() const;
+
+    /** How many times a next track has taken over since the engine was
+        created. onTrackEnded reports a hand-off at the next dispatchEvents();
+        this counts it as it happens, so a host about to change the next
+        track can tell whether the one it set is already playing. */
+    juce::int64 getAdvanceCount() const noexcept { return advanceCount.load(); }
 
     //==============================================================================
     /** Reports what changed since the previous call through the callbacks
@@ -130,6 +137,7 @@ private:
     std::atomic<State> state { State::empty };
     std::atomic<double> positionSeconds { 0.0 }, durationSeconds { 0.0 };
     std::atomic<float> volume { 1.0f };
+    std::atomic<juce::int64> advanceCount { 0 };
 
     // Message thread only: what dispatchEvents() last reported.
     State reportedState = State::empty;
