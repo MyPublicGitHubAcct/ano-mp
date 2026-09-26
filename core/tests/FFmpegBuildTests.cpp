@@ -30,11 +30,10 @@ TEST_CASE ("FFmpeg has a demuxer for every planned container", "[ffmpeg]")
 
 TEST_CASE ("FFmpeg has a decoder for every planned codec", "[ffmpeg]")
 {
-    for (const auto id : { AV_CODEC_ID_MP3, AV_CODEC_ID_FLAC, AV_CODEC_ID_VORBIS, AV_CODEC_ID_OPUS,
-                           AV_CODEC_ID_AAC, AV_CODEC_ID_ALAC, AV_CODEC_ID_WMAV1, AV_CODEC_ID_WMAV2,
-                           AV_CODEC_ID_WMAPRO, AV_CODEC_ID_WMALOSSLESS, AV_CODEC_ID_PCM_S16LE,
-                           AV_CODEC_ID_PCM_S16BE, AV_CODEC_ID_PCM_S24LE, AV_CODEC_ID_PCM_S24BE,
-                           AV_CODEC_ID_PCM_F32LE })
+    for (const auto id :
+         { AV_CODEC_ID_MP3, AV_CODEC_ID_FLAC, AV_CODEC_ID_VORBIS, AV_CODEC_ID_OPUS, AV_CODEC_ID_AAC, AV_CODEC_ID_ALAC,
+           AV_CODEC_ID_WMAV1, AV_CODEC_ID_WMAV2, AV_CODEC_ID_WMAPRO, AV_CODEC_ID_WMALOSSLESS, AV_CODEC_ID_PCM_S16LE,
+           AV_CODEC_ID_PCM_S16BE, AV_CODEC_ID_PCM_S24LE, AV_CODEC_ID_PCM_S24BE, AV_CODEC_ID_PCM_F32LE })
     {
         INFO ("decoder " << avcodec_get_name (id));
         CHECK (avcodec_find_decoder (id) != nullptr);

@@ -78,8 +78,7 @@ int64_t seekStream (void* opaque, int64_t offset, int whence)
 class FFmpegAudioFormatReader final : public juce::AudioFormatReader
 {
 public:
-    explicit FFmpegAudioFormatReader (juce::InputStream* source)
-        : juce::AudioFormatReader (source, "FFmpeg")
+    explicit FFmpegAudioFormatReader (juce::InputStream* source) : juce::AudioFormatReader (source, "FFmpeg")
     {
         opened = open();
     }
@@ -106,8 +105,8 @@ public:
                       juce::int64 startSampleInFile,
                       int numSamples) override
     {
-        clearSamplesBeyondAvailableLength (destChannels, numDestChannels, startOffsetInDestBuffer,
-                                           startSampleInFile, numSamples, lengthInSamples);
+        clearSamplesBeyondAvailableLength (destChannels, numDestChannels, startOffsetInDestBuffer, startSampleInFile,
+                                           numSamples, lengthInSamples);
 
         auto position = startSampleInFile;
         auto offset = startOffsetInDestBuffer;
@@ -131,8 +130,7 @@ public:
             for (int ch = 0; ch < numDestChannels; ++ch)
                 if (destChannels[ch] != nullptr)
                     juce::FloatVectorOperations::copy (reinterpret_cast<float*> (destChannels[ch]) + offset,
-                                                       frameBuffer.getReadPointer (ch, indexInFrame),
-                                                       count);
+                                                       frameBuffer.getReadPointer (ch, indexInFrame), count);
 
             position += count;
             offset += count;
@@ -174,8 +172,8 @@ private:
         // place a seek exactly; such files seek by decoding from the start.
         seekByTimestamp = av_q2d (stream->time_base) * sampleRate <= 1.0;
 
-        const bool headerDurationReliable = stream->duration != AV_NOPTS_VALUE
-                                         && format->duration_estimation_method != AVFMT_DURATION_FROM_BITRATE;
+        const bool headerDurationReliable =
+            stream->duration != AV_NOPTS_VALUE && format->duration_estimation_method != AVFMT_DURATION_FROM_BITRATE;
 
         // Containers without reliable timestamps or durations of their own
         // (raw MP3 and AAC) get an exact seek index from a demux-only pass.
@@ -319,7 +317,7 @@ private:
 
         const auto decodedEnd = frameStart + frameLength;
         const bool reachableByDecoding = frameLength > 0 && position >= decodedEnd
-                                      && position - decodedEnd < juce::jmax (preroll, juce::int64 { 8192 });
+                                         && position - decodedEnd < juce::jmax (preroll, juce::int64 { 8192 });
 
         if (! reachableByDecoding && ! seekNear (position))
             return false;
@@ -344,8 +342,8 @@ private:
         {
             const auto margin = static_cast<juce::int64> (seekMarginSeconds * sampleRate);
             // lengthInSamples is still 0 while open() measures the length.
-            const auto maximumTarget = lengthInSamples > 0 ? lengthInSamples - margin
-                                                           : std::numeric_limits<juce::int64>::max();
+            const auto maximumTarget =
+                lengthInSamples > 0 ? lengthInSamples - margin : std::numeric_limits<juce::int64>::max();
 
             for (int attempt = 0; attempt < 4; ++attempt)
             {
@@ -512,10 +510,10 @@ private:
         av_channel_layout_uninit (&resamplerInputLayout);
 
         const auto rate = static_cast<int> (sampleRate);
-        if (swr_alloc_set_opts2 (&resampler, &outputLayout, AV_SAMPLE_FMT_FLTP, rate,
-                                 &frame->ch_layout, static_cast<AVSampleFormat> (frame->format), rate, 0, nullptr) < 0
-            || swr_init (resampler) < 0
-            || av_channel_layout_copy (&resamplerInputLayout, &frame->ch_layout) < 0)
+        if (swr_alloc_set_opts2 (&resampler, &outputLayout, AV_SAMPLE_FMT_FLTP, rate, &frame->ch_layout,
+                                 static_cast<AVSampleFormat> (frame->format), rate, 0, nullptr)
+                < 0
+            || swr_init (resampler) < 0 || av_channel_layout_copy (&resamplerInputLayout, &frame->ch_layout) < 0)
         {
             swr_free (&resampler);
             return false;
@@ -570,8 +568,8 @@ private:
 //==============================================================================
 FFmpegAudioFormat::FFmpegAudioFormat()
     : juce::AudioFormat ("FFmpeg",
-                         { ".mp3", ".flac", ".wav", ".aif", ".aiff", ".aifc", ".ogg", ".oga", ".opus",
-                           ".m4a", ".m4b", ".mp4", ".aac", ".wma" })
+                         { ".mp3", ".flac", ".wav", ".aif", ".aiff", ".aifc", ".ogg", ".oga", ".opus", ".m4a", ".m4b",
+                           ".mp4", ".aac", ".wma" })
 {
     av_log_set_level (AV_LOG_ERROR);
 }

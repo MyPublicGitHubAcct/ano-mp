@@ -23,10 +23,7 @@ using State = anomp::PlayerEngine::State;
 
 constexpr int blockSize = 512;
 
-juce::File fixtureFile (const char* name)
-{
-    return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name);
-}
+juce::File fixtureFile (const char* name) { return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name); }
 
 /** The whole file as the player reads it: stereo, mono duplicated. */
 Channels decode (const char* name)
@@ -40,7 +37,8 @@ Channels decode (const char* name)
 
     Channels result;
     for (int ch = 0; ch < 2; ++ch)
-        result[static_cast<size_t> (ch)].assign (buffer.getReadPointer (ch), buffer.getReadPointer (ch) + buffer.getNumSamples());
+        result[static_cast<size_t> (ch)].assign (buffer.getReadPointer (ch),
+                                                 buffer.getReadPointer (ch) + buffer.getNumSamples());
     return result;
 }
 
@@ -52,14 +50,16 @@ Channels concat (const Channels& a, const Channels& b)
     return result;
 }
 
-int length (const Channels& audio)
-{
-    return static_cast<int> (audio[0].size());
-}
+int length (const Channels& audio) { return static_cast<int> (audio[0].size()); }
 
 /** Largest difference between output[outStart + i] and gain * expected[refStart + i]
     for i in [0, count); `expected` is silence outside its range. */
-float maxError (const Channels& output, int outStart, const Channels& expected, int refStart, int count, float gain = 1.0f)
+float maxError (const Channels& output,
+                int outStart,
+                const Channels& expected,
+                int refStart,
+                int count,
+                float gain = 1.0f)
 {
     float result = 0.0f;
     for (size_t ch = 0; ch < 2; ++ch)
@@ -93,8 +93,14 @@ struct Harness
             thread->startThread();
 
         player.prepareToPlay (blockSize, deviceRate);
-        player.onTrackEnded = [this] (bool advanced) { events.push_back (advanced ? "advanced" : "ended"); };
-        player.onStateChanged = [this] (State state) { events.push_back ("state " + std::to_string (static_cast<int> (state))); };
+        player.onTrackEnded = [this] (bool advanced)
+        {
+            events.push_back (advanced ? "advanced" : "ended");
+        };
+        player.onStateChanged = [this] (State state)
+        {
+            events.push_back ("state " + std::to_string (static_cast<int> (state)));
+        };
     }
 
     void renderBlock()
@@ -107,8 +113,7 @@ struct Harness
         player.getNextAudioBlock (juce::AudioSourceChannelInfo (block));
 
         for (int ch = 0; ch < 2; ++ch)
-            output[static_cast<size_t> (ch)].insert (output[static_cast<size_t> (ch)].end(),
-                                                     block.getReadPointer (ch),
+            output[static_cast<size_t> (ch)].insert (output[static_cast<size_t> (ch)].end(), block.getReadPointer (ch),
                                                      block.getReadPointer (ch) + blockSize);
     }
 
@@ -154,7 +159,8 @@ TEST_CASE ("PlayerEngine state transitions", "[player]")
     CHECK_FALSE (player.seek (0.1));
     CHECK (player.setNext (fixtureFile ("flac-44k.flac")) == "No track is loaded");
     CHECK (player.load (fixtureFile ("missing.flac")).startsWith ("File not found"));
-    CHECK (player.load (juce::File (ANOMP_TEST_FIXTURES_DIR).getSiblingFile ("TestSignal.h")).startsWith ("Unsupported"));
+    CHECK (
+        player.load (juce::File (ANOMP_TEST_FIXTURES_DIR).getSiblingFile ("TestSignal.h")).startsWith ("Unsupported"));
     CHECK (player.getState() == State::empty);
 
     REQUIRE (player.load (fixtureFile ("flac-44k.flac")).isEmpty());
@@ -221,8 +227,9 @@ TEST_CASE ("PlayerEngine plays a track exactly and stops at its end", "[player]"
 
     // The first block fades in from silence; after it, the output is the file.
     for (int i = 0; i < blockSize; i += 37)
-        CHECK (h.output[0][static_cast<size_t> (i)]
-               == Catch::Approx (expected[0][static_cast<size_t> (i)] * static_cast<float> (i) / blockSize).margin (1e-6));
+        CHECK (
+            h.output[0][static_cast<size_t> (i)]
+            == Catch::Approx (expected[0][static_cast<size_t> (i)] * static_cast<float> (i) / blockSize).margin (1e-6));
     CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) == 0.0f);
 
     h.render (blockSize);
@@ -246,7 +253,8 @@ TEST_CASE ("PlayerEngine pause fades out and play resumes where it paused", "[pl
     for (int i = 0; i < blockSize; i += 37)
     {
         const auto n = static_cast<size_t> (4 * blockSize + i);
-        CHECK (h.output[1][n] == Catch::Approx (expected[1][n] * (1.0f - static_cast<float> (i) / blockSize)).margin (1e-6));
+        CHECK (h.output[1][n]
+               == Catch::Approx (expected[1][n] * (1.0f - static_cast<float> (i) / blockSize)).margin (1e-6));
     }
     CHECK (peak (h.output, pausedAt, 7 * blockSize) == 0.0f);
 
@@ -300,10 +308,9 @@ TEST_CASE ("PlayerEngine hands off to the next track gaplessly", "[player][gaple
         double rate;
     };
 
-    const auto pair = GENERATE (Pair { "flac-44k.flac", "wav-s16-44k.wav", 44100.0 },
-                                Pair { "mp3-44k.mp3", "mp3-vbr-44k.mp3", 44100.0 },
-                                Pair { "vorbis-44k.ogg", "alac-44k.m4a", 44100.0 },
-                                Pair { "opus-48k.opus", "opus-48k.opus", 48000.0 });
+    const auto pair = GENERATE (
+        Pair { "flac-44k.flac", "wav-s16-44k.wav", 44100.0 }, Pair { "mp3-44k.mp3", "mp3-vbr-44k.mp3", 44100.0 },
+        Pair { "vorbis-44k.ogg", "alac-44k.m4a", 44100.0 }, Pair { "opus-48k.opus", "opus-48k.opus", 48000.0 });
     const auto readAhead = GENERATE (false, true);
     CAPTURE (pair.first, pair.second, readAhead);
 
@@ -408,7 +415,10 @@ TEST_CASE ("PlayerEngine reports position changes", "[player]")
 {
     Harness h (44100.0, false);
     std::vector<std::pair<double, double>> positions;
-    h.player.onPositionChanged = [&] (double position, double duration) { positions.emplace_back (position, duration); };
+    h.player.onPositionChanged = [&] (double position, double duration)
+    {
+        positions.emplace_back (position, duration);
+    };
 
     h.player.dispatchEvents();
     REQUIRE (positions.size() == 1); // The initial report.

@@ -18,8 +18,8 @@ struct TrackTags
 
     // MusicBrainz identifiers, named after the entity they identify (Picard's
     // "track id" is the recording, its "album id" the release).
-    juce::String musicBrainzRecordingId, musicBrainzReleaseId, musicBrainzReleaseGroupId,
-        musicBrainzReleaseTrackId, musicBrainzArtistId, musicBrainzAlbumArtistId;
+    juce::String musicBrainzRecordingId, musicBrainzReleaseId, musicBrainzReleaseGroupId, musicBrainzReleaseTrackId,
+        musicBrainzArtistId, musicBrainzAlbumArtistId;
 
     juce::MemoryBlock picture; // Front cover if marked, else the first picture.
     juce::String pictureMimeType;

@@ -69,7 +69,12 @@ impl SortRule {
     }
 
     pub fn validate(&self) -> Result<(), Error> {
-        let invalid = |message: &str| Err(Error::Invalid(format!("Sort rule \"{}\": {message}", self.id)));
+        let invalid = |message: &str| {
+            Err(Error::Invalid(format!(
+                "Sort rule \"{}\": {message}",
+                self.id
+            )))
+        };
         if self.id.trim().is_empty() || self.id.len() > 64 {
             return invalid("the id must be 1 to 64 bytes");
         }
@@ -119,7 +124,12 @@ pub fn default_rules() -> Vec<SortRule> {
     use TrackKey::{DiscNumber, Path, Title, TrackNumber};
     let album_order = [DiscNumber, TrackNumber, Title, Path];
     vec![
-        SortRule::new("album-artist", "Album artist", &[AlbumArtist, Album], &album_order),
+        SortRule::new(
+            "album-artist",
+            "Album artist",
+            &[AlbumArtist, Album],
+            &album_order,
+        ),
         SortRule::new("genre", "Genre", &[Genre, AlbumArtist, Album], &album_order),
         SortRule::new("year", "Year", &[Year, Album], &album_order),
         SortRule::new("folder", "Folder", &[Folder], &[Path]),
@@ -154,7 +164,11 @@ impl SortSettings {
             .and_then(|articles| clean_articles(articles).ok())
             .unwrap_or_else(default_articles);
         SortSettings {
-            rules: if rules.is_empty() { default_rules() } else { rules },
+            rules: if rules.is_empty() {
+                default_rules()
+            } else {
+                rules
+            },
             ignored_articles,
         }
     }
@@ -180,7 +194,11 @@ fn clean_articles(articles: Vec<String>) -> Result<Vec<String>, Error> {
 
 pub fn sort_settings(conn: &Connection) -> Result<SortSettings, Error> {
     let stored: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = ?1", [SETTINGS_KEY], |row| row.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [SETTINGS_KEY],
+            |row| row.get(0),
+        )
         .optional()?;
     Ok(stored.map_or_else(SortSettings::default, |json| SortSettings::from_json(&json)))
 }
@@ -201,7 +219,11 @@ pub fn save_sort_rule(conn: &Connection, mut rule: SortRule) -> Result<SortSetti
     rule.name = rule.name.trim().to_owned();
     rule.validate()?;
     let mut settings = sort_settings(conn)?;
-    match settings.rules.iter_mut().find(|existing| existing.id == rule.id) {
+    match settings
+        .rules
+        .iter_mut()
+        .find(|existing| existing.id == rule.id)
+    {
         Some(existing) => *existing = rule,
         None => settings.rules.push(rule),
     }
@@ -224,7 +246,10 @@ pub fn remove_sort_rule(conn: &Connection, id: &str) -> Result<SortSettings, Err
     Ok(settings)
 }
 
-pub fn set_ignored_articles(conn: &Connection, articles: Vec<String>) -> Result<SortSettings, Error> {
+pub fn set_ignored_articles(
+    conn: &Connection,
+    articles: Vec<String>,
+) -> Result<SortSettings, Error> {
     let mut settings = sort_settings(conn)?;
     settings.ignored_articles = clean_articles(articles)?;
     store(conn, &settings)?;
@@ -271,12 +296,20 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let songs = SortRule::new(" songs ", "Songs ", &[], &[TrackKey::Title]);
         let settings = save_sort_rule(&conn, songs).unwrap();
-        assert_eq!(ids(&settings), ["album-artist", "genre", "year", "folder", "songs"]);
+        assert_eq!(
+            ids(&settings),
+            ["album-artist", "genre", "year", "folder", "songs"]
+        );
         assert_eq!(settings.rules[4].name, "Songs");
         assert_eq!(sort_settings(&conn).unwrap(), settings);
 
         // The same id replaces the rule in place.
-        let by_artist = SortRule::new("genre", "Genre", &[Level::Genre, Level::Artist], &[TrackKey::Title]);
+        let by_artist = SortRule::new(
+            "genre",
+            "Genre",
+            &[Level::Genre, Level::Artist],
+            &[TrackKey::Title],
+        );
         let settings = save_sort_rule(&conn, by_artist.clone()).unwrap();
         assert_eq!(settings.rules[1], by_artist);
         assert_eq!(settings.rules.len(), 5);
@@ -316,22 +349,41 @@ mod tests {
         assert!(rule("x", " ", &[], &[]).contains("name"));
         assert!(rule("x", "X", &[Level::Folder, Level::Album], &[]).contains("folder level"));
         assert!(rule("x", "X", &[Level::Album, Level::Album], &[]).contains("level is repeated"));
-        assert!(rule("x", "X", &[], &[TrackKey::Title, TrackKey::Title]).contains("key is repeated"));
+        assert!(
+            rule("x", "X", &[], &[TrackKey::Title, TrackKey::Title]).contains("key is repeated")
+        );
 
         assert!(set_ignored_articles(&conn, vec!["".into()]).is_err());
         assert!(set_ignored_articles(&conn, vec!["Der Die".into()]).is_err());
         assert!(set_ignored_articles(&conn, vec!["a".into(); 21]).is_err());
-        assert_eq!(sort_settings(&conn).unwrap(), SortSettings::default(), "nothing was stored");
+        assert_eq!(
+            sort_settings(&conn).unwrap(),
+            SortSettings::default(),
+            "nothing was stored"
+        );
         // No articles turns the feature off.
-        assert!(set_ignored_articles(&conn, vec![]).unwrap().ignored_articles.is_empty());
+        assert!(set_ignored_articles(&conn, vec![])
+            .unwrap()
+            .ignored_articles
+            .is_empty());
     }
 
     #[test]
     fn falls_back_on_invalid_stored_json() {
         let conn = db::open_in_memory().unwrap();
-        for json in ["not json", "[1, 2]", "{}", r#"{"rules": 3, "ignoredArticles": "The"}"#, r#"{"rules": []}"#] {
+        for json in [
+            "not json",
+            "[1, 2]",
+            "{}",
+            r#"{"rules": 3, "ignoredArticles": "The"}"#,
+            r#"{"rules": []}"#,
+        ] {
             store_json(&conn, json);
-            assert_eq!(sort_settings(&conn).unwrap(), SortSettings::default(), "{json}");
+            assert_eq!(
+                sort_settings(&conn).unwrap(),
+                SortSettings::default(),
+                "{json}"
+            );
         }
     }
 
@@ -354,11 +406,18 @@ mod tests {
             }"#,
         );
         let settings = sort_settings(&conn).unwrap();
-        assert_eq!(settings.rules, [SortRule::new("songs", "Songs", &[], &[TrackKey::Title])]);
+        assert_eq!(
+            settings.rules,
+            [SortRule::new("songs", "Songs", &[], &[TrackKey::Title])]
+        );
         assert_eq!(settings.ignored_articles, ["The", "A"]);
 
         // Saving writes back only what was kept.
-        save_sort_rule(&conn, SortRule::new("folder", "Folder", &[Level::Folder], &[])).unwrap();
+        save_sort_rule(
+            &conn,
+            SortRule::new("folder", "Folder", &[Level::Folder], &[]),
+        )
+        .unwrap();
         assert_eq!(ids(&sort_settings(&conn).unwrap()), ["songs", "folder"]);
     }
 }

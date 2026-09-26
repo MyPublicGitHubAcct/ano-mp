@@ -42,7 +42,9 @@ public:
 
 private:
     FolderAccess (juce::File folderIn, bool staleIn, void* scopeIn) noexcept
-        : folder (std::move (folderIn)), stale (staleIn), scope (scopeIn)
+        : folder (std::move (folderIn)),
+          stale (staleIn),
+          scope (scopeIn)
     {
     }
 

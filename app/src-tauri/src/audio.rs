@@ -59,9 +59,10 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 app.emit(DEVICE_CHANGED_EVENT, ())
             }
             Event::StateChanged(state) => app.emit(PLAYER_STATE_EVENT, state),
-            Event::Position { position, duration } => {
-                app.emit(PLAYER_POSITION_EVENT, PositionPayload { position, duration })
-            }
+            Event::Position { position, duration } => app.emit(
+                PLAYER_POSITION_EVENT,
+                PositionPayload { position, duration },
+            ),
             Event::TrackEnded { advanced } => {
                 app.emit(PLAYER_TRACK_ENDED_EVENT, TrackEndedPayload { advanced })
             }
@@ -78,14 +79,20 @@ pub fn shutdown() {
 }
 
 /// Runs `f` with the engine on the main thread and returns its result.
-fn with_engine<R, T>(app: &AppHandle<R>, f: impl FnOnce(&mut Engine) -> T + Send + 'static) -> Result<T, String>
+fn with_engine<R, T>(
+    app: &AppHandle<R>,
+    f: impl FnOnce(&mut Engine) -> T + Send + 'static,
+) -> Result<T, String>
 where
     R: Runtime,
     T: Send + 'static,
 {
     let run = move || {
         ENGINE.with(|slot| match slot.try_borrow_mut() {
-            Ok(mut slot) => slot.as_mut().map(f).ok_or_else(|| "Audio engine not running".to_string()),
+            Ok(mut slot) => slot
+                .as_mut()
+                .map(f)
+                .ok_or_else(|| "Audio engine not running".to_string()),
             Err(_) => Err("Audio engine busy".to_string()),
         })
     };
@@ -125,7 +132,10 @@ pub fn stop_test_tone<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
 /// Opens the library folder holding `path`, if any: under the sandbox the
 /// engine can open a library track only while its folder's bookmark is
 /// resolved (`library::access`). A file stays readable once it is open.
-fn open_library_folder<R: Runtime>(app: &AppHandle<R>, path: &Path) -> Result<Option<OpenFolder>, String> {
+fn open_library_folder<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &Path,
+) -> Result<Option<OpenFolder>, String> {
     app.try_state::<LibraryState>()
         .map_or(Ok(None), |library| library.open_folder_of(path))
 }
@@ -139,7 +149,10 @@ pub fn player_load<R: Runtime>(app: AppHandle<R>, path: PathBuf) -> Result<(), S
 /// Sets the track that follows the current one gaplessly; `null` clears it.
 #[tauri::command]
 pub fn player_set_next<R: Runtime>(app: AppHandle<R>, path: Option<PathBuf>) -> Result<(), String> {
-    let _folder = path.as_deref().map(|path| open_library_folder(&app, path)).transpose()?;
+    let _folder = path
+        .as_deref()
+        .map(|path| open_library_folder(&app, path))
+        .transpose()?;
     with_engine(&app, move |engine| engine.set_next(path.as_deref()))?
 }
 

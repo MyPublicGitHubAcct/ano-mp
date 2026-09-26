@@ -50,9 +50,9 @@ pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Erro
         .map_err(|error| Error::Invalid(format!("Folder not available: {stored} ({error})")))?;
     let path = access.path().to_path_buf();
     if path != Path::new(&stored) {
-        let text = path
-            .to_str()
-            .ok_or_else(|| Error::Invalid(format!("Path is not valid UTF-8: {}", path.display())))?;
+        let text = path.to_str().ok_or_else(|| {
+            Error::Invalid(format!("Path is not valid UTF-8: {}", path.display()))
+        })?;
         check_overlap(conn, &path, Some(folder_id))?;
         conn.execute(
             "UPDATE folders SET path = ?1 WHERE id = ?2",
@@ -75,7 +75,9 @@ pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Erro
 /// if it is in none (e.g. a file the user picked directly).
 pub fn open_folder_of(conn: &Connection, path: &Path) -> Result<Option<OpenFolder>, Error> {
     let mut statement = conn.prepare("SELECT id, path FROM folders")?;
-    let folders = statement.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+    let folders = statement.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
     for folder in folders {
         let (id, folder_path) = folder?;
         if path.starts_with(&folder_path) {
@@ -99,8 +101,12 @@ mod tests {
     use crate::library::{add_folder, db, folders};
 
     fn bookmark_of(conn: &Connection, folder_id: i64) -> Option<Vec<u8>> {
-        conn.query_row("SELECT bookmark FROM folders WHERE id = ?1", [folder_id], |row| row.get(0))
-            .unwrap()
+        conn.query_row(
+            "SELECT bookmark FROM folders WHERE id = ?1",
+            [folder_id],
+            |row| row.get(0),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -115,8 +121,13 @@ mod tests {
         assert_eq!(folders(&conn).unwrap()[0].path, folder.path);
 
         let file = open.path.join("Album").join("01.flac");
-        assert_eq!(open_folder_of(&conn, &file).unwrap().map(|f| f.path), Some(open.path));
-        assert!(open_folder_of(&conn, Path::new("/elsewhere/01.flac")).unwrap().is_none());
+        assert_eq!(
+            open_folder_of(&conn, &file).unwrap().map(|f| f.path),
+            Some(open.path)
+        );
+        assert!(open_folder_of(&conn, Path::new("/elsewhere/01.flac"))
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -124,7 +135,8 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let folder = add_folder(&conn, dir.path()).unwrap();
-        conn.execute("UPDATE folders SET bookmark = NULL", []).unwrap();
+        conn.execute("UPDATE folders SET bookmark = NULL", [])
+            .unwrap();
 
         let open = open_folder(&conn, folder.id).unwrap();
         assert_eq!(open.path, Path::new(&folder.path));

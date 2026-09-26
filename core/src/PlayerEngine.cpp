@@ -34,12 +34,8 @@ struct PlayerEngine::Track
     {
         if (thread != nullptr)
         {
-            buffered = std::make_unique<juce::BufferingAudioSource> (&readerSource,
-                                                                     *thread,
-                                                                     false,
-                                                                     readAheadSamples,
-                                                                     outputChannels,
-                                                                     true);
+            buffered = std::make_unique<juce::BufferingAudioSource> (&readerSource, *thread, false, readAheadSamples,
+                                                                     outputChannels, true);
             buffered->prepareToPlay (readBlockSizeHint, sampleRate);
         }
         else
@@ -50,8 +46,7 @@ struct PlayerEngine::Track
 
     juce::PositionableAudioSource& source() noexcept
     {
-        return buffered != nullptr ? static_cast<juce::PositionableAudioSource&> (*buffered)
-                                   : readerSource;
+        return buffered != nullptr ? static_cast<juce::PositionableAudioSource&> (*buffered) : readerSource;
     }
 
     juce::int64 remaining() const noexcept { return length - position; }
@@ -127,10 +122,8 @@ public:
 
             int used = 0;
             for (int ch = 0; ch < outputChannels; ++ch)
-                used = interpolators[static_cast<size_t> (ch)].process (ratio,
-                                                                        input.getReadPointer (ch),
-                                                                        output[ch] + done,
-                                                                        count);
+                used = interpolators[static_cast<size_t> (ch)].process (ratio, input.getReadPointer (ch),
+                                                                        output[ch] + done, count);
             jassert (used <= available);
 
             for (int ch = 0; ch < outputChannels; ++ch)
@@ -411,8 +404,7 @@ void PlayerEngine::renderChunk (float* const* output, int numSamples)
 {
     // A next track at a different rate takes over at a chunk boundary, with
     // fresh resampler state; same-rate tracks join inside readSource().
-    if (current->remaining() == 0 && next != nullptr
-        && ! juce::exactlyEqual (next->sampleRate, current->sampleRate))
+    if (current->remaining() == 0 && next != nullptr && ! juce::exactlyEqual (next->sampleRate, current->sampleRate))
     {
         handOff();
         configureRate();

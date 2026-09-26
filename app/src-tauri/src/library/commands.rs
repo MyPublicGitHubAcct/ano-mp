@@ -29,7 +29,9 @@ impl LibraryState {
     fn conn(&self) -> MutexGuard<'_, Connection> {
         // A panic mid-query leaves nothing half-done that SQLite hasn't
         // rolled back, so a poisoned lock is still usable.
-        self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Opens the library folder holding the file at `path`, if any; files in
@@ -93,12 +95,18 @@ pub fn library_sort_settings(state: State<'_, LibraryState>) -> Result<SortSetti
 
 /// Adds a rule, or replaces the one with its id.
 #[tauri::command]
-pub fn library_save_sort_rule(state: State<'_, LibraryState>, rule: SortRule) -> Result<SortSettings, String> {
+pub fn library_save_sort_rule(
+    state: State<'_, LibraryState>,
+    rule: SortRule,
+) -> Result<SortSettings, String> {
     rules::save_sort_rule(&state.conn(), rule).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn library_remove_sort_rule(state: State<'_, LibraryState>, rule_id: String) -> Result<SortSettings, String> {
+pub fn library_remove_sort_rule(
+    state: State<'_, LibraryState>,
+    rule_id: String,
+) -> Result<SortSettings, String> {
     rules::remove_sort_rule(&state.conn(), &rule_id).map_err(|e| e.to_string())
 }
 
@@ -156,18 +164,20 @@ fn scan_folders(
     }
     let mut reports = Vec::new();
     for folder in folders {
-        reports.push(match scanner::scan_folder(&mut conn, folder.id, &mut progress) {
-            Ok(report) => report,
-            Err(Error::Invalid(error)) => ScanReport {
-                folder_id: folder.id,
-                failed: vec![ScanFailure {
-                    path: folder.path,
-                    error,
-                }],
-                ..ScanReport::default()
+        reports.push(
+            match scanner::scan_folder(&mut conn, folder.id, &mut progress) {
+                Ok(report) => report,
+                Err(Error::Invalid(error)) => ScanReport {
+                    folder_id: folder.id,
+                    failed: vec![ScanFailure {
+                        path: folder.path,
+                        error,
+                    }],
+                    ..ScanReport::default()
+                },
+                Err(error) => return Err(error),
             },
-            Err(error) => return Err(error),
-        });
+        );
     }
     Ok(reports)
 }

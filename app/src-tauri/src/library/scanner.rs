@@ -80,7 +80,10 @@ pub fn scan_folder(
     let folder = open_folder(conn, folder_id)?;
     let root = &folder.path;
     if !root.is_dir() {
-        return Err(Error::Invalid(format!("Folder not available: {}", root.display())));
+        return Err(Error::Invalid(format!(
+            "Folder not available: {}",
+            root.display()
+        )));
     }
 
     let mut report = ScanReport {
@@ -128,8 +131,10 @@ pub fn scan_folder(
                 }
                 Err(error) => {
                     if file.known {
-                        tx.prepare_cached("DELETE FROM tracks WHERE folder_id = ?1 AND relative_path = ?2")?
-                            .execute(params![folder_id, file.relative])?;
+                        tx.prepare_cached(
+                            "DELETE FROM tracks WHERE folder_id = ?1 AND relative_path = ?2",
+                        )?
+                        .execute(params![folder_id, file.relative])?;
                         report.removed += 1;
                     }
                     report.failed.push(ScanFailure {
@@ -236,7 +241,9 @@ fn walk(
             .modified()
             .ok()
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map_or(0, |since| i64::try_from(since.as_nanos()).unwrap_or(i64::MAX));
+            .map_or(0, |since| {
+                i64::try_from(since.as_nanos()).unwrap_or(i64::MAX)
+            });
 
         let previous = known.remove(&relative);
         if previous
@@ -326,7 +333,11 @@ fn write_track(
     tags: &Tags,
     now: i64,
 ) -> rusqlite::Result<()> {
-    let artist_id = artist_id(tx, tags.artist.as_deref(), tags.musicbrainz_artist_id.as_deref())?;
+    let artist_id = artist_id(
+        tx,
+        tags.artist.as_deref(),
+        tags.musicbrainz_artist_id.as_deref(),
+    )?;
     let album_artist_id = match tags.album_artist.as_deref() {
         Some(name) => artist_id_for(tx, name, tags.musicbrainz_album_artist_id.as_deref())?.into(),
         None => artist_id,
@@ -404,7 +415,11 @@ fn artist_id(
 
 /// The artist called `name`, created if needed. A MusicBrainz ID fills in
 /// one the artist doesn't have yet.
-fn artist_id_for(tx: &Transaction, name: &str, musicbrainz_id: Option<&str>) -> rusqlite::Result<i64> {
+fn artist_id_for(
+    tx: &Transaction,
+    name: &str,
+    musicbrainz_id: Option<&str>,
+) -> rusqlite::Result<i64> {
     tx.prepare_cached(
         "INSERT INTO artists (name, musicbrainz_id) VALUES (?1, ?2)
          ON CONFLICT (name) DO UPDATE SET
@@ -416,7 +431,12 @@ fn artist_id_for(tx: &Transaction, name: &str, musicbrainz_id: Option<&str>) -> 
 
 /// The album `title` by `artist_id`, created if needed, filling in release
 /// IDs it doesn't have yet.
-fn album_id(tx: &Transaction, title: &str, artist_id: Option<i64>, tags: &Tags) -> rusqlite::Result<i64> {
+fn album_id(
+    tx: &Transaction,
+    title: &str,
+    artist_id: Option<i64>,
+    tags: &Tags,
+) -> rusqlite::Result<i64> {
     tx.prepare_cached(
         "INSERT INTO albums (title, artist_id, musicbrainz_release_id, musicbrainz_release_group_id)
          VALUES (?1, ?2, ?3, ?4)
@@ -513,7 +533,9 @@ mod tests {
 
         fn count(&self, table: &str) -> i64 {
             self.conn
-                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row.get(0))
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
                 .unwrap()
         }
     }
@@ -522,8 +544,14 @@ mod tests {
 
     fn sample_library() -> Library {
         Library::new(&[
-            ("tagged-vorbis.flac", "Various Artists/東京 Sessions/03 Café.flac"),
-            ("tagged-id3v23.mp3", "Various Artists/東京 Sessions/03 Café.mp3"),
+            (
+                "tagged-vorbis.flac",
+                "Various Artists/東京 Sessions/03 Café.flac",
+            ),
+            (
+                "tagged-id3v23.mp3",
+                "Various Artists/東京 Sessions/03 Café.mp3",
+            ),
             ("wav-s16-44k.wav", "Loose/untitled.wav"),
         ])
     }
@@ -547,7 +575,8 @@ mod tests {
         library.write(".Trash/deleted.flac", "hidden folder");
 
         let mut updates = Vec::new();
-        let report = scan_folder(&mut library.conn, library.folder_id, |p| updates.push(p)).unwrap();
+        let report =
+            scan_folder(&mut library.conn, library.folder_id, |p| updates.push(p)).unwrap();
 
         assert_eq!(
             report,
@@ -582,7 +611,10 @@ mod tests {
             assert_eq!(tagged.artist.as_deref(), Some("Ano Artist"));
             assert_eq!(tagged.album.as_deref(), Some("東京 Sessions"));
             assert_eq!(tagged.album_artist.as_deref(), Some("Various Artists"));
-            assert_eq!((tagged.disc_number, tagged.track_number), (Some(1), Some(3)));
+            assert_eq!(
+                (tagged.disc_number, tagged.track_number),
+                (Some(1), Some(3))
+            );
         }
 
         // Both tagged files share one album and its two artists.
@@ -619,7 +651,10 @@ mod tests {
         touch(&library.path(&format!("{ALBUM_DIR}/03 Café.mp3")));
         library.copy("wav-mono-48k.wav", "Loose/untitled.wav");
         let mut to_read = 0;
-        let report = scan_folder(&mut library.conn, library.folder_id, |p| to_read = p.to_read).unwrap();
+        let report = scan_folder(&mut library.conn, library.folder_id, |p| {
+            to_read = p.to_read
+        })
+        .unwrap();
         assert_eq!((report.added, report.updated, report.unchanged), (0, 2, 1));
         assert_eq!(to_read, 2);
 
@@ -666,7 +701,10 @@ mod tests {
         let report = library.scan();
         assert_eq!(report.added, 3);
         assert_eq!(report.failed.len(), 1);
-        assert_eq!(Path::new(&report.failed[0].path), library.path("broken.mp3"));
+        assert_eq!(
+            Path::new(&report.failed[0].path),
+            library.path("broken.mp3")
+        );
 
         // A track that becomes unreadable leaves the library.
         library.write("Loose/untitled.wav", "truncated");
@@ -683,7 +721,10 @@ mod tests {
         // As when its drive is unmounted, the bookmark no longer resolves.
         fs::remove_dir_all(&library.root).unwrap();
         let error = scan_folder(&mut library.conn, library.folder_id, |_| {}).unwrap_err();
-        assert!(error.to_string().starts_with("Folder not available"), "{error}");
+        assert!(
+            error.to_string().starts_with("Folder not available"),
+            "{error}"
+        );
         assert_eq!(library.tracks().len(), 3);
     }
 
@@ -700,8 +741,18 @@ mod tests {
         let report = library.scan();
         assert_eq!((report.added, report.removed, report.unchanged), (0, 0, 3));
         library.root = moved;
-        assert_eq!(library.tracks().iter().map(|track| track.id).collect::<Vec<_>>(), ids);
-        assert!(library.tracks().iter().all(|track| Path::new(&track.path).starts_with(&library.root)));
+        assert_eq!(
+            library
+                .tracks()
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert!(library
+            .tracks()
+            .iter()
+            .all(|track| Path::new(&track.path).starts_with(&library.root)));
     }
 
     #[cfg(unix)]
@@ -744,7 +795,11 @@ mod tests {
         library.scan();
         remove_folder(&mut library.conn, library.folder_id).unwrap();
         assert_eq!(
-            (library.count("tracks"), library.count("albums"), library.count("artists")),
+            (
+                library.count("tracks"),
+                library.count("albums"),
+                library.count("artists")
+            ),
             (0, 0, 0)
         );
         assert!(remove_folder(&mut library.conn, library.folder_id).is_err());

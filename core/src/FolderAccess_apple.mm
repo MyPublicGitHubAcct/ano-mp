@@ -16,9 +16,9 @@ namespace
 // Read-only is all a player needs, and matches the entitlement.
 constexpr NSURLBookmarkCreationOptions creationOptions =
     NSURLBookmarkCreationWithSecurityScope | NSURLBookmarkCreationSecurityScopeAllowOnlyReadAccess;
-constexpr NSURLBookmarkResolutionOptions resolutionOptions =
-    NSURLBookmarkResolutionWithSecurityScope | NSURLBookmarkResolutionWithoutUI
-    | NSURLBookmarkResolutionWithoutMounting;
+constexpr NSURLBookmarkResolutionOptions resolutionOptions = NSURLBookmarkResolutionWithSecurityScope
+                                                             | NSURLBookmarkResolutionWithoutUI
+                                                             | NSURLBookmarkResolutionWithoutMounting;
 #else
 // On iOS every bookmark carries its scope implicitly.
 constexpr NSURLBookmarkCreationOptions creationOptions = 0;

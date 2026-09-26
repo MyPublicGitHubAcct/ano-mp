@@ -23,8 +23,8 @@ std::unique_ptr<FolderAccess> FolderAccess::start (const juce::MemoryBlock& book
         return nullptr;
     }
 
-    const auto path = juce::String::fromUTF8 (static_cast<const char*> (bookmark.getData()),
-                                              static_cast<int> (bookmark.getSize()));
+    const auto path =
+        juce::String::fromUTF8 (static_cast<const char*> (bookmark.getData()), static_cast<int> (bookmark.getSize()));
     if (! juce::File::isAbsolutePath (path))
     {
         error = "Cannot resolve the bookmark: not an absolute path";

@@ -99,10 +99,7 @@ int withPath (anomp_engine* engine, const char* path, char* error, size_t errorS
 }
 } // namespace
 
-extern "C" const char* anomp_version (void)
-{
-    return "0.1.0";
-}
+extern "C" const char* anomp_version (void) { return "0.1.0"; }
 
 extern "C" int anomp_can_decode_extension (const char* extension)
 {
@@ -123,7 +120,8 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
         else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
             message = "Path is not absolute: " + text;
         else
-            message = anomp::readTags (juce::File (text), (flags & ANOMP_TAGS_PICTURE) != 0, registry().manager(), tags);
+            message =
+                anomp::readTags (juce::File (text), (flags & ANOMP_TAGS_PICTURE) != 0, registry().manager(), tags);
 
         copyUtf8 (message, error, errorSize);
         if (message.isNotEmpty())
@@ -180,10 +178,7 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
     }
 }
 
-extern "C" void anomp_tags_free (anomp_tags* tags)
-{
-    delete static_cast<TagsHandle*> (tags);
-}
+extern "C" void anomp_tags_free (anomp_tags* tags) { delete static_cast<TagsHandle*> (tags); }
 
 extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error, size_t errorSize)
 {
@@ -216,10 +211,7 @@ extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error,
     }
 }
 
-extern "C" void anomp_bookmark_free (anomp_bookmark* bookmark)
-{
-    delete static_cast<BookmarkHandle*> (bookmark);
-}
+extern "C" void anomp_bookmark_free (anomp_bookmark* bookmark) { delete static_cast<BookmarkHandle*> (bookmark); }
 
 extern "C" anomp_folder_access* anomp_folder_access_start (const unsigned char* bookmark,
                                                            size_t bookmarkSize,
@@ -262,10 +254,7 @@ extern "C" int anomp_folder_access_is_stale (const anomp_folder_access* access)
     return access != nullptr && access->access->isStale() ? 1 : 0;
 }
 
-extern "C" void anomp_folder_access_stop (anomp_folder_access* access)
-{
-    delete access;
-}
+extern "C" void anomp_folder_access_stop (anomp_folder_access* access) { delete access; }
 
 extern "C" anomp_engine* anomp_engine_create (void)
 {
@@ -298,14 +287,9 @@ extern "C" anomp_engine* anomp_engine_create (void)
     }
 }
 
-extern "C" void anomp_engine_destroy (anomp_engine* engine)
-{
-    delete engine;
-}
+extern "C" void anomp_engine_destroy (anomp_engine* engine) { delete engine; }
 
-extern "C" void anomp_engine_set_event_callback (anomp_engine* engine,
-                                                 anomp_event_callback callback,
-                                                 void* userData)
+extern "C" void anomp_engine_set_event_callback (anomp_engine* engine, anomp_event_callback callback, void* userData)
 {
     if (engine == nullptr)
         return;
@@ -315,23 +299,20 @@ extern "C" void anomp_engine_set_event_callback (anomp_engine* engine,
 
 extern "C" int anomp_engine_open_default_device (anomp_engine* engine, char* error, size_t errorSize)
 {
-    const auto message = engine != nullptr ? engine->engine.openDefaultDevice()
-                                           : juce::String ("Null engine");
+    const auto message = engine != nullptr ? engine->engine.openDefaultDevice() : juce::String ("Null engine");
     copyUtf8 (message, error, errorSize);
     return message.isEmpty() ? 1 : 0;
 }
 
 extern "C" size_t anomp_engine_device_name (anomp_engine* engine, char* buffer, size_t bufferSize)
 {
-    return copyUtf8 (engine != nullptr ? engine->engine.currentDeviceName() : juce::String(),
-                     buffer,
-                     bufferSize);
+    return copyUtf8 (engine != nullptr ? engine->engine.currentDeviceName() : juce::String(), buffer, bufferSize);
 }
 
 extern "C" int anomp_engine_load (anomp_engine* engine, const char* path, char* error, size_t errorSize)
 {
-    return withPath (engine, path, error, errorSize, [] (anomp::PlayerEngine& player, const juce::File& file)
-                     { return player.load (file); });
+    return withPath (engine, path, error, errorSize,
+                     [] (anomp::PlayerEngine& player, const juce::File& file) { return player.load (file); });
 }
 
 extern "C" int anomp_engine_set_next (anomp_engine* engine, const char* path, char* error, size_t errorSize)
@@ -343,8 +324,8 @@ extern "C" int anomp_engine_set_next (anomp_engine* engine, const char* path, ch
         return 1;
     }
 
-    return withPath (engine, path, error, errorSize, [] (anomp::PlayerEngine& player, const juce::File& file)
-                     { return player.setNext (file); });
+    return withPath (engine, path, error, errorSize,
+                     [] (anomp::PlayerEngine& player, const juce::File& file) { return player.setNext (file); });
 }
 
 extern "C" int anomp_engine_play (anomp_engine* engine)

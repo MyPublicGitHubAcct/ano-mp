@@ -30,19 +30,25 @@ pub fn register(conn: &Connection) -> rusqlite::Result<()> {
     conn.create_scalar_function(
         "anomp_sort_key",
         2,
-        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_INNOCUOUS,
+        FunctionFlags::SQLITE_UTF8
+            | FunctionFlags::SQLITE_DETERMINISTIC
+            | FunctionFlags::SQLITE_INNOCUOUS,
         |ctx| {
-            let articles = ctx.get_or_create_aux(1, |value| -> Result<Vec<String>, Infallible> {
-                Ok(match value {
-                    ValueRef::Text(text) => {
-                        String::from_utf8_lossy(text).split('\n').map(fold).collect()
-                    }
-                    _ => Vec::new(),
-                })
-            })?;
+            let articles =
+                ctx.get_or_create_aux(1, |value| -> Result<Vec<String>, Infallible> {
+                    Ok(match value {
+                        ValueRef::Text(text) => String::from_utf8_lossy(text)
+                            .split('\n')
+                            .map(fold)
+                            .collect(),
+                        _ => Vec::new(),
+                    })
+                })?;
             let text = match ctx.get_raw(0) {
                 ValueRef::Null => return Ok(None),
-                ValueRef::Text(text) | ValueRef::Blob(text) => String::from_utf8_lossy(text).into_owned(),
+                ValueRef::Text(text) | ValueRef::Blob(text) => {
+                    String::from_utf8_lossy(text).into_owned()
+                }
                 ValueRef::Integer(number) => number.to_string(),
                 ValueRef::Real(number) => number.to_string(),
             };
@@ -148,10 +154,32 @@ mod tests {
     #[test]
     fn orders_numbers_by_value() {
         assert_eq!(
-            sorted(&["Track 10", "track 2", "Track 1", "Track 02", "Track 2b", "Track", "Track 100"], &[]),
-            ["Track", "Track 1", "Track 02", "track 2", "Track 2b", "Track 10", "Track 100"]
+            sorted(
+                &[
+                    "Track 10",
+                    "track 2",
+                    "Track 1",
+                    "Track 02",
+                    "Track 2b",
+                    "Track",
+                    "Track 100"
+                ],
+                &[]
+            ),
+            [
+                "Track",
+                "Track 1",
+                "Track 02",
+                "track 2",
+                "Track 2b",
+                "Track 10",
+                "Track 100"
+            ]
         );
-        assert_eq!(sorted(&["a10b2", "a10b10", "a9"], &[]), ["a9", "a10b2", "a10b10"]);
+        assert_eq!(
+            sorted(&["a10b2", "a10b10", "a9"], &[]),
+            ["a9", "a10b2", "a10b10"]
+        );
         // Numbers sort among other text as digits do: after spaces, before
         // letters.
         assert_eq!(sorted(&["ab", "a1", "a b"], &[]), ["a b", "a1", "ab"]);
@@ -160,8 +188,21 @@ mod tests {
     #[test]
     fn sorts_a_folder_before_its_neighbours() {
         assert_eq!(
-            sorted(&["Disc 1 extra/a.flac", "Disc 1/b.flac", "Disc 10/a.flac", "Disc 2/a.flac"], &[]),
-            ["Disc 1/b.flac", "Disc 1 extra/a.flac", "Disc 2/a.flac", "Disc 10/a.flac"]
+            sorted(
+                &[
+                    "Disc 1 extra/a.flac",
+                    "Disc 1/b.flac",
+                    "Disc 10/a.flac",
+                    "Disc 2/a.flac"
+                ],
+                &[]
+            ),
+            [
+                "Disc 1/b.flac",
+                "Disc 1 extra/a.flac",
+                "Disc 2/a.flac",
+                "Disc 10/a.flac"
+            ]
         );
     }
 
@@ -190,7 +231,10 @@ mod tests {
                 "A Tribe Called Quest"
             ]
         );
-        assert_eq!(sort_key("the  beatles", &[fold("The")]), sort_key("Beatles", &[]));
+        assert_eq!(
+            sort_key("the  beatles", &[fold("The")]),
+            sort_key("Beatles", &[])
+        );
         assert_eq!(
             sorted(&names, &[]),
             [
@@ -210,13 +254,20 @@ mod tests {
     fn sql_function_handles_null_and_articles() {
         let conn = Connection::open_in_memory().unwrap();
         register(&conn).unwrap();
-        let key = |sql: &str| -> Option<Vec<u8>> { conn.query_row(sql, [], |row| row.get(0)).unwrap() };
+        let key =
+            |sql: &str| -> Option<Vec<u8>> { conn.query_row(sql, [], |row| row.get(0)).unwrap() };
         assert_eq!(key("SELECT anomp_sort_key(NULL, NULL)"), None);
-        assert_eq!(key("SELECT anomp_sort_key('Élodie', NULL)"), Some(b"elodie".to_vec()));
+        assert_eq!(
+            key("SELECT anomp_sort_key('Élodie', NULL)"),
+            Some(b"elodie".to_vec())
+        );
         assert_eq!(
             key("SELECT anomp_sort_key('The Beatles', 'A' || char(10) || 'The')"),
             Some(b"beatles".to_vec())
         );
-        assert_eq!(key("SELECT anomp_sort_key(7, NULL)"), Some(vec![NUMBER, 1, b'7']));
+        assert_eq!(
+            key("SELECT anomp_sort_key(7, NULL)"),
+            Some(vec![NUMBER, 1, b'7'])
+        );
     }
 }

@@ -54,10 +54,7 @@ const Fixture fixtures[] = {
     { "aac-adts-long-44k.aac", 44100, 2, 4.0, Kind::lossyRaw, 178176, 1024 },
 };
 
-juce::File fixtureFile (const char* name)
-{
-    return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name);
-}
+juce::File fixtureFile (const char* name) { return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name); }
 
 std::unique_ptr<juce::AudioFormatReader> openReader (const Fixture& fixture)
 {
@@ -130,8 +127,10 @@ private:
 
 /** Largest difference between `block` (read at `position`) and the reference
     decode shifted by `shift`; past the end the reference is silence. */
-float blockError (const juce::AudioBuffer<float>& block, const juce::AudioBuffer<float>& reference,
-                  int position, int shift)
+float blockError (const juce::AudioBuffer<float>& block,
+                  const juce::AudioBuffer<float>& reference,
+                  int position,
+                  int shift)
 {
     float maxError = 0.0f;
     for (int ch = 0; ch < block.getNumChannels(); ++ch)
@@ -167,8 +166,9 @@ TEST_CASE ("FFmpegAudioFormat decodes every fixture", "[ffmpeg-format]")
         {
             float maxError = 0.0f;
             for (int n = 0; n < decoded.getNumSamples(); ++n)
-                maxError = juce::jmax (maxError, std::abs (decoded.getSample (ch, n)
-                                                           - anomp::test::signalSample16 (ch, n, fixture.sampleRate, fixture.seconds)));
+                maxError = juce::jmax (
+                    maxError, std::abs (decoded.getSample (ch, n)
+                                        - anomp::test::signalSample16 (ch, n, fixture.sampleRate, fixture.seconds)));
             CHECK (maxError <= 1.5f / 32768.0f);
         }
         else
@@ -200,8 +200,18 @@ TEST_CASE ("FFmpegAudioFormat seeks to exact samples", "[ffmpeg-format]")
     constexpr int blockSize = 300;
     // Forward and backward jumps, frame-boundary neighbours, the very start
     // and a block that runs past the end.
-    const int positions[] = { length / 2 + 7, 0, length - 1000, 1, 1151, 1024, length / 3, 4097,
-                              length - blockSize / 2, 13, length / 2 - 2000, length / 2 + 7 };
+    const int positions[] = { length / 2 + 7,
+                              0,
+                              length - 1000,
+                              1,
+                              1151,
+                              1024,
+                              length / 3,
+                              4097,
+                              length - blockSize / 2,
+                              13,
+                              length / 2 - 2000,
+                              length / 2 + 7 };
 
     for (const auto position : positions)
     {
@@ -286,7 +296,8 @@ TEST_CASE ("FormatRegistry decodes every format through FFmpeg", "[ffmpeg-format
     for (const auto& fixture : fixtures)
     {
         INFO ("fixture " << fixture.file);
-        std::unique_ptr<juce::AudioFormatReader> reader (registry.manager().createReaderFor (fixtureFile (fixture.file)));
+        std::unique_ptr<juce::AudioFormatReader> reader (
+            registry.manager().createReaderFor (fixtureFile (fixture.file)));
         REQUIRE (reader != nullptr);
         CHECK (reader->getFormatName() == "FFmpeg");
         CHECK (reader->lengthInSamples == fixture.length);
@@ -298,5 +309,3 @@ TEST_CASE ("FormatRegistry decodes every format through FFmpeg", "[ffmpeg-format
         CHECK (registry.canDecodeExtension (ext));
     }
 }
-
-

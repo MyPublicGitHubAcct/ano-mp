@@ -10,10 +10,7 @@ namespace anomp
 {
 namespace
 {
-juce::String toJuce (const TagLib::String& text)
-{
-    return juce::String::fromUTF8 (text.to8Bit (true).c_str());
-}
+juce::String toJuce (const TagLib::String& text) { return juce::String::fromUTF8 (text.to8Bit (true).c_str()); }
 
 /** All values of a property, joined with "; ". */
 juce::String joined (const TagLib::PropertyMap& properties, const char* key)
@@ -103,11 +100,11 @@ juce::String readTags (const juce::File& file,
 
     try
     {
-       #if JUCE_WINDOWS
+#if JUCE_WINDOWS
         TagLib::FileStream stream (path.toWideCharPointer(), true);
-       #else
+#else
         TagLib::FileStream stream (path.toRawUTF8(), true);
-       #endif
+#endif
 
         // The stream (not a file name) keeps TagLib read-only; it detects the
         // format from the extension, then the content.
@@ -122,8 +119,10 @@ juce::String readTags (const juce::File& file,
             result.album = joined (properties, "ALBUM");
             result.albumArtist = joined (properties, "ALBUMARTIST");
             result.genre = joined (properties, "GENRE");
-            numberAndTotal (properties, "TRACKNUMBER", { "TRACKTOTAL", "TOTALTRACKS" }, result.trackNumber, result.trackTotal);
-            numberAndTotal (properties, "DISCNUMBER", { "DISCTOTAL", "TOTALDISCS" }, result.discNumber, result.discTotal);
+            numberAndTotal (properties, "TRACKNUMBER", { "TRACKTOTAL", "TOTALTRACKS" }, result.trackNumber,
+                            result.trackTotal);
+            numberAndTotal (properties, "DISCNUMBER", { "DISCTOTAL", "TOTALDISCS" }, result.discNumber,
+                            result.discTotal);
             result.year = year (properties);
 
             result.musicBrainzRecordingId = joined (properties, "MUSICBRAINZ_TRACKID");

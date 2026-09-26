@@ -41,7 +41,9 @@ pub fn split(tag: &str) -> Vec<&str> {
 ///   genres, ignoring case and accents. A null `genre` matches tags with
 ///   none.
 pub fn register(conn: &Connection) -> rusqlite::Result<()> {
-    let flags = FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC | FunctionFlags::SQLITE_INNOCUOUS;
+    let flags = FunctionFlags::SQLITE_UTF8
+        | FunctionFlags::SQLITE_DETERMINISTIC
+        | FunctionFlags::SQLITE_INNOCUOUS;
     conn.create_scalar_function("anomp_genres", 1, flags, |ctx| {
         let tag = text(ctx.get_raw(0));
         let genres = split(&tag);
@@ -99,14 +101,21 @@ mod tests {
                 .collect::<Result<_, _>>()
                 .unwrap()
         };
-        assert_eq!(genres("Rock; \"Pop\"\n"), [Some("Rock".into()), Some("\"Pop\"".into())]);
+        assert_eq!(
+            genres("Rock; \"Pop\"\n"),
+            [Some("Rock".into()), Some("\"Pop\"".into())]
+        );
         assert_eq!(genres(" ; "), [None]);
-        let genres_of_null: String = conn.query_row("SELECT anomp_genres(NULL)", [], |row| row.get(0)).unwrap();
+        let genres_of_null: String = conn
+            .query_row("SELECT anomp_genres(NULL)", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(genres_of_null, "[null]");
 
         let has = |tag: Option<&str>, genre: Option<&str>| -> bool {
-            conn.query_row("SELECT anomp_has_genre(?1, ?2)", [tag, genre], |row| row.get(0))
-                .unwrap()
+            conn.query_row("SELECT anomp_has_genre(?1, ?2)", [tag, genre], |row| {
+                row.get(0)
+            })
+            .unwrap()
         };
         assert!(has(Some("Rock; Électro"), Some("electro")));
         assert!(has(Some("Rock; Électro"), Some(" ROCK ")));

@@ -24,7 +24,10 @@ fn build_core() {
         .build_target("anomp_core")
         .build();
 
-    println!("cargo:rustc-link-search=native={}", dst.join("build/core").display());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        dst.join("build/core").display()
+    );
     println!("cargo:rustc-link-lib=static=anomp_core");
     // TagLib (cmake/TagLib.cmake), a static dependency of the core.
     println!(
@@ -77,7 +80,10 @@ fn link_ffmpeg(repo_root: &std::path::Path, target_os: &str) {
         "macos" => "macos-universal",
         other => panic!("no FFmpeg build for {other} yet (PLAN.md Phases 8-10)"),
     };
-    let lib_dir = repo_root.join("third_party/ffmpeg").join(platform).join("lib");
+    let lib_dir = repo_root
+        .join("third_party/ffmpeg")
+        .join(platform)
+        .join("lib");
     assert!(
         lib_dir.exists(),
         "FFmpeg not found in {}; run scripts/build-ffmpeg.sh from the repository root",

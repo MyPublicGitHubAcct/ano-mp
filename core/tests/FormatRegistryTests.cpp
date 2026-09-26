@@ -31,10 +31,8 @@ TEST_CASE ("FormatRegistry round-trips a WAV file", "[formats]")
     {
         juce::WavAudioFormat wav;
         std::unique_ptr<juce::OutputStream> out = std::make_unique<juce::MemoryOutputStream> (data, false);
-        auto writer = wav.createWriterFor (out, juce::AudioFormatWriterOptions{}
-                                                    .withSampleRate (44100.0)
-                                                    .withNumChannels (2)
-                                                    .withBitsPerSample (16));
+        auto writer = wav.createWriterFor (
+            out, juce::AudioFormatWriterOptions {}.withSampleRate (44100.0).withNumChannels (2).withBitsPerSample (16));
         REQUIRE (writer != nullptr);
 
         juce::AudioBuffer<float> buffer (2, 441);

@@ -37,10 +37,10 @@ typedef struct anomp_tags
     int disc_total;
     int year;
 
-    double duration;  /**< Seconds, from the file's headers: lossy files can be
-                           off by tens of milliseconds (encoder delay and
-                           padding). The player measures exactly on load. */
-    int sample_rate;  /**< Hz. */
+    double duration; /**< Seconds, from the file's headers: lossy files can be
+                          off by tens of milliseconds (encoder delay and
+                          padding). The player measures exactly on load. */
+    int sample_rate; /**< Hz. */
     int channels;
     int bitrate_kbps; /**< Average or nominal; 0 if unknown. */
 
@@ -169,9 +169,7 @@ anomp_engine* anomp_engine_create(void);
 void anomp_engine_destroy(anomp_engine* engine);
 
 /** Sets (or, with a null callback, clears) the event callback. */
-void anomp_engine_set_event_callback(anomp_engine* engine,
-                                     anomp_event_callback callback,
-                                     void* user_data);
+void anomp_engine_set_event_callback(anomp_engine* engine, anomp_event_callback callback, void* user_data);
 
 /** Opens the default output device. Returns 1 on success, otherwise 0 and
     writes the error message as UTF-8 to `error` (see anomp_engine_device_name

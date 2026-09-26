@@ -15,8 +15,7 @@ namespace anomp
     starts JUCE's message loop integration there, and device-change and
     player notifications are delivered on that thread.
 */
-class AudioEngine final : private juce::ChangeListener,
-                          private juce::Timer
+class AudioEngine final : private juce::ChangeListener, private juce::Timer
 {
 public:
     AudioEngine();

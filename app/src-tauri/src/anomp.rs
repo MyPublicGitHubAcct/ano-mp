@@ -84,7 +84,11 @@ extern "C" {
     ) -> *mut RawTags;
     fn anomp_tags_free(tags: *mut RawTags);
 
-    fn anomp_bookmark_create(path: *const c_char, error: *mut c_char, error_size: usize) -> *mut RawBookmark;
+    fn anomp_bookmark_create(
+        path: *const c_char,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawBookmark;
     fn anomp_bookmark_free(bookmark: *mut RawBookmark);
     fn anomp_folder_access_start(
         bookmark: *const u8,
@@ -198,7 +202,11 @@ pub struct Picture {
 /// called from any thread.
 pub fn read_tags(path: &Path, include_picture: bool) -> Result<Tags, String> {
     let path = path_to_cstring(path)?;
-    let flags = if include_picture { ANOMP_TAGS_PICTURE } else { 0 };
+    let flags = if include_picture {
+        ANOMP_TAGS_PICTURE
+    } else {
+        0
+    };
     let mut raw = std::ptr::null_mut();
     with_error(|error, size| {
         // SAFETY: `path` is a valid C string and the error buffer is supplied
@@ -297,7 +305,9 @@ impl FolderAccess {
         let mut raw = std::ptr::null_mut();
         with_error(|error, size| {
             // SAFETY: the bookmark slice and the error buffer are valid for the call.
-            raw = unsafe { anomp_folder_access_start(bookmark.as_ptr(), bookmark.len(), error, size) };
+            raw = unsafe {
+                anomp_folder_access_start(bookmark.as_ptr(), bookmark.len(), error, size)
+            };
             c_int::from(!raw.is_null())
         })?;
         let raw = NonNull::new(raw).ok_or("Cannot resolve the bookmark")?;
@@ -305,7 +315,9 @@ impl FolderAccess {
         // is stopped, and is copied here.
         let (path, stale) = unsafe {
             (
-                CStr::from_ptr(anomp_folder_access_path(raw.as_ptr())).to_string_lossy().into_owned(),
+                CStr::from_ptr(anomp_folder_access_path(raw.as_ptr()))
+                    .to_string_lossy()
+                    .into_owned(),
                 anomp_folder_access_is_stale(raw.as_ptr()) != 0,
             )
         };
@@ -367,11 +379,16 @@ pub enum Event {
     DeviceChanged,
     StateChanged(PlayerState),
     /// Seconds into the current track, and its length.
-    Position { position: f64, duration: f64 },
+    Position {
+        position: f64,
+        duration: f64,
+    },
     /// The current track played to its end. If `advanced`, the next track
     /// took over gaplessly and the host should set a new next track;
     /// otherwise playback stopped.
-    TrackEnded { advanced: bool },
+    TrackEnded {
+        advanced: bool,
+    },
 }
 
 type EventHandler = Box<dyn FnMut(Event)>;
@@ -495,7 +512,9 @@ impl Engine {
         }
         let mut buffer = vec![0u8; len + 1];
         // SAFETY: the buffer and its length are valid for the call.
-        unsafe { anomp_engine_device_name(self.raw.as_ptr(), buffer.as_mut_ptr().cast(), buffer.len()) };
+        unsafe {
+            anomp_engine_device_name(self.raw.as_ptr(), buffer.as_mut_ptr().cast(), buffer.len())
+        };
         buffer.truncate(len);
         Some(String::from_utf8_lossy(&buffer).into_owned())
     }
@@ -582,7 +601,9 @@ mod tests {
     #[test]
     fn paths_become_c_strings() {
         assert_eq!(
-            path_to_cstring(Path::new("/Music/Café.flac")).unwrap().to_str(),
+            path_to_cstring(Path::new("/Music/Café.flac"))
+                .unwrap()
+                .to_str(),
             Ok("/Music/Café.flac")
         );
         assert!(path_to_cstring(Path::new("/a\0b.flac")).is_err());
@@ -662,9 +683,18 @@ mod tests {
     #[test]
     fn raw_states_map_to_player_states() {
         assert_eq!(PlayerState::from_raw(0), PlayerState::Empty);
-        assert_eq!(PlayerState::from_raw(ANOMP_STATE_STOPPED), PlayerState::Stopped);
-        assert_eq!(PlayerState::from_raw(ANOMP_STATE_PLAYING), PlayerState::Playing);
-        assert_eq!(PlayerState::from_raw(ANOMP_STATE_PAUSED), PlayerState::Paused);
+        assert_eq!(
+            PlayerState::from_raw(ANOMP_STATE_STOPPED),
+            PlayerState::Stopped
+        );
+        assert_eq!(
+            PlayerState::from_raw(ANOMP_STATE_PLAYING),
+            PlayerState::Playing
+        );
+        assert_eq!(
+            PlayerState::from_raw(ANOMP_STATE_PAUSED),
+            PlayerState::Paused
+        );
         assert_eq!(PlayerState::from_raw(99), PlayerState::Empty);
     }
 }

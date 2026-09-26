@@ -115,8 +115,19 @@ pub fn browse(
     }
     let track_offset = offset.saturating_sub(group_total);
     let track_limit = limit - page.groups.len() as u32;
-    if let Some(tracks) = node.tracks.as_ref().filter(|_| track_limit > 0 && track_offset < track_total) {
-        page.tracks = fetch(conn, &params, tracks, track_offset, track_limit, track_from_row)?;
+    if let Some(tracks) = node
+        .tracks
+        .as_ref()
+        .filter(|_| track_limit > 0 && track_offset < track_total)
+    {
+        page.tracks = fetch(
+            conn,
+            &params,
+            tracks,
+            track_offset,
+            track_limit,
+            track_from_row,
+        )?;
     }
     Ok(page)
 }
@@ -173,7 +184,11 @@ const ALBUM_YEARS: &str = "WITH album_years (album_id, year) AS (
 /// `album_years` joined as `ay`.
 const ALBUM_YEAR: &str = "IFNULL(ay.year, t.year)";
 
-fn tag_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) -> Result<Node, Error> {
+fn tag_node(
+    rule: &SortRule,
+    path: &[Option<GroupKey>],
+    params: &mut Params,
+) -> Result<Node, Error> {
     if path.len() > rule.levels.len() {
         return Err(Error::Invalid(format!(
             "The path has {} keys, but sort rule \"{}\" has only {} levels",
@@ -188,7 +203,12 @@ fn tag_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) -> 
         filter.push_str(&level_filter(level, key.as_ref(), params)?);
     }
     let mut from = TRACKS_FROM.to_owned();
-    if rule.levels.iter().take(path.len() + 1).any(|&level| level == Level::Year) {
+    if rule
+        .levels
+        .iter()
+        .take(path.len() + 1)
+        .any(|&level| level == Level::Year)
+    {
         from.push_str(" LEFT JOIN album_years ay ON ay.album_id = t.album_id");
     }
     Ok(match rule.levels.get(path.len()) {
@@ -204,12 +224,18 @@ fn tag_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) -> 
 }
 
 /// A condition for the tracks in the group `key` of `level`.
-fn level_filter(level: Level, key: Option<&GroupKey>, params: &mut Params) -> Result<String, Error> {
+fn level_filter(
+    level: Level,
+    key: Option<&GroupKey>,
+    params: &mut Params,
+) -> Result<String, Error> {
     let value = match (level, key) {
         (_, None) => Value::Null,
         (Level::Genre, Some(GroupKey::Text(genre))) => Value::Text(genre.clone()),
         (Level::Genre, Some(GroupKey::Number(_))) | (_, Some(GroupKey::Text(_))) => {
-            return Err(Error::Invalid(format!("Wrong kind of key for the {level:?} level")));
+            return Err(Error::Invalid(format!(
+                "Wrong kind of key for the {level:?} level"
+            )));
         }
         (_, Some(&GroupKey::Number(number))) => Value::Integer(number),
     };
@@ -315,7 +341,11 @@ fn track_listing(from: &str, filter: &str, order: &[TrackKey]) -> Listing {
 
 /// A node of the folder rule: the library folders, or a folder's
 /// subfolders and then its tracks.
-fn folder_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) -> Result<Node, Error> {
+fn folder_node(
+    rule: &SortRule,
+    path: &[Option<GroupKey>],
+    params: &mut Params,
+) -> Result<Node, Error> {
     let Some((folder, names)) = path.split_first() else {
         return Ok(Node {
             groups: Some(Groups {
@@ -332,7 +362,9 @@ fn folder_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) 
         });
     };
     let Some(GroupKey::Number(folder_id)) = folder else {
-        return Err(Error::Invalid("A folder path starts with a library folder id".into()));
+        return Err(Error::Invalid(
+            "A folder path starts with a library folder id".into(),
+        ));
     };
     let mut prefix = String::new();
     for name in names {
@@ -341,7 +373,11 @@ fn folder_node(rule: &SortRule, path: &[Option<GroupKey>], params: &mut Params) 
                 prefix.push_str(name);
                 prefix.push('/');
             }
-            _ => return Err(Error::Invalid("Folder names in a path must be text without '/'".into())),
+            _ => {
+                return Err(Error::Invalid(
+                    "Folder names in a path must be text without '/'".into(),
+                ))
+            }
         }
     }
 
@@ -439,7 +475,10 @@ fn query<T>(
         let value = params
             .0
             .get(index - 1)
-            .ok_or(rusqlite::Error::InvalidParameterCount(params.0.len(), index))?;
+            .ok_or(rusqlite::Error::InvalidParameterCount(
+                params.0.len(),
+                index,
+            ))?;
         statement.raw_bind_parameter(index, value)?;
     }
     let mut rows = statement.raw_query();
@@ -482,28 +521,52 @@ mod tests {
 
     impl Track {
         fn title(self, title: &str) -> Self {
-            Track { title: Some(title.into()), ..self }
+            Track {
+                title: Some(title.into()),
+                ..self
+            }
         }
         fn artist(self, artist: &str) -> Self {
-            Track { artist: Some(artist.into()), ..self }
+            Track {
+                artist: Some(artist.into()),
+                ..self
+            }
         }
         fn album_artist(self, album_artist: &str) -> Self {
-            Track { album_artist: Some(album_artist.into()), ..self }
+            Track {
+                album_artist: Some(album_artist.into()),
+                ..self
+            }
         }
         fn album(self, album: &str) -> Self {
-            Track { album: Some(album.into()), ..self }
+            Track {
+                album: Some(album.into()),
+                ..self
+            }
         }
         fn genre(self, genre: &str) -> Self {
-            Track { genre: Some(genre.into()), ..self }
+            Track {
+                genre: Some(genre.into()),
+                ..self
+            }
         }
         fn year(self, year: u32) -> Self {
-            Track { year: Some(year), ..self }
+            Track {
+                year: Some(year),
+                ..self
+            }
         }
         fn disc(self, disc: u32) -> Self {
-            Track { disc: Some(disc), ..self }
+            Track {
+                disc: Some(disc),
+                ..self
+            }
         }
         fn number(self, number: u32) -> Self {
-            Track { number: Some(number), ..self }
+            Track {
+                number: Some(number),
+                ..self
+            }
         }
     }
 
@@ -528,7 +591,10 @@ mod tests {
 
         fn add_folder(&self, path: &str) -> i64 {
             self.conn
-                .execute("INSERT INTO folders (path, added_at) VALUES (?1, 0)", [path])
+                .execute(
+                    "INSERT INTO folders (path, added_at) VALUES (?1, 0)",
+                    [path],
+                )
                 .unwrap();
             self.conn.last_insert_rowid()
         }
@@ -590,7 +656,12 @@ mod tests {
             self.page_with(rule, &["The".into(), "A".into()], path)
         }
 
-        fn page_with(&self, rule: &SortRule, articles: &[String], path: &[Option<GroupKey>]) -> BrowsePage {
+        fn page_with(
+            &self,
+            rule: &SortRule,
+            articles: &[String],
+            path: &[Option<GroupKey>],
+        ) -> BrowsePage {
             let page = browse(&self.conn, rule, articles, path, 0, MAX_PAGE_SIZE).unwrap();
             assert_eq!(page.total as usize, page.groups.len() + page.tracks.len());
             page
@@ -614,7 +685,10 @@ mod tests {
         fn key(&self, rule: &SortRule, path: &[Option<GroupKey>], name: &str) -> Option<GroupKey> {
             let groups = self.groups(rule, path);
             let group = groups.iter().find(|group| group.name == name);
-            group.unwrap_or_else(|| panic!("no group {name} in {groups:?}")).key.clone()
+            group
+                .unwrap_or_else(|| panic!("no group {name} in {groups:?}"))
+                .key
+                .clone()
         }
 
         fn titles(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> Vec<String> {
@@ -628,14 +702,21 @@ mod tests {
             .iter()
             .map(|track| {
                 track.title.clone().unwrap_or_else(|| {
-                    Path::new(&track.path).file_name().unwrap().to_string_lossy().into_owned()
+                    Path::new(&track.path)
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned()
                 })
             })
             .collect()
     }
 
     fn rule(id: &str) -> SortRule {
-        default_rules().into_iter().find(|rule| rule.id == id).unwrap()
+        default_rules()
+            .into_iter()
+            .find(|rule| rule.id == id)
+            .unwrap()
     }
 
     fn songs_rule(order: &[TrackKey]) -> SortRule {
@@ -648,7 +729,10 @@ mod tests {
     }
 
     fn named(names: &[(&str, u32)]) -> Vec<(String, u32)> {
-        names.iter().map(|&(name, count)| (name.to_owned(), count)).collect()
+        names
+            .iter()
+            .map(|&(name, count)| (name.to_owned(), count))
+            .collect()
     }
 
     fn text(key: &str) -> Option<GroupKey> {
@@ -666,7 +750,13 @@ mod tests {
             album("a/4.flac").title("Opening").number(1),
             album("a/5.flac").title("Bonus").disc(2),
             album("a/6.flac").title("Hidden").disc(1),
-            track("b/1.flac").title("Guest spot").artist("Singer").album_artist("Band").album("Album").disc(2).number(2),
+            track("b/1.flac")
+                .title("Guest spot")
+                .artist("Singer")
+                .album_artist("Band")
+                .album("Album")
+                .disc(2)
+                .number(2),
         ]);
         let rule = rule("album-artist");
 
@@ -674,14 +764,25 @@ mod tests {
         let band = library.key(&rule, &[], "Band");
         let albums = library.groups(&rule, std::slice::from_ref(&band));
         assert_eq!(albums.len(), 1);
-        assert_eq!((albums[0].name.as_str(), albums[0].track_count), ("Album", 7));
+        assert_eq!(
+            (albums[0].name.as_str(), albums[0].track_count),
+            ("Album", 7)
+        );
         assert_eq!(albums[0].album_artist.as_deref(), Some("Band"));
 
         let page = library.page(&rule, &[band, albums[0].key.clone()]);
         assert!(page.groups.is_empty());
         assert_eq!(
             titles(&page.tracks),
-            ["Opening", "Second", "Middle", "Hidden", "Encore", "Guest spot", "Bonus"]
+            [
+                "Opening",
+                "Second",
+                "Middle",
+                "Hidden",
+                "Encore",
+                "Guest spot",
+                "Bonus"
+            ]
         );
         assert_eq!(page.tracks[5].artist.as_deref(), Some("Singer"));
         assert_eq!(page.tracks[5].album_artist.as_deref(), Some("Band"));
@@ -690,10 +791,20 @@ mod tests {
     #[test]
     fn missing_values_sort_last() {
         let library = Library::new([
-            track("z.flac").title("Zebra").artist("Zed").album("Zulu").genre("Zouk").year(2000),
+            track("z.flac")
+                .title("Zebra")
+                .artist("Zed")
+                .album("Zulu")
+                .genre("Zouk")
+                .year(2000),
             track("untitled 2.flac"),
             track("untitled 10.flac"),
-            track("a.flac").title("Aardvark").artist("Abe").album("Alpha").genre("Ambient").year(1990),
+            track("a.flac")
+                .title("Aardvark")
+                .artist("Abe")
+                .album("Alpha")
+                .genre("Ambient")
+                .year(1990),
             track("b.flac").title("Bee").artist("Abe"),
         ]);
 
@@ -708,7 +819,10 @@ mod tests {
             library.names(&by_artist, &[abe]),
             named(&[("Alpha", 1), ("Unknown album", 1)])
         );
-        assert_eq!(library.names(&by_artist, &[None]), named(&[("Unknown album", 2)]));
+        assert_eq!(
+            library.names(&by_artist, &[None]),
+            named(&[("Unknown album", 2)])
+        );
         assert_eq!(
             library.titles(&by_artist, &[None, None]),
             ["untitled 2.flac", "untitled 10.flac"]
@@ -725,7 +839,13 @@ mod tests {
         let songs = songs_rule(&[TrackKey::Title, TrackKey::Path]);
         assert_eq!(
             library.titles(&songs, &[]),
-            ["Aardvark", "Bee", "Zebra", "untitled 2.flac", "untitled 10.flac"]
+            [
+                "Aardvark",
+                "Bee",
+                "Zebra",
+                "untitled 2.flac",
+                "untitled 10.flac"
+            ]
         );
         let by_year = songs_rule(&[TrackKey::Year, TrackKey::Title]);
         assert_eq!(library.titles(&by_year, &[])[..2], ["Aardvark", "Zebra"]);
@@ -766,44 +886,75 @@ mod tests {
             library.names(&genre, &[]),
             named(&[("electro", 2), ("Rock", 1), ("Unknown genre", 6)])
         );
-        assert_eq!(library.names(&genre, &[text("ÉLECTRO")]), named(&[("Unknown artist", 2)]));
+        assert_eq!(
+            library.names(&genre, &[text("ÉLECTRO")]),
+            named(&[("Unknown artist", 2)])
+        );
     }
 
     #[test]
     fn ignores_leading_articles_when_sorting() {
         let library = Library::new(
-            ["The Beatles", "Beach Boys", "A Tribe Called Quest", "Abba", "The The"]
-                .into_iter()
-                .map(|artist| track(&format!("{artist}.flac")).artist(artist))
-                .chain([
-                    track("w.flac").artist("Beach Boys").album("The White Album"),
-                    track("r.flac").artist("Beach Boys").album("Abbey Road"),
-                    track("l.flac").artist("Beach Boys").album("Let It Be"),
-                ]),
+            [
+                "The Beatles",
+                "Beach Boys",
+                "A Tribe Called Quest",
+                "Abba",
+                "The The",
+            ]
+            .into_iter()
+            .map(|artist| track(&format!("{artist}.flac")).artist(artist))
+            .chain([
+                track("w.flac")
+                    .artist("Beach Boys")
+                    .album("The White Album"),
+                track("r.flac").artist("Beach Boys").album("Abbey Road"),
+                track("l.flac").artist("Beach Boys").album("Let It Be"),
+            ]),
         );
         let rule = rule("album-artist");
         let names = |articles: &[&str]| -> Vec<String> {
-            let articles: Vec<String> = articles.iter().map(|article| article.to_string()).collect();
+            let articles: Vec<String> =
+                articles.iter().map(|article| article.to_string()).collect();
             let page = library.page_with(&rule, &articles, &[]);
             page.groups.into_iter().map(|group| group.name).collect()
         };
         assert_eq!(
             names(&["The", "A"]),
-            ["Abba", "Beach Boys", "The Beatles", "The The", "A Tribe Called Quest"]
+            [
+                "Abba",
+                "Beach Boys",
+                "The Beatles",
+                "The The",
+                "A Tribe Called Quest"
+            ]
         );
         assert_eq!(
             names(&[]),
-            ["A Tribe Called Quest", "Abba", "Beach Boys", "The Beatles", "The The"]
+            [
+                "A Tribe Called Quest",
+                "Abba",
+                "Beach Boys",
+                "The Beatles",
+                "The The"
+            ]
         );
         let beach_boys = library.key(&rule, &[], "Beach Boys");
         assert_eq!(
             library.names(&rule, &[beach_boys]),
-            named(&[("Abbey Road", 1), ("Let It Be", 1), ("The White Album", 1), ("Unknown album", 1)])
+            named(&[
+                ("Abbey Road", 1),
+                ("Let It Be", 1),
+                ("The White Album", 1),
+                ("Unknown album", 1)
+            ])
         );
 
         // `browse_rule` takes the articles from the settings.
         let first = |conn: &Connection| {
-            browse_rule(conn, "album-artist", &[], 0, 1).unwrap().groups[0].name.clone()
+            browse_rule(conn, "album-artist", &[], 0, 1).unwrap().groups[0]
+                .name
+                .clone()
         };
         assert_eq!(first(&library.conn), "Abba");
         set_ignored_articles(&library.conn, Vec::new()).unwrap();
@@ -824,16 +975,29 @@ mod tests {
         let folder = rule("folder");
         let music = Some(GroupKey::Number(library.folder_id));
         let page = library.page(&folder, &[music]);
-        let groups: Vec<_> = page.groups.iter().map(|group| group.name.as_str()).collect();
+        let groups: Vec<_> = page
+            .groups
+            .iter()
+            .map(|group| group.name.as_str())
+            .collect();
         assert_eq!(groups, ["Disc 2", "Disc 10"]);
         assert_eq!(
             titles(&page.tracks),
-            ["Track 1.flac", "track 2.flac", "Track 10.flac", "v9.flac", "v10.flac"]
+            [
+                "Track 1.flac",
+                "track 2.flac",
+                "Track 10.flac",
+                "v9.flac",
+                "v10.flac"
+            ]
         );
 
         let by_artist = rule("album-artist");
         let band = library.key(&by_artist, &[], "Band");
-        assert_eq!(library.names(&by_artist, &[band]), named(&[("Vol. 9", 1), ("Vol. 10", 1)]));
+        assert_eq!(
+            library.names(&by_artist, &[band]),
+            named(&[("Vol. 9", 1), ("Vol. 10", 1)])
+        );
     }
 
     #[test]
@@ -857,7 +1021,10 @@ mod tests {
         let rule = rule("folder");
 
         let roots = library.groups(&rule, &[]);
-        let roots: Vec<_> = roots.iter().map(|g| (g.name.as_str(), g.track_count, g.key.clone())).collect();
+        let roots: Vec<_> = roots
+            .iter()
+            .map(|g| (g.name.as_str(), g.track_count, g.key.clone()))
+            .collect();
         assert_eq!(
             roots,
             [
@@ -880,10 +1047,19 @@ mod tests {
         };
         assert_eq!(
             at(&[]),
-            (named(&[("Rock", 4), ("Rock (live)", 1), ("Rocks", 1), ("東京", 1)]), vec!["top.flac".into()])
+            (
+                named(&[("Rock", 4), ("Rock (live)", 1), ("Rocks", 1), ("東京", 1)]),
+                vec!["top.flac".into()]
+            )
         );
-        assert_eq!(at(&["Rock"]), (named(&[("Band", 3)]), vec!["loose.flac".into()]));
-        assert_eq!(at(&["Rock", "Band"]), (named(&[("Album", 2)]), vec!["single.flac".into()]));
+        assert_eq!(
+            at(&["Rock"]),
+            (named(&[("Band", 3)]), vec!["loose.flac".into()])
+        );
+        assert_eq!(
+            at(&["Rock", "Band"]),
+            (named(&[("Album", 2)]), vec!["single.flac".into()])
+        );
         assert_eq!(
             at(&["Rock", "Band", "Album"]),
             (vec![], vec!["01.flac".into(), "02.flac".into()])
@@ -911,7 +1087,11 @@ mod tests {
             named(&[("Jazz", 1), ("Pop", 2), ("Rock", 3), ("Unknown genre", 2)])
         );
         let artists = |genre: Option<GroupKey>| -> Vec<String> {
-            library.groups(&rule, &[genre]).into_iter().map(|group| group.name).collect()
+            library
+                .groups(&rule, &[genre])
+                .into_iter()
+                .map(|group| group.name)
+                .collect()
         };
         assert_eq!(artists(text("Rock")), ["A", "B", "F"]);
         assert_eq!(artists(text("rock")), ["A", "B", "F"]);
@@ -940,12 +1120,20 @@ mod tests {
             library.names(&rule, &[]),
             named(&[("1997", 3), ("1999", 1), ("2003", 1), ("Unknown year", 1)])
         );
-        assert_eq!(library.key(&rule, &[], "1997"), Some(GroupKey::Number(1997)));
+        assert_eq!(
+            library.key(&rule, &[], "1997"),
+            Some(GroupKey::Number(1997))
+        );
 
         let albums = library.groups(&rule, &[Some(GroupKey::Number(1997))]);
         assert_eq!(albums.len(), 1);
         assert_eq!(
-            (albums[0].name.as_str(), albums[0].track_count, albums[0].year, albums[0].album_artist.as_deref()),
+            (
+                albums[0].name.as_str(),
+                albums[0].track_count,
+                albums[0].year,
+                albums[0].album_artist.as_deref()
+            ),
             ("Reissue", 3, Some(1997), Some("A"))
         );
         let reissue = albums[0].key.clone();
@@ -958,7 +1146,10 @@ mod tests {
             named(&[("Unknown album", 1)])
         );
         let undated = library.groups(&rule, &[None]);
-        assert_eq!((undated[0].name.as_str(), undated[0].year), ("Undated", None));
+        assert_eq!(
+            (undated[0].name.as_str(), undated[0].year),
+            ("Undated", None)
+        );
     }
 
     /// Every item of a node, read `limit` at a time: (group names, track ids).
@@ -990,7 +1181,10 @@ mod tests {
     fn pages_neither_repeat_nor_skip() {
         // Many ties (same artist and title), so order rests on the tie-breaks.
         let library = Library::new((0..45).map(|index| {
-            let track = track(&format!("{}/{index}.flac", ["Rock", "Jazz", "Pop"][index % 3]));
+            let track = track(&format!(
+                "{}/{index}.flac",
+                ["Rock", "Jazz", "Pop"][index % 3]
+            ));
             match index % 4 {
                 0 => track,
                 1 => track.artist("Same").title("Same"),
@@ -1006,7 +1200,11 @@ mod tests {
         assert_eq!(all.len(), 47);
         assert_eq!(all.iter().collect::<HashSet<_>>().len(), 47, "no repeats");
         for limit in [1, 7, 46, 47, 48] {
-            assert_eq!(read_in_pages(&library, &songs, &[], limit).1, all, "limit {limit}");
+            assert_eq!(
+                read_in_pages(&library, &songs, &[], limit).1,
+                all,
+                "limit {limit}"
+            );
         }
 
         let by_artist = rule("album-artist");
@@ -1019,7 +1217,10 @@ mod tests {
         assert_eq!(everything.0, ["Jazz", "Pop", "Rock"]);
         assert_eq!(everything.1.len(), 2);
         for limit in [1, 2, 3, 4] {
-            assert_eq!(read_in_pages(&library, &rule("folder"), &music, limit), everything);
+            assert_eq!(
+                read_in_pages(&library, &rule("folder"), &music, limit),
+                everything
+            );
         }
 
         let past_the_end = browse(&library.conn, &songs, &[], &[], 100, 10).unwrap();
@@ -1032,7 +1233,9 @@ mod tests {
     fn refuses_bad_paths_and_rules() {
         let library = Library::new([track("a.flac").artist("A").genre("Rock")]);
         let error = |rule: &SortRule, path: &[Option<GroupKey>]| {
-            browse(&library.conn, rule, &[], path, 0, 10).unwrap_err().to_string()
+            browse(&library.conn, rule, &[], path, 0, 10)
+                .unwrap_err()
+                .to_string()
         };
         let number = Some(GroupKey::Number(1));
         let by_artist = rule("album-artist");
@@ -1051,7 +1254,15 @@ mod tests {
         let unknown = browse_rule(&library.conn, "nope", &[], 0, 10).unwrap_err();
         assert!(unknown.to_string().contains("No sort rule"), "{unknown}");
         // A key that matches nothing is just an empty node.
-        let page = browse(&library.conn, &by_artist, &[], &[Some(GroupKey::Number(999))], 0, 10).unwrap();
+        let page = browse(
+            &library.conn,
+            &by_artist,
+            &[],
+            &[Some(GroupKey::Number(999))],
+            0,
+            10,
+        )
+        .unwrap();
         assert_eq!(page.total, 0);
     }
 }

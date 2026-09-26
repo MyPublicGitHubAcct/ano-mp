@@ -16,10 +16,7 @@
 
 namespace
 {
-juce::File fixtureFile (const char* name)
-{
-    return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name);
-}
+juce::File fixtureFile (const char* name) { return juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile (name); }
 
 struct TagsDeleter
 {
@@ -48,8 +45,7 @@ std::string readError (const char* path)
 
 bool isPng (const anomp_tags& tags)
 {
-    return tags.picture != nullptr && tags.picture_size >= 8
-           && std::memcmp (tags.picture, "\x89PNG\r\n\x1a\n", 8) == 0;
+    return tags.picture != nullptr && tags.picture_size >= 8 && std::memcmp (tags.picture, "\x89PNG\r\n\x1a\n", 8) == 0;
 }
 
 // Must match scripts/make-test-fixtures.py.
@@ -59,8 +55,7 @@ constexpr auto fixtureSeconds = 22371 / 44100.0;
 /** A copy of a fixture in the temp directory, deleted afterwards. */
 struct TempCopy
 {
-    explicit TempCopy (const char* fixture)
-        : temp ("." + fixtureFile (fixture).getFileExtension().substring (1))
+    explicit TempCopy (const char* fixture) : temp ("." + fixtureFile (fixture).getFileExtension().substring (1))
     {
         REQUIRE (fixtureFile (fixture).copyFileTo (temp.getFile()));
     }
@@ -257,13 +252,13 @@ TEST_CASE ("Tags round-trip through every format", "[tags]")
 
         // A back cover first, so the reader must pick the front one.
         ref.setComplexProperties ("PICTURE", {
-            { { "data", fakeImage ("\xff\xd8\xff", 3, 100) },
-              { "mimeType", TagLib::String ("image/jpeg") },
-              { "pictureType", TagLib::String ("Back Cover") } },
-            { { "data", fakeImage ("\x89PNG\r\n\x1a\n", 8, 200) },
-              { "mimeType", TagLib::String ("image/png") },
-              { "pictureType", TagLib::String ("Front Cover") } },
-        });
+                                                 { { "data", fakeImage ("\xff\xd8\xff", 3, 100) },
+                                                   { "mimeType", TagLib::String ("image/jpeg") },
+                                                   { "pictureType", TagLib::String ("Back Cover") } },
+                                                 { { "data", fakeImage ("\x89PNG\r\n\x1a\n", 8, 200) },
+                                                   { "mimeType", TagLib::String ("image/png") },
+                                                   { "pictureType", TagLib::String ("Front Cover") } },
+                                             });
         REQUIRE (ref.save());
     }
 

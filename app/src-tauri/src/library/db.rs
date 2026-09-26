@@ -65,7 +65,9 @@ mod tests {
     use super::*;
 
     fn user_version(conn: &Connection) -> usize {
-        let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
         version as usize
     }
 
@@ -80,7 +82,10 @@ mod tests {
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(tables, ["albums", "artists", "folders", "mb_cache", "settings", "tracks"]);
+        assert_eq!(
+            tables,
+            ["albums", "artists", "folders", "mb_cache", "settings", "tracks"]
+        );
     }
 
     #[test]
@@ -89,8 +94,11 @@ mod tests {
         let path = dir.path().join("library.sqlite3");
         {
             let conn = open(&path).unwrap();
-            conn.execute("INSERT INTO settings (key, value) VALUES ('volume', '0.5')", [])
-                .unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('volume', '0.5')",
+                [],
+            )
+            .unwrap();
         }
         let conn = open(&path).unwrap();
         assert_eq!(user_version(&conn), MIGRATIONS.len());
@@ -99,7 +107,11 @@ mod tests {
             .unwrap();
         assert_eq!(journal, "wal");
         let volume: String = conn
-            .query_row("SELECT value FROM settings WHERE key = 'volume'", [], |row| row.get(0))
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'volume'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(volume, "0.5");
     }

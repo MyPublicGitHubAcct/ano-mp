@@ -8,10 +8,7 @@
 
 namespace
 {
-std::string fixturePath (const char* name)
-{
-    return std::string (ANOMP_TEST_FIXTURES_DIR) + "/" + name;
-}
+std::string fixturePath (const char* name) { return std::string (ANOMP_TEST_FIXTURES_DIR) + "/" + name; }
 } // namespace
 
 TEST_CASE ("C API reports a version", "[c-api]")

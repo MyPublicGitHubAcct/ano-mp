@@ -76,7 +76,10 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
 /// the library, so no file is listed twice.
 pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     if !path.is_absolute() {
-        return Err(Error::Invalid(format!("Path is not absolute: {}", path.display())));
+        return Err(Error::Invalid(format!(
+            "Path is not absolute: {}",
+            path.display()
+        )));
     }
     let path = std::fs::canonicalize(path)
         .map_err(|error| Error::Invalid(format!("Cannot open {}: {error}", path.display())))?;
@@ -110,7 +113,11 @@ fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<
             return Err(Error::Invalid(if path == other {
                 format!("{} is already in the library", path.display())
             } else {
-                format!("{} overlaps the library folder {}", path.display(), existing.path)
+                format!(
+                    "{} overlaps the library folder {}",
+                    path.display(),
+                    existing.path
+                )
             }));
         }
     }
@@ -121,7 +128,9 @@ fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<
 pub fn remove_folder(conn: &mut Connection, folder_id: i64) -> Result<(), Error> {
     let tx = conn.transaction()?;
     if tx.execute("DELETE FROM folders WHERE id = ?1", [folder_id])? == 0 {
-        return Err(Error::Invalid(format!("No library folder with id {folder_id}")));
+        return Err(Error::Invalid(format!(
+            "No library folder with id {folder_id}"
+        )));
     }
     remove_orphans(&tx)?;
     tx.commit()?;
@@ -226,7 +235,10 @@ mod tests {
 
         let folder = add_folder(&conn, &music).unwrap();
         // canonicalize resolves e.g. macOS's /var -> /private/var.
-        assert_eq!(Path::new(&folder.path), std::fs::canonicalize(&music).unwrap());
+        assert_eq!(
+            Path::new(&folder.path),
+            std::fs::canonicalize(&music).unwrap()
+        );
         assert_eq!(folders(&conn).unwrap(), [folder]);
     }
 
@@ -255,7 +267,9 @@ mod tests {
     #[test]
     fn joins_relative_paths_with_native_separators() {
         let path = track_path(Path::new("/Music"), "Artist/Album/01 Song.flac");
-        let expected: PathBuf = ["/Music", "Artist", "Album", "01 Song.flac"].iter().collect();
+        let expected: PathBuf = ["/Music", "Artist", "Album", "01 Song.flac"]
+            .iter()
+            .collect();
         assert_eq!(path, expected);
     }
 }

@@ -6,7 +6,7 @@ namespace
 {
 constexpr float testToneAmplitude = 0.1f;
 constexpr int playerEventIntervalMs = 50;
-}
+} // namespace
 
 AudioEngine::AudioEngine()
 {
@@ -63,10 +63,7 @@ bool AudioEngine::playTestTone (double frequencyHz)
     return true;
 }
 
-void AudioEngine::stopTestTone()
-{
-    sourcePlayer.setSource (&playerEngine);
-}
+void AudioEngine::stopTestTone() { sourcePlayer.setSource (&playerEngine); }
 
 void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
 {
@@ -74,8 +71,5 @@ void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
         onDeviceChanged();
 }
 
-void AudioEngine::timerCallback()
-{
-    playerEngine.dispatchEvents();
-}
+void AudioEngine::timerCallback() { playerEngine.dispatchEvents(); }
 } // namespace anomp
