@@ -3,9 +3,18 @@
   // artists, albums, subfolders…) and/or its tracks, fetched a page at a
   // time as they scroll into view. Click or Enter opens a group; double-click
   // or Enter plays the node's tracks from a track; right-click or the ⋯
-  // button offers play next and add to queue.
+  // button offers play next and add to queue, and the artist's page. Inside
+  // an artist, the header links to their page.
   import { untrack } from "svelte";
-  import { library as api, queue, type AlbumOrder, type BrowsePath, type Group, type Track } from "$lib/api";
+  import {
+    library as api,
+    queue,
+    type AlbumOrder,
+    type BrowsePath,
+    type Group,
+    type Level,
+    type Track,
+  } from "$lib/api";
   import { fileName, formatTime, plural } from "$lib/format";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
@@ -30,6 +39,21 @@
   const albums = $derived(library.level === "album");
   const rowHeight = $derived(albums ? 60 : 40);
   const title = $derived(library.crumbs.at(-1)?.name ?? library.rule?.name ?? "Library");
+
+  const isArtistLevel = (level: Level | undefined | null) => level === "albumArtist" || level === "artist";
+
+  /** The artist whose node this is, if it is one. */
+  const nodeArtist = $derived.by(() => {
+    const depth = library.crumbs.length - 1;
+    const crumb = library.crumbs[depth];
+    return crumb && typeof crumb.key === "number" && isArtistLevel(library.rule?.levels[depth])
+      ? { id: crumb.key, name: crumb.name }
+      : null;
+  });
+
+  function showArtist(artist: { id: number; name: string }) {
+    ui.showArtist(artist);
+  }
 
   // A new node, or a changed library (or the rules arriving): start over.
   $effect(() => {
@@ -97,19 +121,30 @@
 
   function menuFor(entry: Entry): MenuItem[] {
     if (entry.kind === "group") {
-      const path = groupPath(entry.group);
-      return [
-        { label: "Play", action: () => playGroup(entry.group) },
+      const group = entry.group;
+      const path = groupPath(group);
+      const items: MenuItem[] = [
+        { label: "Play", action: () => playGroup(group) },
         { label: "Play next", action: () => attempt(() => queue.addNode(library.ruleId, path, true, true)) },
         { label: "Add to queue", action: () => attempt(() => queue.addNode(library.ruleId, path, true, false)) },
       ];
+      if (isArtistLevel(library.level) && typeof group.key === "number") {
+        const artist = { id: group.key, name: group.name };
+        items.push({ label: "Go to artist", action: () => showArtist(artist) });
+      }
+      return items;
     }
-    const id = entry.track.id;
-    return [
-      { label: "Play from here", action: () => playTrack(entry.track) },
-      { label: "Play next", action: () => attempt(() => queue.add([id], true)) },
-      { label: "Add to queue", action: () => attempt(() => queue.add([id], false)) },
+    const track = entry.track;
+    const items: MenuItem[] = [
+      { label: "Play from here", action: () => playTrack(track) },
+      { label: "Play next", action: () => attempt(() => queue.add([track.id], true)) },
+      { label: "Add to queue", action: () => attempt(() => queue.add([track.id], false)) },
     ];
+    if (track.artistId !== null && track.artist !== null) {
+      const artist = { id: track.artistId, name: track.artist };
+      items.push({ label: "Go to artist", action: () => showArtist(artist) });
+    }
+    return items;
   }
 
   function showMenu(index: number, event: MouseEvent) {
@@ -143,6 +178,10 @@
             <option value="year">Year</option>
           </select>
         </label>
+      {/if}
+      {#if nodeArtist}
+        {@const artist = nodeArtist}
+        <button title="About {artist.name}" onclick={() => showArtist(artist)}><Icon name="person" /> Artist</button>
       {/if}
       <button class="primary" onclick={playAll} disabled={total === 0}><Icon name="play" /> Play</button>
       <button onclick={shuffleAll} disabled={total === 0}><Icon name="shuffle" /> Shuffle</button>

@@ -4,17 +4,20 @@
 //!
 //! A job is an album to match on MusicBrainz (`Job::Match`, followed by its
 //! cover when one is wanted) or whose cover to fetch from the Cover Art
-//! Archive (`Job::Cover`). Jobs wait in `Jobs` by priority: what the user
-//! asked for, then the album playing, then background enrichment, in the
-//! order they came within each. A job is queued once; asking for it again at
-//! a higher priority moves it forward.
+//! Archive (`Job::Cover`), or an artist to match on MusicBrainz
+//! (`Job::Artist`, followed by its biography) or whose biography to fetch
+//! from Wikipedia (`Job::Biography`). Jobs wait in `Jobs` by priority: what
+//! the user asked for, then the artist page being looked at, then the album
+//! playing, then background enrichment, in the order they came within each.
+//! A job is queued once; asking for it again at a higher priority moves it
+//! forward.
 //!
 //! Whether a job is still needed, and whether its source may be used, is
 //! decided when it runs, from the settings and the database as they are
-//! then. Automatic jobs (the album playing, background enrichment) run only
-//! while "match automatically" is on, and follow the skip rules in
-//! `needs_match` and `needs_cover`; a user's request skips the waits in
-//! those rules.
+//! then. Automatic jobs (all but the user's requests) run only while "match
+//! automatically" is on, and follow the skip rules in
+//! `needs_match`, `needs_cover`, `needs_artist_match` and
+//! `needs_biography`; a user's request skips the waits in those rules.
 //!
 //! Offline: `http::Client` backs off from a host it couldn't reach.
 //! Automatic jobs for that host stay queued meanwhile, and `Worker::step`
@@ -23,7 +26,7 @@
 //! `Error::Offline` while its host is backing off.
 //!
 //! Events go through `Host`: art changes at once (to drop cached art), and
-//! the albums changed in batches at most a second apart, so a long run
+//! the albums and artists changed in batches at most a second apart, so a long run
 //! doesn't flood the UI, with progress at most four times a second.
 
 use std::cmp::Reverse;
@@ -35,20 +38,22 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 use super::albums::{self, LinkStatus};
+use super::artists;
 use super::cache::unix_now;
 use super::coverartarchive::{self, Fetched};
 use super::http::{Client, Clock};
 use super::images::ImageCache;
 use super::musicbrainz;
 use super::settings::{self, Kind, ServiceSettings, SourceId};
+use super::wikipedia;
 use super::Error;
 
 /// Seconds after which a search that found nothing, or only a doubtful
 /// candidate, is tried again (PLAN.md Phase 4); likewise a cover the archive
-/// didn't have.
+/// didn't have, and a biography that wasn't found.
 pub const RETRY_AFTER: i64 = 30 * 86400;
 
-/// Albums changed are reported at most this often.
+/// Albums and artists changed are reported at most this often.
 const BATCH_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Progress is reported at most this often, besides pausing and going idle.
@@ -61,20 +66,34 @@ pub enum Job {
     Match(i64),
     /// Fetch the album's cover from the Cover Art Archive if it needs it.
     Cover(i64),
+    /// Match the artist on MusicBrainz if it needs it, then fetch its
+    /// biography if that's wanted.
+    Artist(i64),
+    /// Fetch the artist's biography from Wikipedia if it needs it.
+    Biography(i64),
+}
+
+/// What a job is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Subject {
+    Album(i64),
+    Artist(i64),
 }
 
 impl Job {
-    pub fn album_id(self) -> i64 {
+    pub fn subject(self) -> Subject {
         match self {
-            Job::Match(id) | Job::Cover(id) => id,
+            Job::Match(id) | Job::Cover(id) => Subject::Album(id),
+            Job::Artist(id) | Job::Biography(id) => Subject::Artist(id),
         }
     }
 
-    /// The host the job talks to, for pausing while it's unreachable.
-    fn host(self) -> &'static str {
+    /// The hosts the job talks to, for pausing while one is unreachable.
+    fn hosts(self) -> &'static [&'static str] {
         match self {
-            Job::Match(_) => musicbrainz::HOST,
-            Job::Cover(_) => coverartarchive::HOST,
+            Job::Match(_) | Job::Artist(_) => &[musicbrainz::HOST],
+            Job::Cover(_) => &[coverartarchive::HOST],
+            Job::Biography(_) => &[wikipedia::WIKIDATA_HOST, wikipedia::HOST],
         }
     }
 }
@@ -85,6 +104,9 @@ pub enum Priority {
     Background,
     /// The album playing; automatic, like background work.
     Playing,
+    /// The artist page the user is looking at; automatic too, but the
+    /// page is waiting for it.
+    Viewing,
     /// Asked for by the user, who waits for the answer.
     User,
 }
@@ -110,10 +132,11 @@ pub struct Jobs {
     order: BTreeSet<(Reverse<Priority>, i64, Job)>,
     back: i64,
     front: i64,
-    /// Albums with queued jobs, and how many.
-    pending: HashMap<i64, usize>,
-    /// Albums queued since the queue was last idle, for progress.
-    seen: HashSet<i64>,
+    /// Albums and artists with queued jobs, and how many.
+    pending: HashMap<Subject, usize>,
+    /// Albums and artists queued since the queue was last idle, for
+    /// progress.
+    seen: HashSet<Subject>,
 }
 
 impl Jobs {
@@ -138,7 +161,7 @@ impl Jobs {
             self.back += 1;
             self.back
         };
-        self.seen.insert(job.album_id());
+        self.seen.insert(job.subject());
         if let Some(queued) = self.entries.get_mut(&job) {
             queued.automatic = queued.automatic.max(entry.automatic);
             queued.replies.append(&mut entry.replies);
@@ -153,7 +176,7 @@ impl Jobs {
         }
         entry.seq = seq;
         self.order.insert((Reverse(entry.priority), seq, job));
-        *self.pending.entry(job.album_id()).or_default() += 1;
+        *self.pending.entry(job.subject()).or_default() += 1;
         self.entries.insert(job, entry);
     }
 
@@ -166,10 +189,10 @@ impl Jobs {
         self.order.remove(&key);
         let job = key.2;
         let entry = self.entries.remove(&job)?;
-        if let Some(count) = self.pending.get_mut(&job.album_id()) {
+        if let Some(count) = self.pending.get_mut(&job.subject()) {
             *count -= 1;
             if *count == 0 {
-                self.pending.remove(&job.album_id());
+                self.pending.remove(&job.subject());
             }
         }
         Some((job, entry))
@@ -181,12 +204,15 @@ impl Jobs {
 
     /// The hosts that queued jobs talk to.
     fn hosts(&self) -> HashSet<&'static str> {
-        self.entries.keys().map(|job| job.host()).collect()
+        self.entries
+            .keys()
+            .flat_map(|job| job.hosts().iter().copied())
+            .collect()
     }
 
-    /// Albums finished and albums in all since the queue was last idle, with
-    /// album `running` being worked on.
-    fn counts(&self, running: Option<i64>) -> (usize, usize) {
+    /// Albums and artists finished, and in all, since the queue was last
+    /// idle, with `running` being worked on.
+    fn counts(&self, running: Option<Subject>) -> (usize, usize) {
         let total = self.seen.len();
         let busy =
             self.pending.len() + running.is_some_and(|id| !self.pending.contains_key(&id)) as usize;
@@ -235,8 +261,8 @@ impl Shared {
         });
     }
 
-    /// Queues background enrichment of every album that needs it, if "match
-    /// automatically" is on when the worker gets to it.
+    /// Queues background enrichment of every album and album artist that
+    /// needs it, if "match automatically" is on when the worker gets to it.
     pub fn enrich_library(&self) {
         self.wake(|state| state.enrich = true);
     }
@@ -275,12 +301,12 @@ impl Shared {
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
-    /// Albums finished and albums in all since the worker was last idle;
-    /// both 0 when it is.
+    /// Albums and artists finished, and in all, since the worker was last
+    /// idle; both 0 when it is.
     pub done: usize,
     pub total: usize,
-    /// The album being worked on.
-    pub current: Option<AlbumName>,
+    /// The album or artist being worked on.
+    pub current: Option<Current>,
     /// Automatic work waits for a service that couldn't be reached.
     pub paused: bool,
     /// Hosts that couldn't be reached, which are tried again later.
@@ -288,11 +314,16 @@ pub struct Progress {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AlbumName {
-    pub album_id: i64,
-    pub title: String,
-    pub artist: Option<String>,
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Current {
+    #[serde(rename_all = "camelCase")]
+    Album {
+        album_id: i64,
+        title: String,
+        artist: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Artist { artist_id: i64, name: String },
 }
 
 /// Albums and artists whose details or art changed, as the
@@ -301,7 +332,6 @@ pub struct AlbumName {
 #[serde(rename_all = "camelCase")]
 pub struct MetadataChanged {
     pub albums: Vec<i64>,
-    /// None yet: artist details come with Phase 4.7.
     pub artists: Vec<i64>,
 }
 
@@ -334,10 +364,11 @@ pub struct Worker<H: Host> {
     images: Arc<ImageCache>,
     host: H,
     albums_changed: BTreeSet<i64>,
+    artists_changed: BTreeSet<i64>,
     flushed_at: Option<Instant>,
     reported_at: Option<Instant>,
     reported: Progress,
-    running: Option<i64>,
+    running: Option<Subject>,
 }
 
 impl<H: Host> Worker<H> {
@@ -358,6 +389,7 @@ impl<H: Host> Worker<H> {
             images,
             host,
             albums_changed: BTreeSet::new(),
+            artists_changed: BTreeSet::new(),
             flushed_at: None,
             reported_at: None,
             reported: Progress::default(),
@@ -404,7 +436,11 @@ impl<H: Host> Worker<H> {
         let (next, retry_at) = {
             let mut state = self.shared.lock();
             let next = state.jobs.take(|job, priority| {
-                priority == Priority::User || client.retry_at(job.host()).is_none()
+                priority == Priority::User
+                    || job
+                        .hosts()
+                        .iter()
+                        .all(|host| client.retry_at(host).is_none())
             });
             let retry_at = match next {
                 Some(_) => None,
@@ -425,7 +461,7 @@ impl<H: Host> Worker<H> {
         };
         match next {
             Some((job, entry)) => {
-                self.running = Some(job.album_id());
+                self.running = Some(job.subject());
                 self.report(false);
                 self.run_job(job, entry);
                 self.running = None;
@@ -442,8 +478,11 @@ impl<H: Host> Worker<H> {
         }
     }
 
-    /// Queues every album that needs matching or a cover, as background
-    /// work, if the settings allow it.
+    /// Queues every album that needs matching or a cover, then every album
+    /// artist that needs matching or a biography, as background work, if
+    /// the settings allow it. Albums go first, since their matches help
+    /// match their artists. Artists are looked up in the background only
+    /// for a biography; the artist page looks them up when shown anyway.
     fn queue_enrichment(&mut self) -> Result<(), Error> {
         let settings = settings::service_settings(&self.conn)?;
         let usable = Usable::new(&settings);
@@ -466,6 +505,23 @@ impl<H: Host> Worker<H> {
                 jobs.push(Job::Cover(album_id));
             }
         }
+        if usable.biography {
+            let artist_ids: Vec<i64> = self
+                .conn
+                .prepare(
+                    "SELECT DISTINCT artist_id FROM albums WHERE artist_id IS NOT NULL
+                     ORDER BY artist_id",
+                )?
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            for artist_id in artist_ids {
+                if needs_artist_match(&self.conn, artist_id, now, false)? {
+                    jobs.push(Job::Artist(artist_id));
+                } else if needs_biography(&self.conn, artist_id, now, false)? {
+                    jobs.push(Job::Biography(artist_id));
+                }
+            }
+        }
         let mut state = self.shared.lock();
         for job in jobs {
             state.jobs.push(job, Priority::Background, None);
@@ -474,6 +530,7 @@ impl<H: Host> Worker<H> {
     }
 
     fn run_job(&mut self, job: Job, entry: Entry) {
+        let entry_priority = entry.priority;
         let user = entry.priority == Priority::User;
         let result = self.attempt(job, user);
         let requeue = |state: &mut State, priority| {
@@ -514,9 +571,12 @@ impl<H: Host> Worker<H> {
                     .collect()
             }
         };
-        // Whoever waits for the answer sees the changes with it.
+        // Whoever waits for the answer, or the page shown, sees the changes
+        // with it.
         let now = self.clock.now();
-        if user || self.flushed_at.is_none_or(|at| now - at >= BATCH_INTERVAL) {
+        if entry_priority >= Priority::Viewing
+            || self.flushed_at.is_none_or(|at| now - at >= BATCH_INTERVAL)
+        {
             self.flush();
         }
         for (reply, result) in replies {
@@ -531,23 +591,24 @@ impl<H: Host> Worker<H> {
             return Ok(None);
         }
         let usable = Usable::new(&settings);
-        let album_id = job.album_id();
+        let (sql, what, id) = match job.subject() {
+            Subject::Album(id) => ("SELECT id FROM albums WHERE id = ?1", "album", id),
+            Subject::Artist(id) => ("SELECT id FROM artists WHERE id = ?1", "artist", id),
+        };
         let exists: Option<i64> = self
             .conn
-            .query_row("SELECT id FROM albums WHERE id = ?1", [album_id], |row| {
-                row.get(0)
-            })
+            .query_row(sql, [id], |row| row.get(0))
             .optional()?;
         if exists.is_none() {
             // Gone in a rescan since it was queued.
             return match user {
-                true => Err(Error::Invalid(format!("No album with id {album_id}"))),
+                true => Err(Error::Invalid(format!("No {what} with id {id}"))),
                 false => Ok(None),
             };
         }
         let now = unix_now();
         match job {
-            Job::Match(_) => {
+            Job::Match(album_id) => {
                 if !usable.musicbrainz {
                     return match user {
                         true => Err(turned_off(&settings, SourceId::MusicBrainz)),
@@ -561,7 +622,7 @@ impl<H: Host> Worker<H> {
                     usable.cover_art && needs_cover(&self.conn, &self.images, album_id, now, user)?;
                 Ok(cover.then_some(Job::Cover(album_id)))
             }
-            Job::Cover(_) => {
+            Job::Cover(album_id) => {
                 if !usable.cover_art {
                     return match user {
                         true => Err(turned_off(&settings, SourceId::CoverArtArchive)),
@@ -580,7 +641,53 @@ impl<H: Host> Worker<H> {
                 }
                 Ok(None)
             }
+            Job::Artist(artist_id) => {
+                if !usable.musicbrainz {
+                    return match user {
+                        true => Err(turned_off(&settings, SourceId::MusicBrainz)),
+                        false => Ok(None),
+                    };
+                }
+                if needs_artist_match(&self.conn, artist_id, now, user)? {
+                    self.match_artist(artist_id)?;
+                }
+                let biography =
+                    usable.biography && needs_biography(&self.conn, artist_id, now, user)?;
+                Ok(biography.then_some(Job::Biography(artist_id)))
+            }
+            Job::Biography(artist_id) => {
+                if !usable.biography {
+                    return match user {
+                        true => Err(turned_off(&settings, SourceId::Wikipedia)),
+                        false => Ok(None),
+                    };
+                }
+                if needs_biography(&self.conn, artist_id, now, user)? {
+                    let before = wikipedia::biography(&self.conn, artist_id)?;
+                    wikipedia::fetch_biography(&self.client, &self.conn, artist_id)?;
+                    if wikipedia::biography(&self.conn, artist_id)? != before {
+                        self.artists_changed.insert(artist_id);
+                    }
+                }
+                Ok(None)
+            }
         }
+    }
+
+    /// Matches the artist and notes whether the match changed.
+    fn match_artist(&mut self, artist_id: i64) -> Result<(), Error> {
+        let link = |conn: &Connection| -> Result<_, Error> {
+            Ok(
+                artists::artist_link(conn, artist_id, SourceId::MusicBrainz)?
+                    .map(|link| (link.status, link.external_id, link.details)),
+            )
+        };
+        let before = link(&self.conn)?;
+        artists::match_artist(&self.client, &self.conn, artist_id)?;
+        if link(&self.conn)? != before {
+            self.artists_changed.insert(artist_id);
+        }
+        Ok(())
     }
 
     /// Matches the album and notes what changed. A different match can mean
@@ -610,16 +717,18 @@ impl<H: Host> Worker<H> {
         self.albums_changed.insert(album_id);
     }
 
-    /// Sends the albums changed since the last batch, if any.
+    /// Sends the albums and artists changed since the last batch, if any.
     fn flush(&mut self) {
-        if self.albums_changed.is_empty() {
+        if self.albums_changed.is_empty() && self.artists_changed.is_empty() {
             return;
         }
         let changed = MetadataChanged {
             albums: std::mem::take(&mut self.albums_changed)
                 .into_iter()
                 .collect(),
-            artists: Vec::new(),
+            artists: std::mem::take(&mut self.artists_changed)
+                .into_iter()
+                .collect(),
         };
         self.host.metadata_changed(&changed);
         self.flushed_at = Some(self.clock.now());
@@ -643,7 +752,7 @@ impl<H: Host> Worker<H> {
             total,
             current: self
                 .running
-                .and_then(|id| album_name(&self.conn, id).ok().flatten()),
+                .and_then(|subject| current(&self.conn, subject).ok().flatten()),
             paused: self.running.is_none() && total > 0,
             unreachable,
         };
@@ -670,6 +779,7 @@ impl<H: Host> Worker<H> {
 struct Usable {
     musicbrainz: bool,
     cover_art: bool,
+    biography: bool,
 }
 
 impl Usable {
@@ -681,6 +791,9 @@ impl Usable {
             cover_art: settings
                 .sources_for(Kind::AlbumArt)
                 .contains(&SourceId::CoverArtArchive),
+            biography: settings
+                .sources_for(Kind::ArtistInfo)
+                .contains(&SourceId::Wikipedia),
         }
     }
 }
@@ -705,21 +818,36 @@ fn duplicate(error: &Error) -> Error {
     }
 }
 
-fn album_name(conn: &Connection, album_id: i64) -> Result<Option<AlbumName>, Error> {
-    Ok(conn
-        .query_row(
-            "SELECT al.title, ar.name FROM albums al LEFT JOIN artists ar ON ar.id = al.artist_id
-             WHERE al.id = ?1",
-            [album_id],
-            |row| {
-                Ok(AlbumName {
-                    album_id,
-                    title: row.get(0)?,
-                    artist: row.get(1)?,
-                })
-            },
-        )
-        .optional()?)
+fn current(conn: &Connection, subject: Subject) -> Result<Option<Current>, Error> {
+    Ok(match subject {
+        Subject::Album(album_id) => conn
+            .query_row(
+                "SELECT al.title, ar.name FROM albums al
+                 LEFT JOIN artists ar ON ar.id = al.artist_id
+                 WHERE al.id = ?1",
+                [album_id],
+                |row| {
+                    Ok(Current::Album {
+                        album_id,
+                        title: row.get(0)?,
+                        artist: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?,
+        Subject::Artist(artist_id) => conn
+            .query_row(
+                "SELECT name FROM artists WHERE id = ?1",
+                [artist_id],
+                |row| {
+                    Ok(Current::Artist {
+                        artist_id,
+                        name: row.get(0)?,
+                    })
+                },
+            )
+            .optional()?,
+    })
 }
 
 /// Whether album `album_id` should be matched on MusicBrainz: it never was,
@@ -791,6 +919,54 @@ pub fn needs_cover(
     Ok(force || !missing_lately)
 }
 
+/// Whether artist `artist_id` should be matched on MusicBrainz, by the
+/// rules of `needs_match`.
+pub fn needs_artist_match(
+    conn: &Connection,
+    artist_id: i64,
+    now: i64,
+    force: bool,
+) -> Result<bool, Error> {
+    Ok(
+        match artists::artist_link(conn, artist_id, SourceId::MusicBrainz)? {
+            None => true,
+            Some(link) if link.chosen_by_user => false,
+            Some(link) => match link.status {
+                LinkStatus::Matched => false,
+                LinkStatus::Review | LinkStatus::None => {
+                    force || now - link.checked_at >= RETRY_AFTER
+                }
+            },
+        },
+    )
+}
+
+/// Whether artist `artist_id`'s biography should be fetched: it's matched
+/// on MusicBrainz (by the user or not), and no biography was fetched for
+/// that match, or none was found more than `RETRY_AFTER` seconds before
+/// `now` (or at all with `force`).
+pub fn needs_biography(
+    conn: &Connection,
+    artist_id: i64,
+    now: i64,
+    force: bool,
+) -> Result<bool, Error> {
+    let Some(link) = artists::artist_link(conn, artist_id, SourceId::MusicBrainz)? else {
+        return Ok(false);
+    };
+    let Some(mbid) = link.matched_id() else {
+        return Ok(false);
+    };
+    Ok(match wikipedia::biography_check(conn, artist_id)? {
+        Some(check) if check.external_id.as_deref() == Some(mbid) => match check.status {
+            LinkStatus::Matched => false,
+            LinkStatus::Review | LinkStatus::None => force || now - check.checked_at >= RETRY_AFTER,
+        },
+        // Never fetched, or for another match.
+        _ => true,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -846,7 +1022,15 @@ mod tests {
     }
 
     impl Test {
+        /// A worker over `library`, with biographies turned off so the
+        /// album tests see only album work.
         fn new(library: Library) -> Test {
+            let test = Test::with_biographies(library);
+            test.set_settings(|settings| settings.sources[4].enabled = false); // Wikipedia.
+            test
+        }
+
+        fn with_biographies(library: Library) -> Test {
             let clock = FakeClock::new();
             let transport = FakeTransport::new(&clock);
             let client = Client::new(Box::new(transport.clone()), Box::new(clock.clone()));
@@ -1048,7 +1232,7 @@ mod tests {
         jobs.push(Job::Match(8), Priority::Background, None);
         let covers_first = jobs.take(|_, _| true).unwrap().0;
         assert_eq!(covers_first, Job::Cover(7));
-        let not_mb = jobs.take(|job, _| job.host() != musicbrainz::HOST);
+        let not_mb = jobs.take(|job, _| !job.hosts().contains(&musicbrainz::HOST));
         assert!(not_mb.is_none());
         assert_eq!(jobs.len(), 2);
     }
@@ -1060,12 +1244,16 @@ mod tests {
         jobs.push(Job::Match(2), Priority::Background, None);
         assert_eq!(jobs.counts(None), (0, 2));
         let (job, entry) = jobs.take(|_, _| true).unwrap();
-        assert_eq!(jobs.counts(Some(1)), (0, 2));
+        assert_eq!(job, Job::Match(1));
+        assert_eq!(jobs.counts(Some(Subject::Album(1))), (0, 2));
         // Its cover follows: still not done.
-        jobs.insert(Job::Cover(job.album_id()), entry, true);
+        jobs.insert(Job::Cover(1), entry, true);
         assert_eq!(jobs.counts(None), (0, 2));
         jobs.take(|_, _| true).unwrap();
         assert_eq!(jobs.counts(None), (1, 2));
+        // An artist with the same id is another subject.
+        jobs.push(Job::Artist(1), Priority::Background, None);
+        assert_eq!(jobs.counts(None), (1, 3));
     }
 
     #[test]
@@ -1179,9 +1367,8 @@ mod tests {
             .iter()
             .all(|changed| changed.artists.is_empty()));
         let progress = &recorded.progress;
-        assert!(progress
-            .iter()
-            .any(|p| p.total == 2 && p.current.as_ref().is_some_and(|a| a.title == "In Rainbows")));
+        assert!(progress.iter().any(|p| p.total == 2
+            && matches!(&p.current, Some(Current::Album { title, .. }) if title == "In Rainbows")));
         assert_eq!(progress.last(), Some(&Progress::default()), "idle");
         assert_eq!(test.shared.progress(), Progress::default());
 
@@ -1498,5 +1685,162 @@ mod tests {
         let (reply, answer) = mpsc::channel();
         shared.request(Job::Match(1), Priority::User, Some(reply));
         assert!(answer.recv().is_err());
+    }
+
+    fn artist_id(conn: &Connection, name: &str) -> i64 {
+        conn.query_row("SELECT id FROM artists WHERE name = ?1", [name], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    /// Serves Radiohead's MusicBrainz entry and Wikipedia biography.
+    fn serve_radiohead(transport: &FakeTransport) {
+        use crate::metadata::musicbrainz::{artist_url, fixtures as mb};
+        use crate::metadata::wikipedia::{extract_url, fixtures as wp, sitelink_url};
+        transport.push_status(&artist_url(mb::ARTIST), 200, mb::ARTIST_JSON);
+        transport.push_status(&sitelink_url(wp::WIKIDATA_ID), 200, wp::SITELINK);
+        transport.push_status(&extract_url("Radiohead"), 200, wp::EXTRACT);
+    }
+
+    #[test]
+    fn enriches_album_artists_after_their_albums() {
+        let mut test = Test::with_biographies(library(&[]));
+        serve_search(&test.transport);
+        for (id, _) in RELEASES {
+            test.serve_jpeg(&release_front_url(id));
+        }
+        serve_radiohead(&test.transport);
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+
+        // Found through the album's release: no artist search.
+        let radiohead = artist_id(test.conn(), "Radiohead");
+        let urls = test.transport.urls();
+        assert!(
+            !urls.iter().any(|url| url.contains("/artist/?query=")),
+            "{urls:?}"
+        );
+        let biography = wikipedia::biography(test.conn(), radiohead)
+            .unwrap()
+            .unwrap();
+        assert_eq!(biography.title, "Radiohead");
+        let recorded = test.host.take();
+        let artists: Vec<i64> = recorded
+            .changed
+            .iter()
+            .flat_map(|changed| changed.artists.clone())
+            .collect();
+        assert!(artists.contains(&radiohead), "{artists:?}");
+        assert!(recorded.progress.iter().any(|p| matches!(
+            &p.current,
+            Some(Current::Artist { name, .. }) if name == "Radiohead"
+        )));
+
+        // Nothing more to do.
+        let requests = test.transport.urls().len();
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert_eq!(test.transport.urls().len(), requests);
+    }
+
+    #[test]
+    fn no_artists_in_the_background_without_a_biography_source() {
+        let mut test = Test::new(library(&[]));
+        set_link(test.conn(), 1, MB, "none", None, "auto", unix_now());
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert!(test.transport.urls().is_empty());
+
+        // The artist page still looks the artist up.
+        let radiohead = artist_id(test.conn(), "Radiohead");
+        test.shared
+            .request(Job::Artist(radiohead), Priority::Viewing, None);
+        test.run();
+        assert_eq!(
+            test.transport.urls().len(),
+            1,
+            "{:?}",
+            test.transport.urls()
+        );
+    }
+
+    #[test]
+    fn the_artist_page_goes_before_the_album_playing() {
+        let mut test = Test::with_biographies(library(&[]));
+        let radiohead = artist_id(test.conn(), "Radiohead");
+        test.transport.push_status(
+            &crate::metadata::musicbrainz::artist_search_url("Radiohead"),
+            200,
+            r#"{"artists": []}"#,
+        );
+        test.shared.request(Job::Match(1), Priority::Playing, None);
+        test.shared
+            .request(Job::Artist(radiohead), Priority::Viewing, None);
+        assert_eq!(test.worker.step(), Step::Ran);
+        assert!(
+            test.transport.urls()[0].contains("/artist/?query="),
+            "{:?}",
+            test.transport.urls()
+        );
+        // Its changes are sent at once, like a user's.
+        assert_eq!(test.host.take().changed.len(), 1);
+
+        // Automatic: skipped while "match automatically" is off, unlike the
+        // user's request, which fails only when the source is off.
+        test.run();
+        test.conn().execute("DELETE FROM artist_links", []).unwrap();
+        test.set_settings(|settings| settings.auto_match = false);
+        let requests = test.transport.urls().len();
+        test.shared
+            .request(Job::Artist(radiohead), Priority::Viewing, None);
+        test.run();
+        assert_eq!(test.transport.urls().len(), requests);
+        test.set_settings(|settings| settings.sources[4].enabled = false);
+        let answer = test.request(Job::Biography(radiohead));
+        test.run();
+        let error = answer.recv().unwrap().unwrap_err();
+        assert_eq!(error.to_string(), "Wikipedia is turned off");
+        let answer = test.request(Job::Artist(99));
+        test.run();
+        assert_eq!(
+            answer.recv().unwrap().unwrap_err().to_string(),
+            "No artist with id 99"
+        );
+    }
+
+    #[test]
+    fn biography_skip_rules() {
+        let library = library(&[]);
+        let conn = &library.conn;
+        let radiohead = artist_id(conn, "Radiohead");
+        let now = unix_now();
+        let needs = |force: bool| needs_biography(conn, radiohead, now, force).unwrap();
+        let link = |source: &str, status: &str, id: Option<&str>, checked_at: i64| {
+            conn.execute(
+                "INSERT OR REPLACE INTO artist_links
+                     (artist_id, source, status, external_id, score, chosen_by, details, checked_at)
+                 VALUES (?1, ?2, ?3, ?4, 1.0, 'auto', NULL, ?5)",
+                params![radiohead, source, status, id, checked_at],
+            )
+            .unwrap();
+        };
+        assert!(!needs(true), "not matched");
+        link(MB, "review", Some("a"), now);
+        assert!(!needs(true), "only a candidate");
+        assert!(!needs_artist_match(conn, radiohead, now, false).unwrap());
+        assert!(needs_artist_match(conn, radiohead, now, true).unwrap());
+        link(MB, "matched", Some("a"), now);
+        assert!(!needs_artist_match(conn, radiohead, now, true).unwrap());
+        assert!(needs(false), "never fetched");
+        link("wikipedia", "matched", Some("a"), now - 100 * DAY);
+        assert!(!needs(true), "fetched");
+        link("wikipedia", "none", Some("a"), now - DAY);
+        assert!(!needs(false), "not found lately");
+        assert!(needs(true));
+        link("wikipedia", "none", Some("a"), now - 31 * DAY);
+        assert!(needs(false), "not found long ago");
+        link("wikipedia", "matched", Some("b"), now);
+        assert!(needs(false), "fetched for another match");
     }
 }

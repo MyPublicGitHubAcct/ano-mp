@@ -21,6 +21,8 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
+# Opens web links (a biography's Wikipedia article) in the browser.
+tauri-plugin-opener = "2"
 # Bundled so every platform (including iOS) gets the same SQLite.
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 walkdir = "2.5"

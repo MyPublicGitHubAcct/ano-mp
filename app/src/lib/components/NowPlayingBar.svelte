@@ -14,7 +14,7 @@
 
   function toggleNowPlaying() {
     if (ui.nowPlayingInMain && library.query.trim() === "") {
-      ui.leaveNowPlaying();
+      ui.back();
     } else {
       library.query = "";
       ui.showNowPlaying();
@@ -114,7 +114,7 @@
       aria-label="Queue"
       aria-pressed={ui.queueInMain || (ui.queueOpen && !ui.nowPlayingInMain)}
       onclick={() => {
-        if (ui.queueInMain) ui.mainView = "library";
+        if (ui.queueInMain) ui.showLibrary();
         else if (ui.nowPlayingInMain) ui.showQueue();
         else ui.queueOpen = !ui.queueOpen;
       }}><Icon name="queue" /></button

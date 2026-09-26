@@ -16,7 +16,8 @@ and persistence), full-text search, cover art, the responsive player UI,
 and macOS Now Playing and media keys through `MediaControls`. Phase 4
 started (2026-09-26): steps 4.1–4.5 (source settings, HTTP client, folder
 art, MusicBrainz matching, Cover Art Archive and the image cache, and the
-metadata worker that enriches the library in the background) are done.
+metadata worker that enriches the library in the background) are done, and
+of 4.7 the artist pages with Wikipedia biographies.
 
 ## 1. Architecture
 
@@ -1241,6 +1242,74 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 - [ ] 4.7 More sources: Wikidata/Wikipedia descriptions, then Discogs
   (user token). fanart.tv, TheAudioDB, iTunes and Deezer after their terms
   are checked.
+
+  Artist pages with Wikipedia biographies done 2026-09-26
+  (`metadata/artists.rs`, `wikipedia.rs`, `library/artists.rs`,
+  `ArtistPage.svelte`); album descriptions and Discogs remain:
+  - Settings: source `wikipedia` (requires MusicBrainz) and kind
+    `artistInfo` (an artist's biography). Stored settings from before get
+    its default order. Artists are matched on MusicBrainz whenever
+    MusicBrainz is usable; the match gives the facts and the link to a
+    biography.
+  - Artist matching (`artists::match_artist`), first that works: the
+    artist MBID in the tags; the artist credited alone, under the same
+    name, on the releases the artist's albums are matched to (the most
+    common, score 0.95); a search by name and alias. Names are shared
+    ("Nirvana" is several bands), so a hit is accepted only at a
+    MusicBrainz score of 90 or more with a lead of 15 over the next of
+    the same name, else 'review'; MusicBrainz ranks the best-known well
+    ahead (100 vs 75 for the two Nirvanas). "Various Artists" is never
+    looked up. The lookup (`url-rels+genres`, cached 30 days) keeps type,
+    area, begin/end area and dates, disambiguation, genres, and the
+    Wikidata item, a direct English Wikipedia link (older entries) and the
+    homepage. Stored in `artist_links` like albums; no migration.
+  - Biography: Wikidata `wbgetentities` (sitelinks, `enwiki`; a merged
+    item comes back under its new id) → the article's lead section as
+    plain text (`prop=extracts&exintro&explaintext`, redirects followed),
+    each cached 30 days. Stored as the artist's `wikipedia` row with the
+    MusicBrainz artist it was fetched for as `external_id`, so a changed
+    match never shows the old biography; "none" (no article, or no link)
+    is retried after 30 days like the other sources. CC BY-SA 4.0: the
+    page credits the article by name with a link, and the licence.
+  - Worker: `Job::Artist` (match, then its biography) and
+    `Job::Biography`; jobs are keyed by `Subject` (album or artist), a
+    `Biography` job waits while either Wikimedia host is backing off, and
+    progress counts albums and artists (`current` is tagged `album` or
+    `artist`). New priority `Viewing` (the artist page shown) between the
+    user's requests and the album playing: automatic, but its changes are
+    sent at once. Background enrichment queues album artists after the
+    albums (their matches help), only while a biography source is usable;
+    the page looks an artist up when shown anyway. `metadata-changed` now
+    names artists.
+  - Commands: `library_artist` (the page: albums the artist is album
+    artist of, oldest first, with the release type from their matched
+    release; other artists' albums they appear on; the metadata; queues
+    the artist at `Viewing`) and `metadata_update_artist` (a user request,
+    skipping the retry waits). `TrackSummary` and queue items carry
+    `artistId`.
+  - UI: the artist view (`ui.showArtist`, with a back stack) shows type,
+    area, disambiguation, formed/born and ended, genres, the biography
+    (two paragraphs, then "Read more"), "Look up again" when there is
+    none, links to MusicBrainz and the homepage, and albums grouped as
+    Albums, EPs, Singles, Live albums, Compilations, Soundtracks and
+    Other, then "Appears on". Opened from a search's artist, the "Artist"
+    button inside an artist in the browser, "Go to artist" on tracks,
+    queue items and artist rows, and the artist on the now-playing view.
+    Links open in the browser through `tauri-plugin-opener`, allowed only
+    `http(s)` URLs.
+  - Tests: recorded MusicBrainz artist and search responses, a recorded
+    Wikidata response, and an extract whose text is a stand-in (no CC
+    BY-SA text committed). `live_biography` (ignored) checks the real
+    chain. Checked in the app (2026-09-26): at launch the five album
+    artists of a 16-album library were matched through their releases and
+    got biographies; "Various Artists" made no request; the page for
+    Swans showed its facts, biography, credit and five albums.
+  - Known limits: English Wikipedia only; a biography and the artist's
+    MusicBrainz details aren't refreshed once found (an accepted match is
+    kept, like albums'); a 'review' candidate can't be confirmed until the
+    4.6 dialogs; an artist found only as a track artist is looked up only
+    when their page is opened; several artists in one tag ("A; B") are one
+    name and rarely match.
 - [ ] 4.8 Select and configure the alternative sources. Go through the
   sources table above and decide which ones ship, recording each decision
   and its reason in the table. For each source that ships:

@@ -175,11 +175,19 @@ fn artist_similarity(album: Option<&str>, release: &str) -> Option<f64> {
     Some(title_similarity(album, release))
 }
 
-fn is_various(artist: &str) -> bool {
+/// Whether `artist` stands for many artists ("Various Artists" and its
+/// spellings) rather than one.
+pub fn is_various(artist: &str) -> bool {
     matches!(
         normalize(artist).as_str(),
         "various artists" | "various" | "va" | "v a" | "verschiedene interpreten"
     )
+}
+
+/// Whether two artist names are the same, ignoring case, accents and
+/// punctuation, and with "&" as "and".
+pub fn same_name(a: &str, b: &str) -> bool {
+    normalize(a) == normalize(b)
 }
 
 /// 1 when equal, falling off with the difference relative to the larger.

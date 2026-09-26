@@ -85,3 +85,16 @@ pub async fn metadata_update_album<R: Runtime>(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
 }
+
+/// Matches artist `artist_id` and fetches its biography now, as
+/// `metadata_update_album` does for albums.
+#[tauri::command]
+pub async fn metadata_update_artist<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || worker::update_artist(&app, artist_id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}

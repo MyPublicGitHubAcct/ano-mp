@@ -2,16 +2,21 @@
 
 export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
 
+export type MainView = "library" | "queue" | "nowPlaying" | "artist";
+export type ArtistRef = { id: number; name: string };
+
 class Ui {
   /** What the main area shows when not searching: the library browser, the
-      queue, or the current track with its cover. */
-  mainView = $state<"library" | "queue" | "nowPlaying">("library");
+      queue, the current track with its cover, or an artist's page. */
+  mainView = $state<MainView>("library");
+  /** The artist the artist view shows. */
+  artist = $state.raw<ArtistRef | null>(null);
   /** The queue panel beside the main area (a column when wide, an overlay
       when narrow); hidden while the main area shows the queue or the
       current track. */
   queueOpen = $state(true);
-  /** Where leaving the now-playing view goes back to. */
-  #beforeNowPlaying: "library" | "queue" = "library";
+  /** The views the now-playing and artist views were opened from, for `back`. */
+  #history: { view: MainView; artist: ArtistRef | null }[] = [];
 
   get queueInMain() {
     return this.mainView === "queue";
@@ -21,22 +26,54 @@ class Ui {
     return this.mainView === "nowPlaying";
   }
 
+  get artistInMain() {
+    return this.mainView === "artist" && this.artist !== null;
+  }
+
+  /** Shows the library browser in the main area. */
+  showLibrary() {
+    this.#show("library");
+  }
+
   /** Shows the queue in the main area. */
   showQueue() {
-    this.mainView = "queue";
-    this.sidebarOpen = false;
+    this.#show("queue");
   }
 
   /** Shows the current track in the main area. */
   showNowPlaying() {
-    if (this.mainView !== "nowPlaying") this.#beforeNowPlaying = this.mainView;
-    this.mainView = "nowPlaying";
+    this.#open("nowPlaying");
+  }
+
+  /** Shows an artist's page in the main area. */
+  showArtist(artist: ArtistRef) {
+    if (this.mainView === "artist" && this.artist?.id === artist.id) return;
+    this.#open("artist");
+    this.artist = artist;
+  }
+
+  /** Back to the view the now-playing or artist view was opened from. */
+  back() {
+    if (this.mainView !== "nowPlaying" && this.mainView !== "artist") return;
+    const previous = this.#history.pop();
+    this.mainView = previous?.view ?? "library";
+    this.artist = previous?.artist ?? null;
+  }
+
+  /** A view that `back` returns from. */
+  #open(view: MainView) {
+    if (this.mainView !== view || view === "artist") {
+      this.#history = [...this.#history, { view: this.mainView, artist: this.artist }].slice(-20);
+    }
+    this.mainView = view;
     this.sidebarOpen = false;
   }
 
-  /** Back to the view the now-playing view was opened from. */
-  leaveNowPlaying() {
-    if (this.mainView === "nowPlaying") this.mainView = this.#beforeNowPlaying;
+  /** A view that starts over. */
+  #show(view: MainView) {
+    this.#history = [];
+    this.mainView = view;
+    this.sidebarOpen = false;
   }
   /** The sidebar as a drawer, on narrow windows. */
   sidebarOpen = $state(false);

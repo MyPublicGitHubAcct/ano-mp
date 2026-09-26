@@ -31,6 +31,7 @@ pub struct TrackInfo {
     /// The title, or the file name if the track has none.
     pub title: String,
     pub artist: Option<String>,
+    pub artist_id: Option<i64>,
     pub album: Option<String>,
     pub album_id: Option<i64>,
     pub duration: f64,
@@ -894,6 +895,7 @@ mod tests {
             track_id: id,
             title: format!("Track {id}"),
             artist: None,
+            artist_id: None,
             album: None,
             album_id: None,
             duration: 60.0,

@@ -96,6 +96,15 @@
           ),
       },
       { label: "Remove from queue", action: () => remove(item) },
+      {
+        label: "Go to artist",
+        disabled: item.artistId === null,
+        action: () => {
+          if (item.artistId === null || item.artist === null) return;
+          library.query = "";
+          ui.showArtist({ id: item.artistId, name: item.artist });
+        },
+      },
     ]);
   }
 

@@ -14,6 +14,7 @@ export type Track = {
   path: string;
   title: string | null;
   artist: string | null;
+  artistId: number | null;
   album: string | null;
   albumId: number | null;
   albumArtist: string | null;
@@ -92,6 +93,75 @@ export type SearchResults = {
   trackTotal: number;
 };
 
+export type ArtistAlbum = {
+  id: number;
+  title: string;
+  albumArtist: string | null;
+  albumArtistId: number | null;
+  /** The earliest year among its tracks. */
+  year: number | null;
+  trackCount: number;
+  /** From the album's MusicBrainz match: "Album", "EP", "Single"…, and "Compilation", "Live"… */
+  releaseType: string | null;
+  secondaryTypes: string[];
+};
+
+/** An artist on MusicBrainz. Dates are "1985", "1985-06" or "1985-06-01". */
+export type MusicBrainzArtist = {
+  id: string;
+  name: string;
+  sortName: string | null;
+  disambiguation: string | null;
+  /** "Person", "Group", "Orchestra", "Choir", "Character" or "Other". */
+  type: string | null;
+  area: string | null;
+  beginArea: string | null;
+  endArea: string | null;
+  begin: string | null;
+  end: string | null;
+  ended: boolean;
+  genres: string[];
+  wikidata: string | null;
+  wikipedia: string | null;
+  homepage: string | null;
+};
+
+/** A biography, to be shown with its source credited and linked under its licence. */
+export type Biography = {
+  source: SourceId;
+  sourceName: string;
+  license: string;
+  licenseUrl: string;
+  /** The article, to credit and link. */
+  title: string;
+  url: string;
+  language: string;
+  paragraphs: string[];
+};
+
+export type LinkStatus = "matched" | "review" | "none";
+
+export type ArtistInfo = {
+  /** The MusicBrainz match; null if never looked up. */
+  status: LinkStatus | null;
+  checkedAt: number | null;
+  musicbrainz: MusicBrainzArtist | null;
+  biography: Biography | null;
+  /** Whether a lookup can be asked for now. */
+  canLookUp: boolean;
+};
+
+export type ArtistPage = {
+  id: number;
+  name: string;
+  /** Tracks by the artist or on their albums. */
+  trackCount: number;
+  /** Oldest first. */
+  albums: ArtistAlbum[];
+  appearsOn: ArtistAlbum[];
+  info: ArtistInfo;
+};
+
 export const library = {
   folders: () => invoke<Folder[]>("library_folders"),
   addFolder: (path: string) => invoke<Folder>("library_add_folder", { path }),
@@ -105,6 +175,8 @@ export const library = {
   saveSortRule: (rule: SortRule) => invoke<SortSettings>("library_save_sort_rule", { rule }),
   search: (query: string, offset: number, limit: number, kinds?: SearchKind[]) =>
     invoke<SearchResults>("library_search", { query, kinds: kinds ?? null, offset, limit }),
+  /** Also asks for the artist to be looked up if needed; `metadata-changed` names them when done. */
+  artist: (artistId: number) => invoke<ArtistPage>("library_artist", { artistId }),
 };
 
 /** The URL of an album's (or an album-less track's) art. `generation`
@@ -118,8 +190,8 @@ export function artUrl(key: { albumId: number } | { trackId: number }, generatio
 
 // ---- Metadata sources ---------------------------------------------------------
 
-export type MetadataKind = "release" | "albumArt";
-export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive";
+export type MetadataKind = "release" | "albumArt" | "artistInfo";
+export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive" | "wikipedia";
 
 export type SourceInfo = {
   id: SourceId;
@@ -128,7 +200,7 @@ export type SourceInfo = {
   /** Contacts a service, so it obeys the online switch. */
   online: boolean;
   needsKey: boolean;
-  /** A source it relies on (the Cover Art Archive needs MusicBrainz). */
+  /** A source it relies on (the Cover Art Archive and Wikipedia need MusicBrainz). */
   requires: SourceId | null;
   homepage: string | null;
 };
@@ -150,10 +222,13 @@ export type MetadataChanged = { albums: number[]; artists: number[] };
 
 /** What the metadata worker is doing. */
 export type MetadataProgress = {
-  /** Albums finished and in all since the worker was last idle; both 0 when it is. */
+  /** Albums and artists finished and in all since the worker was last idle; both 0 when it is. */
   done: number;
   total: number;
-  current: { albumId: number; title: string; artist: string | null } | null;
+  current:
+    | { kind: "album"; albumId: number; title: string; artist: string | null }
+    | { kind: "artist"; artistId: number; name: string }
+    | null;
   /** Automatic work waits for a service that couldn't be reached. */
   paused: boolean;
   /** Hosts that couldn't be reached, which are tried again later. */
@@ -171,6 +246,8 @@ export const metadata = {
   retryNow: () => invoke<void>("metadata_retry_now"),
   /** Matches an album and fetches its cover now, as far as needed; fails at once offline. */
   updateAlbum: (albumId: number) => invoke<void>("metadata_update_album", { albumId }),
+  /** Matches an artist and fetches their biography now, as far as needed; fails at once offline. */
+  updateArtist: (artistId: number) => invoke<void>("metadata_update_artist", { artistId }),
 };
 
 // ---- Player and queue ---------------------------------------------------------
@@ -184,6 +261,7 @@ export type QueueItem = {
   trackId: number;
   title: string;
   artist: string | null;
+  artistId: number | null;
   album: string | null;
   albumId: number | null;
   duration: number;

@@ -4,6 +4,7 @@
 
 pub mod access;
 pub mod art;
+pub mod artists;
 #[cfg(test)]
 mod bench;
 pub mod browse;
@@ -164,6 +165,7 @@ pub struct TrackSummary {
     pub path: String,
     pub title: Option<String>,
     pub artist: Option<String>,
+    pub artist_id: Option<i64>,
     pub album: Option<String>,
     pub album_id: Option<i64>,
     pub album_artist: Option<String>,
@@ -177,7 +179,8 @@ pub struct TrackSummary {
 /// The columns `track_from_row` reads, from `TRACKS_FROM`.
 pub(super) const TRACK_COLUMNS: &str =
     "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
-     album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id";
+     album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id,
+     t.artist_id";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
 pub(super) const TRACKS_FROM: &str = "FROM tracks t
@@ -204,6 +207,7 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         track_number: row.get(10)?,
         duration: row.get(11)?,
         album_id: row.get(12)?,
+        artist_id: row.get(13)?,
     })
 }
 

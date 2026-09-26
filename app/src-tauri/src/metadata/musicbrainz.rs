@@ -1,5 +1,6 @@
 //! The MusicBrainz web service (https://musicbrainz.org/doc/MusicBrainz_API):
-//! release search and lookup, parsed into `Release`. Requests go through
+//! release search and lookup, parsed into `Release`, and artist search and
+//! lookup, parsed into `Artist`. Requests go through
 //! `http::Client`, which keeps to MusicBrainz's one request a second, and
 //! responses are cached (`cache`).
 
@@ -8,7 +9,7 @@ use std::time::Duration;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use super::http::Client;
+use super::http::{percent_encode, Client};
 use super::Error;
 
 pub const HOST: &str = "musicbrainz.org";
@@ -17,6 +18,13 @@ const BASE: &str = "https://musicbrainz.org/ws/2";
 
 /// What a release lookup includes.
 const RELEASE_INC: &str = "recordings+artist-credits+labels+release-groups+genres";
+
+/// What an artist lookup includes: links to other sites (Wikidata, the
+/// homepage), and genres.
+const ARTIST_INC: &str = "url-rels+genres";
+
+/// The artist MusicBrainz credits "Various Artists" releases to.
+pub const VARIOUS_ARTISTS: &str = "89ad4ac3-39f7-470e-963a-56509c546377";
 
 /// How long cached responses are used before asking again. Releases change
 /// rarely; searches pick up new releases sooner.
@@ -95,6 +103,52 @@ fn year_of(date: Option<&str>) -> Option<u32> {
     date?.get(..4)?.parse().ok()
 }
 
+/// An artist as the app keeps it: the facts shown on the artist page, and
+/// the links that lead to a biography. Stored as JSON in
+/// `artist_links.details`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Artist {
+    pub id: String,
+    pub name: String,
+    pub sort_name: Option<String>,
+    /// Tells artists of the same name apart, e.g. "60s band from the UK".
+    pub disambiguation: Option<String>,
+    /// "Person", "Group", "Orchestra", "Choir", "Character" or "Other".
+    #[serde(rename = "type")]
+    pub artist_type: Option<String>,
+    /// The country (or other area) the artist is from.
+    pub area: Option<String>,
+    /// Where a person was born or a group was formed, and where a person
+    /// died or a group broke up.
+    pub begin_area: Option<String>,
+    pub end_area: Option<String>,
+    /// Born or formed, and died or broke up: "1985", "1985-06" or
+    /// "1985-06-01".
+    pub begin: Option<String>,
+    pub end: Option<String>,
+    pub ended: bool,
+    /// Other names the artist is known by; only in search results.
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    /// Most voted first.
+    pub genres: Vec<String>,
+    /// The artist's Wikidata item, e.g. "Q44190"; from a lookup only.
+    pub wikidata: Option<String>,
+    /// An English Wikipedia article linked directly (older entries have
+    /// these instead of Wikidata).
+    pub wikipedia: Option<String>,
+    /// The official homepage.
+    pub homepage: Option<String>,
+}
+
+/// An artist search hit, with MusicBrainz's score (0 to 100).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArtistHit {
+    pub artist: Artist,
+    pub score: u32,
+}
+
 /// A search hit: a release without its tracks, and MusicBrainz's own score
 /// (0 to 100) for how well it matched the query.
 #[derive(Debug, Clone, PartialEq)]
@@ -134,6 +188,19 @@ pub fn search_url(title: &str, artist: Option<&str>, track_count: Option<u32>) -
     )
 }
 
+pub fn artist_url(id: &str) -> String {
+    format!("{BASE}/artist/{id}?inc={ARTIST_INC}&fmt=json")
+}
+
+/// The search for artists called `name` (or with it as an alias).
+pub fn artist_search_url(name: &str) -> String {
+    let name = escape_lucene(name);
+    format!(
+        "{BASE}/artist/?query={}&limit={SEARCH_LIMIT}&fmt=json",
+        percent_encode(&format!("artist:({name}) OR alias:({name})"))
+    )
+}
+
 /// `text` with Lucene's special characters escaped, so it's searched for as
 /// words.
 fn escape_lucene(text: &str) -> String {
@@ -145,19 +212,6 @@ fn escape_lucene(text: &str) -> String {
         escaped.push(c);
     }
     escaped
-}
-
-/// Percent-encodes everything but RFC 3986's unreserved characters.
-fn percent_encode(text: &str) -> String {
-    let mut encoded = String::with_capacity(text.len() * 3);
-    for byte in text.bytes() {
-        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
-            encoded.push(byte as char);
-        } else {
-            encoded += &format!("%{byte:02X}");
-        }
-    }
-    encoded
 }
 
 pub fn lookup_release(client: &Client, conn: &Connection, id: &str) -> Result<Release, Error> {
@@ -181,6 +235,48 @@ pub fn search_releases(
         SEARCH_MAX_AGE,
     )?;
     parse_search(&body)
+}
+
+pub fn lookup_artist(client: &Client, conn: &Connection, id: &str) -> Result<Artist, Error> {
+    if !is_mbid(id) {
+        return Err(Error::Invalid(format!("Not a MusicBrainz id: {id}")));
+    }
+    let body = client.get_json(conn, &artist_url(id), LOOKUP_MAX_AGE)?;
+    parse_artist(&body)
+}
+
+pub fn search_artists(
+    client: &Client,
+    conn: &Connection,
+    name: &str,
+) -> Result<Vec<ArtistHit>, Error> {
+    let body = client.get_json(conn, &artist_search_url(name), SEARCH_MAX_AGE)?;
+    parse_artist_search(&body)
+}
+
+pub fn parse_artist(json: &str) -> Result<Artist, Error> {
+    let raw: RawArtistEntry = serde_json::from_str(json)
+        .map_err(|error| Error::Invalid(format!("Unexpected MusicBrainz artist: {error}")))?;
+    Ok(raw.into_artist())
+}
+
+pub fn parse_artist_search(json: &str) -> Result<Vec<ArtistHit>, Error> {
+    #[derive(Deserialize)]
+    struct RawSearch {
+        #[serde(default)]
+        artists: Vec<RawArtistEntry>,
+    }
+    let raw: RawSearch = serde_json::from_str(json).map_err(|error| {
+        Error::Invalid(format!("Unexpected MusicBrainz search result: {error}"))
+    })?;
+    Ok(raw
+        .artists
+        .into_iter()
+        .map(|artist| ArtistHit {
+            score: artist.score.unwrap_or(0),
+            artist: artist.into_artist(),
+        })
+        .collect())
 }
 
 pub fn parse_release(json: &str) -> Result<Release, Error> {
@@ -309,6 +405,113 @@ struct RawRecording {
     length: Option<u32>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct RawArtistEntry {
+    id: String,
+    #[serde(default)]
+    name: String,
+    score: Option<u32>,
+    sort_name: Option<String>,
+    disambiguation: Option<String>,
+    #[serde(rename = "type")]
+    artist_type: Option<String>,
+    area: Option<RawArea>,
+    begin_area: Option<RawArea>,
+    end_area: Option<RawArea>,
+    life_span: Option<RawLifeSpan>,
+    #[serde(default)]
+    aliases: Vec<RawAlias>,
+    #[serde(default)]
+    genres: Vec<RawGenre>,
+    #[serde(default)]
+    relations: Vec<RawRelation>,
+}
+
+#[derive(Deserialize)]
+struct RawArea {
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawLifeSpan {
+    begin: Option<String>,
+    end: Option<String>,
+    ended: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct RawAlias {
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct RawRelation {
+    #[serde(rename = "type")]
+    relation_type: String,
+    url: Option<RawUrl>,
+    #[serde(default)]
+    ended: bool,
+}
+
+#[derive(Deserialize)]
+struct RawUrl {
+    resource: String,
+}
+
+impl RawArtistEntry {
+    fn into_artist(self) -> Artist {
+        // Current links only, of the kinds the app follows.
+        let relations = &self.relations;
+        let links = |kind: &'static str| {
+            relations
+                .iter()
+                .filter(move |relation| relation.relation_type == kind && !relation.ended)
+                .filter_map(|relation| relation.url.as_ref())
+                .map(|url| url.resource.as_str())
+        };
+        let wikidata = links("wikidata").find_map(wikidata_id);
+        let wikipedia = links("wikipedia")
+            .find(|url| url.starts_with("https://en.wikipedia.org/wiki/"))
+            .map(String::from);
+        let homepage = links("official homepage")
+            .find(|url| url.starts_with("https://") || url.starts_with("http://"))
+            .map(String::from);
+        let area = |area: Option<RawArea>| non_empty(area.and_then(|area| area.name));
+        let (begin, end, ended) = match self.life_span {
+            Some(span) => (span.begin, span.end, span.ended.unwrap_or(false)),
+            None => (None, None, false),
+        };
+        Artist {
+            id: self.id,
+            name: self.name,
+            sort_name: non_empty(self.sort_name),
+            disambiguation: non_empty(self.disambiguation),
+            artist_type: non_empty(self.artist_type),
+            area: area(self.area),
+            begin_area: area(self.begin_area),
+            end_area: area(self.end_area),
+            begin: non_empty(begin),
+            end: non_empty(end),
+            ended,
+            aliases: self.aliases.into_iter().map(|alias| alias.name).collect(),
+            genres: genre_names(self.genres),
+            wikidata,
+            wikipedia,
+            homepage,
+        }
+    }
+}
+
+/// The item id in a Wikidata URL, e.g. "Q44190" from
+/// "https://www.wikidata.org/wiki/Q44190".
+fn wikidata_id(url: &str) -> Option<String> {
+    let id = url.strip_prefix("https://www.wikidata.org/wiki/")?;
+    let digits = id.strip_prefix('Q')?;
+    (!digits.is_empty() && digits.len() <= 12 && digits.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| id.to_owned())
+}
+
 /// Genre names, most voted first (ties by name).
 fn genre_names(mut genres: Vec<RawGenre>) -> Vec<String> {
     genres.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
@@ -426,6 +629,14 @@ pub mod fixtures {
     ];
 
     pub const RELEASE_GROUP: &str = "6e335887-60ba-38f0-95af-fae7774336bf";
+
+    /// Radiohead: a search for the name, and the artist with a few of its
+    /// links (to Wikidata, the homepage, and others the app ignores).
+    pub const ARTIST: &str = "a74b1b7f-71a5-4011-9441-d0b5e4122711";
+    pub const ARTIST_JSON: &str =
+        include_str!("fixtures/musicbrainz/artist-a74b1b7f-71a5-4011-9441-d0b5e4122711.json");
+    pub const ARTIST_SEARCH: &str =
+        include_str!("fixtures/musicbrainz/search-artist-radiohead.json");
 }
 
 #[cfg(test)]
@@ -512,6 +723,65 @@ mod tests {
         assert_eq!(first.title, "15 Step");
         assert_eq!(first.length_ms, Some(237000));
         assert_eq!(release.artist_ids, ["a74b1b7f-71a5-4011-9441-d0b5e4122711"]);
+    }
+
+    #[test]
+    fn parses_an_artist_and_its_links() {
+        let artist = parse_artist(fixtures::ARTIST_JSON).unwrap();
+        assert_eq!(artist.id, fixtures::ARTIST);
+        assert_eq!(artist.name, "Radiohead");
+        assert_eq!(artist.artist_type.as_deref(), Some("Group"));
+        assert_eq!(artist.area.as_deref(), Some("United Kingdom"));
+        assert_eq!(artist.begin_area.as_deref(), Some("Abingdon-on-Thames"));
+        assert_eq!(
+            (artist.begin.as_deref(), artist.end, artist.ended),
+            (Some("1991"), None, false)
+        );
+        assert_eq!(artist.disambiguation, None, "an empty one is none");
+        assert_eq!(artist.genres[..2], ["alternative rock", "art rock"]);
+        assert_eq!(artist.wikidata.as_deref(), Some("Q44190"));
+        assert_eq!(artist.wikipedia, None);
+        assert_eq!(
+            artist.homepage.as_deref(),
+            Some("http://www.radiohead.com/")
+        );
+    }
+
+    #[test]
+    fn follows_only_usable_links() {
+        let artist = parse_artist(
+            r#"{"id": "x", "relations": [
+                {"type": "wikidata", "url": {"resource": "https://www.wikidata.org/wiki/Q1"}, "ended": true},
+                {"type": "wikidata", "url": {"resource": "https://www.wikidata.org/wiki/Q2/../Q3"}},
+                {"type": "wikidata", "url": {"resource": "https://www.wikidata.org/wiki/Q42"}},
+                {"type": "wikipedia", "url": {"resource": "https://fr.wikipedia.org/wiki/X"}},
+                {"type": "wikipedia", "url": {"resource": "https://en.wikipedia.org/wiki/X"}},
+                {"type": "official homepage", "url": {"resource": "ftp://x.example/"}},
+                {"type": "official homepage"}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(artist.wikidata.as_deref(), Some("Q42"));
+        assert_eq!(
+            artist.wikipedia.as_deref(),
+            Some("https://en.wikipedia.org/wiki/X")
+        );
+        assert_eq!(artist.homepage, None);
+    }
+
+    #[test]
+    fn parses_an_artist_search() {
+        let hits = parse_artist_search(fixtures::ARTIST_SEARCH).unwrap();
+        assert_eq!(hits[0].score, 100);
+        assert_eq!(hits[0].artist.id, fixtures::ARTIST);
+        assert!(hits[1..].iter().all(|hit| hit.score <= 60));
+        assert_eq!(
+            artist_search_url("AC/DC"),
+            format!(
+                "{BASE}/artist/?query=artist%3A%28AC%5C%2FDC%29%20OR%20\
+                 alias%3A%28AC%5C%2FDC%29&limit=10&fmt=json"
+            )
+        );
     }
 
     #[test]

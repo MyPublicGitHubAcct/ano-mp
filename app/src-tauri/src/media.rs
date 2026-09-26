@@ -433,6 +433,7 @@ mod tests {
                 track_id: uid as i64 + 100,
                 title: title.into(),
                 artist: Some("Artist".into()),
+                artist_id: Some(1),
                 album: album_id.map(|id| format!("Album {id}")),
                 album_id,
                 duration: 180.0,

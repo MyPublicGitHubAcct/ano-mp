@@ -329,6 +329,20 @@ impl Client {
     }
 }
 
+/// Percent-encodes everything but RFC 3986's unreserved characters, for a
+/// value in a URL.
+pub fn percent_encode(text: &str) -> String {
+    let mut encoded = String::with_capacity(text.len() * 3);
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded += &format!("%{byte:02X}");
+        }
+    }
+    encoded
+}
+
 /// The host of an http(s) URL, e.g. "musicbrainz.org".
 fn host_of(url: &str) -> Option<&str> {
     let rest = url

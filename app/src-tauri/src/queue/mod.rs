@@ -244,7 +244,8 @@ pub fn track_infos(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackInfo>, Err
     }
     let ids_json = serde_json::to_string(ids).expect("ids serialize");
     let mut statement = conn.prepare_cached(
-        "SELECT t.id, t.title, t.relative_path, artist.name, album.title, t.album_id, t.duration
+        "SELECT t.id, t.title, t.relative_path, artist.name, album.title, t.album_id, t.duration,
+                t.artist_id
          FROM tracks t
          LEFT JOIN artists artist ON artist.id = t.artist_id
          LEFT JOIN albums album ON album.id = t.album_id
@@ -260,6 +261,7 @@ pub fn track_infos(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackInfo>, Err
             album: row.get(4)?,
             album_id: row.get(5)?,
             duration: row.get(6)?,
+            artist_id: row.get(7)?,
         })
     })?;
     let by_id: HashMap<i64, TrackInfo> = rows

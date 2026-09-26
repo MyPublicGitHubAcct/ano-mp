@@ -31,9 +31,13 @@ each kind of data, in what order), the rate-limited HTTP client, folder-image
 art, MusicBrainz matching, Cover Art Archive covers downloaded into an
 on-disk image cache (`metadata/images.rs`), and the metadata worker: a
 thread (`metadata/worker.rs`) running `metadata/jobs.rs`, which matches
-albums and fetches covers by priority, pauses while a service is
-unreachable, and emits `metadata-changed` and `metadata-progress`; see
-`PLAN.md` Phase 4 for the remaining steps.
+albums and artists and fetches covers and biographies by priority, pauses
+while a service is unreachable, and emits `metadata-changed` and
+`metadata-progress`. Artist pages (`library/artists.rs`,
+`ArtistPage.svelte`) show MusicBrainz facts (`metadata/artists.rs`) and a
+Wikipedia biography (`metadata/wikipedia.rs`, CC BY-SA: always credit the
+article and licence where it's shown). See `PLAN.md` Phase 4 for the
+remaining steps.
 `docs/` is empty.
 
 ## Build & test

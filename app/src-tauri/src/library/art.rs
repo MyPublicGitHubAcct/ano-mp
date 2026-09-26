@@ -290,7 +290,8 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
             })
         }
         // Supplies no art.
-        SourceId::MusicBrainz => None,
+        // Not album-art sources.
+        SourceId::MusicBrainz | SourceId::Wikipedia => None,
     }
 }
 

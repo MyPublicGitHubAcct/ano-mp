@@ -6,7 +6,8 @@
 //! Background enrichment is queued at launch (for a run cut short by
 //! quitting, and albums due for another try), after each scan, and after
 //! the settings are saved; the worker checks "match automatically" when it
-//! gets to it. The album playing is queued ahead of that.
+//! gets to it. The album playing is queued ahead of that, and the artist
+//! page being looked at ahead of both.
 //!
 //! On exit the worker is told to stop but not waited for: a request can
 //! take up to its 30 s timeout, and nothing it writes is left half-done
@@ -133,15 +134,33 @@ pub fn playing<R: Runtime>(app: &AppHandle<R>, album_id: Option<i64>) {
     });
 }
 
+/// The artist page for `artist_id` is shown: look the artist up if it
+/// needs it, ahead of automatic work.
+pub fn viewing_artist<R: Runtime>(app: &AppHandle<R>, artist_id: i64) {
+    with_worker(app, |worker| {
+        worker
+            .shared
+            .request(Job::Artist(artist_id), Priority::Viewing, None)
+    });
+}
+
 /// Matches album `album_id` and fetches its cover, as far as each is
 /// needed, ahead of other work; waits for the answer. Blocks, so call it on
 /// a blocking thread.
 pub fn update_album<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<(), Error> {
+    request_and_wait(app, Job::Match(album_id))
+}
+
+/// Matches artist `artist_id` and fetches its biography, as `update_album`
+/// does for albums.
+pub fn update_artist<R: Runtime>(app: &AppHandle<R>, artist_id: i64) -> Result<(), Error> {
+    request_and_wait(app, Job::Artist(artist_id))
+}
+
+fn request_and_wait<R: Runtime>(app: &AppHandle<R>, job: Job) -> Result<(), Error> {
     let (reply, answer) = mpsc::channel();
     with_worker(app, |worker| {
-        worker
-            .shared
-            .request(Job::Match(album_id), Priority::User, Some(reply))
+        worker.shared.request(job, Priority::User, Some(reply))
     })
     .ok_or_else(|| Error::Invalid("The metadata worker is not running".into()))?;
     answer

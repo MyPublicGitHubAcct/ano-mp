@@ -15,7 +15,14 @@
     {#if item}
       <p class="state muted small">{player.playing ? "Now playing" : "Paused"}</p>
       <h1 title={item.title}>{item.title}</h1>
-      {#if item.artist}<p class="artist">{item.artist}</p>{/if}
+      {#if item.artist && item.artistId !== null}
+        {@const artist = { id: item.artistId, name: item.artist }}
+        <p class="artist">
+          <button class="link" title="Show {artist.name}" onclick={() => ui.showArtist(artist)}>{artist.name}</button>
+        </p>
+      {:else if item.artist}
+        <p class="artist">{item.artist}</p>
+      {/if}
       {#if item.album}<p class="album muted">{item.album}</p>{/if}
       {#if player.current !== null && player.items.length > 1}
         <p class="position muted small">
@@ -26,7 +33,7 @@
       <h1 class="muted">Not playing</h1>
       <p class="muted">Double-click a track in the library to play it.</p>
     {/if}
-    <button class="back link" onclick={() => ui.leaveNowPlaying()}>
+    <button class="back link" onclick={() => ui.back()}>
       <Icon name="close" size="1rem" /> Close
     </button>
   </div>
@@ -74,6 +81,15 @@
   .artist {
     font-size: 1.2rem;
     font-weight: 600;
+  }
+
+  .artist .link {
+    font-weight: inherit;
+    text-align: left;
+  }
+
+  .artist .link:hover {
+    text-decoration: underline;
   }
 
   .album {

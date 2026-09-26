@@ -34,7 +34,7 @@ impl LinkStatus {
         }
     }
 
-    fn from_str(text: &str) -> Option<LinkStatus> {
+    pub fn from_str(text: &str) -> Option<LinkStatus> {
         [LinkStatus::Matched, LinkStatus::Review, LinkStatus::None]
             .into_iter()
             .find(|status| status.as_str() == text)

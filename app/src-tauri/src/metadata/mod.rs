@@ -1,13 +1,15 @@
 //! Metadata from sources beyond the tags: pictures next to the files, and
-//! online services such as MusicBrainz (PLAN.md Phase 4). Several sources
-//! can supply each kind of data; `settings` holds which are enabled and in
-//! what order, and the user can pin a source's result for an album.
+//! online services such as MusicBrainz and Wikipedia (PLAN.md Phase 4).
+//! Several sources can supply each kind of data; `settings` holds which are
+//! enabled and in what order, and the user can pin a source's result for an
+//! album.
 //!
 //! Online data is kept apart from the tags: the scanner owns the library's
 //! tables, and the metadata code owns `album_links`, `artist_links` and
 //! `album_art` (migration 003).
 
 pub mod albums;
+pub mod artists;
 pub mod cache;
 pub mod commands;
 pub mod coverartarchive;
@@ -18,6 +20,7 @@ pub mod jobs;
 pub mod matcher;
 pub mod musicbrainz;
 pub mod settings;
+pub mod wikipedia;
 pub mod worker;
 
 use std::fmt;

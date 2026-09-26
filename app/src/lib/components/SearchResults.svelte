@@ -1,8 +1,8 @@
 <script lang="ts">
   // Search results for `library.query`, fetched 150 ms after typing stops,
-  // grouped into artists, albums and tracks. An artist or album opens in
-  // the browser (under a rule that fits), or plays; a track plays its album
-  // from that track.
+  // grouped into artists, albums and tracks. An artist opens their page; an
+  // album opens in the browser (under a rule that fits), or plays; a track
+  // plays its album from that track.
   import { untrack } from "svelte";
   import {
     library as api,
@@ -11,14 +11,13 @@
     type ArtistHit,
     type SearchKind,
     type SearchResults,
-    type SortRule,
     type Track,
   } from "$lib/api";
   import { fileName, formatTime, plural } from "$lib/format";
-  import { library } from "$lib/state/library.svelte";
+  import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
-  import { ui } from "$lib/state/ui.svelte";
+  import { ui, type MenuItem } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
 
@@ -72,70 +71,60 @@
       };
     });
 
-  const standardTrackOrder: SortRule["trackOrder"] = ["discNumber", "trackNumber", "title", "path"];
+  const albumRule = adHocRule(["album"]);
 
-  /** A rule of one level, for playing what search found whatever the stored rules are. */
-  const adHoc = (level: SortRule["levels"][number]): SortRule => ({
-    id: `search-${level}`,
-    name: "Search",
-    levels: [level],
-    trackOrder: level === "album" ? standardTrackOrder : ["album", ...standardTrackOrder],
-  });
-
-  function openArtist(artist: ArtistHit) {
-    const level = artist.albumArtistTrackCount > 0 ? "albumArtist" : "artist";
-    const rule = library.ruleStartingWith(level);
-    if (rule) {
-      library.navigate(rule.id, [{ key: artist.id, name: artist.name }]);
-      library.query = "";
-    } else {
-      playArtist(artist);
-    }
+  function showArtist(artist: { id: number; name: string }) {
+    library.query = "";
+    ui.showArtist(artist);
   }
 
+  /** Their own albums oldest first, else the tracks they appear on. */
   const playArtist = (artist: ArtistHit) =>
-    attempt(() => queue.playNode(adHoc(artist.albumArtistTrackCount > 0 ? "albumArtist" : "artist"), [artist.id], true));
+    attempt(() =>
+      queue.playNode(
+        adHocRule([artist.albumArtistTrackCount > 0 ? "albumArtist" : "artist", "album"], "year"),
+        [artist.id],
+        true,
+      ),
+    );
 
   function openAlbum(album: AlbumHit) {
-    const byArtist = library.ruleStartingWith("albumArtist", "album");
-    const byAlbum = library.ruleStartingWith("album");
-    if (byArtist) {
-      library.navigate(byArtist.id, [
-        { key: album.albumArtistId, name: album.albumArtist ?? "Unknown artist" },
-        { key: album.id, name: album.title },
-      ]);
-    } else if (byAlbum) {
-      library.navigate(byAlbum.id, [{ key: album.id, name: album.title }]);
-    } else {
-      return playAlbum(album);
-    }
-    library.query = "";
+    if (!library.showAlbum(album)) playAlbum(album);
   }
 
-  const playAlbum = (album: AlbumHit) => attempt(() => queue.playNode(adHoc("album"), [album.id], true));
+  const playAlbum = (album: AlbumHit) => attempt(() => queue.playNode(albumRule, [album.id], true));
 
   const playTrack = (track: Track) =>
     attempt(() =>
       track.albumId !== null
-        ? queue.playNode(adHoc("album"), [track.albumId], true, track.id)
+        ? queue.playNode(albumRule, [track.albumId], true, track.id)
         : queue.play([track.id], 0),
     );
 
   function trackMenu(event: MouseEvent, track: Track) {
-    ui.openMenu(event, [
+    const items: MenuItem[] = [
       { label: "Play", action: () => playTrack(track) },
       { label: "Play next", action: () => attempt(() => queue.add([track.id], true)) },
       { label: "Add to queue", action: () => attempt(() => queue.add([track.id], false)) },
-    ]);
+    ];
+    if (track.artistId !== null && track.artist !== null) {
+      const artist = { id: track.artistId, name: track.artist };
+      items.push({ label: "Go to artist", action: () => showArtist(artist) });
+    }
+    ui.openMenu(event, items);
   }
 
   function albumMenu(event: MouseEvent, album: AlbumHit) {
-    const rule = adHoc("album");
-    ui.openMenu(event, [
+    const items: MenuItem[] = [
       { label: "Play", action: () => playAlbum(album) },
-      { label: "Play next", action: () => attempt(() => queue.addNode(rule, [album.id], true, true)) },
-      { label: "Add to queue", action: () => attempt(() => queue.addNode(rule, [album.id], true, false)) },
-    ]);
+      { label: "Play next", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, true)) },
+      { label: "Add to queue", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, false)) },
+    ];
+    if (album.albumArtistId !== null && album.albumArtist !== null) {
+      const artist = { id: album.albumArtistId, name: album.albumArtist };
+      items.push({ label: "Go to artist", action: () => showArtist(artist) });
+    }
+    ui.openMenu(event, items);
   }
 </script>
 
@@ -150,7 +139,7 @@
       <ul class="chips">
         {#each results.artists as artist (artist.id)}
           <li>
-            <button class="chip" onclick={() => openArtist(artist)} ondblclick={() => playArtist(artist)}>
+            <button class="chip" onclick={() => showArtist(artist)} ondblclick={() => playArtist(artist)}>
               <span class="name">{artist.name}</span>
               <span class="muted small">{plural(artist.trackCount, "track")}</span>
             </button>

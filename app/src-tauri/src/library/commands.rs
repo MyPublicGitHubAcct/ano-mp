@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use super::access::{self, OpenFolder};
 use super::art::ArtCache;
+use super::artists::{self, ArtistPage};
 use super::browse::{self, BrowsePage, GroupKey};
 use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
@@ -175,6 +176,25 @@ pub async fn library_search<R: Runtime>(
         search::search(&library.conn(), &query, &kinds, offset, limit)
     })
     .await
+}
+
+/// The page for artist `artist_id`: their albums, the albums they appear
+/// on, and what the metadata sources know about them; see
+/// `library::artists`. The metadata worker is asked to look the artist up
+/// ahead of background work, as far as the settings and the retry waits
+/// allow, and names them in `metadata-changed` if anything changed.
+#[tauri::command]
+pub async fn library_artist<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+) -> Result<ArtistPage, String> {
+    let page = on_library(&app, move |library| {
+        artists::artist_page(&library.conn(), artist_id)?
+            .ok_or_else(|| Error::Invalid("The artist is no longer in the library".into()))
+    })
+    .await?;
+    crate::metadata::worker::viewing_artist(&app, artist_id);
+    Ok(page)
 }
 
 /// The sort rules and ignored articles.

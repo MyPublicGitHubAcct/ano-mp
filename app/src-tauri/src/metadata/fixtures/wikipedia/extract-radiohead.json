@@ -1,0 +1,23 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 38252,
+        "ns": 0,
+        "title": "Radiohead",
+        "extract": "Radiohead are an English rock band formed in Abingdon, Oxfordshire, in 1985.\n\nThis paragraph stands in for the rest of the article's lead, which isn't copied into the tests.",
+        "contentmodel": "wikitext",
+        "pagelanguage": "en",
+        "pagelanguagehtmlcode": "en",
+        "pagelanguagedir": "ltr",
+        "touched": "2026-09-25T02:39:04Z",
+        "lastrevid": 1376488801,
+        "length": 222908,
+        "fullurl": "https://en.wikipedia.org/wiki/Radiohead",
+        "editurl": "https://en.wikipedia.org/w/index.php?title=Radiohead&action=edit",
+        "canonicalurl": "https://en.wikipedia.org/wiki/Radiohead"
+      }
+    ]
+  }
+}
