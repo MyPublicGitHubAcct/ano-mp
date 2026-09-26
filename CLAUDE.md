@@ -9,8 +9,8 @@ plays MP3, FLAC and other common formats, shows file metadata enriched from serv
 such as MusicBrainz, and has an admin screen for configuring displayed fields, enabled
 services, library sort/grouping rules and visualization preferences.
 
-`PLAN.md` is the authoritative roadmap: phased plan, open decisions (licensing, decoder,
-tag library, frontend framework), risks and release gates. Read it before starting
+`PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
+license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
 Current state: only the C++ core exists; `app/` and `docs/` are empty.
 

@@ -90,25 +90,32 @@ Not needed until Phase 8 (iOS/iPadOS):
 Not needed until Phases 9–10. Tauri apps can't practically be cross-compiled,
 so each OS needs a native machine, VM or CI runner:
 
-- [ ] **Linux (Phase 9):** Ubuntu 22.04+ machine or VM with Rust, Node.js, and
+- [ ] **Linux (Phase 9):** Ubuntu 24.04+ machine or VM with Rust, Node.js, and
       `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
       (Tauri) plus `libasound2-dev libfreetype-dev libfontconfig1-dev` (JUCE)
-- [ ] **Windows (Phase 10):** Windows 10/11 machine or VM with Rust (MSVC
+- [ ] **Windows (Phase 10):** Windows 11 machine or VM with Rust (MSVC
       toolchain), Node.js, Visual Studio 2022 Build Tools (C++ workload), and
       WebView2 (preinstalled on Windows 11)
 
-## 4. Open decisions (need owner input)
+## 4. Decisions
 
-1. **JUCE and FFmpeg licenses.** JUCE 8+ is AGPLv3 or commercial. Shipping on
-   the App Store with closed source requires a commercial license (the free
-   "Starter" tier has a revenue cap). The alternative is to publish the app as
-   AGPL. FFmpeg is used under the LGPL (see #3), which the app satisfies by
-   shipping FFmpeg as replaceable shared libraries plus a license notice and
-   source offer. That is standard on desktop; on the App Store it is less
-   clear-cut and should be checked before Phase 8 ships.
-2. **Frontend framework.** The default proposal is Svelte + TypeScript + Vite
-   (small bundle, simple reactivity). React is the alternative if the team prefers it.
-3. **Decoder: FFmpeg for all formats (decided 2026-09-25).**
+All decided 2026-09-25 except the two legal checks flagged below, which are
+release gates (§8.1) rather than engineering blockers.
+
+1. **Licenses: JUCE commercial, closed source (decided).** JUCE 8+ is AGPLv3
+   or commercial. We use the commercial license, starting on the free
+   "Starter" tier and moving to a paid tier before revenue passes its cap
+   (check the current JUCE 9 tiers then). This keeps the source closed and the
+   App Store open to us. FFmpeg is used under the LGPL (see #3), which the app
+   satisfies by shipping FFmpeg as replaceable shared libraries plus a license
+   notice and source offer. That is standard on desktop.
+   - **Open point: FFmpeg LGPL on the App Store.** Dynamic `.xcframework`s
+     keep the libraries replaceable, but Apple's usage terms are the usual
+     objection. Get a legal opinion before the first App Store submission.
+2. **Frontend framework: Svelte 5 + TypeScript + Vite (decided).** Small
+   bundle, and runes handle high-frequency state (position, levels) without
+   re-render tuning. The visualizer draws on a canvas outside the framework.
+3. **Decoder: FFmpeg for all formats (decided).**
    - Formats: MP3, FLAC, WAV, AIFF, Ogg Vorbis, Opus, AAC/M4A, ALAC and WMA on
      every platform. More (APE, WavPack, DSD) are a configure flag away.
    - Build: our own pinned, **LGPL, audio-only, shared** FFmpeg build (no
@@ -116,18 +123,28 @@ so each OS needs a native machine, VM or CI runner:
      decoders, plus libswresample; no video, network or encoders). This adds a
      few MB per platform. We don't use distro or Homebrew FFmpeg, whose builds
      vary (some strip AAC, Homebrew's is GPL).
-   - **Open point: AAC patents.** Apple's and Microsoft's own decoders are
-     covered by their vendors' licenses; FFmpeg's AAC decoder is not. Get a
-     licensing opinion before release.
-   - **Fallback:** if the AAC or App Store questions go badly, Apple builds can
-     route AAC/ALAC to CoreAudio instead. Only `FFmpegAudioFormat`'s
-     registration changes.
-4. **Tag library.** JUCE reads audio but only minimal metadata. The proposal is
-   TagLib 2.x (LGPL-2.1 / MPL-1.1, dual-licensed; use it under MPL so static
-   linking on iOS is OK) for ID3v2, Vorbis comments, MP4 atoms and embedded art.
-5. **Minimum OS targets.** The targets are macOS, iOS/iPadOS, then Linux,
-   then Windows. The proposal is macOS 12+, iOS/iPadOS 16+, Ubuntu 22.04+ /
-   Fedora 38+ (anything with WebKitGTK 4.1), and Windows 10 22H2+.
+   - **AAC: FFmpeg's decoder everywhere (decided), pending a licensing
+     opinion before release.** Apple's and Microsoft's own decoders are
+     covered by their vendors' licenses; FFmpeg's AAC decoder is not. Many
+     early AAC patents have expired, but Via LA's pool still lists active ones
+     in some countries.
+   - **Fallback:** if the AAC or App Store opinions go badly, Apple builds
+     route AAC/ALAC to CoreAudio (and Windows to Media Foundation). Only
+     `FFmpegAudioFormat`'s registration changes.
+4. **Tag library: TagLib 2.x under the MPL (decided).** JUCE reads audio but
+   only minimal metadata. TagLib is dual-licensed LGPL-2.1 / MPL-1.1; we use
+   it under the MPL so static linking on iOS is OK. It covers ID3v2, Vorbis
+   comments, MP4 atoms and embedded art, and lives in the core behind
+   `anomp_read_tags` (Phase 2).
+5. **Minimum OS targets: modern (decided).** Platform order is macOS,
+   iOS/iPadOS, then Linux, then Windows.
+
+   | Platform | Minimum |
+   |---|---|
+   | macOS | 14 (Sonoma) |
+   | iOS / iPadOS | 17 |
+   | Linux | Ubuntu 24.04 / Fedora 40 (WebKitGTK 4.1) |
+   | Windows | 11 (Windows 10 support ended October 2025) |
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
@@ -152,7 +169,8 @@ Rules from the start, so the later ports stay cheap:
 
 ### Phase 0 — Toolchain and integration spike (highest risk first)
 - Install the prerequisites in §3.
-- Scaffold `app/` with `npm create tauri-app` (Tauri 2).
+- Scaffold `app/` with `npm create tauri-app` (Tauri 2, Svelte + TypeScript
+  template; see §4.2).
 - `build.rs`: build `anomp_core` via the `cmake` crate, link the static lib plus
   the Apple frameworks (CoreAudio, AudioToolbox, CoreMIDI, Accelerate,
   AVFoundation, Foundation, AppKit).
@@ -307,7 +325,7 @@ Rules from the start, so the later ports stay cheap:
   via `souvlaki` or the `windows` crate.
 - Paths: long paths (`\\?\` prefix), UTF-16 ↔ UTF-8 at the OS boundary,
   case-insensitive de-duplication in the library DB.
-- **Exit:** a release build plays a library on Windows 10 and 11, with media
+- **Exit:** a release build plays a library on Windows 11, with media
   keys working. Installer and signing are in §8.6.
 
 ## 6. Key risks
@@ -316,7 +334,7 @@ Rules from the start, so the later ports stay cheap:
 |---|---|
 | JUCE message loop vs. Tauri's main-thread ownership | Phase 0 spike before any other work; fall back to driving CoreAudio via JUCE's `AudioIODevice` without MessageManager-dependent features |
 | iOS problems found late (iOS work is deferred to Phase 8) | Keep the core platform-neutral and store bookmarks rather than paths from the start; if any late surprise would be costly, pull the Phase 8 simulator spike forward once Xcode is available |
-| Licensing (JUCE AGPL, FFmpeg LGPL, TagLib LGPL/MPL) | Decide §4.1 before any distribution (release gate, §8.1); FFmpeg always shipped as shared libs |
+| Licensing (JUCE commercial tier, FFmpeg LGPL, TagLib MPL) | JUCE license in place before any distribution (release gate, §8.1); FFmpeg always shipped as shared libs; App Store LGPL opinion before Phase 8 ships (§4.1) |
 | AAC patent exposure from shipping FFmpeg's AAC decoder | Licensing opinion before release; CoreAudio fallback on Apple (§4.3) |
 | FFmpeg build complexity across 4 OSes and several architectures | One script, pinned version, CI-cached artifacts; done per platform in its phase |
 | FFmpeg parser vulnerabilities (large attack surface) | Minimal configure (only needed demuxers/decoders); track FFmpeg security releases and bump the pin |
@@ -351,12 +369,13 @@ Platform subsections apply once the matching phase in §5 is done.
 ### 8.1 Gates before any public release
 These need answers first; most need the owner rather than engineering.
 
-- [ ] **JUCE license** (§4.1): commercial/Starter license bought, or the app
-      published under the AGPL.
+- [ ] **JUCE license** (§4.1): commercial license in place (Starter tier to
+      start; upgrade before revenue passes its cap).
 - [ ] **FFmpeg LGPL compliance** (§4.1): notice, source offer and replaceable
       shared libraries in every package. For the App Store, confirm this is
       acceptable before the first iOS or Mac App Store submission.
-- [ ] **AAC patents** (§4.3): licensing opinion obtained, or AAC routed to
+- [ ] **AAC patents** (§4.3): licensing opinion obtained for FFmpeg's AAC
+      decoder (the chosen path), or fall back to routing AAC to
       CoreAudio (Apple) / Media Foundation (Windows) / disabled (Linux).
 - [ ] **Name and identity:** the candidate product name is **AnoTracks**
       (runner-up: Anotone). Before committing:
@@ -441,7 +460,7 @@ Build once (after Phase 7), reused for every platform.
   `$ORIGIN` RPATH (never the system copy).
 - `.desktop` file, icons at the standard sizes, and AppStream metadata
   (needed later for Flathub and software centres).
-- Test installs on clean Ubuntu 22.04/24.04 and Fedora VMs: launch, audio
+- Test installs on clean Ubuntu 24.04 and Fedora 40+ VMs: launch, audio
   output under PipeWire, media keys, uninstall.
 - Optional: GPG-sign artifacts, host an apt repository, submit to Flathub.
 - AppImage builds can use the Tauri updater; `.deb` users update through the
@@ -455,7 +474,7 @@ Build once (after Phase 7), reused for every platform.
   to the executable.
 - WebView2: use the download bootstrapper (small installer) or the offline
   installer for machines without internet; Windows 11 already has it.
-- Test on clean Windows 10 and 11 VMs: install, first launch, audio, media
+- Test on clean Windows 11 VMs: install, first launch, audio, media
   keys, upgrade, uninstall (library DB and settings handling).
 - Optional: winget manifest, Microsoft Store listing.
 

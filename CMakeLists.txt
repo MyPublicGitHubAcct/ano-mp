@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 
+# Must precede project() to take effect; minimum OS targets are in PLAN.md §4.5.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
+
 project(ano_mp VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 
 option(ANOMP_BUILD_TESTS "Build the Catch2 test suite" ON)
 
