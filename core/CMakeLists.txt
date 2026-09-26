@@ -4,16 +4,25 @@ add_library(anomp_core STATIC
     src/AudioEngine.cpp
     src/FFmpegAudioFormat.cpp
     src/FormatRegistry.cpp
+    src/MediaControls.cpp
     src/PlayerEngine.cpp
     src/TagReader.cpp
     src/anomp_c_api.cpp)
 
 # Platform code, one implementation per OS (PLAN.md §5).
 if(APPLE)
-    target_sources(anomp_core PRIVATE src/FolderAccess_apple.mm)
-    set_source_files_properties(src/FolderAccess_apple.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_sources(anomp_core PRIVATE src/FolderAccess_apple.mm src/MediaControls_apple.mm)
+    set_source_files_properties(src/FolderAccess_apple.mm src/MediaControls_apple.mm
+        PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    # Hosts that link the core by hand (app/src-tauri/build.rs) list these too.
+    target_link_libraries(anomp_core PRIVATE "-framework MediaPlayer")
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        target_link_libraries(anomp_core PRIVATE "-framework UIKit")
+    else()
+        target_link_libraries(anomp_core PRIVATE "-framework AppKit")
+    endif()
 else()
-    target_sources(anomp_core PRIVATE src/FolderAccess_unsandboxed.cpp)
+    target_sources(anomp_core PRIVATE src/FolderAccess_unsandboxed.cpp src/MediaControls_none.cpp)
 endif()
 
 target_include_directories(anomp_core

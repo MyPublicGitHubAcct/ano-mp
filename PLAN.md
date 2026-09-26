@@ -10,11 +10,10 @@ by offline tests and by ear in the app. Phase 2 complete (2026-09-26): the
 core reads tags and embedded art with TagLib, the Rust library database and
 incremental folder scanner are in place, the library is browsed a page at a
 time under configurable sort/grouping rules, and library folders are kept as
-security-scoped bookmarks in a sandboxed app bundle. Phase 3 (the player UI)
-is under way (2026-09-26): the queue (with gapless hand-off across it,
-shuffle, repeat and persistence), full-text search, cover art and the
-responsive player UI are in place and checked by hand; OS media
-integration remains.
+security-scoped bookmarks in a sandboxed app bundle. Phase 3 complete
+(2026-09-26): the queue (with gapless hand-off across it, shuffle, repeat
+and persistence), full-text search, cover art, the responsive player UI,
+and macOS Now Playing and media keys through `MediaControls`.
 
 ## 1. Architecture
 
@@ -69,16 +68,18 @@ Why this split:
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events, advance count) | `core/include/anomp/anomp.h` |
+| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events, advance count), `anomp_media_controls_*` | `core/include/anomp/anomp.h` |
 | TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
-| 41 passing Catch2 tests (~1935 assertions) | `core/tests` |
+| `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
+| 52 passing Catch2 tests (~2090 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
-| 86 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art cache, queue), plus 3 ignored 50,000-track benchmarks | `app/src-tauri/src` |
+| OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
+| 95 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art cache, queue, Now Playing sync), plus 3 ignored 50,000-track benchmarks | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -584,8 +585,13 @@ Rules from the start, so the later ports stay cheap:
     thread (`run`, via `audio::on_main`), so the queue never waits for the
     engine from another thread while holding a lock. Commands that need the
     database first (track ids → titles, a browse node → its tracks) do that
-    on a blocking thread, then hop over. `TrackEnded` is handled on the next
-    turn of the main loop, not inside the engine's own callback.
+    on a blocking thread, then hop over. `TrackEnded` is handled inside
+    the engine's event callback, which the C API allows: the engine has
+    finished with what it reports before it calls back. (This note first
+    said it was deferred to the next turn of the main loop; it never was,
+    since `run_on_main_thread` runs at once on the main thread. Corrected
+    2026-09-26, when `anomp.h` came to state the rule and a Catch2 test to
+    cover it.)
   - **State:** the items (a uid per item, so a track can be queued twice and
     survives reorders) in play order, the current index, repeat
     (off/all/one), and with shuffle on, the order before shuffling.
@@ -787,12 +793,106 @@ Rules from the start, so the later ports stay cheap:
   and the album order. One relaunch came back with an empty queue; the
   saved state was correct and restores in tests from a copy of that
   database, so the cause wasn't found, and it was set aside.
-- [ ] OS media integration: macOS Now Playing info and remote commands
+- [x] OS media integration: macOS Now Playing info and remote commands
   (`MPNowPlayingInfoCenter`, `MPRemoteCommandCenter`) implemented in Obj-C++
   in the core. This covers media keys and Control Center; the same APIs serve
   the iOS lock screen in Phase 8. The remote commands call
   `queue::next`/`previous`/`toggle`/`seek` on the main thread; the Now
   Playing info comes from the `QueueState`.
+
+  Done 2026-09-26 (`core/src/MediaControls*`, `app/src-tauri/src/media.rs`):
+  - **Core:** `MediaControls` is platform-neutral. It keeps what is
+    published (title, artist, album, playing or paused, elapsed time and
+    duration, artwork bytes, whether next and previous are enabled), checks
+    the values (non-finite ones refused, the position clamped to the
+    track), and gates the commands that come back: next and previous are
+    dropped while disabled, and a seek must be finite and is clamped. The
+    platform part is a `Backend` with one implementation per OS, like
+    `FolderAccess`. `MediaControls_apple.mm` (ARC) is the only code that
+    touches MediaPlayer, AppKit or UIKit. It rebuilds the `nowPlayingInfo`
+    dictionary on each change, with rate 1 or 0 so the system moves the
+    progress bar on by itself. It sets `playbackState`, which macOS uses to
+    pick the app that gets the media keys; a cleared queue sets it to
+    stopped. Artwork is decoded into an `NSImage` (a `UIImage` on iOS),
+    and bytes that don't decode are refused. It registers play, pause,
+    toggle, next, previous and change-playback-position. The handlers hold
+    their target weakly, so a late one does nothing after destroy; one
+    that arrives off the main thread is re-sent to the main queue. The base
+    `Backend` does nothing and is the fallback (`MediaControls_none.cpp`
+    until Phases 9–10). `build.rs` and the core's CMake link MediaPlayer.
+  - **C API:** `anomp_media_controls_create(callback, user_data)`,
+    `_destroy`, `_set_track`, `_set_playback` (an `ANOMP_STATE_*` value,
+    elapsed, duration), `_set_artwork` (encoded bytes; empty clears),
+    `_set_navigation`, `_clear`, `_supported`, and `_perform`, which
+    delivers a command as if the OS had sent it (for tests). Main thread
+    only, null handles safe. **Commands use a callback of their own, not
+    new engine event types:** engine events are polled every 50 ms, but
+    commands arrive the moment the OS sends them. Commands also carry
+    their own payload (a seek position), and the controls don't depend on
+    the audio engine: separate lifetime, and they are tested without it.
+  - **Rust:** `anomp::MediaControls` wraps the C API. `media.rs` hosts it
+    in a main-thread thread-local. `NowPlaying` decides what to publish,
+    driven through a `Publisher` trait so `cargo test` runs it against a
+    fake. It compares what the queue and player are doing with what it
+    last published, and sends only the differences:
+    - After every queue change (`queue::publish`) it gets the `QueueState`
+      plus the engine's state, position and duration. Not loaded, or no
+      current item: clear. A new current item (uid or tags differ): track
+      and playback. Changed `has_next`/`has_previous`: navigation.
+    - The engine's `StateChanged` republishes playback. `Position` (every
+      50 ms while playing) is compared, not forwarded. Playback is
+      republished when the duration changes (the exact one arrives on
+      load), when paused and the position moved, or when playing and the
+      position is more than 0.25 s from where the system has moved it on
+      to. That is how seeks from anywhere (UI, keyboard, scrubbing in
+      Control Center, the dev page) reach the progress bar without the
+      position being pushed every 50 ms.
+    - Until the engine has a duration, the tags' one is shown.
+  - **Nothing is published until the queue has a track loaded,** so a
+    launch (which restores the queue unloaded) doesn't take the media keys
+    from another player. The dev page's direct loads detach the queue,
+    which clears Now Playing.
+  - **Commands** go straight to `queue::play`, `pause` (new, like `toggle`
+    it saves the position), `toggle`, `next`, `previous` and `seek`,
+    inside the callback. The design first deferred them with
+    `run_on_main_thread`, but on the main thread Tauri runs that closure
+    at once, so it would not defer anything. Calling directly is safe: the
+    core calls the handler only from the OS's handler, never inside a call
+    into the core, so no queue, engine or media borrow is held then. The
+    Rust wrapper keeps the handler behind a raw pointer, so running it
+    never overlaps a `&mut` borrow of the controls.
+  - **Artwork:** the key is the current item's album (`ArtKey::Album`), or
+    the track without one, the same as the UI uses. When it changes, the
+    old art is cleared and `art::lookup` runs on a blocking thread (the
+    library connection is used only there). The result comes back through
+    `run_on_main_thread` and is shown only if that key is still current.
+    Tracks from the same album keep the art, with no lookup and no flicker.
+  - Tests: Catch2 `MediaControlsTests.cpp` (a recording backend: what is
+    published and what changed, value checks, artwork refusal, command
+    gating and clamping, the fallback; the C API: null handles, argument
+    checks, commands reaching the callback through `_perform`, and PNG
+    artwork decoding). No test publishes a track, which would show on the
+    machine's real Now Playing. `cargo test`: the command and state
+    mapping, and `NowPlaying` (nothing before a track is loaded, clearing,
+    art kept per album, late art ignored, when positions are republished,
+    the tags' duration, a rescan's new tags).
+  - Known limits: a seek of less than 0.25 s while playing isn't
+    republished. For up to 50 ms after a gapless hand-off, the progress bar
+    can show the new track's position under the old title, until the queue
+    moves on. Artwork is sent at full size. Nothing is shown after a
+    relaunch until playback starts, so the media keys can't resume the
+    restored queue until then. The OS's command status is not the
+    queue's: a command the queue can't act on (play with an empty queue)
+    still reports success.
+  - Checked by hand 2026-09-26 in `tauri dev` (unbundled, which Now
+    Playing accepts) and in the sandboxed bundle: the media keys play,
+    pause, skip and go back; Control Center and the menu-bar widget show
+    title, artist, album, artwork and a progress bar that follows playback
+    and seeks; scrubbing there seeks the app; next and previous gray out
+    at the ends of the queue with repeat off; clearing the queue clears
+    the info.
+
+  **Phase 3 complete.**
 
 ### Phase 4 — Online metadata services
 - MusicBrainz client in Rust: a meaningful `User-Agent` (required), a

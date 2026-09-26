@@ -456,6 +456,73 @@ TEST_CASE ("PlayerEngine load drops an end it has not reported", "[player]")
     CHECK (h.player.getAdvanceCount() == 0);
 }
 
+TEST_CASE ("PlayerEngine event callbacks may send it commands", "[player][gapless]")
+{
+    // The host's queue arms the next track from inside onTrackEnded (the
+    // Rust queue does, through the C API's callback).
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+    Harness h (44100.0, readAhead);
+    const auto first = decode ("flac-44k.flac");
+    const auto second = decode ("wav-s16-44k.wav");
+
+    SECTION ("setting the next track after a hand-off keeps it gapless")
+    {
+        int advances = 0;
+        h.player.onTrackEnded = [&] (bool advanced)
+        {
+            h.events.push_back (advanced ? "advanced" : "ended");
+            if (advanced && ++advances == 1)
+                CHECK (h.player.setNext (fixtureFile ("flac-44k.flac")).isEmpty());
+        };
+
+        REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+        REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+        REQUIRE (h.player.play());
+        h.takeEvents();
+
+        h.render (length (first) + 1);
+        CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+        CHECK (h.player.hasNext());
+
+        const auto stoppedAt = h.renderUntilStopped (300000);
+        CHECK (h.takeEvents() == std::vector<std::string> { "advanced", "ended", stateStopped });
+        const auto expected = concat (concat (first, second), first);
+        CHECK (stoppedAt >= length (expected));
+        CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) == 0.0f);
+    }
+
+    SECTION ("loading and playing when the last track ends")
+    {
+        bool restarted = false;
+        h.player.onTrackEnded = [&] (bool advanced)
+        {
+            h.events.push_back (advanced ? "advanced" : "ended");
+            if (! advanced && ! std::exchange (restarted, true))
+            {
+                CHECK (h.player.load (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+                CHECK (h.player.play());
+            }
+        };
+
+        REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+        REQUIRE (h.player.play());
+        h.takeEvents();
+        const auto endedAt = h.renderUntilStopped (200000);
+
+        // Playing again before the state was reported: no state change.
+        CHECK (h.takeEvents() == std::vector<std::string> { "ended" });
+        CHECK (h.player.getState() == State::playing);
+        CHECK (h.player.getPositionSeconds() == 0.0);
+
+        const auto stoppedAt = h.renderUntilStopped (200000);
+        CHECK (h.takeEvents() == std::vector<std::string> { "ended", stateStopped });
+        CHECK (stoppedAt - endedAt >= length (second));
+        // The first block fades in.
+        CHECK (maxError (h.output, endedAt + blockSize, second, blockSize, length (second) - blockSize) == 0.0f);
+    }
+}
+
 TEST_CASE ("PlayerEngine reports position changes", "[player]")
 {
     Harness h (44100.0, false);

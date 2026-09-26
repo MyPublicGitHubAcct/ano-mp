@@ -64,11 +64,40 @@ struct RawFolderAccess {
 
 type RawEventCallback = extern "C" fn(event: *const RawEvent, user_data: *mut c_void);
 
+#[repr(C)]
+struct RawMediaControls {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct RawMediaCommand {
+    kind: c_int,
+    position: f64,
+}
+
+#[repr(C)]
+struct RawMediaTrack {
+    title: *const c_char,
+    artist: *const c_char,
+    album: *const c_char,
+}
+
+type RawMediaCommandCallback =
+    extern "C" fn(command: *const RawMediaCommand, user_data: *mut c_void);
+
+const ANOMP_MEDIA_PLAY: c_int = 1;
+const ANOMP_MEDIA_PAUSE: c_int = 2;
+const ANOMP_MEDIA_TOGGLE: c_int = 3;
+const ANOMP_MEDIA_NEXT: c_int = 4;
+const ANOMP_MEDIA_PREVIOUS: c_int = 5;
+const ANOMP_MEDIA_SEEK: c_int = 6;
+
 const ANOMP_EVENT_DEVICE_CHANGED: c_int = 1;
 const ANOMP_EVENT_STATE_CHANGED: c_int = 2;
 const ANOMP_EVENT_POSITION: c_int = 3;
 const ANOMP_EVENT_TRACK_ENDED: c_int = 4;
 
+const ANOMP_STATE_EMPTY: c_int = 0;
 const ANOMP_STATE_STOPPED: c_int = 1;
 const ANOMP_STATE_PLAYING: c_int = 2;
 const ANOMP_STATE_PAUSED: c_int = 3;
@@ -135,6 +164,34 @@ extern "C" {
     fn anomp_engine_position(engine: *mut RawEngine) -> f64;
     fn anomp_engine_duration(engine: *mut RawEngine) -> f64;
     fn anomp_engine_advance_count(engine: *mut RawEngine) -> i64;
+    fn anomp_media_controls_supported() -> c_int;
+    fn anomp_media_controls_create(
+        callback: Option<RawMediaCommandCallback>,
+        user_data: *mut c_void,
+    ) -> *mut RawMediaControls;
+    fn anomp_media_controls_destroy(controls: *mut RawMediaControls);
+    fn anomp_media_controls_set_track(
+        controls: *mut RawMediaControls,
+        track: *const RawMediaTrack,
+    ) -> c_int;
+    fn anomp_media_controls_set_playback(
+        controls: *mut RawMediaControls,
+        state: c_int,
+        elapsed: f64,
+        duration: f64,
+    ) -> c_int;
+    fn anomp_media_controls_set_artwork(
+        controls: *mut RawMediaControls,
+        data: *const u8,
+        size: usize,
+    ) -> c_int;
+    fn anomp_media_controls_set_navigation(
+        controls: *mut RawMediaControls,
+        has_next: c_int,
+        has_previous: c_int,
+    );
+    fn anomp_media_controls_clear(controls: *mut RawMediaControls);
+
     fn anomp_engine_play_test_tone(engine: *mut RawEngine, frequency_hz: f64) -> c_int;
     fn anomp_engine_stop_test_tone(engine: *mut RawEngine);
 }
@@ -362,6 +419,15 @@ pub enum PlayerState {
 }
 
 impl PlayerState {
+    fn to_raw(self) -> c_int {
+        match self {
+            PlayerState::Empty => ANOMP_STATE_EMPTY,
+            PlayerState::Stopped => ANOMP_STATE_STOPPED,
+            PlayerState::Playing => ANOMP_STATE_PLAYING,
+            PlayerState::Paused => ANOMP_STATE_PAUSED,
+        }
+    }
+
     fn from_raw(state: c_int) -> PlayerState {
         match state {
             ANOMP_STATE_STOPPED => PlayerState::Stopped,
@@ -373,7 +439,8 @@ impl PlayerState {
 }
 
 /// Events the core reports through the engine's event callback. Player
-/// events arrive about every 50 ms, never from inside an engine call.
+/// events arrive about every 50 ms, never from inside an engine call; the
+/// handler may call the engine.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Event {
     /// The device list or the open output device changed.
@@ -399,8 +466,11 @@ type EventHandler = Box<dyn FnMut(Event)>;
 /// that it stays on the thread that created it.
 pub struct Engine {
     raw: NonNull<RawEngine>,
-    // Double-boxed so the C side holds a thin pointer with a stable address.
-    handler: Option<Box<EventHandler>>,
+    // Double-boxed so the C side holds a thin pointer with a stable address,
+    // and kept as a raw pointer (null if none) rather than a Box: the
+    // handler may call engine functions, which borrow `self` mutably while
+    // it runs.
+    handler: *mut EventHandler,
     _not_send: PhantomData<*mut ()>,
 }
 
@@ -410,20 +480,26 @@ impl Engine {
         let raw = NonNull::new(unsafe { anomp_engine_create() })?;
         Some(Engine {
             raw,
-            handler: None,
+            handler: std::ptr::null_mut(),
             _not_send: PhantomData,
         })
     }
 
-    /// Calls `handler` on the main thread for each engine event.
+    /// Calls `handler` on the main thread for each engine event. The handler
+    /// may call the engine (e.g. to set the next track when one ends), but
+    /// must not replace itself.
     pub fn set_event_handler(&mut self, handler: impl FnMut(Event) + 'static) {
-        let mut handler: Box<EventHandler> = Box::new(Box::new(handler));
-        let user_data = (&mut *handler as *mut EventHandler).cast::<c_void>();
-        // SAFETY: `user_data` points into `self.handler`, which outlives the
-        // registration: it is replaced only after re-registering, and Drop
-        // clears the callback before freeing it.
-        unsafe { anomp_engine_set_event_callback(self.raw.as_ptr(), Some(on_event), user_data) };
-        self.handler = Some(handler);
+        let handler: *mut EventHandler = Box::into_raw(Box::new(Box::new(handler)));
+        // SAFETY: `handler` stays valid while registered: the previous one is
+        // freed only after this replaces it, and Drop clears the callback
+        // before freeing it.
+        unsafe {
+            anomp_engine_set_event_callback(self.raw.as_ptr(), Some(on_event), handler.cast());
+            if !self.handler.is_null() {
+                drop(Box::from_raw(self.handler));
+            }
+        }
+        self.handler = handler;
     }
 
     pub fn open_default_device(&mut self) -> Result<(), String> {
@@ -541,11 +617,163 @@ impl Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         // SAFETY: `raw` is live and is never used again; the callback is
-        // cleared first so the core cannot call into a freed handler.
+        // cleared first so the core cannot call into a freed handler, and
+        // then nothing else holds `handler`.
         unsafe {
             anomp_engine_set_event_callback(self.raw.as_ptr(), None, std::ptr::null_mut());
             anomp_engine_destroy(self.raw.as_ptr());
+            if !self.handler.is_null() {
+                drop(Box::from_raw(self.handler));
+            }
         }
+    }
+}
+
+/// A command from the OS's media controls (media keys, Control Center, the
+/// Now Playing widget, the iOS lock screen).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MediaCommand {
+    Play,
+    Pause,
+    Toggle,
+    /// Only sent while enabled (`MediaControls::set_navigation`).
+    Next,
+    /// Only sent while enabled.
+    Previous,
+    /// To this many seconds into the track (finite, within its duration).
+    Seek(f64),
+}
+
+impl MediaCommand {
+    fn from_raw(raw: &RawMediaCommand) -> Option<MediaCommand> {
+        Some(match raw.kind {
+            ANOMP_MEDIA_PLAY => MediaCommand::Play,
+            ANOMP_MEDIA_PAUSE => MediaCommand::Pause,
+            ANOMP_MEDIA_TOGGLE => MediaCommand::Toggle,
+            ANOMP_MEDIA_NEXT => MediaCommand::Next,
+            ANOMP_MEDIA_PREVIOUS => MediaCommand::Previous,
+            ANOMP_MEDIA_SEEK => MediaCommand::Seek(raw.position),
+            _ => return None,
+        })
+    }
+}
+
+type MediaHandler = Box<dyn Fn(MediaCommand)>;
+
+/// The OS's media controls: what is playing, as the system shows it, and
+/// the commands it sends back. Main thread only, like `Engine`; commands
+/// reach the handler on the main thread, from the OS, never from inside a
+/// call on this object.
+pub struct MediaControls {
+    raw: NonNull<RawMediaControls>,
+    // A raw pointer rather than a Box, so running the handler (from the OS)
+    // never overlaps a unique borrow of it through `&mut self`.
+    handler: *mut MediaHandler,
+    _not_send: PhantomData<*mut ()>,
+}
+
+impl MediaControls {
+    /// Whether this platform's media controls reach the OS.
+    pub fn supported() -> bool {
+        // SAFETY: no preconditions.
+        unsafe { anomp_media_controls_supported() != 0 }
+    }
+
+    /// Starts receiving the OS's commands. Nothing is shown until a track is set.
+    pub fn new(handler: impl Fn(MediaCommand) + 'static) -> Option<MediaControls> {
+        let handler: *mut MediaHandler = Box::into_raw(Box::new(Box::new(handler)));
+        // SAFETY: `handler` stays valid until Drop, which destroys the
+        // controls (and so the callback) before freeing it.
+        let raw = unsafe { anomp_media_controls_create(Some(on_media_command), handler.cast()) };
+        match NonNull::new(raw) {
+            Some(raw) => Some(MediaControls {
+                raw,
+                handler,
+                _not_send: PhantomData,
+            }),
+            None => {
+                // SAFETY: the core refused it, so nothing else holds it.
+                drop(unsafe { Box::from_raw(handler) });
+                None
+            }
+        }
+    }
+
+    /// Shows a new current track; the artwork, playback and navigation stay
+    /// as they were.
+    pub fn set_track(&mut self, title: &str, artist: Option<&str>, album: Option<&str>) {
+        let text = |text: Option<&str>| {
+            // Tags hold no NULs; if one did, show what comes before it.
+            CString::new(text.unwrap_or("").split('\0').next().unwrap_or("")).unwrap_or_default()
+        };
+        let (title, artist, album) = (text(Some(title)), text(artist), text(album));
+        let track = RawMediaTrack {
+            title: title.as_ptr(),
+            artist: artist.as_ptr(),
+            album: album.as_ptr(),
+        };
+        // SAFETY: `raw` is live, and the strings outlive the call.
+        unsafe { anomp_media_controls_set_track(self.raw.as_ptr(), &track) };
+    }
+
+    /// Shows whether it is playing (any other state shows as paused) and
+    /// the position now, in seconds; the system moves it on while playing.
+    /// Returns false, changing nothing, if a value is not finite or the
+    /// duration is negative.
+    pub fn set_playback(&mut self, state: PlayerState, elapsed: f64, duration: f64) -> bool {
+        // SAFETY: `raw` is live.
+        unsafe {
+            anomp_media_controls_set_playback(self.raw.as_ptr(), state.to_raw(), elapsed, duration)
+                != 0
+        }
+    }
+
+    /// Shows encoded image bytes (JPEG, PNG) as the artwork, or clears it.
+    /// Returns false, clearing it, if the platform cannot decode them.
+    pub fn set_artwork(&mut self, image: Option<&[u8]>) -> bool {
+        let image = image.unwrap_or(&[]);
+        // SAFETY: `raw` is live and the slice is valid for the call.
+        unsafe {
+            anomp_media_controls_set_artwork(self.raw.as_ptr(), image.as_ptr(), image.len()) != 0
+        }
+    }
+
+    /// Enables or disables the next and previous commands.
+    pub fn set_navigation(&mut self, has_next: bool, has_previous: bool) {
+        // SAFETY: `raw` is live.
+        unsafe {
+            anomp_media_controls_set_navigation(
+                self.raw.as_ptr(),
+                c_int::from(has_next),
+                c_int::from(has_previous),
+            )
+        }
+    }
+
+    /// Clears everything shown.
+    pub fn clear(&mut self) {
+        // SAFETY: `raw` is live.
+        unsafe { anomp_media_controls_clear(self.raw.as_ptr()) }
+    }
+}
+
+impl Drop for MediaControls {
+    fn drop(&mut self) {
+        // SAFETY: `raw` is live and never used again; destroying it stops the
+        // callback, after which nothing else holds `handler`.
+        unsafe {
+            anomp_media_controls_destroy(self.raw.as_ptr());
+            drop(Box::from_raw(self.handler));
+        }
+    }
+}
+
+extern "C" fn on_media_command(command: *const RawMediaCommand, user_data: *mut c_void) {
+    // SAFETY: the core passes a valid command for the duration of the call,
+    // and `user_data` is the handler registered by `MediaControls::new`.
+    let (command, handler) = unsafe { (&*command, &*user_data.cast::<MediaHandler>()) };
+    if let Some(command) = MediaCommand::from_raw(command) {
+        handler(command);
     }
 }
 
@@ -704,5 +932,40 @@ mod tests {
             PlayerState::Paused
         );
         assert_eq!(PlayerState::from_raw(99), PlayerState::Empty);
+        for state in [
+            PlayerState::Empty,
+            PlayerState::Stopped,
+            PlayerState::Playing,
+            PlayerState::Paused,
+        ] {
+            assert_eq!(PlayerState::from_raw(state.to_raw()), state);
+        }
+    }
+
+    #[test]
+    fn raw_media_commands_map_to_commands() {
+        let command = |kind, position| MediaCommand::from_raw(&RawMediaCommand { kind, position });
+        assert_eq!(command(ANOMP_MEDIA_PLAY, 0.0), Some(MediaCommand::Play));
+        assert_eq!(command(ANOMP_MEDIA_PAUSE, 0.0), Some(MediaCommand::Pause));
+        assert_eq!(command(ANOMP_MEDIA_TOGGLE, 0.0), Some(MediaCommand::Toggle));
+        assert_eq!(command(ANOMP_MEDIA_NEXT, 0.0), Some(MediaCommand::Next));
+        assert_eq!(
+            command(ANOMP_MEDIA_PREVIOUS, 0.0),
+            Some(MediaCommand::Previous)
+        );
+        assert_eq!(
+            command(ANOMP_MEDIA_SEEK, 12.5),
+            Some(MediaCommand::Seek(12.5))
+        );
+        assert_eq!(command(0, 0.0), None);
+        assert_eq!(command(99, 0.0), None);
+    }
+
+    #[test]
+    fn media_controls_are_supported_on_apple_platforms() {
+        assert_eq!(
+            MediaControls::supported(),
+            cfg!(any(target_os = "macos", target_os = "ios"))
+        );
     }
 }

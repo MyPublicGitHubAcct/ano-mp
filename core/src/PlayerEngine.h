@@ -88,7 +88,9 @@ public:
     /** Reports what changed since the previous call through the callbacks
         below, and frees tracks the audio thread has finished with. The host
         calls this periodically on the message thread; nothing is reported
-        from inside a command. */
+        from inside a command. The callbacks may call commands (e.g. setNext
+        from onTrackEnded): what is reported is taken before the first one
+        runs, and later callbacks in the same call see the state after it. */
     void dispatchEvents();
 
     /** A track played to its end. `advanced` is true if the next track took

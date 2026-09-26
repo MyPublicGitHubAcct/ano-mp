@@ -7,8 +7,9 @@
 //! database first (to turn track ids into what the queue shows) do that on
 //! a blocking thread, then hop over.
 //!
-//! `next`, `previous`, `toggle` and `seek` are plain functions here, so the
-//! OS media controls (PLAN.md Phase 3) can call them from the main thread.
+//! `play`, `pause`, `toggle`, `next`, `previous` and `seek` are plain
+//! functions here, which the OS media controls (`media`) call from the main
+//! thread.
 //!
 //! After every change the queue emits `queue-changed` with a `QueueState`
 //! and is saved under `player.queue` in `settings`, with the position in
@@ -186,6 +187,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
             eprintln!("[queue] skipped {}: {}", skipped.title, skipped.error);
         }
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
+        crate::media::queue_changed(app, &state);
         save(app, queue);
     }
 }
@@ -301,6 +303,18 @@ pub fn next<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 
 pub fn previous<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     run(app, |queue, player| queue.previous(player))
+}
+
+pub fn play<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    run(app, |queue, player| queue.play(player))
+}
+
+pub fn pause<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    run(app, |queue, player| {
+        queue.pause(player);
+        // Nothing in the queue changes on pause, but save where it paused.
+        queue.touch();
+    })
 }
 
 pub fn toggle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {

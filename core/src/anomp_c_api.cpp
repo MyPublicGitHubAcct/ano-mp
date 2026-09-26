@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "FolderAccess.h"
 #include "FormatRegistry.h"
+#include "MediaControls.h"
 #include "TagReader.h"
 
 #include <cstring>
@@ -36,6 +37,13 @@ struct anomp_folder_access
 {
     std::unique_ptr<anomp::FolderAccess> access;
     std::string path;
+};
+
+struct anomp_media_controls
+{
+    anomp_media_command_callback callback = nullptr;
+    void* userData = nullptr;
+    std::unique_ptr<anomp::MediaControls> controls; // Declared last, so destroyed first.
 };
 
 namespace
@@ -77,6 +85,38 @@ int toCState (anomp::PlayerEngine::State state)
         case anomp::PlayerEngine::State::paused:  return ANOMP_STATE_PAUSED;
     }
     return ANOMP_STATE_EMPTY;
+}
+
+bool toMediaCommand (int type, anomp::MediaControls::Command& command)
+{
+    using Command = anomp::MediaControls::Command;
+
+    switch (type)
+    {
+        case ANOMP_MEDIA_PLAY:     command = Command::play; return true;
+        case ANOMP_MEDIA_PAUSE:    command = Command::pause; return true;
+        case ANOMP_MEDIA_TOGGLE:   command = Command::toggle; return true;
+        case ANOMP_MEDIA_NEXT:     command = Command::next; return true;
+        case ANOMP_MEDIA_PREVIOUS: command = Command::previous; return true;
+        case ANOMP_MEDIA_SEEK:     command = Command::seek; return true;
+        default:                   return false;
+    }
+}
+
+int toCMediaCommand (anomp::MediaControls::Command command)
+{
+    using Command = anomp::MediaControls::Command;
+
+    switch (command)
+    {
+        case Command::play:     return ANOMP_MEDIA_PLAY;
+        case Command::pause:    return ANOMP_MEDIA_PAUSE;
+        case Command::toggle:   return ANOMP_MEDIA_TOGGLE;
+        case Command::next:     return ANOMP_MEDIA_NEXT;
+        case Command::previous: return ANOMP_MEDIA_PREVIOUS;
+        case Command::seek:     return ANOMP_MEDIA_SEEK;
+    }
+    return 0;
 }
 
 /** Runs a load-style command on an absolute UTF-8 path; returns 1 on success. */
@@ -379,6 +419,113 @@ extern "C" double anomp_engine_duration (anomp_engine* engine)
 extern "C" int64_t anomp_engine_advance_count (anomp_engine* engine)
 {
     return engine != nullptr ? engine->engine.player().getAdvanceCount() : 0;
+}
+
+extern "C" int anomp_media_controls_supported (void) { return anomp::MediaControls::isSupported() ? 1 : 0; }
+
+extern "C" anomp_media_controls* anomp_media_controls_create (anomp_media_command_callback callback, void* userData)
+{
+    try
+    {
+        auto handle = std::make_unique<anomp_media_controls>();
+        handle->callback = callback;
+        handle->userData = userData;
+        auto* raw = handle.get();
+        handle->controls = std::make_unique<anomp::MediaControls> (
+            [raw] (anomp::MediaControls::Command command, double position)
+            {
+                if (raw->callback != nullptr)
+                {
+                    const anomp_media_command event { toCMediaCommand (command), position };
+                    raw->callback (&event, raw->userData);
+                }
+            });
+        return handle.release();
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_media_controls_destroy (anomp_media_controls* controls) { delete controls; }
+
+extern "C" int anomp_media_controls_set_track (anomp_media_controls* controls, const anomp_media_track* track)
+{
+    if (controls == nullptr || track == nullptr)
+        return 0;
+
+    const auto text = [] (const char* utf8)
+    {
+        return utf8 != nullptr ? juce::String::fromUTF8 (utf8) : juce::String();
+    };
+
+    try
+    {
+        controls->controls->setTrack (text (track->title), text (track->artist), text (track->album));
+        return 1;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+extern "C" int anomp_media_controls_set_playback (anomp_media_controls* controls,
+                                                  int state,
+                                                  double elapsed,
+                                                  double duration)
+{
+    if (controls == nullptr || state < ANOMP_STATE_EMPTY || state > ANOMP_STATE_PAUSED)
+        return 0;
+
+    const auto playback =
+        state == ANOMP_STATE_PLAYING ? anomp::MediaControls::Playback::playing : anomp::MediaControls::Playback::paused;
+    return controls->controls->setPlayback (playback, elapsed, duration) ? 1 : 0;
+}
+
+extern "C" int anomp_media_controls_set_artwork (anomp_media_controls* controls, const unsigned char* data, size_t size)
+{
+    if (controls == nullptr)
+        return 0;
+
+    try
+    {
+        if (data == nullptr && size > 0)
+        {
+            controls->controls->setArtwork ({});
+            return 0;
+        }
+
+        return controls->controls->setArtwork (juce::MemoryBlock (data, size)) ? 1 : 0;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
+extern "C" void anomp_media_controls_set_navigation (anomp_media_controls* controls, int hasNext, int hasPrevious)
+{
+    if (controls != nullptr)
+        controls->controls->setNavigation (hasNext != 0, hasPrevious != 0);
+}
+
+extern "C" void anomp_media_controls_clear (anomp_media_controls* controls)
+{
+    if (controls != nullptr)
+        controls->controls->clear();
+}
+
+extern "C" int anomp_media_controls_perform (anomp_media_controls* controls, const anomp_media_command* command)
+{
+    anomp::MediaControls::Command kind;
+
+    if (controls == nullptr || command == nullptr || controls->callback == nullptr
+        || ! toMediaCommand (command->type, kind))
+        return 0;
+
+    return controls->controls->handleCommand (kind, command->position) ? 1 : 0;
 }
 
 extern "C" int anomp_engine_play_test_tone (anomp_engine* engine, double frequencyHz)

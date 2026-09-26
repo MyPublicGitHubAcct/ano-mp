@@ -12,9 +12,10 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
-Current state: Phases 0, 1 and 2 are complete; Phase 3's player UI is built
-and checked by hand (queue, browser, search, cover art, now-playing bar);
-OS media integration (Now Playing, media keys) is the last Phase 3 item. The C++ core
+Current state: Phases 0–3 are complete: the player UI (queue, browser,
+search, cover art, now-playing bar) and OS media integration (macOS Now
+Playing and media keys: `MediaControls` in the core, hosted by
+`app/src-tauri/src/media.rs`, which keeps it in step with the queue). The C++ core
 plays any supported file with gapless hand-off to a pre-opened next track;
 the Rust queue (`app/src-tauri/src/queue/`) keeps it armed across the whole
 queue. The Svelte UI is in `app/src/lib/` (`api.ts` has the payload types) and
@@ -120,6 +121,11 @@ the main thread if needed), and the engine is dropped on `RunEvent::Exit`. The q
 lives on the main thread too (`queue::run`); do database work before hopping there,
 and never hold the library connection while waiting for the main thread. Queue logic
 goes in `queue/model.rs` behind the `Player` trait, tested against a fake engine.
+The media controls (`anomp_media_controls_*`) are main-thread only too, and
+`media.rs` decides what to publish in `NowPlaying`, behind a `Publisher` trait.
+`run_on_main_thread` called on the main thread runs the closure at once; it
+doesn't defer it. Engine event callbacks may call the engine (the queue arms
+the next track from `TrackEnded`); `anomp.h` states the rule.
 
 Search uses FTS5 tables kept in step by triggers (migration 002); a schema change
 to `tracks`, `artists` or `albums` columns they index must update those triggers

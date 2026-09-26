@@ -50,6 +50,7 @@ fn build_core() {
             "CoreAudio",
             "CoreMIDI",
             "Foundation",
+            "MediaPlayer",
         ] {
             println!("cargo:rustc-link-lib=framework={framework}");
         }

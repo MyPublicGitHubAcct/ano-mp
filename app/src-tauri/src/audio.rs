@@ -53,6 +53,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let mut engine = Engine::new().ok_or("Failed to start the audio engine")?;
     let app = app.clone();
     engine.set_event_handler(move |event| {
+        crate::media::player_event(event);
         let _ = match event {
             Event::DeviceChanged => {
                 eprintln!("[audio] device changed");
@@ -64,12 +65,9 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 PositionPayload { position, duration },
             ),
             Event::TrackEnded { advanced } => {
-                // The queue arms the next track. Not from inside the engine's
-                // own callback: deferred to the next turn of the main loop.
-                let queue_app = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    crate::queue::on_track_ended(&queue_app, advanced);
-                });
+                // The queue arms the next track, from inside the engine's
+                // event dispatch, which the core allows (anomp.h).
+                crate::queue::on_track_ended(&app, advanced);
                 app.emit(PLAYER_TRACK_ENDED_EVENT, TrackEndedPayload { advanced })
             }
         };

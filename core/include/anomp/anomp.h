@@ -127,7 +127,13 @@ void anomp_folder_access_stop(anomp_folder_access* access);
 /* ---- Engine ------------------------------------------------------------
    Every engine function must be called on the process's main thread, and
    event callbacks are delivered on it. The host must run the platform's main
-   run loop (Tauri does). Passing a null engine is safe and does nothing. */
+   run loop (Tauri does). Passing a null engine is safe and does nothing.
+
+   The event callback may call engine functions, e.g. to set the next track
+   on ANOMP_EVENT_TRACK_ENDED, but not anomp_engine_destroy or
+   anomp_engine_set_event_callback. The engine has taken what it reports
+   before it calls back, so a call made there is safe; the rest of that
+   dispatch reports the state as it is after the call. */
 
 typedef struct anomp_engine anomp_engine;
 
@@ -233,6 +239,94 @@ double anomp_engine_duration(anomp_engine* engine);
     can tell whether the one it set has already become current. 0 for a null
     engine. */
 int64_t anomp_engine_advance_count(anomp_engine* engine);
+
+/* ---- Media controls ------------------------------------------------------
+   The OS's media controls: what is playing, shown by the system (Control
+   Center and the menu-bar Now Playing widget on macOS, the lock screen on
+   iOS), and the commands it sends back (media keys, those controls).
+   Independent of the engine: the host publishes what its queue and player
+   are doing, and routes the commands to them. On platforms without an
+   implementation yet the functions accept everything and publish nothing.
+   Like the engine, every function must be called on the main thread, and
+   commands are delivered on it, never from inside one of these calls.
+   Passing a null handle is safe and does nothing. */
+
+typedef struct anomp_media_controls anomp_media_controls;
+
+/** Command kinds passed to anomp_media_command_callback. */
+enum
+{
+    ANOMP_MEDIA_PLAY = 1,
+    ANOMP_MEDIA_PAUSE = 2,
+    ANOMP_MEDIA_TOGGLE = 3,   /**< Play or pause. */
+    ANOMP_MEDIA_NEXT = 4,     /**< Only while enabled (anomp_media_controls_set_navigation). */
+    ANOMP_MEDIA_PREVIOUS = 5, /**< Only while enabled. */
+    ANOMP_MEDIA_SEEK = 6      /**< To `position`, e.g. scrubbing the progress bar. */
+};
+
+typedef struct anomp_media_command
+{
+    int type;        /**< One of the ANOMP_MEDIA_* values. */
+    double position; /**< SEEK: seconds into the track, finite and within the
+                          published duration; 0 otherwise. */
+} anomp_media_command;
+
+/** `command` is only valid for the duration of the call. */
+typedef void (*anomp_media_command_callback)(const anomp_media_command* command, void* user_data);
+
+/** A track as published; each string is UTF-8, and null or "" leaves the
+    field out. */
+typedef struct anomp_media_track
+{
+    const char* title;
+    const char* artist;
+    const char* album;
+} anomp_media_track;
+
+/** Returns 1 if this platform's media controls reach the OS, 0 if they do
+    nothing. */
+int anomp_media_controls_supported(void);
+
+/** Starts receiving the OS's commands, which go to `callback` (null ignores
+    them). Nothing is published until a track is set. Returns null on
+    failure. Destroy with anomp_media_controls_destroy. */
+anomp_media_controls* anomp_media_controls_create(anomp_media_command_callback callback, void* user_data);
+
+/** Clears what was published, stops receiving commands and frees
+    `controls`. */
+void anomp_media_controls_destroy(anomp_media_controls* controls);
+
+/** Publishes a new current track. Artwork, playback and navigation stay as
+    they were: set them too when they change. Returns 0 if `track` is null. */
+int anomp_media_controls_set_track(anomp_media_controls* controls, const anomp_media_track* track);
+
+/** Publishes the playback state (an ANOMP_STATE_* value: PLAYING, else
+    paused), the position `elapsed` seconds into the track, and its
+    `duration` in seconds (0 if unknown). Call on play, pause, seek and
+    track change; the system moves the position on by itself while playing.
+    `elapsed` is clamped to [0, duration]. Returns 0, changing nothing, if
+    the state is unknown, a value is not finite or the duration is
+    negative. */
+int anomp_media_controls_set_playback(anomp_media_controls* controls, int state, double elapsed, double duration);
+
+/** Publishes the artwork as encoded image bytes (JPEG or PNG; other
+    formats the platform decodes also work), or clears it when `size` is 0.
+    Returns 1 on success, 0 (and the artwork is cleared) if the platform
+    cannot decode it or `data` is null with a non-zero `size`. */
+int anomp_media_controls_set_artwork(anomp_media_controls* controls, const unsigned char* data, size_t size);
+
+/** Enables (non-zero) or disables the next and previous commands, e.g.
+    from whether the queue has an item to go to. Both start disabled. */
+void anomp_media_controls_set_navigation(anomp_media_controls* controls, int has_next, int has_previous);
+
+/** Clears everything published, e.g. when the queue is emptied. */
+void anomp_media_controls_clear(anomp_media_controls* controls);
+
+/** Handles `command` as if the OS had sent it: disabled or invalid commands
+    are dropped, a seek is clamped, and the rest reach the callback before
+    this returns (unlike the OS's, which never arrive inside a call). For
+    tests; returns 1 if the callback was called. */
+int anomp_media_controls_perform(anomp_media_controls* controls, const anomp_media_command* command);
 
 /* ---- Test tone ---------------------------------------------------------- */
 

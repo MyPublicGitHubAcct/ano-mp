@@ -1,6 +1,7 @@
 mod anomp;
 mod audio;
 mod library;
+mod media;
 mod queue;
 
 use tauri::Manager;
@@ -23,6 +24,9 @@ pub fn run() {
             }
             if let Err(error) = queue::init(app.handle()) {
                 eprintln!("[queue] {error}");
+            }
+            if let Err(error) = media::init(app.handle()) {
+                eprintln!("[media] {error}");
             }
             Ok(())
         })
@@ -82,6 +86,7 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 queue::shutdown(app);
+                media::shutdown();
                 audio::shutdown();
             }
         });
