@@ -1,12 +1,14 @@
 add_executable(anomp_core_tests
     FormatRegistryTests.cpp
-    CApiTests.cpp)
+    CApiTests.cpp
+    FFmpegBuildTests.cpp)
 
 target_include_directories(anomp_core_tests PRIVATE ../src)
 
 target_link_libraries(anomp_core_tests
     PRIVATE
         anomp_core
+        FFmpeg::avformat
         Catch2::Catch2WithMain)
 
 include(Catch)

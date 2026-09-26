@@ -3,8 +3,8 @@
 Status as of 2026-09-25: repository skeleton in place, C++ core builds and its
 Catch2 suite passes on macOS. The Phase 0–7 toolchain (§3) is installed.
 Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
-the Tauri process, and device-change events reach the UI. Phase 1 (FFmpeg
-decoding and the playback engine) is next.
+the Tauri process, and device-change events reach the UI. Phase 1 in progress:
+the pinned FFmpeg build is done; `FFmpegAudioFormat` is next.
 
 ## 1. Architecture
 
@@ -58,11 +58,12 @@ Why this split:
 | Presets `debug` / `release` (Ninja) | `CMakePresets.json` |
 | `anomp_core` static lib, `FormatRegistry` (JUCE built-in decoders for now; replaced by FFmpeg in Phase 1) | `core/src` |
 | C API: `anomp_version`, `anomp_can_decode_extension` | `core/include/anomp/anomp.h` |
-| 7 passing Catch2 tests | `core/tests` |
+| 12 passing Catch2 tests | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API, 2 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
+| Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host and `audio_device_name` / `play_test_tone` / `stop_test_tone` commands | `app/src-tauri/src/audio.rs` |
 
 Build and test:
@@ -208,11 +209,24 @@ Rules from the start, so the later ports stay cheap:
   2026-09-25. **Phase 0 complete.**
 
 ### Phase 1 — Playback engine (C++ core)
-- `scripts/build-ffmpeg.sh`: fetch a pinned FFmpeg release, configure it
+- [x] `scripts/build-ffmpeg.sh`: fetch a pinned FFmpeg release, configure it
   LGPL/audio-only/shared (see §4.3), and install into
   `third_party/ffmpeg/<platform>-<arch>/`. It covers macOS arm64 and x86_64
   (merged with `lipo`) now; Phase 8–10 add iOS, Linux and Windows. CMake finds
   the result via an imported target; CI caches it by version and flags.
+  Done 2026-09-25:
+  - Pinned FFmpeg **9.0.2**, SHA-256 checked (pin verified once against the
+    release GPG signature). Output `third_party/ffmpeg/macos-universal/`:
+    4 dylibs (avformat, avcodec, swresample, avutil), 4.6 MB universal,
+    `@rpath` install names, macOS 14 minimum, NASM asm on x86_64.
+  - `BUILD_INFO` records version, checksum and configure flags; the script
+    skips the build when it matches (`--force` rebuilds), and it is the
+    CI cache key and the source for the §8.2 FFmpeg notice.
+  - `cmake/FFmpeg.cmake` defines `FFmpeg::avformat` etc. (`ANOMP_FFMPEG_DIR`
+    overrides the location); configure fails with instructions if the
+    script hasn't run.
+  - `core/tests/FFmpegBuildTests.cpp` checks LGPL, every planned demuxer and
+    decoder, and no encoders. Nothing else links FFmpeg yet.
 - `FFmpegAudioFormat` / `FFmpegAudioFormatReader`: a JUCE `AudioFormat` backed
   by libavformat + libavcodec, converting to float with libswresample.
   Requirements:

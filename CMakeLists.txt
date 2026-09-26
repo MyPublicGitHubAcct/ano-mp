@@ -18,6 +18,8 @@ FetchContent_Declare(JUCE
     GIT_SHALLOW    ON)
 FetchContent_MakeAvailable(JUCE)
 
+include(cmake/FFmpeg.cmake)
+
 add_subdirectory(core)
 
 if(ANOMP_BUILD_TESTS)

@@ -18,8 +18,16 @@ Current state: the C++ core plus a scaffolded Tauri app that links it and shows
 ## Build & test
 
 ```sh
+scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 ```
+
+FFmpeg is built by `scripts/build-ffmpeg.sh` (pinned version, LGPL, audio-only,
+shared) into `third_party/ffmpeg/<platform>/` (git-ignored). CMake refuses to
+configure without it. `cmake/FFmpeg.cmake` exposes it as `FFmpeg::avformat`,
+`FFmpeg::avcodec`, `FFmpeg::swresample`, `FFmpeg::avutil`. To add a format, add its
+demuxer/decoder/parser to the script's lists (the configure flags stay minimal on
+purpose) and extend `core/tests/FFmpegBuildTests.cpp`.
 
 JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt` and fetched
 by FetchContent into `build/<preset>/_deps` — the first configure takes several minutes.
