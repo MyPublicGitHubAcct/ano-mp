@@ -1,0 +1,8 @@
+# The public C API (anomp.h) is plain C in C style: no space before the
+# argument list, and the extern "C" block is not indented.
+---
+BasedOnStyle: InheritParentConfig
+SpaceBeforeParens: ControlStatements
+IndentExternBlock: NoIndent
+BraceWrapping:
+  AfterExternBlock: false

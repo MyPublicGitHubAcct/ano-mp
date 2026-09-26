@@ -27,7 +27,14 @@ sandboxed (`Entitlements.plist`). `docs/` is empty.
 ```sh
 scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
+scripts/format-cpp.py     # clang-format core/ after editing it (--check: report only)
+scripts/format-python.py  # ruff format scripts/*.py after editing them (--check: diff only)
 ```
+
+The format scripts are Python so they run on every platform (on Windows, run them
+with `py`). The C++ and Python ones run a pinned formatter through `uvx` (`brew
+install uv`); `.clang-format` is JUCE style, `core/include/.clang-format` keeps
+`anomp.h` in C style.
 
 FFmpeg is built by `scripts/build-ffmpeg.sh` (pinned version, LGPL, audio-only,
 shared) into `third_party/ffmpeg/<platform>/` (git-ignored). CMake refuses to
@@ -65,6 +72,7 @@ The app (run from `app/`; `npm install` once):
 npm run tauri dev            # run the desktop app
 npm run check                # svelte-check / TypeScript
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
+../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```
 
 `app/src-tauri/build.rs` builds `anomp_core` with the `cmake` crate (Ninja, tests off)

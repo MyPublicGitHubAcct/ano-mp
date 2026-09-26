@@ -1,0 +1,73 @@
+# JUCE style (CLAUDE.md, Conventions). Formatted by scripts/format-cpp.py,
+# which pins the clang-format version: output differs between versions.
+---
+BasedOnStyle: LLVM
+ColumnLimit: 120
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+# Allman, spelled out so core/include/.clang-format can override one flag.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterExternBlock: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterObjCDeclaration: true
+  AfterStruct: true
+  AfterUnion: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: true
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: Inline
+AllowShortLoopsOnASingleLine: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+AlignOperands: Align
+AlignTrailingComments: true
+AlwaysBreakTemplateDeclarations: Yes
+BinPackArguments: true
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackParameters: OnePerLine
+BreakBeforeBinaryOperators: NonAssignment
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: CurrentLine
+Cpp11BracedListStyle: false
+FixNamespaceComments: true
+IndentCaseLabels: true
+IndentPPDirectives: None
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex: '^"anomp/'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3
+SortIncludes: CaseSensitive
+NamespaceIndentation: None
+PointerAlignment: Left
+ReferenceAlignment: Left
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: true
+SpaceAfterTemplateKeyword: true
+SpaceBeforeCpp11BracedList: true
+SpaceBeforeParens: NonEmptyParentheses
+SpaceInEmptyBlock: false
+SpacesBeforeTrailingComments: 1
+PenaltyReturnTypeOnItsOwnLine: 1000
