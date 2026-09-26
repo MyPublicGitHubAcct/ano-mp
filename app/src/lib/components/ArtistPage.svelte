@@ -1,13 +1,16 @@
 <script lang="ts">
   // An artist's page: who they are (from MusicBrainz), their biography (from
   // Wikipedia, credited under its licence), their albums grouped by release
-  // type, and the albums of others they appear on. Reloads when the
+  // type, and the albums of others they appear on. Once matched on
+  // MusicBrainz, it links to their releases the library lacks
+  // (DiscographyPage). Reloads when the
   // metadata worker names the artist in `metadata-changed`. Click an album
   // to open it in the browser, double-click to play it.
   import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { library as api, metadata, queue, type ArtistAlbum, type ArtistPage } from "$lib/api";
   import { lifeSpan, plural } from "$lib/format";
+  import { bySection } from "$lib/releases";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
@@ -79,36 +82,8 @@
   );
   const busy = $derived(lookingUp || (page !== null && library.lookingUp === page.id));
 
-  // Sections in this order; albums without a type (no match yet) are albums.
-  const SECTIONS = ["Albums", "EPs", "Singles", "Live albums", "Compilations", "Soundtracks", "Other releases"];
-
-  function sectionOf(album: ArtistAlbum) {
-    const secondary = album.secondaryTypes;
-    if (secondary.includes("Live")) return "Live albums";
-    if (secondary.includes("Compilation")) return "Compilations";
-    if (secondary.includes("Soundtrack")) return "Soundtracks";
-    switch (album.releaseType) {
-      case null:
-      case "Album":
-        return "Albums";
-      case "EP":
-        return "EPs";
-      case "Single":
-        return "Singles";
-      default:
-        return "Other releases";
-    }
-  }
-
-  const sections = $derived.by(() => {
-    const albums = page?.albums ?? [];
-    const grouped = new Map<string, ArtistAlbum[]>();
-    for (const album of albums) {
-      const section = sectionOf(album);
-      grouped.set(section, [...(grouped.get(section) ?? []), album]);
-    }
-    return SECTIONS.filter((name) => grouped.has(name)).map((name) => ({ name, albums: grouped.get(name)! }));
-  });
+  // Albums without a type (no match yet) are albums.
+  const sections = $derived(bySection(page?.albums ?? []));
 
   function status() {
     if (!page) return "";
@@ -273,6 +248,9 @@
           </button>
         {/if}
         {#if mb}
+          <button class="link" onclick={() => page && ui.showDiscography({ id: page.id, name: page.name })}>
+            Releases not in your library
+          </button>
           <a href="https://musicbrainz.org/artist/{mb.id}" onclick={openLink}>MusicBrainz</a>
           {#if mb.homepage}<a href={mb.homepage} onclick={openLink}>Official website</a>{/if}
         {/if}
@@ -286,8 +264,8 @@
 
     {#each sections as section (section.name)}
       <section class="discography" aria-label={section.name}>
-        <h2>{section.name} <span class="muted">{section.albums.length}</span></h2>
-        {@render albumGrid(section.albums, false)}
+        <h2>{section.name} <span class="muted">{section.releases.length}</span></h2>
+        {@render albumGrid(section.releases, false)}
       </section>
     {/each}
 

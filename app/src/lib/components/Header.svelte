@@ -21,6 +21,10 @@
       <button class="crumb" onclick={() => ui.back()}>Back</button>
       <span class="separator" aria-hidden="true">›</span>
       <span class="current">{ui.artist?.name}</span>
+    {:else if ui.discographyInMain}
+      <button class="crumb" onclick={() => ui.back()}>Back</button>
+      <span class="separator" aria-hidden="true">›</span>
+      <span class="current">{ui.artist?.name}: not in library</span>
     {:else}
       <button class="crumb" disabled={library.crumbs.length === 0} onclick={() => library.goUp(0)}>
         {library.rule?.name ?? "Library"}

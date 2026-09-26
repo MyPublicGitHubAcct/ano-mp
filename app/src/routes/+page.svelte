@@ -1,12 +1,13 @@
 <script lang="ts">
-  // The player: sidebar | browser (or search results, an artist's page, or
-  // the online sources) | queue, with the now-playing bar along the bottom.
+  // The player: sidebar | browser (or search results, an artist's page, the
+  // releases of theirs the library lacks, or the online sources) | queue, with the now-playing bar along the bottom.
   // The now-playing view takes the queue's place with the cover. Below 900 px
   // the queue becomes an overlay; below 640 px the sidebar becomes a drawer.
   import ArtistPage from "$lib/components/ArtistPage.svelte";
   import BrowsePane from "$lib/components/BrowsePane.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import Dialogs from "$lib/components/Dialogs.svelte";
+  import DiscographyPage from "$lib/components/DiscographyPage.svelte";
   import Header from "$lib/components/Header.svelte";
   import NowPlaying from "$lib/components/NowPlaying.svelte";
   import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
@@ -87,13 +88,15 @@
       <NowPlaying />
     {:else if ui.artistInMain}
       <ArtistPage />
+    {:else if ui.discographyInMain}
+      <DiscographyPage />
     {:else if ui.servicesInMain}
       <ServicesPanel />
     {:else}
       <BrowsePane />
     {/if}
   </main>
-  {#if ui.queueOpen && (ui.mainView === "library" || ui.artistInMain || library.query.trim() !== "")}
+  {#if ui.queueOpen && (ui.mainView === "library" || ui.artistInMain || ui.discographyInMain || library.query.trim() !== "")}
     <aside class="queue"><QueuePanel /></aside>
   {/if}
   <footer class="bar"><NowPlayingBar /></footer>

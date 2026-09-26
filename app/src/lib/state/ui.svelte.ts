@@ -4,7 +4,7 @@ import type { ArtistInfo } from "$lib/api";
 
 export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
 
-export type MainView = "library" | "queue" | "nowPlaying" | "artist" | "services";
+export type MainView = "library" | "queue" | "nowPlaying" | "artist" | "discography" | "services";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
 
@@ -15,20 +15,20 @@ export type Dialog =
   | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo };
 
 /** Views that `back` returns from. */
-const OPENED: MainView[] = ["nowPlaying", "artist", "services"];
+const OPENED: MainView[] = ["nowPlaying", "artist", "discography", "services"];
 
 class Ui {
   /** What the main area shows when not searching: the library browser, the
       queue, the current track with its cover, or an artist's page. */
   mainView = $state<MainView>("library");
-  /** The artist the artist view shows. */
+  /** The artist the artist and discography views show. */
   artist = $state.raw<ArtistRef | null>(null);
   /** The queue panel beside the main area (a column when wide, an overlay
       when narrow); hidden while the main area shows the queue or the
       current track. */
   queueOpen = $state(true);
   dialog = $state.raw<Dialog | null>(null);
-  /** The views the now-playing, artist and services views were opened from, for `back`. */
+  /** The views the now-playing, artist, discography and services views were opened from, for `back`. */
   #history: { view: MainView; artist: ArtistRef | null }[] = [];
 
   get queueInMain() {
@@ -41,6 +41,10 @@ class Ui {
 
   get artistInMain() {
     return this.mainView === "artist" && this.artist !== null;
+  }
+
+  get discographyInMain() {
+    return this.mainView === "discography" && this.artist !== null;
   }
 
   get servicesInMain() {
@@ -74,12 +78,19 @@ class Ui {
     this.artist = artist;
   }
 
+  /** Shows what MusicBrainz lists for an artist that the library doesn't have. */
+  showDiscography(artist: ArtistRef) {
+    if (this.mainView === "discography" && this.artist?.id === artist.id) return;
+    this.#open("discography");
+    this.artist = artist;
+  }
+
   /** Shows the online sources' settings and status in the main area. */
   showServices() {
     this.#open("services");
   }
 
-  /** Back to the view the now-playing, artist or services view was opened from. */
+  /** Back to the view the now-playing, artist, discography or services view was opened from. */
   back() {
     if (!this.canGoBack) return;
     const previous = this.#history.pop();
@@ -89,7 +100,7 @@ class Ui {
 
   /** A view that `back` returns from. */
   #open(view: MainView) {
-    if (this.mainView !== view || view === "artist") {
+    if (this.mainView !== view || view === "artist" || view === "discography") {
       this.#history = [...this.#history, { view: this.mainView, artist: this.artist }].slice(-20);
     }
     this.mainView = view;

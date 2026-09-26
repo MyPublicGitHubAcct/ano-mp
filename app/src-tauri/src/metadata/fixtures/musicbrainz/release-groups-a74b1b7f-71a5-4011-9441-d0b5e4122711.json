@@ -1,0 +1,289 @@
+{
+  "release-group-offset": 0,
+  "release-group-count": 14,
+  "release-groups": [
+    {
+      "first-release-date": "2012-10-12",
+      "id": "30f765ef-d7f0-4cce-8a3b-d6e1069f1dda",
+      "secondary-types": [
+        "Compilation"
+      ],
+      "disambiguation": "Pablo Honey / The Bends / OK Computer / Kid A / Amnesiac",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "name": "Radiohead",
+          "joinphrase": ""
+        }
+      ],
+      "primary-type": "Album",
+      "title": "5 Album Set"
+    },
+    {
+      "title": "In Rainbows",
+      "primary-type": "Album",
+      "disambiguation": "",
+      "id": "6e335887-60ba-38f0-95af-fae7774336bf",
+      "secondary-types": [],
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "joinphrase": "",
+          "name": "Radiohead"
+        }
+      ],
+      "first-release-date": "2007-10-10"
+    },
+    {
+      "title": "The Gloaming (DJ Shadow remix)",
+      "primary-type": "Single",
+      "id": "6f365e6f-58b0-4ba1-993d-82c3308842b3",
+      "secondary-types": [
+        "Remix"
+      ],
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "joinphrase": " vs. ",
+          "name": "DJ Shadow",
+          "artist": {
+            "id": "efa2c11a-1a35-4b60-bc1b-66d37de88511",
+            "name": "DJ Shadow",
+            "sort-name": "Shadow, DJ"
+          }
+        },
+        {
+          "joinphrase": "",
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "first-release-date": "2004-11"
+    },
+    {
+      "first-release-date": "",
+      "id": "75faca09-1ee6-42dd-81d5-35825986f121",
+      "secondary-types": [],
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "joinphrase": "",
+          "name": "Radiohead"
+        }
+      ],
+      "primary-type": "Broadcast",
+      "title": "KCRW Sessions 2003‐06‐26"
+    },
+    {
+      "first-release-date": "2008-05-28",
+      "title": "The Best Of",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "name": "Radiohead",
+          "joinphrase": ""
+        }
+      ],
+      "disambiguation": "",
+      "id": "80975c59-4094-30d5-bb58-365e8b061274",
+      "secondary-types": [
+        "Compilation"
+      ],
+      "primary-type": "Album"
+    },
+    {
+      "title": "OK Computer",
+      "secondary-types": [],
+      "id": "b1392450-e666-3926-a536-22c65f834433",
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "primary-type": "Album",
+      "first-release-date": "1997-05-21"
+    },
+    {
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "id": "b2246643-115e-3b53-9a96-6d2df930f970",
+      "disambiguation": "",
+      "secondary-types": [],
+      "primary-type": "EP",
+      "title": "Drill",
+      "first-release-date": "1992-05-05"
+    },
+    {
+      "first-release-date": "1994-11-29",
+      "id": "b8048f24-c026-3398-b23a-b5e50716cbc7",
+      "secondary-types": [],
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "primary-type": "Album",
+      "title": "The Bends"
+    },
+    {
+      "first-release-date": "2016-05-08",
+      "secondary-types": [],
+      "id": "bbce0087-d386-4246-a51d-dbcdfdbe8fb2",
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "name": "Radiohead",
+          "joinphrase": ""
+        }
+      ],
+      "primary-type": "Album",
+      "title": "A Moon Shaped Pool"
+    },
+    {
+      "title": "Amnesiac",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "joinphrase": "",
+          "name": "Radiohead"
+        }
+      ],
+      "id": "bca9280e-28b4-327f-8fe0-fd918579e486",
+      "secondary-types": [],
+      "disambiguation": "",
+      "primary-type": "Album",
+      "first-release-date": "2001-05-30"
+    },
+    {
+      "id": "c5bc370b-95c2-3634-bb89-51bb2dce97c3",
+      "secondary-types": [],
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "primary-type": "Single",
+      "title": "Creep",
+      "first-release-date": "1992-09-21"
+    },
+    {
+      "first-release-date": "1993-02-22",
+      "primary-type": "Album",
+      "secondary-types": [],
+      "id": "cd76f76b-ff15-3784-a71d-4da3078a6851",
+      "disambiguation": "",
+      "artist-credit": [
+        {
+          "name": "Radiohead",
+          "joinphrase": "",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "title": "Pablo Honey"
+    },
+    {
+      "first-release-date": "2001-11-07",
+      "primary-type": "Album",
+      "artist-credit": [
+        {
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          },
+          "name": "Radiohead",
+          "joinphrase": ""
+        }
+      ],
+      "secondary-types": [
+        "Live"
+      ],
+      "id": "e404b349-7cef-398f-ac5e-ce06737341d1",
+      "disambiguation": "",
+      "title": "I Might Be Wrong: Live Recordings"
+    },
+    {
+      "artist-credit": [
+        {
+          "joinphrase": "",
+          "name": "Radiohead",
+          "artist": {
+            "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+            "name": "Radiohead",
+            "sort-name": "Radiohead"
+          }
+        }
+      ],
+      "id": "e75c0549-ad55-39e3-8025-c72c5d4a3c5d",
+      "disambiguation": "",
+      "secondary-types": [],
+      "primary-type": "Album",
+      "title": "Kid A",
+      "first-release-date": "2000-08-03"
+    }
+  ]
+}

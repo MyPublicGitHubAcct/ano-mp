@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use super::albums::{self, ReleaseCandidate};
 use super::artists::{self, ArtistCandidate};
 use super::coverartarchive::{self, Fetched};
+use super::discography::{self, Discography};
 use super::jobs::{self, Job, MetadataChanged, Progress};
 use super::settings::{self, Kind, ServiceSettings, SourceId, SourceInfo};
 use super::worker;
@@ -455,6 +456,37 @@ pub async fn metadata_choose_artist<R: Runtime>(
         })?;
         worker::request(app, Job::Artist(artist_id));
         Ok(())
+    })
+    .await
+}
+
+/// What MusicBrainz lists for artist `artist_id` that the library doesn't
+/// have. Fetched through the worker, from the cache unless `refresh`; while
+/// MusicBrainz is shown but may not be contacted (online services off),
+/// only what was fetched before.
+#[tauri::command]
+pub async fn metadata_artist_discography<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+    refresh: bool,
+) -> Result<Discography, String> {
+    blocking(app, move |app| {
+        let settings = current_settings(app)?;
+        let source = SourceId::MusicBrainz;
+        if settings.is_usable(source) {
+            worker::call(app, move |context| {
+                let mut fetch = discography::online(context.client, context.conn, refresh);
+                discography::discography(context.conn, artist_id, &mut fetch)
+            })
+        } else if settings.is_shown(source) {
+            let why = jobs::turned_off(&settings, source).to_string();
+            let library = library(app)?;
+            let conn = library.conn();
+            let mut fetch = discography::cached(&conn, &why);
+            discography::discography(&conn, artist_id, &mut fetch)
+        } else {
+            Err(jobs::turned_off(&settings, source))
+        }
     })
     .await
 }

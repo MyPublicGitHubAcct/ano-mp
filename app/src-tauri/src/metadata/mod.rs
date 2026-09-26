@@ -13,6 +13,7 @@ pub mod artists;
 pub mod cache;
 pub mod commands;
 pub mod coverartarchive;
+pub mod discography;
 pub mod folder_art;
 pub mod http;
 pub mod images;

@@ -38,7 +38,9 @@ while a service is unreachable, and emits `metadata-changed` and
 Wikipedia biography (`metadata/wikipedia.rs`, CC BY-SA: always credit the
 article and licence where it's shown); the album header shows a Wikipedia
 description of the album the same way, found through its MusicBrainz
-release group. The album details
+release group. An artist page links to the artist's releases the library
+lacks (`metadata/discography.rs`, `DiscographyPage.svelte`, from
+MusicBrainz's release-group browse). The album details
 (`library/albums.rs`), the "Find details", "Choose cover" and "Find artist"
 dialogs (commands in `metadata/commands.rs`) and the Online sources panel
 (`ServicesPanel.svelte`) are done; anything a command needs from a service

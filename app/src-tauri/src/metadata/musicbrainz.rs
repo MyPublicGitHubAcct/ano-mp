@@ -1,7 +1,8 @@
 //! The MusicBrainz web service (https://musicbrainz.org/doc/MusicBrainz_API):
 //! release search and lookup, parsed into `Release`, artist search and
-//! lookup, parsed into `Artist`, and release group lookup, parsed into
-//! `ReleaseGroup` for its links. Requests go through
+//! lookup, parsed into `Artist`, release group lookup, parsed into
+//! `ReleaseGroup` for its links, and an artist's release groups, parsed
+//! into `ReleaseGroupEntry` for their discography. Requests go through
 //! `http::Client`, which keeps to MusicBrainz's one request a second, and
 //! responses are cached (`cache`).
 
@@ -26,6 +27,13 @@ const ARTIST_INC: &str = "url-rels+genres";
 
 /// What a release group lookup includes: links to other sites (Wikidata).
 const RELEASE_GROUP_INC: &str = "url-rels";
+
+/// What an artist's release groups are browsed with: their artist credits,
+/// which show collaborations.
+const RELEASE_GROUPS_INC: &str = "artist-credits";
+
+/// Release groups per page of a browse, the most MusicBrainz sends.
+pub const BROWSE_LIMIT: u32 = 100;
 
 /// The artist MusicBrainz credits "Various Artists" releases to.
 pub const VARIOUS_ARTISTS: &str = "89ad4ac3-39f7-470e-963a-56509c546377";
@@ -167,6 +175,32 @@ pub struct ReleaseGroup {
     pub wikipedia: Option<String>,
 }
 
+/// A release group as an artist's discography lists it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseGroupEntry {
+    pub id: String,
+    pub title: String,
+    /// The artist credit as printed, e.g. "DJ Shadow vs. Radiohead".
+    pub artist: String,
+    /// The primary type: "Album", "Single", "EP", "Broadcast" or "Other".
+    pub release_type: Option<String>,
+    /// "Compilation", "Live", "Remix"…
+    pub secondary_types: Vec<String>,
+    /// "2007", "2007-10" or "2007-10-10"; `None` when undated.
+    pub first_release_date: Option<String>,
+    /// Tells release groups of the same name apart.
+    pub disambiguation: Option<String>,
+}
+
+/// One page of an artist's release groups.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReleaseGroupPage {
+    pub groups: Vec<ReleaseGroupEntry>,
+    /// How many release groups there are in all pages.
+    pub count: u32,
+}
+
 /// An artist search hit, with MusicBrainz's score (0 to 100).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArtistHit {
@@ -230,6 +264,17 @@ pub fn artist_url(id: &str) -> String {
 
 pub fn release_group_url(id: &str) -> String {
     format!("{BASE}/release-group/{id}?inc={RELEASE_GROUP_INC}&fmt=json")
+}
+
+/// The page of artist `artist`'s release groups (by MBID) starting
+/// `offset` groups in. Only those MusicBrainz's own artist page lists
+/// ("website-default"): release groups with only bootleg, promotional or
+/// other unofficial releases are left out.
+pub fn release_groups_url(artist: &str, offset: u32) -> String {
+    format!(
+        "{BASE}/release-group?artist={artist}&release-group-status=website-default\
+         &inc={RELEASE_GROUPS_INC}&limit={BROWSE_LIMIT}&offset={offset}&fmt=json"
+    )
 }
 
 /// The search for artists called `name` (or with it as an alias).
@@ -324,6 +369,50 @@ pub fn parse_release_group(json: &str) -> Result<ReleaseGroup, Error> {
         wikipedia: links.wikipedia(),
         id: raw.id,
         title: raw.title,
+    })
+}
+
+pub fn parse_release_groups(json: &str) -> Result<ReleaseGroupPage, Error> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct RawPage {
+        release_group_count: Option<u32>,
+        #[serde(default)]
+        release_groups: Vec<RawBrowsedGroup>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "kebab-case")]
+    struct RawBrowsedGroup {
+        id: String,
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        artist_credit: Vec<RawCredit>,
+        primary_type: Option<String>,
+        #[serde(default)]
+        secondary_types: Vec<String>,
+        first_release_date: Option<String>,
+        disambiguation: Option<String>,
+    }
+    let raw: RawPage = serde_json::from_str(json).map_err(|error| {
+        Error::Invalid(format!("Unexpected MusicBrainz release groups: {error}"))
+    })?;
+    let groups: Vec<ReleaseGroupEntry> = raw
+        .release_groups
+        .into_iter()
+        .map(|group| ReleaseGroupEntry {
+            id: group.id,
+            title: group.title,
+            artist: credit_text(&group.artist_credit),
+            release_type: non_empty(group.primary_type),
+            secondary_types: group.secondary_types,
+            first_release_date: non_empty(group.first_release_date),
+            disambiguation: non_empty(group.disambiguation),
+        })
+        .collect();
+    Ok(ReleaseGroupPage {
+        count: raw.release_group_count.unwrap_or(groups.len() as u32),
+        groups,
     })
 }
 
@@ -610,17 +699,21 @@ fn genre_names(mut genres: Vec<RawGenre>) -> Vec<String> {
     genres.into_iter().map(|genre| genre.name).collect()
 }
 
+/// An artist credit as printed: each name followed by its join phrase.
+fn credit_text(credit: &[RawCredit]) -> String {
+    credit
+        .iter()
+        .map(|credit| format!("{}{}", credit.name, credit.joinphrase))
+        .collect()
+}
+
 fn non_empty(text: Option<String>) -> Option<String> {
     text.filter(|text| !text.trim().is_empty())
 }
 
 impl RawRelease {
     fn into_release(self) -> Release {
-        let artist = self
-            .artist_credit
-            .iter()
-            .map(|credit| format!("{}{}", credit.name, credit.joinphrase))
-            .collect::<String>();
+        let artist = credit_text(&self.artist_credit);
         let artist_ids = self
             .artist_credit
             .iter()
@@ -740,6 +833,13 @@ pub mod fixtures {
     /// to Wikidata and one the app ignores.
     pub const RELEASE_GROUP_JSON: &str = include_str!(
         "fixtures/musicbrainz/release-group-6e335887-60ba-38f0-95af-fae7774336bf.json"
+    );
+
+    /// Radiohead's release groups (`ARTIST`), trimmed to 14 of the 106
+    /// with their count to match: albums, EPs, singles, live albums,
+    /// compilations, a collaboration and an undated broadcast.
+    pub const RELEASE_GROUPS_JSON: &str = include_str!(
+        "fixtures/musicbrainz/release-groups-a74b1b7f-71a5-4011-9441-d0b5e4122711.json"
     );
 }
 
@@ -914,6 +1014,51 @@ mod tests {
         let bare = parse_release_group(r#"{"id": "x"}"#).unwrap();
         assert_eq!((bare.wikidata, bare.wikipedia), (None, None));
         assert!(parse_release_group("[]").is_err());
+    }
+
+    #[test]
+    fn parses_an_artists_release_groups() {
+        let page = parse_release_groups(fixtures::RELEASE_GROUPS_JSON).unwrap();
+        assert_eq!(page.count, 14);
+        assert_eq!(page.groups.len(), 14);
+        let in_rainbows = page
+            .groups
+            .iter()
+            .find(|group| group.id == fixtures::RELEASE_GROUP)
+            .unwrap();
+        assert_eq!(in_rainbows.title, "In Rainbows");
+        assert_eq!(in_rainbows.artist, "Radiohead");
+        assert_eq!(in_rainbows.release_type.as_deref(), Some("Album"));
+        assert_eq!(
+            in_rainbows.first_release_date.as_deref(),
+            Some("2007-10-10")
+        );
+        assert_eq!(in_rainbows.disambiguation, None, "an empty one is none");
+        let remix = page
+            .groups
+            .iter()
+            .find(|group| group.artist != "Radiohead")
+            .unwrap();
+        assert_eq!(remix.artist, "DJ Shadow vs. Radiohead");
+        assert_eq!(remix.secondary_types, ["Remix"]);
+        let undated = page
+            .groups
+            .iter()
+            .find(|group| group.first_release_date.is_none())
+            .unwrap();
+        assert_eq!(undated.release_type.as_deref(), Some("Broadcast"));
+
+        assert_eq!(
+            release_groups_url(fixtures::ARTIST, 100),
+            format!(
+                "{BASE}/release-group?artist={}&release-group-status=website-default\
+                 &inc=artist-credits&limit=100&offset=100&fmt=json",
+                fixtures::ARTIST
+            )
+        );
+        let bare = parse_release_groups(r#"{"release-groups": [{"id": "x"}]}"#).unwrap();
+        assert_eq!(bare.count, 1);
+        assert!(parse_release_groups("[]").is_err());
     }
 
     #[test]

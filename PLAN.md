@@ -88,7 +88,7 @@ Why this split:
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
 | Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions | `app/src-tauri/src/metadata/` |
-| 200 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
+| 210 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies), plus 3 ignored 50,000-track benchmarks and 5 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -1467,6 +1467,39 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     artist" dialog (4.6); an artist found only as a track artist is looked up only
     when their page is opened; several artists in one tag ("A; B") are one
     name and rarely match.
+  - Releases not in the library (done 2026-09-26;
+    `metadata/discography.rs`, `DiscographyPage.svelte`): an artist page
+    matched on MusicBrainz links to a page listing the artist's release
+    groups that the library lacks, grouped like the artist page (the
+    grouping moved to `releases.ts`), oldest first, each linked to its
+    MusicBrainz page, with its credit when it isn't the artist alone.
+    - MusicBrainz's browse (`release-group?artist=…`) with
+      `release-group-status=website-default`, as its own artist page
+      lists them: no groups with only bootleg or promotional releases (106
+      of Radiohead's 585). 100 a page, at most 10 pages (1,000 groups,
+      10 s), each page cached 7 days like searches; "Check again" skips
+      the cache. Nothing else is stored: the list is worked out from the
+      cached pages and the albums' matches each time, so no migration.
+    - In the library: a release group any album is matched to (not a
+      'review' candidate), whoever its album artist; otherwise, for the
+      artist's albums without a match, a group whose title is alike
+      (`title_similarity` ≥ 0.9, so "OK Computer (Collector's Edition)"
+      counts), so an album isn't listed as missing only because matching
+      hasn't reached it.
+    - `metadata_artist_discography` runs on the worker while MusicBrainz
+      is usable; while it is shown but online services are off, only the
+      cached pages are read (else an error saying so); with MusicBrainz
+      off it fails as turned off.
+    - Tests: a recorded browse page (trimmed to 14 of Radiohead's groups,
+      CC0), paging and its limit, pages that overlap or fall short, the
+      cache-only path, an unmatched artist. `live_discography` (ignored)
+      passed against the real service. `npm run check` passes; not checked
+      by eye in the app.
+    - Known limits: no covers (each would be a Cover Art Archive request);
+      a title match can hide more than one group of that title (an EP and
+      a single both called "Creep"); an unmatched album filed under
+      another artist isn't counted; a match changing while the page is
+      open shows when it's opened again.
 - [ ] 4.8 Select and configure the alternative sources. Go through the
   sources table above and decide which ones ship, recording each decision
   and its reason in the table. Start with Discogs (moved from 4.7): read

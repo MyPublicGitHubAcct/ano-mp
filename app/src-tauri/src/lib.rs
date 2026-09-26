@@ -93,6 +93,7 @@ pub fn run() {
             metadata::commands::metadata_choose_cover,
             metadata::commands::metadata_use_automatic_cover,
             metadata::commands::metadata_artist_candidates,
+            metadata::commands::metadata_artist_discography,
             metadata::commands::metadata_choose_artist,
             metadata::commands::metadata_reject_artist,
             metadata::commands::metadata_use_automatic_artist,

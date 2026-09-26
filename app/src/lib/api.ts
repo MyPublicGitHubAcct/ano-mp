@@ -334,6 +334,33 @@ export type CoverChoices = {
 
 export type ArtistCandidate = { artist: MusicBrainzArtist; score: number };
 
+/** A release group as an artist's MusicBrainz discography lists it. */
+export type ReleaseGroupEntry = {
+  id: string;
+  title: string;
+  /** The artist credit as printed. */
+  artist: string;
+  /** "Album", "Single", "EP", "Broadcast" or "Other", and "Compilation", "Live"… */
+  releaseType: string | null;
+  secondaryTypes: string[];
+  /** "2007", "2007-10" or "2007-10-10". */
+  firstReleaseDate: string | null;
+  disambiguation: string | null;
+};
+
+/** What MusicBrainz lists for an artist that the library doesn't have. */
+export type Discography = {
+  musicbrainzId: string;
+  musicbrainzName: string;
+  /** Oldest first, undated last. */
+  missing: ReleaseGroupEntry[];
+  /** How many of those listed the library has. */
+  inLibrary: number;
+  /** Release groups MusicBrainz has, and how many were listed (fewer for very long discographies). */
+  total: number;
+  listed: number;
+};
+
 export const metadata = {
   settings: () => invoke<MetadataSettings>("metadata_settings"),
   /** Art may come from other sources afterwards; reload it. */
@@ -373,6 +400,9 @@ export const metadata = {
   rejectArtist: (artistId: number) => invoke<void>("metadata_reject_artist", { artistId }),
   /** Clears the match and looks the artist up again now; fails at once offline. */
   useAutomaticArtist: (artistId: number) => invoke<void>("metadata_use_automatic_artist", { artistId }),
+  /** Fetched from MusicBrainz unless cached (or `refresh`); only the cached copy while online services are off. */
+  artistDiscography: (artistId: number, refresh = false) =>
+    invoke<Discography>("metadata_artist_discography", { artistId, refresh }),
 };
 
 /** The URL of a picture the "Choose cover" dialog offers. */
