@@ -6,7 +6,8 @@ Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
 the Tauri process, and device-change events reach the UI. Phase 1 complete:
 FFmpeg decodes every format through `FFmpegAudioFormat`, and `PlayerEngine`
 plays, pauses, seeks and hands off gaplessly to a queued next track, checked
-by offline tests and by ear in the app. Phase 2 (metadata and library) is next.
+by offline tests and by ear in the app. Phase 2 (metadata and library) is in
+progress: the core reads tags and embedded art with TagLib (2026-09-26).
 
 ## 1. Architecture
 
@@ -60,13 +61,14 @@ Why this split:
 | Presets `debug` / `release` (Ninja) | `CMakePresets.json` |
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
-| 19 committed audio fixtures (700 KB) of one deterministic chirp, and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_engine_*` (device, player, events) | `core/include/anomp/anomp.h` |
+| 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
+| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events) | `core/include/anomp/anomp.h` |
+| TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
-| 28 passing Catch2 tests (~1350 assertions) | `core/tests` |
+| 35 passing Catch2 tests (~1870 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
-| Safe Rust wrappers over the C API, 4 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
+| Safe Rust wrappers over the C API, 7 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -335,17 +337,48 @@ Rules from the start, so the later ports stay cheap:
   queued one at a time through the dev UI). **Phase 1 complete.**
 
 ### Phase 2 — Metadata and library
-- Core: add TagLib (FetchContent) with `anomp_read_tags(path) → struct` for
+- [x] Core: add TagLib (FetchContent) with `anomp_read_tags(path) → struct` for
   title, artist, album, album artist, track/disc, year, genre, duration,
   MusicBrainz IDs (if tagged), and embedded art.
+
+  Done 2026-09-26:
+  - TagLib **2.3.2** from the release tarball (SHA-256 pinned; it bundles
+    utfcpp, which is forced over any installed copy), static, no zlib
+    (compressed ID3v2 frames are rare and are skipped without it). TagLib's
+    target only exports include paths for installs, so `cmake/TagLib.cmake`
+    adds them. `build.rs` links `libtag.a` next to the core.
+  - `anomp_read_tags (path, flags, error)` returns an `anomp_tags*` freed
+    with `anomp_tags_free`; strings are UTF-8 and never null. Unlike the
+    engine it may be called from any thread, for the scanner. The embedded
+    picture is copied only with `ANOMP_TAGS_PICTURE`, so a scan doesn't
+    copy art for every track.
+  - Fields come from TagLib's unified `PropertyMap`, so every format maps the
+    same way: several values join with "; "; track/disc accept "3/12" or a
+    separate TRACKTOTAL/DISCTOTAL; the year is the first four digits of
+    DATE. MusicBrainz IDs are named after their entity
+    (`musicbrainz_recording_id` is Picard's "track id").
+  - The picture is the one typed "Front Cover", else the first (MP4 cover
+    atoms have no type). An empty MIME type is sniffed from JPEG/PNG magic.
+  - Files are opened through a read-only `FileStream`.
+  - **Duration comes from TagLib's headers**, which is cheap enough for
+    scanning but approximate for lossy files: MP3 lengths include encoder
+    delay and padding (~40 ms). The player's `anomp_engine_duration` is the
+    exact one. If TagLib gives no duration, the FFmpeg reader supplies the
+    audio properties; a file neither can read is an error.
+  - Known limits (of the formats): ASF/WMA holds one artist string, and
+    ID3v2 keeps the recording ID in a UFID frame.
+  - Tests: `TagReaderTests.cpp` reads an ID3v2.3 MP3 and a FLAC tagged by
+    FFmpeg (non-ASCII text, MusicBrainz IDs, PNG cover), checks untagged
+    fixtures' properties, round-trips tags and two pictures written by TagLib
+    through all ten formats, and checks errors and that files are untouched.
 - Rust: SQLite schema (tracks, albums, artists, folders, settings, mb_cache),
   migrations, and an incremental folder scanner (mtime/size change detection).
 - Logical sort/grouping rules: by album artist → album → disc/track, by folder,
   by genre, by year. Rules are configurable (feeds the admin screen).
 - macOS sandbox: user-selected folders plus security-scoped bookmarks. Store
   bookmarks, not raw paths, so the same model works on iOS later.
-- **Tests:** Catch2 tests for tag reading over fixture files; `cargo test` for
-  schema, scanner and sort rules.
+- **Tests:** Catch2 tests for tag reading over fixture files (done, above);
+  `cargo test` for schema, scanner and sort rules.
 
 ### Phase 3 — Frontend: core player UI
 - Library browser (artists / albums / tracks / folders), search, queue view,

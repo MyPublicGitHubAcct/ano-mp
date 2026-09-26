@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import wave
+import zlib
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = REPO_ROOT / "core" / "tests" / "fixtures"
@@ -68,6 +69,73 @@ def ffmpeg(*output_args):
     ]
 
 
+def write_cover_png(path):
+    """A deterministic 16x16 PNG for the tagged fixtures' embedded art."""
+    width = height = 16
+    rows = b"".join(
+        b"\x00" + b"".join(bytes((x * 16, y * 16, 128)) for x in range(width))
+        for y in range(height))
+
+    def chunk(kind, data):
+        return (struct.pack(">I", len(data)) + kind + data
+                + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+    path.write_bytes(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(rows, 9))
+                     + chunk(b"IEND", b""))
+
+
+def tagged(codec_args, metadata):
+    """Like ffmpeg(), plus tags and cover.png (next to the source) as front cover."""
+    tags = [arg for key, value in metadata for arg in ("-metadata", f"{key}={value}")]
+    return lambda source, output: [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", source,
+        "-i", str(pathlib.Path(source).parent / "cover.png"),
+        "-map", "0:a", "-map", "1:v", "-map_metadata", "-1", "-bitexact",
+        *codec_args, "-c:v", "copy", "-disposition:v", "attached_pic",
+        "-metadata:s:v", "comment=Cover (front)", *tags, output,
+    ]
+
+
+# Tags for the tagged fixtures; core/tests/TagReaderTests.cpp checks them.
+# ID3v2.3 can't hold the recording ID (a UFID frame, which ffmpeg doesn't
+# write), so only the FLAC file has one.
+MP3_TAGS = [
+    ("title", "Café Déjà Vu"),
+    ("artist", "Ano Artist"),
+    ("album", "東京 Sessions"),
+    ("album_artist", "Various Artists"),
+    ("track", "3/12"),
+    ("disc", "1/2"),
+    ("date", "2004"),
+    ("genre", "Electronic"),
+    ("MusicBrainz Album Id", "a1b2c3d4-0000-4000-8000-000000000001"),
+    ("MusicBrainz Release Group Id", "a1b2c3d4-0000-4000-8000-000000000002"),
+    ("MusicBrainz Release Track Id", "a1b2c3d4-0000-4000-8000-000000000003"),
+    ("MusicBrainz Artist Id", "a1b2c3d4-0000-4000-8000-000000000004"),
+    ("MusicBrainz Album Artist Id", "89ad4ac3-39f7-470e-963a-56509c546377"),
+]
+FLAC_TAGS = [
+    ("title", "Café Déjà Vu"),
+    ("artist", "Ano Artist"),
+    ("album", "東京 Sessions"),
+    ("album_artist", "Various Artists"),
+    ("track", "3"),
+    ("TRACKTOTAL", "12"),
+    ("disc", "1"),
+    ("DISCTOTAL", "2"),
+    ("date", "2004-05-01"),
+    ("genre", "Electronic"),
+    ("MUSICBRAINZ_TRACKID", "a1b2c3d4-0000-4000-8000-000000000000"),
+    ("MUSICBRAINZ_ALBUMID", "a1b2c3d4-0000-4000-8000-000000000001"),
+    ("MUSICBRAINZ_RELEASEGROUPID", "a1b2c3d4-0000-4000-8000-000000000002"),
+    ("MUSICBRAINZ_RELEASETRACKID", "a1b2c3d4-0000-4000-8000-000000000003"),
+    ("MUSICBRAINZ_ARTISTID", "a1b2c3d4-0000-4000-8000-000000000004"),
+    ("MUSICBRAINZ_ALBUMARTISTID", "89ad4ac3-39f7-470e-963a-56509c546377"),
+]
+
+
 # (file name, sample rate, channels, seconds, command given (source, output)).
 # Short files cover decoding; the 4-second ones are long enough for seeks
 # that use timestamps rather than rewinding (see FFmpegAudioFormat.cpp).
@@ -96,6 +164,10 @@ FIXTURES_SPEC = [
     ("aac-adts-long-44k.aac", 44100, 2, 4.0, ffmpeg("-c:a", "aac", "-b:a", "96k")),
     ("vorbis-long-44k.ogg", 44100, 2, 4.0, lambda s, o: ["oggenc", "--quiet", "-q", "2", "-o", o, s]),
     ("opus-long-48k.opus", 48000, 2, 4.0, ffmpeg("-c:a", "libopus", "-b:a", "64k")),
+    # Tagged by another tool than TagLib, for the tag reader tests.
+    ("tagged-id3v23.mp3", 44100, 2, 0.5,
+     tagged(["-c:a", "libmp3lame", "-b:a", "192k", "-id3v2_version", "3"], MP3_TAGS)),
+    ("tagged-vorbis.flac", 44100, 2, 0.5, tagged(["-c:a", "flac"], FLAC_TAGS)),
 ]
 
 
@@ -114,6 +186,7 @@ def main():
                 source = pathlib.Path(tmp) / f"source-{sample_rate}-{channels}-{seconds}.wav"
                 if not source.exists():
                     write_source_wav(source, sample_rate, channels, seconds)
+                    write_cover_png(source.parent / "cover.png")
                 subprocess.run(command(str(source), str(output)), check=True)
             print(f"{name:24} {output.stat().st_size:>8} bytes")
 

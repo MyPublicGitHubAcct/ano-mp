@@ -26,6 +26,12 @@ fn build_core() {
 
     println!("cargo:rustc-link-search=native={}", dst.join("build/core").display());
     println!("cargo:rustc-link-lib=static=anomp_core");
+    // TagLib (cmake/TagLib.cmake), a static dependency of the core.
+    println!(
+        "cargo:rustc-link-search=native={}",
+        dst.join("build/_deps/taglib-build/taglib").display()
+    );
+    println!("cargo:rustc-link-lib=static=tag");
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     link_ffmpeg(&repo_root, &target_os);

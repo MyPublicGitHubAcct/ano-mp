@@ -19,6 +19,7 @@ FetchContent_Declare(JUCE
 FetchContent_MakeAvailable(JUCE)
 
 include(cmake/FFmpeg.cmake)
+include(cmake/TagLib.cmake)
 
 add_subdirectory(core)
 

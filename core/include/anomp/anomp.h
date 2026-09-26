@@ -16,6 +16,66 @@ const char* anomp_version(void);
     (e.g. "flac" or ".mp3", case-insensitive), otherwise 0. */
 int anomp_can_decode_extension(const char* extension);
 
+/* ---- Tags ----------------------------------------------------------------
+   Unlike the engine, these functions may be called from any thread,
+   concurrently (e.g. by a library scanner). */
+
+/** A file's tags and audio properties. Strings are NUL-terminated UTF-8 and
+    never null: "" when the file doesn't have the field. Several values of one
+    field (e.g. two ARTIST comments) are joined with "; ". Numbers are 0 when
+    absent. */
+typedef struct anomp_tags
+{
+    const char* title;
+    const char* artist;
+    const char* album;
+    const char* album_artist;
+    const char* genre;
+    int track_number;
+    int track_total;
+    int disc_number;
+    int disc_total;
+    int year;
+
+    double duration;  /**< Seconds, from the file's headers: lossy files can be
+                           off by tens of milliseconds (encoder delay and
+                           padding). The player measures exactly on load. */
+    int sample_rate;  /**< Hz. */
+    int channels;
+    int bitrate_kbps; /**< Average or nominal; 0 if unknown. */
+
+    /* MusicBrainz IDs, named after what they identify (Picard's "track id"
+       is the recording, its "album id" the release). */
+    const char* musicbrainz_recording_id;
+    const char* musicbrainz_release_id;
+    const char* musicbrainz_release_group_id;
+    const char* musicbrainz_release_track_id;
+    const char* musicbrainz_artist_id;
+    const char* musicbrainz_album_artist_id;
+
+    /** Embedded front cover (or else the first picture), only when read with
+        ANOMP_TAGS_PICTURE: `picture_size` bytes, null when there is none. */
+    const unsigned char* picture;
+    size_t picture_size;
+    const char* picture_mime_type; /**< e.g. "image/jpeg"; "" if unknown. */
+} anomp_tags;
+
+/** Flags for anomp_read_tags. */
+enum
+{
+    ANOMP_TAGS_PICTURE = 1 /**< Also copy out the embedded picture. */
+};
+
+/** Reads the tags of the file at `path` (absolute, UTF-8) without modifying
+    it. Fails for files that neither the tag reader nor the decoder can
+    read. Returns null on failure and writes the error message to `error` (see
+    anomp_engine_device_name for the buffer rules; `error` may be null).
+    Free the result with anomp_tags_free. */
+anomp_tags* anomp_read_tags(const char* path, int flags, char* error, size_t error_size);
+
+/** Frees tags returned by anomp_read_tags. Null is ignored. */
+void anomp_tags_free(anomp_tags* tags);
+
 /* ---- Engine ------------------------------------------------------------
    Every engine function must be called on the process's main thread, and
    event callbacks are delivered on it. The host must run the platform's main

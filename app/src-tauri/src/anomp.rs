@@ -22,6 +22,35 @@ struct RawEvent {
     duration: f64,
 }
 
+#[repr(C)]
+struct RawTags {
+    title: *const c_char,
+    artist: *const c_char,
+    album: *const c_char,
+    album_artist: *const c_char,
+    genre: *const c_char,
+    track_number: c_int,
+    track_total: c_int,
+    disc_number: c_int,
+    disc_total: c_int,
+    year: c_int,
+    duration: f64,
+    sample_rate: c_int,
+    channels: c_int,
+    bitrate_kbps: c_int,
+    musicbrainz_recording_id: *const c_char,
+    musicbrainz_release_id: *const c_char,
+    musicbrainz_release_group_id: *const c_char,
+    musicbrainz_release_track_id: *const c_char,
+    musicbrainz_artist_id: *const c_char,
+    musicbrainz_album_artist_id: *const c_char,
+    picture: *const u8,
+    picture_size: usize,
+    picture_mime_type: *const c_char,
+}
+
+const ANOMP_TAGS_PICTURE: c_int = 1;
+
 type RawEventCallback = extern "C" fn(event: *const RawEvent, user_data: *mut c_void);
 
 const ANOMP_EVENT_DEVICE_CHANGED: c_int = 1;
@@ -36,6 +65,13 @@ const ANOMP_STATE_PAUSED: c_int = 3;
 extern "C" {
     fn anomp_version() -> *const c_char;
     fn anomp_can_decode_extension(extension: *const c_char) -> c_int;
+    fn anomp_read_tags(
+        path: *const c_char,
+        flags: c_int,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawTags;
+    fn anomp_tags_free(tags: *mut RawTags);
 
     fn anomp_engine_create() -> *mut RawEngine;
     fn anomp_engine_destroy(engine: *mut RawEngine);
@@ -91,6 +127,111 @@ pub fn can_decode_extension(extension: &str) -> bool {
     };
     // SAFETY: the pointer is a valid NUL-terminated string for the whole call.
     unsafe { anomp_can_decode_extension(extension.as_ptr()) != 0 }
+}
+
+/// A file's tags and audio properties. Fields the file doesn't have are
+/// `None`; several values of one field are joined with "; ".
+#[allow(dead_code)]
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Tags {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub genre: Option<String>,
+    pub track_number: Option<u32>,
+    pub track_total: Option<u32>,
+    pub disc_number: Option<u32>,
+    pub disc_total: Option<u32>,
+    pub year: Option<u32>,
+    /// Seconds, from the file's headers: lossy files can be off by tens of
+    /// milliseconds. `Engine::duration` is exact once the track is loaded.
+    pub duration: f64,
+    pub sample_rate: u32,
+    pub channels: u32,
+    pub bitrate_kbps: Option<u32>,
+    /// MusicBrainz IDs, named after what they identify (Picard's "track id"
+    /// is the recording, its "album id" the release).
+    pub musicbrainz_recording_id: Option<String>,
+    pub musicbrainz_release_id: Option<String>,
+    pub musicbrainz_release_group_id: Option<String>,
+    pub musicbrainz_release_track_id: Option<String>,
+    pub musicbrainz_artist_id: Option<String>,
+    pub musicbrainz_album_artist_id: Option<String>,
+    /// The front cover, or else the first embedded picture; only read when
+    /// asked for.
+    pub picture: Option<Picture>,
+}
+
+/// An embedded picture.
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct Picture {
+    /// e.g. "image/jpeg"; `None` if unknown.
+    pub mime_type: Option<String>,
+    pub data: Vec<u8>,
+}
+
+/// Reads the tags of the file at `path` without modifying it, copying the
+/// embedded picture only if `include_picture`. Unlike the engine, this may be
+/// called from any thread.
+#[allow(dead_code)]
+pub fn read_tags(path: &Path, include_picture: bool) -> Result<Tags, String> {
+    let path = path_to_cstring(path)?;
+    let flags = if include_picture { ANOMP_TAGS_PICTURE } else { 0 };
+    let mut raw = std::ptr::null_mut();
+    with_error(|error, size| {
+        // SAFETY: `path` is a valid C string and the error buffer is supplied
+        // by `with_error`, both for the whole call.
+        raw = unsafe { anomp_read_tags(path.as_ptr(), flags, error, size) };
+        c_int::from(!raw.is_null())
+    })?;
+    // SAFETY: `raw` is a non-null result of anomp_read_tags, read once and
+    // then freed exactly once.
+    unsafe {
+        let tags = Tags::from_raw(&*raw);
+        anomp_tags_free(raw);
+        Ok(tags)
+    }
+}
+
+impl Tags {
+    /// # Safety
+    /// `raw` must come from anomp_read_tags and not yet be freed.
+    unsafe fn from_raw(raw: &RawTags) -> Tags {
+        let text = |ptr: *const c_char| {
+            (!ptr.is_null())
+                .then(|| CStr::from_ptr(ptr).to_string_lossy().into_owned())
+                .filter(|text| !text.is_empty())
+        };
+        let number = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
+        Tags {
+            title: text(raw.title),
+            artist: text(raw.artist),
+            album: text(raw.album),
+            album_artist: text(raw.album_artist),
+            genre: text(raw.genre),
+            track_number: number(raw.track_number),
+            track_total: number(raw.track_total),
+            disc_number: number(raw.disc_number),
+            disc_total: number(raw.disc_total),
+            year: number(raw.year),
+            duration: raw.duration,
+            sample_rate: number(raw.sample_rate).unwrap_or(0),
+            channels: number(raw.channels).unwrap_or(0),
+            bitrate_kbps: number(raw.bitrate_kbps),
+            musicbrainz_recording_id: text(raw.musicbrainz_recording_id),
+            musicbrainz_release_id: text(raw.musicbrainz_release_id),
+            musicbrainz_release_group_id: text(raw.musicbrainz_release_group_id),
+            musicbrainz_release_track_id: text(raw.musicbrainz_release_track_id),
+            musicbrainz_artist_id: text(raw.musicbrainz_artist_id),
+            musicbrainz_album_artist_id: text(raw.musicbrainz_album_artist_id),
+            picture: (!raw.picture.is_null() && raw.picture_size > 0).then(|| Picture {
+                mime_type: text(raw.picture_mime_type),
+                data: std::slice::from_raw_parts(raw.picture, raw.picture_size).to_vec(),
+            }),
+        }
+    }
 }
 
 /// Player state, as reported by `Engine::state` and `Event::StateChanged`.
@@ -343,6 +484,54 @@ mod tests {
             Ok("/Music/Café.flac")
         );
         assert!(path_to_cstring(Path::new("/a\0b.flac")).is_err());
+    }
+
+    fn fixture(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../core/tests/fixtures")
+            .join(name)
+    }
+
+    #[test]
+    fn reads_tags_and_picture() {
+        let tags = read_tags(&fixture("tagged-vorbis.flac"), true).unwrap();
+        assert_eq!(tags.title.as_deref(), Some("Café Déjà Vu"));
+        assert_eq!(tags.album.as_deref(), Some("東京 Sessions"));
+        assert_eq!(tags.album_artist.as_deref(), Some("Various Artists"));
+        assert_eq!((tags.track_number, tags.track_total), (Some(3), Some(12)));
+        assert_eq!((tags.disc_number, tags.disc_total), (Some(1), Some(2)));
+        assert_eq!(tags.year, Some(2004));
+        assert_eq!(
+            tags.musicbrainz_recording_id.as_deref(),
+            Some("a1b2c3d4-0000-4000-8000-000000000000")
+        );
+        assert_eq!((tags.sample_rate, tags.channels), (44100, 2));
+        assert!((tags.duration - 22371.0 / 44100.0).abs() < 0.001);
+
+        let picture = tags.picture.unwrap();
+        assert_eq!(picture.mime_type.as_deref(), Some("image/png"));
+        assert!(picture.data.starts_with(b"\x89PNG"));
+
+        let without_picture = read_tags(&fixture("tagged-vorbis.flac"), false).unwrap();
+        assert_eq!(without_picture.picture, None);
+        assert_eq!(without_picture.title, tags.title);
+    }
+
+    #[test]
+    fn untagged_fields_are_none() {
+        let tags = read_tags(&fixture("wav-s16-44k.wav"), true).unwrap();
+        assert_eq!(tags.title, None);
+        assert_eq!(tags.track_number, None);
+        assert_eq!(tags.picture, None);
+        assert_eq!(tags.sample_rate, 44100);
+    }
+
+    #[test]
+    fn tag_errors_are_reported() {
+        let error = read_tags(&fixture("missing.flac"), false).unwrap_err();
+        assert!(error.starts_with("File not found"), "{error}");
+        let error = read_tags(Path::new("relative.flac"), false).unwrap_err();
+        assert!(error.starts_with("Path is not absolute"), "{error}");
     }
 
     #[test]

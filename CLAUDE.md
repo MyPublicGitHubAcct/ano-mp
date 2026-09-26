@@ -14,7 +14,9 @@ license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates.
 anything non-trivial, and update it when a phase completes or a decision is made.
 Current state: Phases 0 and 1 are complete. The C++ core plays any supported file
 with gapless hand-off to a queued next track, and the Tauri dev UI drives it
-(file picker, transport, seek, volume). Phase 2 (metadata and library) is next. `docs/` is empty.
+(file picker, transport, seek, volume). Phase 2 (metadata and library) is in progress:
+the core reads tags and art (`anomp_read_tags`, TagLib); the Rust library DB and
+scanner are next. `docs/` is empty.
 
 ## Build & test
 
@@ -35,10 +37,14 @@ deterministic chirp that the tests regenerate (`core/tests/TestSignal.h`, which 
 match `scripts/make-test-fixtures.py`). Regenerating needs `brew install ffmpeg
 vorbis-tools` — Homebrew's FFmpeg is only a fixture encoder, never linked. Lengths and
 lags in the tests' fixture table are properties of the encoded files, so update them if
-you regenerate.
+you regenerate. The script rewrites every fixture, but only the Vorbis ones change
+(oggenc picks random stream serials): `git checkout` them unless you meant to change
+them. The two `tagged-*` fixtures carry the tags `TagReaderTests.cpp` expects.
 
-JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt` and fetched
-by FetchContent into `build/<preset>/_deps` — the first configure takes several minutes.
+JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt`, TagLib
+2.3.2 (tarball + SHA-256) in `cmake/TagLib.cmake`, all fetched by FetchContent into
+`build/<preset>/_deps` — the first configure takes several minutes. TagLib is a
+separate static lib (`libtag.a`), so `build.rs` links it next to `anomp_core`.
 The `release` preset sets `ANOMP_BUILD_TESTS=OFF`, so tests only run in `debug`.
 
 Each Catch2 `TEST_CASE` is registered with CTest individually via `catch_discover_tests`:
