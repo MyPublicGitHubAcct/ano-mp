@@ -12,7 +12,8 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
-Current state: only the C++ core exists; `app/` and `docs/` are empty.
+Current state: the C++ core plus a scaffolded Tauri app that links it and shows
+`anomp_version()` (Phase 0 in progress); `docs/` is empty.
 
 ## Build & test
 
@@ -32,15 +33,30 @@ ctest --preset debug -R "FormatRegistry round-trips" # run one by name (regex)
 ./build/debug/core/tests/anomp_core_tests "[formats]" # or run the binary by tag
 ```
 
+The app (run from `app/`; `npm install` once):
+
+```sh
+npm run tauri dev            # run the desktop app
+npm run check                # svelte-check / TypeScript
+cd src-tauri && cargo test   # Rust tests, including the C API wrappers
+```
+
+`app/src-tauri/build.rs` builds `anomp_core` with the `cmake` crate (Ninja, tests off)
+into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo build
+fetches JUCE again. `build.rs` reruns when `core/` or the top-level `CMakeLists.txt`
+changes. FFI declarations and their safe wrappers live only in
+`app/src-tauri/src/anomp.rs`; add a wrapper there for each new C API function.
+
 ## Architecture
 
 Three layers, described in full in `PLAN.md` §1:
 
 1. `core/` — `anomp_core`, a C++20 JUCE static library: decoding, playback, queue and
    gapless, tag reading, FFT/levels for the visualizer, OS media integration.
-2. `app/src-tauri` (not yet scaffolded) — Rust: SQLite library DB, settings,
+2. `app/src-tauri` — Rust: SQLite library DB, settings,
    MusicBrainz/Cover Art Archive clients, file scanning; bridges UI to core.
-3. `app/src` (not yet scaffolded) — TypeScript frontend.
+3. `app/src` — Svelte 5 + TypeScript frontend (SvelteKit with `adapter-static`, from
+   the Tauri template).
 
 Constraints that shape the code and must not be broken casually:
 

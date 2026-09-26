@@ -2,7 +2,8 @@
 
 Status as of 2026-09-25: repository skeleton in place, C++ core builds and its
 Catch2 suite passes on macOS. The Phase 0–7 toolchain (§3) is installed.
-Nothing on the Tauri side exists yet.
+Phase 0 in progress: the Tauri app links the core and shows its version; the
+JUCE-in-Tauri audio spike is next.
 
 ## 1. Architecture
 
@@ -57,6 +58,9 @@ Why this split:
 | `anomp_core` static lib, `FormatRegistry` (JUCE built-in decoders for now; replaced by FFmpeg in Phase 1) | `core/src` |
 | C API: `anomp_version`, `anomp_can_decode_extension` | `core/include/anomp/anomp.h` |
 | 5 passing Catch2 tests | `core/tests` |
+| Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
+| `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
+| Safe Rust wrappers over the C API, 2 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
 
 Build and test:
 
@@ -168,14 +172,17 @@ Rules from the start, so the later ports stay cheap:
   and freetype on Linux). Drop it in Phase 1 if nothing needs it.
 
 ### Phase 0 — Toolchain and integration spike (highest risk first)
-- Install the prerequisites in §3.
-- Scaffold `app/` with `npm create tauri-app` (Tauri 2, Svelte + TypeScript
-  template; see §4.2).
-- `build.rs`: build `anomp_core` via the `cmake` crate, link the static lib plus
+- [x] Install the prerequisites in §3.
+- [x] Scaffold `app/` with `npm create tauri-app` (Tauri 2, Svelte + TypeScript
+  template; see §4.2). The template is SvelteKit with `adapter-static` (SPA,
+  no SSR); kept for its routing. Bundle identifier `dev.anomp.player` is a
+  placeholder — choose the real one before §8 (it is hard to change after
+  the first store release).
+- [x] `build.rs`: build `anomp_core` via the `cmake` crate, link the static lib plus
   the Apple frameworks (CoreAudio, AudioToolbox, CoreMIDI, Accelerate,
   AVFoundation, Foundation, AppKit).
-- Call `anomp_version()` from a Tauri command and show it in the UI.
-- **Spike: JUCE inside a Tauri process.** Tauri (tao) owns the main thread and
+- [x] Call `anomp_version()` from a Tauri command and show it in the UI.
+- [ ] **Spike: JUCE inside a Tauri process.** Tauri (tao) owns the main thread and
   run loop. Verify that JUCE's `AudioDeviceManager` plays audio when
   initialised via `ScopedJuceInitialiser_GUI` without a `JUCEApplication`, and
   that device-change notifications still arrive.
