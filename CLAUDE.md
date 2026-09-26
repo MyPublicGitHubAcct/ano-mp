@@ -12,14 +12,15 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
-Current state: Phases 0 and 1 are complete. The C++ core plays any supported file
-with gapless hand-off to a queued next track, and the Tauri dev UI drives it
-(file picker, transport, seek, volume). Phase 2 (metadata and library) is in progress:
-the core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
+Current state: Phases 0, 1 and 2 are complete; Phase 3 (the player UI) is next.
+The C++ core plays any supported file with gapless hand-off to a queued next
+track, and the Tauri dev UI drives it (file picker, transport, seek, volume).
+The core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 (`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
 from it, and `library_browse` pages through it under configurable sort/grouping
-rules (stored in `settings`). Security-scoped bookmarks are next. `docs/` is
-empty.
+rules (stored in `settings`). Each folder keeps a security-scoped bookmark
+(`library/access.rs`, over the core's `FolderAccess`), and the bundled app is
+sandboxed (`Entitlements.plist`). `docs/` is empty.
 
 ## Build & test
 
@@ -81,6 +82,18 @@ relative to their folder, '/'-separated (`library::track_path` joins them).
 never use these functions in the schema, an index or a migration, since other
 SQLite clients don't have them. Browse queries (`library/browse.rs`) are built
 from fixed SQL fragments; bind every value, never format it in.
+
+Under the macOS sandbox a library file can be opened only while its folder's
+bookmark is resolved, so anything that opens library files goes through
+`library::access::open_folder`/`open_folder_of` first and holds the result
+until the file is open (as `scan_folder`, `player_load` and `player_set_next`
+do). `tauri dev` runs unsandboxed, so a missing call only fails in a
+sandboxed bundle (`npm run tauri build -- --bundles app`: ad-hoc signed,
+hardened runtime off, FFmpeg embedded in `Contents/Frameworks`). The
+`bundle.macOS.frameworks` list in `tauri.conf.json` names FFmpeg's major
+versions, so update it when the FFmpeg pin changes. Only debug builds have an
+rpath into `third_party/`; `cargo test --release` gets it from
+`app/src-tauri/.cargo/config.toml`.
 
 `PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
 device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling

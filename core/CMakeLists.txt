@@ -8,6 +8,14 @@ add_library(anomp_core STATIC
     src/TagReader.cpp
     src/anomp_c_api.cpp)
 
+# Platform code, one implementation per OS (PLAN.md §5).
+if(APPLE)
+    target_sources(anomp_core PRIVATE src/FolderAccess_apple.mm)
+    set_source_files_properties(src/FolderAccess_apple.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+else()
+    target_sources(anomp_core PRIVATE src/FolderAccess_unsandboxed.cpp)
+endif()
+
 target_include_directories(anomp_core
     PUBLIC  include
     PRIVATE src)

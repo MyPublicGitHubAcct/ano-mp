@@ -8,10 +8,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::UNIX_EPOCH;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, Transaction};
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use super::access::open_folder;
 use super::{remove_orphans, unix_now, Error};
 use crate::anomp::{self, Tags};
 
@@ -67,20 +68,17 @@ struct Pending {
     known: bool,
 }
 
-/// Scans one library folder. Fails, changing nothing, if the folder itself
-/// is missing (e.g. on an unmounted drive).
+/// Scans one library folder, first resolving its bookmark (which updates its
+/// path if it moved). Fails, changing nothing else, if the folder itself is
+/// missing (e.g. on an unmounted drive).
 pub fn scan_folder(
     conn: &mut Connection,
     folder_id: i64,
     mut progress: impl FnMut(ScanProgress),
 ) -> Result<ScanReport, Error> {
-    let root: PathBuf = conn
-        .query_row("SELECT path FROM folders WHERE id = ?1", [folder_id], |row| {
-            row.get::<_, String>(0)
-        })
-        .optional()?
-        .ok_or_else(|| Error::Invalid(format!("No library folder with id {folder_id}")))?
-        .into();
+    // Readable until the scan returns.
+    let folder = open_folder(conn, folder_id)?;
+    let root = &folder.path;
     if !root.is_dir() {
         return Err(Error::Invalid(format!("Folder not available: {}", root.display())));
     }
@@ -90,7 +88,7 @@ pub fn scan_folder(
         ..ScanReport::default()
     };
     let mut known = known_tracks(conn, folder_id)?;
-    let (pending, unreadable) = walk(&root, &mut known, &mut report);
+    let (pending, unreadable) = walk(root, &mut known, &mut report);
 
     // What's left in `known` wasn't found, but a folder that couldn't be
     // read may still hold it.
@@ -682,12 +680,28 @@ mod tests {
         let mut library = sample_library();
         library.scan();
 
-        let moved = library.root.with_file_name("Unmounted");
-        fs::rename(&library.root, &moved).unwrap();
+        // As when its drive is unmounted, the bookmark no longer resolves.
+        fs::remove_dir_all(&library.root).unwrap();
         let error = scan_folder(&mut library.conn, library.folder_id, |_| {}).unwrap_err();
         assert!(error.to_string().starts_with("Folder not available"), "{error}");
         assert_eq!(library.tracks().len(), 3);
-        fs::rename(&moved, &library.root).unwrap();
+    }
+
+    #[cfg(target_vendor = "apple")]
+    #[test]
+    fn moved_folder_keeps_its_tracks() {
+        let mut library = sample_library();
+        library.scan();
+        let ids: Vec<i64> = library.tracks().iter().map(|track| track.id).collect();
+
+        // The bookmark follows the folder, and the tracks follow its path.
+        let moved = library.root.with_file_name("Moved");
+        fs::rename(&library.root, &moved).unwrap();
+        let report = library.scan();
+        assert_eq!((report.added, report.removed, report.unchanged), (0, 0, 3));
+        library.root = moved;
+        assert_eq!(library.tracks().iter().map(|track| track.id).collect::<Vec<_>>(), ids);
+        assert!(library.tracks().iter().all(|track| Path::new(&track.path).starts_with(&library.root)));
     }
 
     #[cfg(unix)]

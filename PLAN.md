@@ -6,11 +6,12 @@ Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
 the Tauri process, and device-change events reach the UI. Phase 1 complete:
 FFmpeg decodes every format through `FFmpegAudioFormat`, and `PlayerEngine`
 plays, pauses, seeks and hands off gaplessly to a queued next track, checked
-by offline tests and by ear in the app. Phase 2 (metadata and library) is in
-progress: the core reads tags and embedded art with TagLib, the Rust library
-database and incremental folder scanner are in place, and the library is
-browsed a page at a time under configurable sort/grouping rules
-(2026-09-26). Security-scoped bookmarks are the last Phase 2 item.
+by offline tests and by ear in the app. Phase 2 complete (2026-09-26): the
+core reads tags and embedded art with TagLib, the Rust library database and
+incremental folder scanner are in place, the library is browsed a page at a
+time under configurable sort/grouping rules, and library folders are kept as
+security-scoped bookmarks in a sandboxed app bundle. Phase 3 (the player UI)
+is next.
 
 ## 1. Architecture
 
@@ -497,8 +498,67 @@ Rules from the start, so the later ports stay cheap:
     The genre group's display name is the spelling that sorts first
     bytewise, not the most common one. Pages come from separate queries, so
     a scan between them can shift rows.
-- macOS sandbox: user-selected folders plus security-scoped bookmarks. Store
+- [x] macOS sandbox: user-selected folders plus security-scoped bookmarks. Store
   bookmarks, not raw paths, so the same model works on iOS later.
+
+  Done 2026-09-26 (`core/src/FolderAccess*`, `library/access.rs`,
+  `Entitlements.plist`):
+  - **Core:** `FolderAccess` is the platform interface: create a bookmark
+    for a folder, resolve one and hold access while the object lives. The
+    Apple implementation (`FolderAccess_apple.mm`, ARC) makes read-only
+    security-scoped bookmarks on macOS (plain ones on iOS, where the scope is
+    implicit; not yet built) and resolves them without UI or mounting. Other
+    platforms (`FolderAccess_unsandboxed.cpp`) store the UTF-8 path. The C
+    API is `anomp_bookmark_create`/`_free` and
+    `anomp_folder_access_start`/`_path`/`_is_stale`/`_stop`, callable from
+    any thread. NSURL spells resolved names decomposed (NFD), so the path
+    goes through `realpath` to match what `add_folder` stores.
+  - **Rust:** `add_folder` saves the bookmark in `folders.bookmark` (no
+    schema change). `access::open_folder` resolves it before each scan and
+    before each `player_load`/`player_set_next` of a file under a library
+    folder, and holds access until the scan ends or the file is open (the
+    reader keeps its stream, so rewinds don't reopen). If the folder moved,
+    its stored path follows (after the overlap check), and so do its tracks,
+    which are stored relative to it. A stale bookmark is replaced. A folder
+    saved before this change gets a bookmark the next time it can be read.
+    An unresolvable bookmark reports "Folder not available" and changes
+    nothing.
+  - **Sandbox:** `Entitlements.plist` has the app sandbox, user-selected
+    read-only files, app-scoped bookmarks and network client (for Phase 4;
+    §8.3 lists it). `tauri.conf.json` signs the bundle ad hoc (`"-"`) so
+    local builds carry the entitlements, with the hardened runtime off: it
+    loads only libraries signed by the app's team, and ad-hoc signatures
+    have none, so no separately signed dylib could load. Release signing
+    (§8.3) sets a Developer ID and turns the hardened runtime back on.
+    `tauri dev` is unsigned and so unsandboxed. The sandboxed app keeps its
+    database in `~/Library/Containers/dev.anomp.player/`, separate from the
+    unsandboxed one, so folders must be added again there.
+  - **Release builds and FFmpeg:** `build.rs` now links clang's runtime
+    (`libclang_rt.osx.a`, found with `xcrun`): JUCE's `@available` checks
+    need `___isPlatformVersionAtLeast`, which debug builds took from Rust's
+    std but release LTO dropped, so no release build had linked. The bundle
+    embeds FFmpeg (`bundle.macOS.frameworks`, pulled forward from §8.3):
+    Tauri copies the four dylibs under their install names into
+    `Contents/Frameworks`, signs them, and adds the
+    `@executable_path/../Frameworks` rpath. Only debug builds keep an rpath
+    into `third_party/` (for `tauri dev` and `cargo test`); a release app
+    never searches there, and a path under `~/Desktop` would make macOS ask
+    for access. `cargo test --release` finds FFmpeg through
+    `DYLD_LIBRARY_PATH` from `app/src-tauri/.cargo/config.toml`. The
+    framework list names the libraries' major versions, so it changes with
+    the FFmpeg pin (a stale name fails the bundle step).
+  - Tests: `FolderAccessTests.cpp` (round trip, a moved folder, errors,
+    null handles) and `cargo test` (`anomp.rs`; `access.rs`: saved on add,
+    backfill, a moved folder, an unavailable folder; `scanner.rs`: a moved
+    folder rescans with the same track ids, a deleted one keeps its tracks).
+    These run unsandboxed. The bundle from `npm run tauri build --
+    --bundles app` launches in the sandbox as built: FFmpeg loads from
+    `Contents/Frameworks`, the database is in the container, and no
+    denials are logged.
+  - Checked by hand 2026-09-26 in the sandboxed bundle: add a folder, quit,
+    relaunch, then scan it and play a track from it.
+  - Known limits: symlinks leading out of a library folder aren't readable
+    in the sandbox and are reported as scan failures.
 - **Tests:** Catch2 tests for tag reading over fixture files (done, above);
   `cargo test` for schema, scanner (done: `library/db.rs`, `library/mod.rs`
   and `library/scanner.rs`, over temp folders of fixture copies) and sort
@@ -506,7 +566,7 @@ Rules from the start, so the later ports stay cheap:
   in-memory databases of synthetic rows: disc/track order, missing values,
   accents and case, articles, natural numbers, the folder tree, multiple
   genres, album years, paging, and saving, resetting and falling back from
-  bad stored settings).
+  bad stored settings). **Phase 2 complete.**
 
 ### Phase 3 — Frontend: core player UI
 - Library browser (artists / albums / tracks / folders), search, queue view,
@@ -714,7 +774,10 @@ Build once (after Phase 7), reused for every platform.
   certificate (direct download); Mac App Store needs its own certificates.
 - Universal binary (arm64 + x86_64), including the core and FFmpeg.
 - Bundle the FFmpeg dylibs in `Contents/Frameworks`, set install names to
-  `@rpath`, and sign all nested code with the hardened runtime.
+  `@rpath`, and sign all nested code with the hardened runtime. Done except
+  the hardened runtime (Phase 2): the dylibs are embedded and signed, and
+  `tauri.conf.json` turns the hardened runtime off for ad-hoc local builds.
+  Turn it back on with the Developer ID identity.
 - Entitlements: network client; for the sandbox, user-selected read access
   and app-scoped bookmarks.
 - Notarize with `notarytool`, staple the ticket, ship as a DMG.

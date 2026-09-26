@@ -5,13 +5,15 @@
 //! thread-local, and is dropped on `RunEvent::Exit` before the process ends.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::anomp::{Engine, Event, PlayerState};
+use crate::library::access::OpenFolder;
+use crate::library::commands::LibraryState;
 
 thread_local! {
     static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
@@ -120,14 +122,24 @@ pub fn stop_test_tone<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     with_engine(&app, |engine| engine.stop_test_tone())
 }
 
+/// Opens the library folder holding `path`, if any: under the sandbox the
+/// engine can open a library track only while its folder's bookmark is
+/// resolved (`library::access`). A file stays readable once it is open.
+fn open_library_folder<R: Runtime>(app: &AppHandle<R>, path: &Path) -> Result<Option<OpenFolder>, String> {
+    app.try_state::<LibraryState>()
+        .map_or(Ok(None), |library| library.open_folder_of(path))
+}
+
 #[tauri::command]
 pub fn player_load<R: Runtime>(app: AppHandle<R>, path: PathBuf) -> Result<(), String> {
+    let _folder = open_library_folder(&app, &path)?;
     with_engine(&app, move |engine| engine.load(&path))?
 }
 
 /// Sets the track that follows the current one gaplessly; `null` clears it.
 #[tauri::command]
 pub fn player_set_next<R: Runtime>(app: AppHandle<R>, path: Option<PathBuf>) -> Result<(), String> {
+    let _folder = path.as_deref().map(|path| open_library_folder(&app, path)).transpose()?;
     with_engine(&app, move |engine| engine.set_next(path.as_deref()))?
 }
 

@@ -38,6 +38,7 @@ fn build_core() {
 
     if target_os == "macos" {
         println!("cargo:rustc-link-lib=dylib=c++");
+        link_clang_runtime();
         for framework in [
             "Accelerate",
             "AppKit",
@@ -50,6 +51,23 @@ fn build_core() {
             println!("cargo:rustc-link-lib=framework={framework}");
         }
     }
+}
+
+/// JUCE's `@available` checks call `___isPlatformVersionAtLeast` from clang's
+/// runtime, which rustc's link line leaves out. Debug builds pick up a weak
+/// copy from Rust's std, but release LTO drops it as unused, so link clang's
+/// (through xcrun, so it matches the active Xcode or Command Line Tools).
+fn link_clang_runtime() {
+    let output = std::process::Command::new("xcrun")
+        .args(["clang", "-print-file-name=libclang_rt.osx.a"])
+        .output()
+        .expect("cannot run xcrun to find clang's runtime library");
+    let runtime = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+    assert!(
+        std::path::Path::new(&runtime).is_absolute(),
+        "clang's runtime library not found (got {runtime:?})"
+    );
+    println!("cargo:rustc-link-arg={runtime}");
 }
 
 /// Links the shared FFmpeg built by scripts/build-ffmpeg.sh (LGPL requires it
@@ -71,8 +89,15 @@ fn link_ffmpeg(repo_root: &std::path::Path, target_os: &str) {
         println!("cargo:rustc-link-lib=dylib={lib}");
     }
 
-    // The dylibs' install names are @rpath/...: find them in the build tree
-    // during development. Bundling them into Contents/Frameworks (with an
-    // @executable_path/../Frameworks rpath) is release work, PLAN.md §8.3.
-    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
+    // The dylibs' install names are @rpath/...: the app bundle carries them
+    // in Contents/Frameworks (tauri.conf.json bundle.macOS.frameworks), and
+    // tauri-build adds the @executable_path/../Frameworks rpath for that.
+    // Debug builds (`tauri dev`, `cargo test`) also find them in the build
+    // tree. Release binaries never search there: the sandbox refuses dylibs
+    // outside the bundle, and a path under a protected folder such as
+    // ~/Desktop makes macOS prompt for access. Release test runs get the
+    // build tree from .cargo/config.toml instead.
+    if std::env::var("PROFILE").as_deref() == Ok("debug") {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
+    }
 }

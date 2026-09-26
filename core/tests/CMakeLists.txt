@@ -3,6 +3,7 @@ add_executable(anomp_core_tests
     CApiTests.cpp
     FFmpegAudioFormatTests.cpp
     FFmpegBuildTests.cpp
+    FolderAccessTests.cpp
     PlayerEngineTests.cpp
     TagReaderTests.cpp)
 

@@ -1,5 +1,6 @@
 #include "anomp/anomp.h"
 #include "AudioEngine.h"
+#include "FolderAccess.h"
 #include "FormatRegistry.h"
 #include "TagReader.h"
 
@@ -23,6 +24,18 @@ struct TagsHandle : anomp_tags
         juce::MemoryBlock picture;
         std::string pictureMimeType;
     } owned;
+};
+
+/** Owns the bytes behind the public struct's pointer. */
+struct BookmarkHandle : anomp_bookmark
+{
+    juce::MemoryBlock owned;
+};
+
+struct anomp_folder_access
+{
+    std::unique_ptr<anomp::FolderAccess> access;
+    std::string path;
 };
 
 namespace
@@ -170,6 +183,88 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
 extern "C" void anomp_tags_free (anomp_tags* tags)
 {
     delete static_cast<TagsHandle*> (tags);
+}
+
+extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error, size_t errorSize)
+{
+    try
+    {
+        juce::String message;
+        juce::MemoryBlock bookmark;
+
+        if (path == nullptr)
+            message = "Null path";
+        else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
+            message = "Path is not absolute: " + text;
+        else
+            message = anomp::FolderAccess::createBookmark (juce::File (text), bookmark);
+
+        copyUtf8 (message, error, errorSize);
+        if (message.isNotEmpty())
+            return nullptr;
+
+        auto handle = std::make_unique<BookmarkHandle>();
+        handle->owned = std::move (bookmark);
+        handle->data = static_cast<const unsigned char*> (handle->owned.getData());
+        handle->size = handle->owned.getSize();
+        return handle.release();
+    }
+    catch (...)
+    {
+        copyUtf8 ("Cannot create a bookmark", error, errorSize);
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_bookmark_free (anomp_bookmark* bookmark)
+{
+    delete static_cast<BookmarkHandle*> (bookmark);
+}
+
+extern "C" anomp_folder_access* anomp_folder_access_start (const unsigned char* bookmark,
+                                                           size_t bookmarkSize,
+                                                           char* error,
+                                                           size_t errorSize)
+{
+    try
+    {
+        juce::String message;
+        std::unique_ptr<anomp::FolderAccess> access;
+
+        if (bookmark == nullptr && bookmarkSize > 0)
+            message = "Null bookmark";
+        else
+            access = anomp::FolderAccess::start (juce::MemoryBlock (bookmark, bookmarkSize), message);
+
+        copyUtf8 (message, error, errorSize);
+        if (access == nullptr)
+            return nullptr;
+
+        auto handle = std::make_unique<anomp_folder_access>();
+        handle->path = access->getFolder().getFullPathName().toStdString();
+        handle->access = std::move (access);
+        return handle.release();
+    }
+    catch (...)
+    {
+        copyUtf8 ("Cannot resolve the bookmark", error, errorSize);
+        return nullptr;
+    }
+}
+
+extern "C" const char* anomp_folder_access_path (const anomp_folder_access* access)
+{
+    return access != nullptr ? access->path.c_str() : "";
+}
+
+extern "C" int anomp_folder_access_is_stale (const anomp_folder_access* access)
+{
+    return access != nullptr && access->access->isStale() ? 1 : 0;
+}
+
+extern "C" void anomp_folder_access_stop (anomp_folder_access* access)
+{
+    delete access;
 }
 
 extern "C" anomp_engine* anomp_engine_create (void)

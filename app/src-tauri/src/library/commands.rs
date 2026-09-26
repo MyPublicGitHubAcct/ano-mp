@@ -10,6 +10,7 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use super::access::{self, OpenFolder};
 use super::browse::{self, BrowsePage, GroupKey};
 use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
@@ -29,6 +30,12 @@ impl LibraryState {
         // A panic mid-query leaves nothing half-done that SQLite hasn't
         // rolled back, so a poisoned lock is still usable.
         self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Opens the library folder holding the file at `path`, if any; files in
+    /// it can be opened while the result is alive. See `library::access`.
+    pub fn open_folder_of(&self, path: &Path) -> Result<Option<OpenFolder>, String> {
+        access::open_folder_of(&self.conn(), path).map_err(|e| e.to_string())
     }
 }
 

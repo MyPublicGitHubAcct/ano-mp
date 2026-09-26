@@ -2,6 +2,7 @@
 //! incremental folder scanner that fills it from the core's tag reader, and
 //! browsing it under configurable sort rules.
 
+pub mod access;
 pub mod browse;
 pub mod commands;
 pub mod db;
@@ -16,6 +17,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
+
+use crate::anomp;
 
 #[derive(Debug)]
 pub enum Error {
@@ -69,7 +72,7 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
 }
 
 /// Adds the folder at the absolute `path` (resolving symlinks and `..`),
-/// unscanned. Refuses a folder that is inside, or contains, one already in
+/// unscanned, with a bookmark to it (see `access`). Refuses a folder that is inside, or contains, one already in
 /// the library, so no file is listed twice.
 pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     if !path.is_absolute() {
@@ -83,19 +86,12 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     let text = path
         .to_str()
         .ok_or_else(|| Error::Invalid(format!("Path is not valid UTF-8: {}", path.display())))?;
-    for existing in folders(conn)? {
-        let other = Path::new(&existing.path);
-        if path.starts_with(other) || other.starts_with(&path) {
-            return Err(Error::Invalid(if path == other {
-                format!("{text} is already in the library")
-            } else {
-                format!("{text} overlaps the library folder {}", existing.path)
-            }));
-        }
-    }
+    check_overlap(conn, &path, None)?;
+    // The durable handle to the folder (library::access).
+    let bookmark = anomp::create_bookmark(&path).map_err(Error::Invalid)?;
     conn.execute(
-        "INSERT INTO folders (path, added_at) VALUES (?1, ?2)",
-        params![text, unix_now()],
+        "INSERT INTO folders (path, bookmark, added_at) VALUES (?1, ?2, ?3)",
+        params![text, bookmark, unix_now()],
     )?;
     Ok(Folder {
         id: conn.last_insert_rowid(),
@@ -103,6 +99,22 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
         track_count: 0,
         last_scan_at: None,
     })
+}
+
+/// Fails if `path` is inside, contains, or is a library folder other than
+/// `except`.
+fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<(), Error> {
+    for existing in folders(conn)? {
+        let other = Path::new(&existing.path);
+        if Some(existing.id) != except && (path.starts_with(other) || other.starts_with(path)) {
+            return Err(Error::Invalid(if path == other {
+                format!("{} is already in the library", path.display())
+            } else {
+                format!("{} overlaps the library folder {}", path.display(), existing.path)
+            }));
+        }
+    }
+    Ok(())
 }
 
 /// Removes a folder and its tracks from the library (not from disk).

@@ -76,6 +76,53 @@ anomp_tags* anomp_read_tags(const char* path, int flags, char* error, size_t err
 /** Frees tags returned by anomp_read_tags. Null is ignored. */
 void anomp_tags_free(anomp_tags* tags);
 
+/* ---- Folder access -------------------------------------------------------
+   A sandboxed app (the macOS App Sandbox, iOS) may read a folder the user
+   picked only until it quits, unless it saves a security-scoped bookmark and
+   resolves it in later sessions. A bookmark also follows its folder when it
+   is moved or renamed on the same volume. On platforms without a sandbox a
+   bookmark holds the path. These functions may be called from any thread. */
+
+/** Opaque bookmark bytes, to store as is. */
+typedef struct anomp_bookmark
+{
+    const unsigned char* data;
+    size_t size;
+} anomp_bookmark;
+
+/** Creates a bookmark for the folder at `path` (absolute, UTF-8), which the
+    app must be able to read now: the user just picked it, or an
+    anomp_folder_access for it is open. Returns null on failure and writes the
+    error message to `error` (buffer rules of anomp_engine_device_name;
+    `error` may be null). Free the result with anomp_bookmark_free. */
+anomp_bookmark* anomp_bookmark_create(const char* path, char* error, size_t error_size);
+
+/** Frees a bookmark returned by anomp_bookmark_create. Null is ignored. */
+void anomp_bookmark_free(anomp_bookmark* bookmark);
+
+typedef struct anomp_folder_access anomp_folder_access;
+
+/** Resolves a bookmark and starts accessing its folder; the app can read the
+    folder until anomp_folder_access_stop. Returns null on failure (e.g. the
+    folder was deleted or its volume isn't mounted) and writes the error
+    message as anomp_bookmark_create does. */
+anomp_folder_access* anomp_folder_access_start(const unsigned char* bookmark,
+                                               size_t bookmark_size,
+                                               char* error,
+                                               size_t error_size);
+
+/** Where the folder is now (absolute, UTF-8), which may differ from where it
+    was when the bookmark was made. Valid until anomp_folder_access_stop;
+    "" for a null access. */
+const char* anomp_folder_access_path(const anomp_folder_access* access);
+
+/** Returns 1 if the bookmark is stale: create a new one for the path above
+    while this access is open, and store it in place of the old one. */
+int anomp_folder_access_is_stale(const anomp_folder_access* access);
+
+/** Stops accessing the folder and frees `access`. Null is ignored. */
+void anomp_folder_access_stop(anomp_folder_access* access);
+
 /* ---- Engine ------------------------------------------------------------
    Every engine function must be called on the process's main thread, and
    event callbacks are delivered on it. The host must run the platform's main

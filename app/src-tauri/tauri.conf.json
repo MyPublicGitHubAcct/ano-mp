@@ -32,7 +32,16 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "14.0"
+      "minimumSystemVersion": "14.0",
+      "entitlements": "./Entitlements.plist",
+      "frameworks": [
+        "../../third_party/ffmpeg/macos-universal/lib/libavformat.63.dylib",
+        "../../third_party/ffmpeg/macos-universal/lib/libavcodec.63.dylib",
+        "../../third_party/ffmpeg/macos-universal/lib/libswresample.7.dylib",
+        "../../third_party/ffmpeg/macos-universal/lib/libavutil.61.dylib"
+      ],
+      "signingIdentity": "-",
+      "hardenedRuntime": false
     }
   }
 }

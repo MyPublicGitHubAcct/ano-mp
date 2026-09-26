@@ -3,7 +3,7 @@
 
 use std::ffi::{c_char, c_int, c_void, CStr, CString};
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 
 use serde::Serialize;
@@ -51,6 +51,17 @@ struct RawTags {
 
 const ANOMP_TAGS_PICTURE: c_int = 1;
 
+#[repr(C)]
+struct RawBookmark {
+    data: *const u8,
+    size: usize,
+}
+
+#[repr(C)]
+struct RawFolderAccess {
+    _private: [u8; 0],
+}
+
 type RawEventCallback = extern "C" fn(event: *const RawEvent, user_data: *mut c_void);
 
 const ANOMP_EVENT_DEVICE_CHANGED: c_int = 1;
@@ -72,6 +83,18 @@ extern "C" {
         error_size: usize,
     ) -> *mut RawTags;
     fn anomp_tags_free(tags: *mut RawTags);
+
+    fn anomp_bookmark_create(path: *const c_char, error: *mut c_char, error_size: usize) -> *mut RawBookmark;
+    fn anomp_bookmark_free(bookmark: *mut RawBookmark);
+    fn anomp_folder_access_start(
+        bookmark: *const u8,
+        bookmark_size: usize,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawFolderAccess;
+    fn anomp_folder_access_path(access: *const RawFolderAccess) -> *const c_char;
+    fn anomp_folder_access_is_stale(access: *const RawFolderAccess) -> c_int;
+    fn anomp_folder_access_stop(access: *mut RawFolderAccess);
 
     fn anomp_engine_create() -> *mut RawEngine;
     fn anomp_engine_destroy(engine: *mut RawEngine);
@@ -228,6 +251,88 @@ impl Tags {
                 data: std::slice::from_raw_parts(raw.picture, raw.picture_size).to_vec(),
             }),
         }
+    }
+}
+
+/// Creates a bookmark for `folder`, the durable handle to a folder the user
+/// picked: under the macOS App Sandbox (and on iOS) it is what lets the app
+/// read the folder in later sessions, and it follows the folder when it is
+/// moved on its volume. Elsewhere it holds the path. The app must be able to
+/// read the folder now (the user just picked it, or a `FolderAccess` to it is
+/// open). May be called from any thread.
+pub fn create_bookmark(folder: &Path) -> Result<Vec<u8>, String> {
+    let path = path_to_cstring(folder)?;
+    let mut raw = std::ptr::null_mut();
+    with_error(|error, size| {
+        // SAFETY: `path` is a valid C string and the error buffer is supplied
+        // by `with_error`, both for the whole call.
+        raw = unsafe { anomp_bookmark_create(path.as_ptr(), error, size) };
+        c_int::from(!raw.is_null())
+    })?;
+    // SAFETY: `raw` is a non-null result of anomp_bookmark_create whose
+    // `data` holds `size` bytes; it is copied once and then freed exactly once.
+    unsafe {
+        let bookmark = std::slice::from_raw_parts((*raw).data, (*raw).size).to_vec();
+        anomp_bookmark_free(raw);
+        Ok(bookmark)
+    }
+}
+
+/// Access to a bookmarked folder: the app can read it until this is dropped.
+pub struct FolderAccess {
+    raw: NonNull<RawFolderAccess>,
+    path: PathBuf,
+    stale: bool,
+}
+
+// SAFETY: the core's folder access may be used and stopped from any thread,
+// and this wrapper only reads it after construction.
+unsafe impl Send for FolderAccess {}
+unsafe impl Sync for FolderAccess {}
+
+impl FolderAccess {
+    /// Resolves a bookmark from `create_bookmark` and starts accessing its
+    /// folder. Fails if the folder is gone or its volume isn't mounted.
+    pub fn start(bookmark: &[u8]) -> Result<FolderAccess, String> {
+        let mut raw = std::ptr::null_mut();
+        with_error(|error, size| {
+            // SAFETY: the bookmark slice and the error buffer are valid for the call.
+            raw = unsafe { anomp_folder_access_start(bookmark.as_ptr(), bookmark.len(), error, size) };
+            c_int::from(!raw.is_null())
+        })?;
+        let raw = NonNull::new(raw).ok_or("Cannot resolve the bookmark")?;
+        // SAFETY: `raw` is a live access; its path is a valid C string until it
+        // is stopped, and is copied here.
+        let (path, stale) = unsafe {
+            (
+                CStr::from_ptr(anomp_folder_access_path(raw.as_ptr())).to_string_lossy().into_owned(),
+                anomp_folder_access_is_stale(raw.as_ptr()) != 0,
+            )
+        };
+        Ok(FolderAccess {
+            raw,
+            path: path.into(),
+            stale,
+        })
+    }
+
+    /// Where the folder is now, which may differ from where it was when the
+    /// bookmark was made.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Whether the bookmark should be replaced with a new one for `path()`,
+    /// created while this access is open.
+    pub fn is_stale(&self) -> bool {
+        self.stale
+    }
+}
+
+impl Drop for FolderAccess {
+    fn drop(&mut self) {
+        // SAFETY: `raw` is live and is never used again.
+        unsafe { anomp_folder_access_stop(self.raw.as_ptr()) }
     }
 }
 
@@ -528,6 +633,29 @@ mod tests {
         let error = read_tags(&fixture("missing.flac"), false).unwrap_err();
         assert!(error.starts_with("File not found"), "{error}");
         let error = read_tags(Path::new("relative.flac"), false).unwrap_err();
+        assert!(error.starts_with("Path is not absolute"), "{error}");
+    }
+
+    #[test]
+    fn bookmarks_resolve_to_their_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = std::fs::canonicalize(dir.path()).unwrap().join("Música");
+        std::fs::create_dir(&folder).unwrap();
+
+        let bookmark = create_bookmark(&folder).unwrap();
+        let access = FolderAccess::start(&bookmark).unwrap();
+        assert_eq!(access.path(), folder);
+        assert!(!access.is_stale());
+        drop(access);
+
+        std::fs::remove_dir(&folder).unwrap();
+        let error = FolderAccess::start(&bookmark).err().unwrap();
+        assert!(error.starts_with("Cannot resolve the bookmark"), "{error}");
+        let error = FolderAccess::start(b"not a bookmark").err().unwrap();
+        assert!(error.starts_with("Cannot resolve the bookmark"), "{error}");
+        let error = create_bookmark(&folder).unwrap_err();
+        assert!(error.starts_with("Cannot create a bookmark"), "{error}");
+        let error = create_bookmark(Path::new("relative")).unwrap_err();
         assert!(error.starts_with("Path is not absolute"), "{error}");
     }
 
