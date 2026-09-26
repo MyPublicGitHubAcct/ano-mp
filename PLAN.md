@@ -14,10 +14,12 @@ security-scoped bookmarks in a sandboxed app bundle. Phase 3 complete
 (2026-09-26): the queue (with gapless hand-off across it, shuffle, repeat
 and persistence), full-text search, cover art, the responsive player UI,
 and macOS Now Playing and media keys through `MediaControls`. Phase 4
-started (2026-09-26): steps 4.1–4.5 (source settings, HTTP client, folder
-art, MusicBrainz matching, Cover Art Archive and the image cache, and the
-metadata worker that enriches the library in the background) are done, and
-of 4.7 the artist pages with Wikipedia biographies.
+started (2026-09-26): steps 4.1–4.6 (source settings, HTTP client, folder
+art, MusicBrainz matching, Cover Art Archive and the image cache, the
+metadata worker that enriches the library in the background, and the album
+details, "Find details", "Choose cover" and "Find artist" dialogs and the
+Online sources panel) are done, and of 4.7 the artist pages with Wikipedia
+biographies.
 
 ## 1. Architecture
 
@@ -83,12 +85,12 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events) | `app/src-tauri/src/metadata/` |
-| 165 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks | `app/src-tauri/src/metadata/` |
+| 200 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices), plus 3 ignored 50,000-track benchmarks and 2 ignored live tests (MusicBrainz, Cover Art Archive) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
-| Player UI: sidebar (views, folders, scanning), browser, search, queue panel, now-playing bar; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
+| Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
 | Developer page: device name, test tone, loading typed paths straight into the engine, event log | `app/src/routes/dev/+page.svelte` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
 
@@ -1102,7 +1104,8 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     cached 7 days, a 404 meaning none) with types, the front flag,
     comment, and thumbnails by width. Older pictures only have `small`
     and `large`, read as 250 and 500; ids are sometimes numbers, sometimes
-    strings; `http://` URLs are made `https://`. For the 4.6 dialog.
+    strings; `http://` URLs are made `https://`. For the 4.6 dialog (now
+    `cover_candidates`).
   - `images::ImageCache`: `<app cache dir>/images` (inside the container
     under the sandbox), one file per URL named by the **SHA-256** of the
     URL in hex, from `ring`, which rustls already links in, so no new
@@ -1235,10 +1238,116 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     Windows (WebView2's HTTP cache persists across launches) the scan
     count and per-album count restart at 0 each launch, so an art URL may
     repeat one cached in an earlier run (Phase 10).
-- [ ] 4.6 Commands and UI: album details with source labels, "Find
+- [x] 4.6 Commands and UI: album details with source labels, "Find
   details" and "Choose cover" dialogs with candidates per source, and a
   Services panel (master switch, enable, order, keys, status) that Phase 6
   folds into the admin screen.
+
+  Plan (2026-09-26):
+  - **Worker calls.** The dialogs' searches, lookups and listings go
+    online, so they run on the metadata worker (the only owner of
+    `http::Client`): `Shared::call` queues a closure that the worker runs
+    with its client, connection and image cache ahead of every job, and
+    the command waits for its answer on a blocking thread. Offline, the
+    client refuses at once, so a dialog shows "offline" rather than
+    hanging. Changes a call makes are reported like a job's.
+  - **Album details** (`metadata_album`): the tag values (title, album
+    artist, year, tracks, length, genres, the tagged release MBID), the
+    MusicBrainz link (status, chosen by the user or not, score, when
+    checked) with the release's fields while MusicBrainz is shown, and
+    where the cover shown comes from (`Art` records its source) and
+    whether the user chose it. The UI labels each value with its source.
+  - **"Find details"**: `metadata_release_candidates` lists, per
+    album-details source in the configured order, the candidates: the
+    search hits (the default query is the automatic one, so it's usually
+    cached), the best three looked up and scored with track lengths, the
+    rest scored on the search result alone and flagged so, plus the
+    current match or review candidate. The title and artist searched for
+    can be edited, and a MusicBrainz release URL or MBID is looked up
+    directly. Actions: pick a release (`choose_release`, then its cover
+    is fetched), "None of these" (a 'none' row chosen by the user, which
+    automatic matching leaves alone), and "Use automatic" (clears the
+    row, drops the album's art, and matches again at once).
+  - **"Choose cover"**: `metadata_cover_candidates` lists the album-art
+    sources in the configured order: the embedded picture, every image
+    in the album's folders (`folder_art::images`), and the archive's
+    listing for the matched release plus its release group's front. The
+    archive's 250 px thumbnails are downloaded on demand through the
+    worker (`metadata_fetch_image`, archive URLs only) into the image
+    cache, so the webview never contacts a service. Previews come from
+    the art handler: `anomp-art://localhost/album-<id>/<source>?ref=…`
+    serves one candidate through the same `from_source`, never online; a
+    folder reference must be a relative path without `..`. Picking one
+    stores `album_art` (a folder picture only if it's one of the album's
+    images; an archive picture by its 500 px URL, downloaded next);
+    "Use automatic" deletes it. Both drop the album's art and send
+    `metadata-changed`.
+  - **Artists**: the same for the 'review' artists of 4.7: candidates from
+    the artist search (name editable, MBID or URL looked up), pick, "None
+    of these", "Use automatic".
+  - **Services panel**: a main view opened from the sidebar, whose entry
+    shows what the worker is doing. The online switch, "match
+    automatically", each source (on/off, what it supplies, what it needs,
+    a key field if it takes one, its status from `metadata-progress`: in
+    use, off, can't be reached with "Try now"), each kind's order (move up
+    and down), the worker's progress, and "Reset to defaults".
+    `SourceInfo` gains the hosts each source contacts, so status maps to
+    sources.
+  - **UI**: a modal `Dialog` (native `<dialog>`) and the three dialogs,
+    opened through `ui.dialog`. The browser shows an album header when the
+    node is an album: cover (click to choose), the release facts with
+    their source, the match status, "Find details…", "Choose cover…", and
+    a details table (field, value, source). Album menus in the browser,
+    search and artist page get "Find details…" and "Choose cover…"; the
+    artist page gets "Choose…" for a 'review' match and "Wrong artist?"
+    for a match.
+  - **Tests**: the worker's calls; candidates, choosing, rejecting and
+    clearing with the fake transport and recorded responses; folder image
+    listing; cover choices' validation; the handler's candidate paths.
+    Then `npm run check`, and the app checked by eye.
+
+  Done 2026-09-26, as planned (`metadata/commands.rs`, `library/albums.rs`,
+  `library/art.rs`, `AlbumInfo.svelte`, the `*Dialog.svelte` components,
+  `ServicesPanel.svelte`). Beyond the plan:
+  - `Release` gains each medium's format and the release's
+    disambiguation (both defaulted, so details stored before still parse):
+    without them the dialog's releases of one album look the same.
+  - A call's answer is sent after the changes it made are reported
+    (`Call` returns an `Answer`), as jobs do, so the UI reloads before the
+    dialog closes. Calls run before any queued job, but wait for the job
+    that's running.
+  - The "Find details" dialog shows the selected release's tracks next to
+    the album's with their lengths, marking those within 3 s, and scores
+    from a search result alone as "~".
+  - "Use automatic" for a cover queues the archive's cover, since a user's
+    pick from another source had stopped it being fetched.
+  - The art handler's candidate route answers with `no-store`; the
+    webview's `convertFileSrc` encodes slashes, so the UI adds
+    `/<source>` after it.
+  - Checked in the app (2026-09-26) on the 16-album library, driven by a
+    temporary dev-only script (scripted clicks need an accessibility
+    permission the session didn't have): the album header and its details
+    table; "Find details" listing the match with its tracks compared, and
+    other releases told apart by country, format and label; choosing a
+    CD release (its details and cover replaced the automatic ones);
+    "Choose cover" with archive previews fetched through the worker, a
+    pick marked "Your choice", then "Use automatic" for the cover and the
+    release, which put back the original match and cover; the Online
+    sources panel, where turning MusicBrainz off showed the Cover Art
+    Archive and Wikipedia as needing it and struck them from the order;
+    "Find artist" from an artist page. Two layout bugs found and fixed
+    (the sidebar's section heading growing, the dialog body collapsing).
+    Not checked by eye: the dialogs offline, dark mode, narrow windows,
+    and a 'review' album or artist (none in that library).
+  - Known limits: album details come from MusicBrainz only, but the
+    commands and dialog are per source, ready for Discogs (4.7); "Choose
+    cover" offers only the matched release's archive pictures and its
+    release group's front, not other releases'; only the first embedded
+    picture found in an album's first files is offered; archive previews
+    go into the image cache and count toward its budget; keys, when a
+    source takes one, are stored in the settings JSON (4.8 decides on the
+    keychain); "Use automatic" while offline leaves the album unmatched
+    until the worker can reach MusicBrainz again.
 - [ ] 4.7 More sources: Wikidata/Wikipedia descriptions, then Discogs
   (user token). fanart.tv, TheAudioDB, iTunes and Deezer after their terms
   are checked.
@@ -1306,8 +1415,8 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     Swans showed its facts, biography, credit and five albums.
   - Known limits: English Wikipedia only; a biography and the artist's
     MusicBrainz details aren't refreshed once found (an accepted match is
-    kept, like albums'); a 'review' candidate can't be confirmed until the
-    4.6 dialogs; an artist found only as a track artist is looked up only
+    kept, like albums'); a 'review' candidate is confirmed in the "Find
+    artist" dialog (4.6); an artist found only as a track artist is looked up only
     when their page is opened; several artists in one tag ("A; B") are one
     name and rarely match.
 - [ ] 4.8 Select and configure the alternative sources. Go through the

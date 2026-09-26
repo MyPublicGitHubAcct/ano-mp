@@ -124,6 +124,11 @@
       const artist = { id: album.albumArtistId, name: album.albumArtist };
       items.push({ label: "Go to artist", action: () => showArtist(artist) });
     }
+    const ref = { id: album.id, title: album.title };
+    items.push(
+      { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
+      { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
+    );
     ui.openMenu(event, items);
   }
 </script>

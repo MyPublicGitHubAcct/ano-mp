@@ -310,6 +310,8 @@ mod tests {
             track_count: tracks,
             has_front_art: None,
             tracks: vec![],
+            formats: vec![],
+            disambiguation: None,
         }
     }
 

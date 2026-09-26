@@ -67,6 +67,13 @@ pub struct Release {
     pub has_front_art: Option<bool>,
     /// Empty in search results.
     pub tracks: Vec<ReleaseTrack>,
+    /// Each medium's format, e.g. ["CD", "CD"] or ["12\" Vinyl"]; `None`
+    /// for a medium without one. Missing in details stored before 4.6.
+    #[serde(default)]
+    pub formats: Vec<Option<String>>,
+    /// Tells releases of the same album apart, e.g. "deluxe edition".
+    #[serde(default)]
+    pub disambiguation: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,6 +162,17 @@ pub struct ArtistHit {
 pub struct SearchHit {
     pub release: Release,
     pub score: u32,
+}
+
+/// The MBID in `text`: `text` itself, or the id after `/<entity>/` in a
+/// MusicBrainz URL such as "https://musicbrainz.org/release/<id>".
+pub fn mbid_in<'a>(text: &'a str, entity: &str) -> Option<&'a str> {
+    let text = text.trim();
+    if is_mbid(text) {
+        return Some(text);
+    }
+    let (_, rest) = text.split_once(&format!("musicbrainz.org/{entity}/"))?;
+    rest.get(..36).filter(|id| is_mbid(id))
 }
 
 /// Whether `id` looks like an MBID, so a tag value can go into a URL.
@@ -329,6 +347,7 @@ struct RawRelease {
     cover_art_archive: Option<RawCoverArt>,
     #[serde(default)]
     media: Vec<RawMedium>,
+    disambiguation: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -385,6 +404,7 @@ struct RawCoverArt {
 #[serde(rename_all = "kebab-case")]
 struct RawMedium {
     position: Option<u32>,
+    format: Option<String>,
     track_count: Option<u32>,
     #[serde(default)]
     tracks: Vec<RawTrack>,
@@ -597,6 +617,12 @@ impl RawRelease {
             track_count,
             has_front_art: self.cover_art_archive.map(|art| art.front),
             tracks,
+            formats: self
+                .media
+                .into_iter()
+                .map(|medium| non_empty(medium.format))
+                .collect(),
+            disambiguation: non_empty(self.disambiguation),
         }
     }
 }
@@ -657,6 +683,27 @@ mod tests {
             "../../../../../../../../../../../..",
         ] {
             assert!(!is_mbid(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn finds_mbids_in_urls() {
+        let id = "3b408cb5-7d51-4188-b07c-fabcf308cda3";
+        assert_eq!(mbid_in(&format!(" {id}\n"), "release"), Some(id));
+        assert_eq!(
+            mbid_in(
+                &format!("https://musicbrainz.org/release/{id}/cover-art"),
+                "release"
+            ),
+            Some(id)
+        );
+        for bad in [
+            format!("https://musicbrainz.org/artist/{id}"),
+            format!("https://example.com/release/{id}"),
+            "https://musicbrainz.org/release/3b408cb5".into(),
+            "In Rainbows".into(),
+        ] {
+            assert_eq!(mbid_in(&bad, "release"), None, "{bad}");
         }
     }
 
@@ -723,6 +770,16 @@ mod tests {
         assert_eq!(first.title, "15 Step");
         assert_eq!(first.length_ms, Some(237000));
         assert_eq!(release.artist_ids, ["a74b1b7f-71a5-4011-9441-d0b5e4122711"]);
+        assert_eq!(release.formats, [Some("Digital Media".to_owned())]);
+
+        let vinyl = parse_release(fixtures::RELEASES[3].1).unwrap();
+        assert_eq!(vinyl.formats, [Some("12\" Vinyl".to_owned())]);
+        // Details stored before formats were kept still parse.
+        let mut old = serde_json::to_value(&vinyl).unwrap();
+        old.as_object_mut().unwrap().remove("formats");
+        old.as_object_mut().unwrap().remove("disambiguation");
+        let old: Release = serde_json::from_value(old).unwrap();
+        assert!(old.formats.is_empty());
     }
 
     #[test]

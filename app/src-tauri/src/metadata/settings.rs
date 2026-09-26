@@ -63,6 +63,9 @@ pub struct SourceInfo {
     /// MusicBrainz match, and Wikipedia a MusicBrainz artist).
     pub requires: Option<SourceId>,
     pub homepage: Option<&'static str>,
+    /// The hosts it contacts, as `metadata-progress` names those that
+    /// can't be reached.
+    pub hosts: &'static [&'static str],
 }
 
 impl SourceId {
@@ -107,6 +110,12 @@ impl SourceId {
                 Some("https://en.wikipedia.org"),
             ),
         };
+        let hosts: &'static [&'static str] = match self {
+            SourceId::Embedded | SourceId::Folder => &[],
+            SourceId::MusicBrainz => &[super::musicbrainz::HOST],
+            SourceId::CoverArtArchive => &[super::coverartarchive::HOST],
+            SourceId::Wikipedia => &[super::wikipedia::WIKIDATA_HOST, super::wikipedia::HOST],
+        };
         SourceInfo {
             id: self,
             name,
@@ -115,6 +124,7 @@ impl SourceId {
             needs_key: false,
             requires,
             homepage,
+            hosts,
         }
     }
 
@@ -424,6 +434,14 @@ mod tests {
             assert_eq!(SourceId::from_str(id.as_str()), Some(id));
         }
         assert_eq!(SourceId::from_str("lastfm"), None);
+    }
+
+    #[test]
+    fn online_sources_name_their_hosts() {
+        for id in SourceId::ALL {
+            let info = id.info();
+            assert_eq!(info.online, !info.hosts.is_empty(), "{id:?}");
+        }
     }
 
     #[test]

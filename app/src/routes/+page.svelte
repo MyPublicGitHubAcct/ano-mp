@@ -1,19 +1,22 @@
 <script lang="ts">
-  // The player: sidebar | browser (or search results, or an artist's page) |
-  // queue, with the now-playing bar along the bottom. The now-playing view
-  // takes the queue's place with the cover. Below 900 px the queue becomes an
-  // overlay; below 640 px the sidebar becomes a drawer.
+  // The player: sidebar | browser (or search results, an artist's page, or
+  // the online sources) | queue, with the now-playing bar along the bottom.
+  // The now-playing view takes the queue's place with the cover. Below 900 px
+  // the queue becomes an overlay; below 640 px the sidebar becomes a drawer.
   import ArtistPage from "$lib/components/ArtistPage.svelte";
   import BrowsePane from "$lib/components/BrowsePane.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import Dialogs from "$lib/components/Dialogs.svelte";
   import Header from "$lib/components/Header.svelte";
   import NowPlaying from "$lib/components/NowPlaying.svelte";
   import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
   import QueuePanel from "$lib/components/QueuePanel.svelte";
   import SearchResults from "$lib/components/SearchResults.svelte";
+  import ServicesPanel from "$lib/components/ServicesPanel.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
   import { library } from "$lib/state/library.svelte";
+  import { metadataStatus } from "$lib/state/metadata.svelte";
   import { player } from "$lib/state/player.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
 
@@ -22,9 +25,11 @@
   $effect(() => {
     const stopPlayer = player.connect();
     const stopLibrary = library.connect();
+    const stopMetadata = metadataStatus.connect();
     return () => {
       stopPlayer();
       stopLibrary();
+      stopMetadata();
     };
   });
 
@@ -44,8 +49,9 @@
       ui.searchInput?.select();
       return;
     }
-    if (typing(event.target) || event.altKey || ui.menu) return;
-    if (event.key === "Escape" && (ui.nowPlayingInMain || ui.artistInMain) && library.query.trim() === "") {
+    // A dialog handles its own keys (Escape closes it).
+    if (typing(event.target) || event.altKey || ui.menu || ui.dialog) return;
+    if (event.key === "Escape" && ui.canGoBack && library.query.trim() === "") {
       ui.back();
     } else if (event.key === " " && !command) {
       event.preventDefault();
@@ -81,6 +87,8 @@
       <NowPlaying />
     {:else if ui.artistInMain}
       <ArtistPage />
+    {:else if ui.servicesInMain}
+      <ServicesPanel />
     {:else}
       <BrowsePane />
     {/if}
@@ -92,6 +100,7 @@
 </div>
 
 <ContextMenu />
+<Dialogs />
 <Toasts />
 
 <style>

@@ -1,9 +1,21 @@
 // Layout and transient UI state.
 
+import type { ArtistInfo } from "$lib/api";
+
 export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
 
-export type MainView = "library" | "queue" | "nowPlaying" | "artist";
+export type MainView = "library" | "queue" | "nowPlaying" | "artist" | "services";
 export type ArtistRef = { id: number; name: string };
+export type AlbumRef = { id: number; title: string };
+
+/** The modal dialog showing, if any. */
+export type Dialog =
+  | { kind: "findDetails"; album: AlbumRef }
+  | { kind: "chooseCover"; album: AlbumRef }
+  | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo };
+
+/** Views that `back` returns from. */
+const OPENED: MainView[] = ["nowPlaying", "artist", "services"];
 
 class Ui {
   /** What the main area shows when not searching: the library browser, the
@@ -15,7 +27,8 @@ class Ui {
       when narrow); hidden while the main area shows the queue or the
       current track. */
   queueOpen = $state(true);
-  /** The views the now-playing and artist views were opened from, for `back`. */
+  dialog = $state.raw<Dialog | null>(null);
+  /** The views the now-playing, artist and services views were opened from, for `back`. */
   #history: { view: MainView; artist: ArtistRef | null }[] = [];
 
   get queueInMain() {
@@ -28,6 +41,15 @@ class Ui {
 
   get artistInMain() {
     return this.mainView === "artist" && this.artist !== null;
+  }
+
+  get servicesInMain() {
+    return this.mainView === "services";
+  }
+
+  /** Whether `back` has somewhere to go. */
+  get canGoBack() {
+    return OPENED.includes(this.mainView);
   }
 
   /** Shows the library browser in the main area. */
@@ -52,9 +74,14 @@ class Ui {
     this.artist = artist;
   }
 
-  /** Back to the view the now-playing or artist view was opened from. */
+  /** Shows the online sources' settings and status in the main area. */
+  showServices() {
+    this.#open("services");
+  }
+
+  /** Back to the view the now-playing, artist or services view was opened from. */
   back() {
-    if (this.mainView !== "nowPlaying" && this.mainView !== "artist") return;
+    if (!this.canGoBack) return;
     const previous = this.#history.pop();
     this.mainView = previous?.view ?? "library";
     this.artist = previous?.artist ?? null;

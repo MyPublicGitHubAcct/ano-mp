@@ -6,8 +6,8 @@
   // to open it in the browser, double-click to play it.
   import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { library as api, metadata, queue, type ArtistAlbum, type ArtistPage, type MusicBrainzArtist } from "$lib/api";
-  import { plural } from "$lib/format";
+  import { library as api, metadata, queue, type ArtistAlbum, type ArtistPage } from "$lib/api";
+  import { lifeSpan, plural } from "$lib/format";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
@@ -79,35 +79,6 @@
   );
   const busy = $derived(lookingUp || (page !== null && library.lookingUp === page.id));
 
-  /** "1985", "June 1985" or "1 June 1985". */
-  function formatDate(date: string) {
-    const [year, month, day] = date.split("-").map(Number);
-    if (!month) return String(year);
-    return new Date(Date.UTC(year, month - 1, day || 1)).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: day ? "numeric" : undefined,
-      timeZone: "UTC",
-    });
-  }
-
-  function lifeSpan(artist: MusicBrainzArtist) {
-    const person = artist.type === "Person" || artist.type === "Character";
-    const place = (area: string | null) => (area ? ` in ${area}` : "");
-    const parts = [];
-    if (artist.begin || artist.beginArea) {
-      const when = artist.begin ? ` ${formatDate(artist.begin)}` : "";
-      parts.push(`${person ? "Born" : "Formed"}${when}${place(artist.beginArea)}`);
-    }
-    if (artist.end || artist.endArea) {
-      const when = artist.end ? ` ${formatDate(artist.end)}` : "";
-      parts.push(`${person ? "Died" : "Disbanded"}${when}${place(artist.endArea)}`);
-    } else if (artist.ended && !person) {
-      parts.push("Disbanded");
-    }
-    return parts.join(" · ");
-  }
-
   // Sections in this order; albums without a type (no match yet) are albums.
   const SECTIONS = ["Albums", "EPs", "Singles", "Live albums", "Compilations", "Soundtracks", "Other releases"];
 
@@ -147,7 +118,9 @@
       case null:
         return info.canLookUp ? "Not looked up yet." : "Online details are turned off.";
       case "none":
-        return `${name} wasn’t found on MusicBrainz.`;
+        return info.chosenByUser
+          ? `You said ${name} isn’t on MusicBrainz.`
+          : `${name} wasn’t found on MusicBrainz.`;
       case "review":
         return `Several artists on MusicBrainz are called ${name}, and none is clearly this one.`;
       case "matched":
@@ -186,7 +159,17 @@
       const other = { id: album.albumArtistId, name: album.albumArtist };
       items.push({ label: `Go to ${other.name}`, action: () => ui.showArtist(other) });
     }
+    const ref = { id: album.id, title: album.title };
+    items.push(
+      { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
+      { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
+    );
     ui.openMenu(event, items);
+  }
+
+  /** Opens "Find artist" to pick the MusicBrainz artist. */
+  function findArtist() {
+    if (page) ui.dialog = { kind: "findArtist", artist: { id: page.id, name: page.name }, info: page.info };
   }
 
   /** Opens a web page in the browser rather than the app's window. */
@@ -280,7 +263,10 @@
         <p class="status muted" aria-live="polite">{status()}</p>
       {/if}
       <div class="links">
-        {#if page.info.canLookUp && !biography}
+        {#if page.info.canLookUp && page.info.status === "review"}
+          <button class="primary" onclick={findArtist} disabled={busy}><Icon name="search" /> Choose…</button>
+        {/if}
+        {#if page.info.canLookUp && !biography && page.info.status !== "review"}
           <button onclick={lookUp} disabled={busy}>
             <Icon name="refresh" />
             {page.info.status === null ? "Look up" : "Look up again"}
@@ -289,6 +275,11 @@
         {#if mb}
           <a href="https://musicbrainz.org/artist/{mb.id}" onclick={openLink}>MusicBrainz</a>
           {#if mb.homepage}<a href={mb.homepage} onclick={openLink}>Official website</a>{/if}
+        {/if}
+        {#if page.info.canLookUp && page.info.status !== "review"}
+          <button class="link" onclick={findArtist}>
+            {page.info.status === "matched" ? "Wrong artist?" : "Search MusicBrainz…"}
+          </button>
         {/if}
       </div>
     </section>

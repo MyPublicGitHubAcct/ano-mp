@@ -40,9 +40,14 @@ pub fn run() {
             |ctx, request, responder| {
                 let app = ctx.app_handle().clone();
                 let path = request.uri().path().to_owned();
+                let query = request.uri().query().map(str::to_owned);
                 tauri::async_runtime::spawn_blocking(move || {
                     let library = app.try_state::<library::commands::LibraryState>();
-                    responder.respond(library::art::respond(library.as_deref(), &path));
+                    responder.respond(library::art::respond(
+                        library.as_deref(),
+                        &path,
+                        query.as_deref(),
+                    ));
                 });
             },
         )
@@ -78,6 +83,19 @@ pub fn run() {
             metadata::commands::metadata_retry_now,
             metadata::commands::metadata_update_album,
             metadata::commands::metadata_update_artist,
+            metadata::commands::metadata_album,
+            metadata::commands::metadata_release_candidates,
+            metadata::commands::metadata_choose_release,
+            metadata::commands::metadata_reject_release,
+            metadata::commands::metadata_use_automatic_release,
+            metadata::commands::metadata_cover_candidates,
+            metadata::commands::metadata_fetch_image,
+            metadata::commands::metadata_choose_cover,
+            metadata::commands::metadata_use_automatic_cover,
+            metadata::commands::metadata_artist_candidates,
+            metadata::commands::metadata_choose_artist,
+            metadata::commands::metadata_reject_artist,
+            metadata::commands::metadata_use_automatic_artist,
             queue::queue_state,
             queue::queue_play,
             queue::queue_play_node,

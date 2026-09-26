@@ -476,6 +476,8 @@ mod tests {
         Art {
             mime_type: "image/png".into(),
             data: bytes.to_vec(),
+            source: crate::metadata::settings::SourceId::Embedded,
+            chosen: false,
         }
     }
 

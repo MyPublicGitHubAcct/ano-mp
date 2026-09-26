@@ -145,6 +145,8 @@ export type ArtistInfo = {
   /** The MusicBrainz match; null if never looked up. */
   status: LinkStatus | null;
   checkedAt: number | null;
+  /** The user chose the match, or "none of these". */
+  chosenByUser: boolean;
   musicbrainz: MusicBrainzArtist | null;
   biography: Biography | null;
   /** Whether a lookup can be asked for now. */
@@ -203,6 +205,8 @@ export type SourceInfo = {
   /** A source it relies on (the Cover Art Archive and Wikipedia need MusicBrainz). */
   requires: SourceId | null;
   homepage: string | null;
+  /** The hosts it contacts, as `MetadataProgress.unreachable` names them. */
+  hosts: string[];
 };
 
 export type SourceSettings = { id: SourceId; enabled: boolean; apiKey: string | null };
@@ -235,6 +239,98 @@ export type MetadataProgress = {
   unreachable: string[];
 };
 
+/** A MusicBrainz release: one issue of an album. Dates are "2007", "2007-12" or "2007-12-26". */
+export type Release = {
+  id: string;
+  title: string;
+  /** The artist credit as printed. */
+  artist: string;
+  artistIds: string[];
+  date: string | null;
+  country: string | null;
+  /** "Official", "Promotion", "Bootleg"… */
+  status: string | null;
+  barcode: string | null;
+  labels: { name: string | null; catalogNumber: string | null }[];
+  releaseGroupId: string | null;
+  /** "Album", "Single", "EP"… */
+  releaseType: string | null;
+  /** "Compilation", "Live", "Soundtrack"… */
+  secondaryTypes: string[];
+  /** When the album first came out. */
+  firstReleaseDate: string | null;
+  genres: string[];
+  trackCount: number;
+  hasFrontArt: boolean | null;
+  /** Empty in search results. */
+  tracks: { disc: number; position: number; title: string; lengthMs: number | null; recordingId: string | null }[];
+  /** Each medium's format ("CD", "12\" Vinyl", "Digital Media"). */
+  formats: (string | null)[];
+  disambiguation: string | null;
+};
+
+/** An album's link to a details source. */
+export type AlbumLink = {
+  source: SourceId;
+  sourceName: string;
+  status: LinkStatus;
+  externalId: string | null;
+  /** 0 to 1. */
+  score: number;
+  chosenByUser: boolean;
+  /** The matched release, or the candidate awaiting review. */
+  release: Release | null;
+  checkedAt: number;
+};
+
+export type AlbumTrack = { id: number; disc: number | null; number: number | null; title: string; duration: number };
+
+export type AlbumDetails = {
+  id: number;
+  title: string;
+  albumArtist: string | null;
+  albumArtistId: number | null;
+  /** From the tags. */
+  year: number | null;
+  genres: string[];
+  taggedReleaseId: string | null;
+  tracks: AlbumTrack[];
+  duration: number;
+  /** One per album-details source shown that has a row. */
+  links: AlbumLink[];
+  /** Where the cover shown comes from; null if there is none. */
+  cover: { source: SourceId; sourceName: string; chosen: boolean } | null;
+  /** Whether a details source can be searched now. */
+  canLookUp: boolean;
+};
+
+/** What one source offers in a dialog; `note` says why there's nothing (offline, turned off…). */
+export type SourceCandidates<T> = { source: SourceId; sourceName: string; candidates: T[]; note: string | null };
+
+export type ReleaseCandidate = {
+  release: Release;
+  score: number;
+  /** Scored with its track lengths; otherwise from the search result alone. */
+  full: boolean;
+};
+
+export type CoverCandidate = {
+  source: SourceId;
+  /** What choosing it stores; null for the embedded picture. */
+  reference: string | null;
+  label: string;
+  detail: string | null;
+  /** What to preview it by (`candidateArtUrl`); an archive picture must be fetched first. */
+  preview: string | null;
+};
+
+export type CoverChoices = {
+  chosen: { source: SourceId; reference: string | null } | null;
+  sources: SourceCandidates<CoverCandidate>[];
+};
+
+export type ArtistCandidate = { artist: MusicBrainzArtist; score: number };
+
 export const metadata = {
   settings: () => invoke<MetadataSettings>("metadata_settings"),
   /** Art may come from other sources afterwards; reload it. */
@@ -248,7 +344,40 @@ export const metadata = {
   updateAlbum: (albumId: number) => invoke<void>("metadata_update_album", { albumId }),
   /** Matches an artist and fetches their biography now, as far as needed; fails at once offline. */
   updateArtist: (artistId: number) => invoke<void>("metadata_update_artist", { artistId }),
+
+  album: (albumId: number) => invoke<AlbumDetails>("metadata_album", { albumId }),
+  /** Searches for `title` and `artist`, or the album's own; a release MBID or URL as `title` is looked up. */
+  releaseCandidates: (albumId: number, title: string | null = null, artist: string | null = null) =>
+    invoke<SourceCandidates<ReleaseCandidate>[]>("metadata_release_candidates", { albumId, title, artist }),
+  /** Its cover follows in `metadata-changed`. */
+  chooseRelease: (albumId: number, source: SourceId, releaseId: string) =>
+    invoke<void>("metadata_choose_release", { albumId, source, releaseId }),
+  rejectRelease: (albumId: number, source: SourceId) => invoke<void>("metadata_reject_release", { albumId, source }),
+  /** Clears the match and matches again now; fails at once offline. */
+  useAutomaticRelease: (albumId: number, source: SourceId) =>
+    invoke<void>("metadata_use_automatic_release", { albumId, source }),
+  coverCandidates: (albumId: number) => invoke<CoverChoices>("metadata_cover_candidates", { albumId }),
+  /** Downloads an archive picture for its preview; false if the archive hasn't got it. */
+  fetchImage: (url: string) => invoke<boolean>("metadata_fetch_image", { url }),
+  chooseCover: (albumId: number, source: SourceId, reference: string | null) =>
+    invoke<void>("metadata_choose_cover", { albumId, source, reference }),
+  useAutomaticCover: (albumId: number) => invoke<void>("metadata_use_automatic_cover", { albumId }),
+  /** Searches for `name`, or the artist's own; an artist MBID or URL is looked up. */
+  artistCandidates: (artistId: number, name: string | null = null) =>
+    invoke<ArtistCandidate[]>("metadata_artist_candidates", { artistId, name }),
+  /** Their biography follows in `metadata-changed`. */
+  chooseArtist: (artistId: number, mbid: string) => invoke<void>("metadata_choose_artist", { artistId, mbid }),
+  rejectArtist: (artistId: number) => invoke<void>("metadata_reject_artist", { artistId }),
+  /** Clears the match and looks the artist up again now; fails at once offline. */
+  useAutomaticArtist: (artistId: number) => invoke<void>("metadata_use_automatic_artist", { artistId }),
 };
+
+/** The URL of a picture the "Choose cover" dialog offers. */
+export function candidateArtUrl(albumId: number, candidate: Pick<CoverCandidate, "source" | "preview">) {
+  // Not through convertFileSrc, which would encode the slash.
+  const url = `${convertFileSrc(`album-${albumId}`, "anomp-art")}/${candidate.source}`;
+  return candidate.preview === null ? url : `${url}?ref=${encodeURIComponent(candidate.preview)}`;
+}
 
 // ---- Player and queue ---------------------------------------------------------
 

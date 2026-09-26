@@ -96,16 +96,39 @@ pub fn store_link(
     score: f64,
     details: Option<&impl Serialize>,
 ) -> Result<(), Error> {
+    store(
+        conn,
+        artist_id,
+        source,
+        status,
+        external_id,
+        score,
+        details,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn store(
+    conn: &Connection,
+    artist_id: i64,
+    source: SourceId,
+    status: LinkStatus,
+    external_id: Option<&str>,
+    score: f64,
+    details: Option<&impl Serialize>,
+    by_user: bool,
+) -> Result<(), Error> {
     let details = details.map(|details| serde_json::to_string(details).expect("details serialize"));
     conn.prepare_cached(
         "INSERT INTO artist_links
              (artist_id, source, status, external_id, score, chosen_by, details, checked_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'auto', ?6, ?7)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (artist_id, source) DO UPDATE SET
              status = excluded.status, external_id = excluded.external_id,
-             score = excluded.score, details = excluded.details,
-             checked_at = excluded.checked_at
-         WHERE artist_links.chosen_by = 'auto'",
+             score = excluded.score, chosen_by = excluded.chosen_by,
+             details = excluded.details, checked_at = excluded.checked_at
+         WHERE artist_links.chosen_by = 'auto' OR excluded.chosen_by = 'user'",
     )?
     .execute(params![
         artist_id,
@@ -113,15 +136,113 @@ pub fn store_link(
         status.as_str(),
         external_id,
         score,
+        if by_user { "user" } else { "auto" },
         details,
         unix_now()
     ])?;
     Ok(())
 }
 
+/// An artist offered in the "Find artist" dialog, with MusicBrainz's score
+/// (0 to 100) for how well it matched the search; 100 for one looked up by
+/// id.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistCandidate {
+    pub artist: Artist,
+    pub score: u32,
+}
+
+/// The MusicBrainz artists the user can pick for artist `artist_id`: the
+/// hits of a search for `name` (the artist's own when `None`, as automatic
+/// matching searches), without "Various Artists", and the current match or
+/// review candidate. An artist MBID or MusicBrainz artist URL is looked up
+/// instead.
+pub fn artist_candidates(
+    client: &Client,
+    conn: &Connection,
+    artist_id: i64,
+    name: Option<&str>,
+) -> Result<Vec<ArtistCandidate>, Error> {
+    let own: String = conn
+        .query_row(
+            "SELECT name FROM artists WHERE id = ?1",
+            [artist_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| Error::Invalid(format!("No artist with id {artist_id}")))?;
+    let name = name.unwrap_or(&own);
+    let mut candidates: Vec<ArtistCandidate> =
+        if let Some(id) = musicbrainz::mbid_in(name, "artist") {
+            match musicbrainz::lookup_artist(client, conn, id) {
+                Ok(artist) => vec![ArtistCandidate { artist, score: 100 }],
+                Err(Error::Status { status: 404, .. }) => {
+                    return Err(Error::Invalid(format!("MusicBrainz has no artist {id}")))
+                }
+                Err(error) => return Err(error),
+            }
+        } else {
+            musicbrainz::search_artists(client, conn, name)?
+                .into_iter()
+                .filter(|hit| hit.artist.id != VARIOUS_ARTISTS)
+                .map(|hit| ArtistCandidate {
+                    artist: hit.artist,
+                    score: hit.score,
+                })
+                .collect()
+        };
+    let current = artist_link(conn, artist_id, SourceId::MusicBrainz)?;
+    if let Some(link) = current.filter(|link| link.status != LinkStatus::None) {
+        if let Some(artist) = link.details::<Artist>() {
+            if !candidates.iter().any(|c| c.artist.id == artist.id) {
+                let score = (link.score * 100.0).round() as u32;
+                candidates.push(ArtistCandidate { artist, score });
+            }
+        }
+    }
+    Ok(candidates)
+}
+
+/// Links artist `artist_id` to the MusicBrainz artist the user picked,
+/// which automatic matching then leaves alone. Its biography follows the
+/// new match (`jobs::needs_biography`).
+pub fn choose_artist(
+    client: &Client,
+    conn: &Connection,
+    artist_id: i64,
+    mbid: &str,
+) -> Result<(), Error> {
+    let artist = musicbrainz::lookup_artist(client, conn, mbid)?;
+    store(
+        conn,
+        artist_id,
+        SourceId::MusicBrainz,
+        LinkStatus::Matched,
+        Some(&artist.id),
+        1.0,
+        Some(&artist),
+        true,
+    )
+}
+
+/// Records that none of MusicBrainz's artists is artist `artist_id` ("None
+/// of these"), which automatic matching then leaves alone.
+pub fn reject_artists(conn: &Connection, artist_id: i64) -> Result<(), Error> {
+    store(
+        conn,
+        artist_id,
+        SourceId::MusicBrainz,
+        LinkStatus::None,
+        None,
+        0.0,
+        None::<&Artist>,
+        true,
+    )
+}
+
 /// Forgets artist `artist_id`'s link to `source`, so the next automatic run
 /// looks it up afresh.
-#[allow(dead_code)] // For "Use automatic" in the Phase 4.6 dialogs; tests use it.
 pub fn clear_link(conn: &Connection, artist_id: i64, source: SourceId) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM artist_links WHERE artist_id = ?1 AND source = ?2",
@@ -299,6 +420,8 @@ pub struct ArtistInfo {
     pub status: Option<LinkStatus>,
     /// When it was last looked up (Unix seconds).
     pub checked_at: Option<i64>,
+    /// Whether the user chose the match (or chose "none of these").
+    pub chosen_by_user: bool,
     /// The matched artist, while MusicBrainz is shown.
     pub musicbrainz: Option<Artist>,
     /// The first biography found among the artist-info sources shown.
@@ -336,6 +459,7 @@ pub fn artist_info(conn: &Connection, artist_id: i64) -> Result<ArtistInfo, Erro
     Ok(ArtistInfo {
         status: link.as_ref().map(|link| link.status),
         checked_at: link.as_ref().map(|link| link.checked_at),
+        chosen_by_user: link.as_ref().is_some_and(|link| link.chosen_by_user),
         musicbrainz,
         biography,
         can_look_up: settings.is_usable(SourceId::MusicBrainz),
@@ -588,6 +712,72 @@ mod tests {
         assert_eq!(
             artist_link(&library.conn, nirvana, SourceId::MusicBrainz).unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn offers_candidates_and_keeps_the_users_pick() {
+        let library = library();
+        let radiohead = artist_id(&library, "Radiohead");
+        let (client, transport, _clock) = fake_client();
+        transport.push_status(
+            &artist_search_url("Radiohead"),
+            200,
+            fixtures::ARTIST_SEARCH,
+        );
+        let candidates = artist_candidates(&client, &library.conn, radiohead, None).unwrap();
+        let found: Vec<(&str, u32)> = candidates
+            .iter()
+            .map(|c| (c.artist.name.as_str(), c.score))
+            .collect();
+        assert_eq!(
+            found,
+            [("Radiohead", 100), ("On a Friday", 60), ("radiohead 3", 51)]
+        );
+
+        // Picked by id (or URL), then kept over automatic results.
+        transport.push_status(&artist_url(fixtures::ARTIST), 200, fixtures::ARTIST_JSON);
+        let url = format!("https://musicbrainz.org/artist/{}", fixtures::ARTIST);
+        let by_url = artist_candidates(&client, &library.conn, radiohead, Some(&url)).unwrap();
+        assert_eq!(by_url.len(), 1);
+        assert_eq!(by_url[0].artist.id, fixtures::ARTIST);
+        choose_artist(&client, &library.conn, radiohead, fixtures::ARTIST).unwrap();
+        let link = artist_link(&library.conn, radiohead, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert!(link.chosen_by_user);
+        assert_eq!(link.matched_id(), Some(fixtures::ARTIST));
+        assert!(
+            artist_info(&library.conn, radiohead)
+                .unwrap()
+                .chosen_by_user
+        );
+        let requests = transport.urls().len();
+        assert_eq!(
+            match_artist(&client, &library.conn, radiohead).unwrap(),
+            LinkStatus::Matched
+        );
+        assert_eq!(transport.urls().len(), requests);
+
+        // The current match is offered whatever is searched for.
+        transport.push_status(
+            &artist_search_url("Nobody at all"),
+            200,
+            r#"{"artists": []}"#,
+        );
+        let candidates =
+            artist_candidates(&client, &library.conn, radiohead, Some("Nobody at all")).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].artist.id, fixtures::ARTIST);
+
+        // "None of these" replaces it and is kept too.
+        reject_artists(&library.conn, radiohead).unwrap();
+        let link = artist_link(&library.conn, radiohead, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (link.status, link.chosen_by_user, link.external_id),
+            (LinkStatus::None, true, None)
         );
     }
 

@@ -1,9 +1,11 @@
 <script lang="ts">
-  // The sort rules as library views, and the library folders with add,
-  // rescan and remove, and scan progress.
+  // The sort rules as library views, the library folders with add, rescan
+  // and remove, and scan progress; and the online sources with what the
+  // metadata worker is doing.
   import { ask } from "@tauri-apps/plugin-dialog";
   import { plural } from "$lib/format";
   import { folderName, library } from "$lib/state/library.svelte";
+  import { metadataStatus } from "$lib/state/metadata.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
@@ -129,7 +131,20 @@
     {/each}
   </ul>
 
-  <a class="dev muted small" href="/dev">Developer tools</a>
+  <div class="bottom">
+    <button
+      class="item"
+      class:active={ui.servicesInMain && library.query === ""}
+      onclick={() => {
+        library.query = "";
+        ui.showServices();
+      }}
+    >
+      <span class="with-icon"><Icon name="cloud" size="1.1rem" /> Online sources</span>
+      <span class="muted small" title={metadataStatus.summary}>{metadataStatus.summary}</span>
+    </button>
+    <a class="dev muted small" href="/dev">Developer tools</a>
+  </div>
 </nav>
 
 <style>
@@ -147,7 +162,6 @@
     letter-spacing: 0.06em;
     color: var(--text-muted);
     margin: 0.75rem 0.5rem 0.25rem;
-    flex: 1;
   }
 
   ul {
@@ -196,6 +210,7 @@
   }
 
   .folders-heading h2 {
+    flex: 1;
     margin-top: 0;
     margin-bottom: 0;
   }
@@ -238,8 +253,13 @@
     }
   }
 
-  .dev {
+  .bottom {
     margin-top: auto;
-    padding: 1rem 0.5rem 0;
+    padding-top: 1rem;
+  }
+
+  .dev {
+    display: block;
+    padding: 0.5rem 0.5rem 0;
   }
 </style>

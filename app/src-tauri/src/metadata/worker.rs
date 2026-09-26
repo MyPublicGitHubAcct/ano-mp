@@ -18,7 +18,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use super::http::{Client, SystemClock, UreqTransport};
-use super::jobs::{Host, Job, MetadataChanged, Priority, Progress, Shared, Worker};
+use super::jobs::{
+    Answer, CallContext, Host, Job, MetadataChanged, Priority, Progress, Shared, Worker,
+};
 use super::Error;
 use crate::library::art::ArtKey;
 use crate::library::commands::LibraryState;
@@ -166,6 +168,47 @@ fn request_and_wait<R: Runtime>(app: &AppHandle<R>, job: Job) -> Result<(), Erro
     answer
         .recv()
         .map_err(|_| Error::Invalid("The metadata worker stopped".into()))?
+}
+
+/// Queues `job` as the user's request without waiting for it: what it
+/// changes arrives in `metadata-changed`.
+pub fn request<R: Runtime>(app: &AppHandle<R>, job: Job) {
+    with_worker(app, |worker| {
+        worker.shared.request(job, Priority::User, None)
+    });
+}
+
+/// Runs `f` on the worker, with its HTTP client and connection, ahead of
+/// every job, and waits for its result; what it reports as changed is sent
+/// in `metadata-changed` first. Blocks, so call it on a blocking thread.
+pub fn call<R: Runtime, T: Send + 'static>(
+    app: &AppHandle<R>,
+    f: impl FnOnce(&mut CallContext) -> Result<T, Error> + Send + 'static,
+) -> Result<T, Error> {
+    let (reply, answer) = mpsc::channel();
+    with_worker(app, |worker| {
+        worker.shared.call(Box::new(move |context| {
+            let result = f(context);
+            Box::new(move || {
+                let _ = reply.send(result);
+            }) as Answer
+        }))
+    })
+    .ok_or_else(|| Error::Invalid("The metadata worker is not running".into()))?;
+    answer
+        .recv()
+        .map_err(|_| Error::Invalid("The metadata worker stopped".into()))?
+}
+
+/// Reports changes made outside the worker (the user's picks) as the
+/// worker reports its own: the albums in `art` lose their cached art, and
+/// `changed` goes out in `metadata-changed`.
+pub fn report_changes<R: Runtime>(app: &AppHandle<R>, art: &[i64], changed: MetadataChanged) {
+    let mut host = TauriHost { app: app.clone() };
+    for &album_id in art {
+        host.art_changed(album_id);
+    }
+    host.metadata_changed(&changed);
 }
 
 pub fn retry_now<R: Runtime>(app: &AppHandle<R>) {

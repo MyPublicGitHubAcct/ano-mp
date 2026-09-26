@@ -25,6 +25,7 @@ use super::images::ImageCache;
 use super::musicbrainz::is_mbid;
 use super::settings::SourceId;
 use super::Error;
+use crate::library::art::CoverCandidate;
 
 pub const HOST: &str = "coverartarchive.org";
 
@@ -37,7 +38,6 @@ pub const COVER_SIZE: u32 = 500;
 
 /// How long a release's image listing is used before asking again. People
 /// add art to releases now and then, so sooner than a MusicBrainz lookup.
-#[allow(dead_code)] // Listings are for the "Choose cover" dialog (Phase 4.6).
 const LISTING_MAX_AGE: Duration = Duration::from_secs(7 * 86400);
 
 pub fn release_front_url(release_id: &str) -> String {
@@ -48,7 +48,9 @@ pub fn release_group_front_url(release_group_id: &str) -> String {
     format!("{BASE}/release-group/{release_group_id}/front-{COVER_SIZE}")
 }
 
-#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
+/// The thumbnail the "Choose cover" dialog previews pictures by.
+const PREVIEW_SIZE: u32 = 250;
+
 pub fn listing_url(release_id: &str) -> String {
     format!("{BASE}/release/{release_id}/")
 }
@@ -214,7 +216,6 @@ pub fn is_archive_url(url: &str) -> bool {
 }
 
 /// A picture in a release's listing.
-#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Image {
@@ -230,9 +231,63 @@ pub struct Image {
     pub thumbnails: BTreeMap<u32, String>,
 }
 
+/// The archive's pictures the user can choose for album `album_id`: those
+/// of the release it's matched to, in the archive's order, then its release
+/// group's front cover. Empty if the album isn't matched. A picture is
+/// chosen by its `COVER_SIZE` thumbnail (else the nearest it has) and
+/// previewed by its `PREVIEW_SIZE` one.
+pub fn cover_candidates(
+    client: &Client,
+    conn: &Connection,
+    album_id: i64,
+) -> Result<Vec<CoverCandidate>, Error> {
+    let Some(link) = albums::album_link(conn, album_id, SourceId::MusicBrainz)? else {
+        return Ok(Vec::new());
+    };
+    let Some(release_id) = matched_release(&link) else {
+        return Ok(Vec::new());
+    };
+    let mut candidates: Vec<CoverCandidate> = release_images(client, conn, release_id)?
+        .into_iter()
+        .map(|image| {
+            let thumbnail = |sizes: &[u32]| {
+                sizes
+                    .iter()
+                    .find_map(|size| image.thumbnails.get(size))
+                    .cloned()
+                    .unwrap_or_else(|| image.image.clone())
+            };
+            CoverCandidate {
+                source: SourceId::CoverArtArchive,
+                reference: Some(thumbnail(&[COVER_SIZE, 1200, PREVIEW_SIZE])),
+                label: match image.types.is_empty() {
+                    true => "Picture".into(),
+                    false => image.types.join(", "),
+                },
+                detail: image.comment.clone(),
+                preview: Some(thumbnail(&[PREVIEW_SIZE, COVER_SIZE, 1200])),
+            }
+        })
+        .collect();
+    if let Some(group) = link
+        .release
+        .as_ref()
+        .and_then(|release| release.release_group_id.as_deref())
+        .filter(|id| is_mbid(id))
+    {
+        candidates.push(CoverCandidate {
+            source: SourceId::CoverArtArchive,
+            reference: Some(release_group_front_url(group)),
+            label: "Front".into(),
+            detail: Some("The album's cover, from any of its releases".into()),
+            preview: Some(format!("{BASE}/release-group/{group}/front-{PREVIEW_SIZE}")),
+        });
+    }
+    Ok(candidates)
+}
+
 /// The pictures of release `release_id`, in the archive's order (empty if it
 /// has none). The listing is cached like other JSON.
-#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 pub fn release_images(
     client: &Client,
     conn: &Connection,
@@ -250,7 +305,6 @@ pub fn release_images(
     }
 }
 
-#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 pub fn parse_listing(json: &str) -> Result<Vec<Image>, Error> {
     #[derive(Deserialize)]
     struct RawListing {
@@ -306,7 +360,6 @@ pub fn parse_listing(json: &str) -> Result<Vec<Image>, Error> {
 }
 
 /// Listings give `http://` URLs; the archive and archive.org serve https.
-#[allow(dead_code)] // For the "Choose cover" dialog (Phase 4.6).
 fn https(url: &str) -> String {
     match url.strip_prefix("http://") {
         Some(rest) => format!("https://{rest}"),
@@ -543,6 +596,45 @@ mod tests {
         transport.push_status(&release_front_url(RELEASES[0].0), 200, "<html>Oops</html>");
         assert!(fetch_album_art(&client, &library.conn, &cache, 1).is_err());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn offers_the_matched_releases_pictures_and_its_groups_front() {
+        let (library, _dir, _cache) = album("review");
+        let (client, transport, _clock) = fake_client();
+        assert!(cover_candidates(&client, &library.conn, 1)
+            .unwrap()
+            .is_empty());
+        assert!(transport.urls().is_empty(), "only for a match");
+
+        let (id, json) = RELEASES[3];
+        assert_eq!(id, fixtures::LISTING_CD.0);
+        link(&library, "matched", id, json);
+        transport.push_status(&listing_url(id), 200, fixtures::LISTING_CD.1);
+        let candidates = cover_candidates(&client, &library.conn, 1).unwrap();
+        let labels: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(labels, ["Front", "Back", "Medium", "Front"]);
+        let front = &candidates[0];
+        let release = format!("{BASE}/release/{id}");
+        assert_eq!(
+            front.reference.as_deref(),
+            Some(&*format!("{release}/1931675364-500.jpg"))
+        );
+        assert_eq!(
+            front.preview.as_deref(),
+            Some(&*format!("{release}/1931675364-250.jpg"))
+        );
+        assert_eq!(front.detail.as_deref(), Some("digital media image"));
+        let group = &candidates[3];
+        assert_eq!(
+            group.reference.as_deref(),
+            Some(&*release_group_front_url(RELEASE_GROUP))
+        );
+        assert!(candidates
+            .iter()
+            .all(|c| c.source == SourceId::CoverArtArchive
+                && c.reference.as_deref().is_some_and(is_archive_url)
+                && c.preview.as_deref().is_some_and(is_archive_url)));
     }
 
     #[test]

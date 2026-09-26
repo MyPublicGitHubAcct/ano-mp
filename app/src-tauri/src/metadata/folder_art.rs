@@ -64,16 +64,55 @@ pub fn find(dir: &Path) -> Option<PathBuf> {
 /// ("CD1", "Disc 2") the album folder above it, where the cover usually is.
 /// Never above `root`.
 pub fn folders_for(root: &Path, relative: &str) -> Vec<PathBuf> {
+    relative_folders(relative)
+        .into_iter()
+        .map(|dir| {
+            let mut path = root.to_path_buf();
+            path.extend(dir.split('/').filter(|part| !part.is_empty()));
+            path
+        })
+        .collect()
+}
+
+/// `folders_for` relative to the library folder, '/'-separated like track
+/// paths; "" is the library folder itself.
+pub fn relative_folders(relative: &str) -> Vec<String> {
     let mut parts: Vec<&str> = relative.split('/').collect();
     parts.pop(); // The file name.
-    let mut dir = root.to_path_buf();
-    dir.extend(&parts);
-    let mut folders = vec![dir.clone()];
+    let mut folders = vec![parts.join("/")];
     if parts.len() > 1 && parts.last().is_some_and(|name| is_disc_folder(name)) {
-        dir.pop();
-        folders.push(dir);
+        parts.pop();
+        folders.push(parts.join("/"));
     }
     folders
+}
+
+/// The names of every image file directly in `dir` that this source can
+/// read, the names it takes as album art first (best first), then the rest
+/// by name. For the user to choose from.
+pub fn images(dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<(usize, String, String)> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| !name.starts_with('.') && mime_type(Path::new(name)).is_some())
+        .map(|name| (rank(&name).unwrap_or(usize::MAX), name.to_lowercase(), name))
+        .collect();
+    names.sort();
+    names.into_iter().map(|(_, _, name)| name).collect()
+}
+
+/// Whether `reference`, a picture's path relative to its library folder
+/// (from the UI, or stored), stays inside that folder: '/'-separated parts,
+/// none empty, "." or "..", and nothing a platform reads as a root or drive.
+pub fn is_relative_path(reference: &str) -> bool {
+    !reference.is_empty()
+        && reference.split('/').all(|part| {
+            !part.is_empty() && part != "." && part != ".." && !part.contains(['\\', ':'])
+        })
 }
 
 /// "CD1", "cd 2", "Disc 03", "Disk-1": a word for disc, then a number.
@@ -153,6 +192,55 @@ mod tests {
         }
         for name in ["CD", "Discography", "cd one", "Disc 1 (Live)", "ACDC"] {
             assert!(!is_disc_folder(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn lists_every_image_art_names_first() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(images(dir.path()).is_empty());
+        for name in [
+            "back.jpg",
+            "Booklet 2.png",
+            "cover.jpg",
+            ".hidden.jpg",
+            "notes.txt",
+        ] {
+            touch(dir.path(), name);
+        }
+        std::fs::create_dir(dir.path().join("scans.jpg")).unwrap(); // Not a file.
+        assert_eq!(
+            images(dir.path()),
+            ["cover.jpg", "back.jpg", "Booklet 2.png"]
+        );
+        assert!(images(&dir.path().join("missing")).is_empty());
+    }
+
+    #[test]
+    fn relative_folders_match_folders_for() {
+        assert_eq!(
+            relative_folders("Artist/Album/CD 2/01.flac"),
+            ["Artist/Album/CD 2", "Artist/Album"]
+        );
+        assert_eq!(relative_folders("01.flac"), [""]);
+    }
+
+    #[test]
+    fn relative_paths_stay_inside() {
+        for good in ["cover.jpg", "Artist/Album/Scans/back.png", "a..b/c.jpg"] {
+            assert!(is_relative_path(good), "{good}");
+        }
+        for bad in [
+            "",
+            "/etc/cover.jpg",
+            "../cover.jpg",
+            "Artist/../../x.jpg",
+            "Artist//x.jpg",
+            "./x.jpg",
+            "C:/x.jpg",
+            "Artist\\..\\x.jpg",
+        ] {
+            assert!(!is_relative_path(bad), "{bad}");
         }
     }
 

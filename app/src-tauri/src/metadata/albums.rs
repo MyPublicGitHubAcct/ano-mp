@@ -41,6 +41,18 @@ impl LinkStatus {
     }
 }
 
+/// A release offered for an album in the "Find details" dialog, scored as
+/// automatic matching scores it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseCandidate {
+    pub release: Release,
+    pub score: f64,
+    /// Scored on its track lengths too; otherwise on the search result
+    /// alone, which has no track list.
+    pub full: bool,
+}
+
 /// An album's row in `album_links` for one source.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -203,9 +215,73 @@ pub fn match_album(client: &Client, conn: &Connection, album_id: i64) -> Result<
     Ok(status)
 }
 
+/// The MusicBrainz releases the user can pick for album `album_id`, best
+/// first: the hits of a search for `search` (title, artist; the album's
+/// own when `None`, which is the automatic match's search and so usually
+/// cached), of which the best `AUTO_LOOKUPS` are looked up and scored with
+/// their track lengths; and the album's current match or review candidate.
+/// A release MBID or MusicBrainz release URL as the title is looked up
+/// instead of searched for.
+pub fn release_candidates(
+    client: &Client,
+    conn: &Connection,
+    album_id: i64,
+    search: Option<(&str, Option<&str>)>,
+) -> Result<Vec<ReleaseCandidate>, Error> {
+    let (album, _) = album_facts(conn, album_id)?
+        .ok_or_else(|| Error::Invalid(format!("No album with id {album_id}")))?;
+    let full = |release: Release| ReleaseCandidate {
+        score: matcher::score(&album, &release),
+        full: !release.tracks.is_empty(),
+        release,
+    };
+    let (title, artist) = search.unwrap_or((&album.title, album.artist.as_deref()));
+    let mut candidates = Vec::new();
+    if let Some(id) = musicbrainz::mbid_in(title, "release") {
+        match musicbrainz::lookup_release(client, conn, id) {
+            Ok(release) => candidates.push(full(release)),
+            Err(Error::Status { status: 404, .. }) => {
+                return Err(Error::Invalid(format!("MusicBrainz has no release {id}")))
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        let mut hits: Vec<ReleaseCandidate> =
+            musicbrainz::search_releases(client, conn, title, artist, Some(album.track_count))?
+                .into_iter()
+                .map(|hit| ReleaseCandidate {
+                    score: matcher::score(&album, &hit.release),
+                    full: false,
+                    release: hit.release,
+                })
+                .collect();
+        // Stable, so MusicBrainz's own order breaks ties.
+        hits.sort_by(|a, b| b.score.total_cmp(&a.score));
+        for (index, hit) in hits.into_iter().enumerate() {
+            if index >= AUTO_LOOKUPS {
+                candidates.push(hit);
+                continue;
+            }
+            match musicbrainz::lookup_release(client, conn, &hit.release.id) {
+                Ok(release) => candidates.push(full(release)),
+                // Gone since the search index was built.
+                Err(Error::Status { status: 404, .. }) => {}
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    let current = album_link(conn, album_id, SourceId::MusicBrainz)?.and_then(|link| link.release);
+    if let Some(release) = current {
+        if !candidates.iter().any(|c| c.release.id == release.id) {
+            candidates.push(full(release));
+        }
+    }
+    candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+    Ok(candidates)
+}
+
 /// Links album `album_id` to the release the user picked, which automatic
 /// matching then leaves alone.
-#[allow(dead_code)] // For the "Find details" dialog (Phase 4.6).
 pub fn choose_release(
     client: &Client,
     conn: &Connection,
@@ -224,9 +300,14 @@ pub fn choose_release(
     Ok(album_link(conn, album_id, SourceId::MusicBrainz)?.expect("just stored"))
 }
 
+/// Records that none of MusicBrainz's releases is album `album_id` ("None
+/// of these"), which automatic matching then leaves alone.
+pub fn reject_releases(conn: &Connection, album_id: i64) -> Result<(), Error> {
+    store_link(conn, album_id, LinkStatus::None, None, 0.0, true)
+}
+
 /// Forgets album `album_id`'s link to `source`, chosen or not, so the next
 /// automatic run matches it afresh.
-#[allow(dead_code)] // For "Use automatic" in the Phase 4.6 dialogs; tests use it.
 pub fn clear_link(conn: &Connection, album_id: i64, source: SourceId) -> Result<(), Error> {
     conn.execute(
         "DELETE FROM album_links WHERE album_id = ?1 AND source = ?2",
@@ -508,6 +589,103 @@ mod tests {
             album_link(&library.conn, album, SourceId::MusicBrainz).unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn offers_the_search_hits_and_the_current_match_as_candidates() {
+        let (library, album) = library(None);
+        let (client, transport, _clock) = fake_client();
+        serve_search(&transport);
+        let candidates = release_candidates(&client, &library.conn, album, None).unwrap();
+        // Every hit; the best three looked up for their track lists.
+        assert_eq!(candidates.len(), 5);
+        assert_eq!(candidates.iter().filter(|c| c.full).count(), AUTO_LOOKUPS);
+        assert!(candidates
+            .windows(2)
+            .all(|pair| pair[0].score >= pair[1].score));
+        assert!(candidates[0].full && candidates[0].score >= matcher::ACCEPT_SCORE);
+        let searched = transport.urls().len();
+
+        // The automatic match searches the same, so it's cached.
+        match_album(&client, &library.conn, album).unwrap();
+        assert_eq!(transport.urls().len(), searched);
+
+        // Another search: the current match is offered too.
+        let (other_title, other_artist) = ("Kid A", Some("Radiohead"));
+        transport.push_status(
+            &search_url(other_title, other_artist, Some(10)),
+            200,
+            r#"{"releases": []}"#,
+        );
+        let candidates = release_candidates(
+            &client,
+            &library.conn,
+            album,
+            Some((other_title, other_artist)),
+        )
+        .unwrap();
+        let current = album_link(&library.conn, album, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(
+            Some(&candidates[0].release.id),
+            current.external_id.as_ref()
+        );
+    }
+
+    #[test]
+    fn looks_up_a_release_by_id_or_url() {
+        let (library, album) = library(None);
+        let (client, transport, _clock) = fake_client();
+        let (id, json) = fixtures::RELEASES[2];
+        transport.push_status(&release_url(id), 200, json);
+        for query in [
+            id.to_owned(),
+            format!(" https://musicbrainz.org/release/{id}/discids "),
+        ] {
+            let candidates =
+                release_candidates(&client, &library.conn, album, Some((&query, None))).unwrap();
+            assert_eq!(candidates.len(), 1, "{query}");
+            assert_eq!(candidates[0].release.id, id);
+            assert!(candidates[0].full);
+        }
+        assert_eq!(transport.urls(), [release_url(id)], "then cached");
+
+        let missing = "00000000-0000-0000-0000-000000000000";
+        transport.push_status(&release_url(missing), 404, "");
+        let error =
+            release_candidates(&client, &library.conn, album, Some((missing, None))).unwrap_err();
+        assert!(error.to_string().contains("has no release"), "{error}");
+    }
+
+    #[test]
+    fn none_of_these_is_kept_like_a_choice() {
+        let (library, album) = library(None);
+        let (client, transport, _clock) = fake_client();
+        reject_releases(&library.conn, album).unwrap();
+        let link = album_link(&library.conn, album, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (link.status, link.chosen_by_user, link.external_id),
+            (LinkStatus::None, true, None)
+        );
+        assert_eq!(
+            match_album(&client, &library.conn, album).unwrap(),
+            LinkStatus::None
+        );
+        assert!(transport.urls().is_empty(), "nothing was looked up");
+
+        // Choosing a release replaces it; clearing it goes back to automatic.
+        let (id, json) = fixtures::RELEASES[0];
+        transport.push_status(&release_url(id), 200, json);
+        choose_release(&client, &library.conn, album, id).unwrap();
+        reject_releases(&library.conn, album).unwrap();
+        let link = album_link(&library.conn, album, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert_eq!(link.status, LinkStatus::None);
     }
 
     #[test]

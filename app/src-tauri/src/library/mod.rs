@@ -3,6 +3,7 @@
 //! browsing it under configurable sort rules.
 
 pub mod access;
+pub mod albums;
 pub mod art;
 pub mod artists;
 #[cfg(test)]

@@ -3,8 +3,10 @@
   // artists, albums, subfolders…) and/or its tracks, fetched a page at a
   // time as they scroll into view. Click or Enter opens a group; double-click
   // or Enter plays the node's tracks from a track; right-click or the ⋯
-  // button offers play next and add to queue, and the artist's page. Inside
-  // an artist, the header links to their page.
+  // button offers play next and add to queue, the artist's page, and an
+  // album's "Find details" and "Choose cover". Inside an artist, the header
+  // links to their page; inside an album, the album's details show above
+  // its tracks.
   import { untrack } from "svelte";
   import {
     library as api,
@@ -20,6 +22,7 @@
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
+  import AlbumInfo from "./AlbumInfo.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
   import VirtualList from "./VirtualList.svelte";
@@ -48,6 +51,15 @@
     const crumb = library.crumbs[depth];
     return crumb && typeof crumb.key === "number" && isArtistLevel(library.rule?.levels[depth])
       ? { id: crumb.key, name: crumb.name }
+      : null;
+  });
+
+  /** The album whose node this is, if it is one. */
+  const nodeAlbum = $derived.by(() => {
+    const depth = library.crumbs.length - 1;
+    const crumb = library.crumbs[depth];
+    return crumb && typeof crumb.key === "number" && library.rule?.levels[depth] === "album"
+      ? { id: crumb.key, title: crumb.name }
       : null;
   });
 
@@ -132,6 +144,13 @@
         const artist = { id: group.key, name: group.name };
         items.push({ label: "Go to artist", action: () => showArtist(artist) });
       }
+      if (library.level === "album" && typeof group.key === "number") {
+        const album = { id: group.key, title: group.name };
+        items.push(
+          { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album }) },
+          { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album }) },
+        );
+      }
       return items;
     }
     const track = entry.track;
@@ -187,6 +206,10 @@
       <button onclick={shuffleAll} disabled={total === 0}><Icon name="shuffle" /> Shuffle</button>
     </div>
   </header>
+
+  {#if nodeAlbum}
+    {#key nodeAlbum.id}<AlbumInfo album={nodeAlbum} />{/key}
+  {/if}
 
   {#if library.folders.length === 0}
     <div class="empty">

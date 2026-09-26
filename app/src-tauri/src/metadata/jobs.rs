@@ -28,9 +28,14 @@
 //! Events go through `Host`: art changes at once (to drop cached art), and
 //! the albums and artists changed in batches at most a second apart, so a long run
 //! doesn't flood the UI, with progress at most four times a second.
+//!
+//! Besides jobs, the worker runs calls (`Shared::call`): closures that use
+//! its client and connection for something the user waits on, such as the
+//! candidates in a "Find details" dialog. They run ahead of every job, and
+//! their changes are sent at once.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -114,6 +119,41 @@ pub enum Priority {
 /// Where a user's request gets its answer once the job, and the cover job
 /// after a match, are done.
 pub type Reply = mpsc::Sender<Result<(), Error>>;
+
+/// Work the user waits on, run on the worker with its client and
+/// connection (`Shared::call`). It returns what sends its answer, which the
+/// worker runs once the changes it made are reported. Dropped unrun when the
+/// worker stops, which drops whatever it would have answered through.
+pub type Call = Box<dyn FnOnce(&mut CallContext) -> Answer + Send>;
+
+/// Sends a call's answer.
+pub type Answer = Box<dyn FnOnce() + Send>;
+
+/// What a call works with.
+pub struct CallContext<'a> {
+    pub client: &'a Client,
+    pub conn: &'a Connection,
+    pub images: &'a ImageCache,
+    art: Vec<i64>,
+    albums: Vec<i64>,
+    artists: Vec<i64>,
+}
+
+impl CallContext<'_> {
+    /// Album `album_id`'s details changed.
+    pub fn album_changed(&mut self, album_id: i64) {
+        self.albums.push(album_id);
+    }
+
+    /// Album `album_id`'s art may be different now.
+    pub fn art_changed(&mut self, album_id: i64) {
+        self.art.push(album_id);
+    }
+
+    pub fn artist_changed(&mut self, artist_id: i64) {
+        self.artists.push(artist_id);
+    }
+}
 
 struct Entry {
     priority: Priority,
@@ -230,6 +270,7 @@ pub struct Shared {
 #[derive(Default)]
 struct State {
     jobs: Jobs,
+    calls: VecDeque<Call>,
     /// Set by every request and cleared when the worker looks at the queue,
     /// so a request made while it decides to wait isn't missed.
     woken: bool,
@@ -261,6 +302,16 @@ impl Shared {
         });
     }
 
+    /// Runs `call` on the worker ahead of every job. Once the worker has
+    /// stopped, it's dropped unrun.
+    pub fn call(&self, call: Call) {
+        self.wake(|state| {
+            if !state.stop {
+                state.calls.push_back(call);
+            }
+        });
+    }
+
     /// Queues background enrichment of every album and album artist that
     /// needs it, if "match automatically" is on when the worker gets to it.
     pub fn enrich_library(&self) {
@@ -278,6 +329,7 @@ impl Shared {
         self.wake(|state| {
             state.stop = true;
             state.jobs = Jobs::default();
+            state.calls.clear();
         });
     }
 
@@ -412,7 +464,7 @@ impl<H: Host> Worker<H> {
 
     /// Runs the next job that can run now, if any.
     pub fn step(&mut self) -> Step {
-        let (enrich, retry_now) = {
+        let (enrich, retry_now, call) = {
             let mut state = self.shared.lock();
             if state.stop {
                 return Step::Stopped;
@@ -421,10 +473,15 @@ impl<H: Host> Worker<H> {
             (
                 std::mem::take(&mut state.enrich),
                 std::mem::take(&mut state.retry_now),
+                state.calls.pop_front(),
             )
         };
         if retry_now {
             self.client.retry_now();
+        }
+        if let Some(call) = call {
+            self.run_call(call);
+            return Step::Ran;
         }
         if enrich {
             if let Err(error) = self.queue_enrichment() {
@@ -527,6 +584,31 @@ impl<H: Host> Worker<H> {
             state.jobs.push(job, Priority::Background, None);
         }
         Ok(())
+    }
+
+    fn run_call(&mut self, call: Call) {
+        let mut context = CallContext {
+            client: &self.client,
+            conn: &self.conn,
+            images: &self.images,
+            art: Vec::new(),
+            albums: Vec::new(),
+            artists: Vec::new(),
+        };
+        let answer = call(&mut context);
+        let CallContext {
+            art,
+            albums,
+            artists,
+            ..
+        } = context;
+        for album_id in art {
+            self.art_changed(album_id);
+        }
+        self.albums_changed.extend(albums);
+        self.artists_changed.extend(artists);
+        self.flush();
+        answer();
     }
 
     fn run_job(&mut self, job: Job, entry: Entry) {
@@ -798,7 +880,8 @@ impl Usable {
     }
 }
 
-fn turned_off(settings: &ServiceSettings, source: SourceId) -> Error {
+/// The error for a request to `source` while the settings turn it off.
+pub fn turned_off(settings: &ServiceSettings, source: SourceId) -> Error {
     Error::Invalid(if settings.online {
         format!("{} is turned off", source.info().name)
     } else {
@@ -1235,6 +1318,58 @@ mod tests {
         let not_mb = jobs.take(|job, _| !job.hosts().contains(&musicbrainz::HOST));
         assert!(not_mb.is_none());
         assert_eq!(jobs.len(), 2);
+    }
+
+    #[test]
+    fn runs_calls_first_and_reports_their_changes_before_answering() {
+        let mut test = Test::new(library(&["Other"]));
+        test.shared.request(Job::Match(2), Priority::User, None);
+        let (reply, answer) = mpsc::channel();
+        let host = test.host.clone();
+        test.shared.call(Box::new(move |context| {
+            let albums: i64 = context
+                .conn
+                .query_row("SELECT count(*) FROM albums", [], |row| row.get(0))
+                .unwrap();
+            context.art_changed(1);
+            context.artist_changed(7);
+            Box::new(move || {
+                // The changes went out first.
+                let recorded = host.take();
+                let _ = reply.send((albums, recorded.art, recorded.changed));
+            }) as Answer
+        }));
+        assert_eq!(test.worker.step(), Step::Ran);
+        let (albums, art, changed) = answer.try_recv().unwrap();
+        assert_eq!(albums, 2);
+        assert_eq!(art, [1]);
+        assert_eq!(
+            changed,
+            [MetadataChanged {
+                albums: vec![1],
+                artists: vec![7]
+            }]
+        );
+        assert!(test.transport.urls().is_empty(), "the job waits");
+        assert_eq!(test.shared.lock().jobs.len(), 1);
+
+        // Calls queued when the worker stops are dropped unrun.
+        let (reply, answer) = mpsc::channel::<()>();
+        test.shared.call(Box::new(move |_| {
+            Box::new(move || {
+                let _ = reply.send(());
+            }) as Answer
+        }));
+        test.shared.stop();
+        assert_eq!(test.worker.step(), Step::Stopped);
+        assert!(answer.recv().is_err());
+        let (reply, answer) = mpsc::channel::<()>();
+        test.shared.call(Box::new(move |_| {
+            Box::new(move || {
+                let _ = reply.send(());
+            }) as Answer
+        }));
+        assert!(answer.recv().is_err(), "refused after stopping");
     }
 
     #[test]
