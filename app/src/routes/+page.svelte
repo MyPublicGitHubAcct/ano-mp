@@ -1,10 +1,12 @@
 <script lang="ts">
   // The player: sidebar | browser (or search results) | queue, with the
-  // now-playing bar along the bottom. Below 900 px the queue becomes an
+  // now-playing bar along the bottom. The now-playing view takes the queue's
+  // place with the cover. Below 900 px the queue becomes an
   // overlay; below 640 px the sidebar becomes a drawer.
   import BrowsePane from "$lib/components/BrowsePane.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import Header from "$lib/components/Header.svelte";
+  import NowPlaying from "$lib/components/NowPlaying.svelte";
   import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
   import QueuePanel from "$lib/components/QueuePanel.svelte";
   import SearchResults from "$lib/components/SearchResults.svelte";
@@ -42,7 +44,9 @@
       return;
     }
     if (typing(event.target) || event.altKey || ui.menu) return;
-    if (event.key === " " && !command) {
+    if (event.key === "Escape" && ui.nowPlayingInMain && library.query.trim() === "") {
+      ui.leaveNowPlaying();
+    } else if (event.key === " " && !command) {
       event.preventDefault();
       player.toggle();
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -72,11 +76,13 @@
       <SearchResults />
     {:else if ui.queueInMain}
       <QueuePanel main />
+    {:else if ui.nowPlayingInMain}
+      <NowPlaying />
     {:else}
       <BrowsePane />
     {/if}
   </main>
-  {#if ui.queueOpen && !(ui.queueInMain && library.query.trim() === "")}
+  {#if ui.queueOpen && (ui.mainView === "library" || library.query.trim() !== "")}
     <aside class="queue"><QueuePanel /></aside>
   {/if}
   <footer class="bar"><NowPlayingBar /></footer>

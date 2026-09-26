@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Along the bottom: the current track, the transport, the seek bar,
-  // volume, shuffle, repeat and the queue toggle.
+  // Along the bottom: the current track (click it for the now-playing view),
+  // the transport, the seek bar, volume, shuffle, repeat and the queue toggle.
+  import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
@@ -10,6 +11,15 @@
   const item = $derived(player.currentItem);
   const repeatLabel = $derived({ off: "Repeat off", all: "Repeat all", one: "Repeat one" }[player.repeat]);
   let lastVolume = 1;
+
+  function toggleNowPlaying() {
+    if (ui.nowPlayingInMain && library.query.trim() === "") {
+      ui.leaveNowPlaying();
+    } else {
+      library.query = "";
+      ui.showNowPlaying();
+    }
+  }
 
   function toggleMute() {
     if (player.volume > 0) {
@@ -22,17 +32,22 @@
 </script>
 
 <div class="bar">
-  <div class="info">
+  <button
+    class="info"
+    title={ui.nowPlayingInMain ? "Close the now-playing view" : "Show the now-playing view"}
+    aria-pressed={ui.nowPlayingInMain}
+    onclick={toggleNowPlaying}
+  >
     <Art albumId={item?.albumId ?? null} trackId={item?.trackId ?? null} size="3.25rem" />
-    <div class="text">
+    <span class="text">
       {#if item}
-        <span class="title" title={item.title}>{item.title}</span>
+        <span class="title">{item.title}</span>
         <span class="muted small">{[item.artist, item.album].filter(Boolean).join(" · ")}</span>
       {:else}
         <span class="muted">Not playing</span>
       {/if}
-    </div>
-  </div>
+    </span>
+  </button>
 
   <div class="transport">
     <div class="buttons">
@@ -90,12 +105,17 @@
     />
     <button
       class="icon toggle"
-      class:on={ui.queueOpen || ui.queueInMain}
-      title={ui.queueInMain ? "Back to the library" : ui.queueOpen ? "Hide the queue" : "Show the queue"}
+      class:on={ui.queueInMain || (ui.queueOpen && !ui.nowPlayingInMain)}
+      title={ui.queueInMain
+        ? "Back to the library"
+        : ui.nowPlayingInMain || !ui.queueOpen
+          ? "Show the queue"
+          : "Hide the queue"}
       aria-label="Queue"
-      aria-pressed={ui.queueOpen || ui.queueInMain}
+      aria-pressed={ui.queueInMain || (ui.queueOpen && !ui.nowPlayingInMain)}
       onclick={() => {
         if (ui.queueInMain) ui.mainView = "library";
+        else if (ui.nowPlayingInMain) ui.showQueue();
         else ui.queueOpen = !ui.queueOpen;
       }}><Icon name="queue" /></button
     >
@@ -119,6 +139,15 @@
     align-items: center;
     gap: 0.75rem;
     min-width: 0;
+    margin: -0.25rem;
+    padding: 0.25rem;
+    border: none;
+    background: none;
+    text-align: left;
+  }
+
+  .info:hover:not(:disabled) {
+    background: var(--hover);
   }
 
   .text {

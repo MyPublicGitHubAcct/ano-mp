@@ -15,7 +15,7 @@
   }
 
   const isOpen = (folderId: number) =>
-    !ui.queueInMain &&
+    ui.mainView === "library" &&
     library.rule?.levels[0] === "folder" &&
     library.crumbs[0]?.key === folderId &&
     library.query === "";
@@ -23,6 +23,19 @@
 
 <nav class="sidebar" aria-label="Library">
   <ul class="top">
+    <li>
+      <button
+        class="item"
+        class:active={ui.nowPlayingInMain && library.query === ""}
+        onclick={() => {
+          library.query = "";
+          ui.showNowPlaying();
+        }}
+      >
+        <span class="with-icon"><Icon name="note" size="1.1rem" /> Now Playing</span>
+        <span class="muted small">{player.currentItem?.title ?? "nothing"}</span>
+      </button>
+    </li>
     <li>
       <button
         class="item"
@@ -46,7 +59,7 @@
       <li>
         <button
           class="item"
-          class:active={!ui.queueInMain && rule.id === library.ruleId && library.crumbs.length === 0 && library.query === ""}
+          class:active={ui.mainView === "library" && rule.id === library.ruleId && library.crumbs.length === 0 && library.query === ""}
           onclick={() => show(() => library.navigate(rule.id, []))}
         >
           {rule.name}

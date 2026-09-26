@@ -15,6 +15,8 @@
       <span class="current">Search</span>
     {:else if ui.queueInMain}
       <span class="current">Queue</span>
+    {:else if ui.nowPlayingInMain}
+      <span class="current">Now Playing</span>
     {:else}
       <button class="crumb" disabled={library.crumbs.length === 0} onclick={() => library.goUp(0)}>
         {library.rule?.name ?? "Library"}
