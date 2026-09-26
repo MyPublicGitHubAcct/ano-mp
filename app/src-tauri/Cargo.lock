@@ -46,6 +46,8 @@ name = "ano-mp"
 version = "0.1.0"
 dependencies = [
  "cmake",
+ "icu_normalizer",
+ "icu_properties",
  "rusqlite",
  "serde",
  "serde_json",

@@ -37,7 +37,12 @@ pub fn run() {
             library::commands::library_add_folder,
             library::commands::library_remove_folder,
             library::commands::library_scan,
-            library::commands::library_tracks
+            library::commands::library_browse,
+            library::commands::library_sort_settings,
+            library::commands::library_save_sort_rule,
+            library::commands::library_remove_sort_rule,
+            library::commands::library_set_ignored_articles,
+            library::commands::library_reset_sort_settings
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -10,8 +10,10 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use super::browse::{self, BrowsePage, GroupKey};
+use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
-use super::{db, Error, Folder, TrackSummary};
+use super::{db, Error, Folder};
 
 /// Frontend event with a `ScanProgress` payload.
 pub const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
@@ -63,10 +65,48 @@ pub fn library_remove_folder(state: State<'_, LibraryState>, folder_id: i64) -> 
     super::remove_folder(&mut state.conn(), folder_id).map_err(|e| e.to_string())
 }
 
-/// Every track; see `library::tracks`.
+/// One page of the children of the node at `path` under the sort rule
+/// `rule_id`; see `library::browse::browse`.
 #[tauri::command]
-pub fn library_tracks(state: State<'_, LibraryState>) -> Result<Vec<TrackSummary>, String> {
-    super::tracks(&state.conn()).map_err(|e| e.to_string())
+pub fn library_browse(
+    state: State<'_, LibraryState>,
+    rule_id: String,
+    path: Vec<Option<GroupKey>>,
+    offset: u32,
+    limit: u32,
+) -> Result<BrowsePage, String> {
+    browse::browse_rule(&state.conn(), &rule_id, &path, offset, limit).map_err(|e| e.to_string())
+}
+
+/// The sort rules and ignored articles.
+#[tauri::command]
+pub fn library_sort_settings(state: State<'_, LibraryState>) -> Result<SortSettings, String> {
+    rules::sort_settings(&state.conn()).map_err(|e| e.to_string())
+}
+
+/// Adds a rule, or replaces the one with its id.
+#[tauri::command]
+pub fn library_save_sort_rule(state: State<'_, LibraryState>, rule: SortRule) -> Result<SortSettings, String> {
+    rules::save_sort_rule(&state.conn(), rule).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_remove_sort_rule(state: State<'_, LibraryState>, rule_id: String) -> Result<SortSettings, String> {
+    rules::remove_sort_rule(&state.conn(), &rule_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_set_ignored_articles(
+    state: State<'_, LibraryState>,
+    articles: Vec<String>,
+) -> Result<SortSettings, String> {
+    rules::set_ignored_articles(&state.conn(), articles).map_err(|e| e.to_string())
+}
+
+/// Back to the built-in rules and articles.
+#[tauri::command]
+pub fn library_reset_sort_settings(state: State<'_, LibraryState>) -> Result<SortSettings, String> {
+    rules::reset_sort_settings(&state.conn()).map_err(|e| e.to_string())
 }
 
 /// Scans one folder, or every folder when `folder_id` is null, emitting

@@ -15,9 +15,10 @@ anything non-trivial, and update it when a phase completes or a decision is made
 Current state: Phases 0 and 1 are complete. The C++ core plays any supported file
 with gapless hand-off to a queued next track, and the Tauri dev UI drives it
 (file picker, transport, seek, volume). Phase 2 (metadata and library) is in progress:
-the core reads tags and art (`anomp_read_tags`, TagLib), and the Rust library
+the core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 (`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
-from it. Sort/grouping rules and security-scoped bookmarks are next. `docs/` is
+from it, and `library_browse` pages through it under configurable sort/grouping
+rules (stored in `settings`). Security-scoped bookmarks are next. `docs/` is
 empty.
 
 ## Build & test
@@ -75,6 +76,11 @@ The library DB schema changes only by appending a numbered SQL file to
 `app/src-tauri/src/library/migrations/` and listing it in `MIGRATIONS`
 (`library/db.rs`); never edit a migration that has shipped. Tracks store paths
 relative to their folder, '/'-separated (`library::track_path` joins them).
+`db::configure` registers SQL functions (`anomp_sort_key`, `anomp_genres`,
+`anomp_has_genre`) on every connection. Open connections only through `db`, and
+never use these functions in the schema, an index or a migration, since other
+SQLite clients don't have them. Browse queries (`library/browse.rs`) are built
+from fixed SQL fragments; bind every value, never format it in.
 
 `PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
 device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling

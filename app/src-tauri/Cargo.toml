@@ -22,8 +22,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
 # Bundled so every platform (including iOS) gets the same SQLite.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 walkdir = "2.5"
+# Unicode folding for library sort keys; already in the dependency tree via
+# Tauri's `url`, so they add no new code.
+icu_normalizer = { version = "2.3", default-features = false, features = ["compiled_data"] }
+icu_properties = "2.3"
 
 [dev-dependencies]
 tempfile = "3"

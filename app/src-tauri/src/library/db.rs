@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use rusqlite::Connection;
 
-use super::Error;
+use super::{genres, sort_key, Error};
 
 /// Schema migrations in order. `PRAGMA user_version` records how many have
 /// been applied. Append new ones; never edit one that has shipped.
@@ -32,10 +32,12 @@ pub fn open_in_memory() -> Result<Connection, Error> {
     Ok(conn)
 }
 
-/// Per-connection settings.
+/// Per-connection settings and functions.
 fn configure(conn: &Connection) -> Result<(), Error> {
     conn.pragma_update(None, "foreign_keys", true)?;
     conn.busy_timeout(Duration::from_secs(5))?;
+    sort_key::register(conn)?;
+    genres::register(conn)?;
     Ok(())
 }
 

@@ -30,10 +30,23 @@
     artist: string | null;
     album: string | null;
     albumArtist: string | null;
+    genre: string | null;
+    year: number | null;
     discNumber: number | null;
     trackNumber: number | null;
     duration: number;
   };
+  type GroupKey = number | string;
+  type Group = {
+    key: GroupKey | null;
+    name: string;
+    trackCount: number;
+    albumArtist: string | null;
+    year: number | null;
+  };
+  type BrowsePage = { groups: Group[]; tracks: Track[]; total: number };
+  type SortRule = { id: string; name: string; levels: string[]; trackOrder: string[] };
+  type SortSettings = { rules: SortRule[]; ignoredArticles: string[] };
   type ScanReport = {
     folderId: number;
     added: number;
@@ -43,11 +56,18 @@
     failed: { path: string; error: string }[];
   };
 
-  // Dev UI only: the real library browser (Phase 3) will page its queries.
-  const shownTracks = 500;
+  // Dev UI only: the real library browser is Phase 3.
+  const pageSize = 200;
 
   let folders = $state<Folder[]>([]);
+  let sortRules = $state<SortRule[]>([]);
+  let ruleId = $state("album-artist");
+  /** The groups browsed into, from the top. */
+  let crumbs = $state<{ key: GroupKey | null; name: string }[]>([]);
+  let groups = $state<Group[]>([]);
   let tracks = $state<Track[]>([]);
+  let total = $state(0);
+  let browseRequest = 0;
   let scanning = $state(false);
   let scanProgress = $state<{ read: number; toRead: number } | null>(null);
 
@@ -125,7 +145,54 @@
 
   async function refreshLibrary() {
     folders = await invoke<Folder[]>("library_folders");
-    tracks = await invoke<Track[]>("library_tracks");
+    const settings = await invoke<SortSettings>("library_sort_settings");
+    sortRules = settings.rules;
+    if (!sortRules.some((rule) => rule.id === ruleId)) {
+      ruleId = sortRules[0].id;
+      crumbs = [];
+    }
+    await browseNode(true);
+  }
+
+  /** Loads the first page of the current node, or appends the next one. */
+  async function browseNode(first: boolean) {
+    const request = ++browseRequest;
+    const offset = first ? 0 : groups.length + tracks.length;
+    const path = crumbs.map((crumb) => crumb.key);
+    const page = await invoke<BrowsePage>("library_browse", { ruleId, path, offset, limit: pageSize });
+    if (request !== browseRequest) return; // a newer request replaced this one
+    groups = first ? page.groups : [...groups, ...page.groups];
+    tracks = first ? page.tracks : [...tracks, ...page.tracks];
+    total = page.total;
+  }
+
+  const selectRule = (id: string) =>
+    run(async () => {
+      ruleId = id;
+      crumbs = [];
+      await browseNode(true);
+    });
+
+  const openGroup = (group: Group) =>
+    run(async () => {
+      crumbs = [...crumbs, { key: group.key, name: group.name }];
+      await browseNode(true);
+    });
+
+  /** Goes back up to the node `depth` levels down from the top. */
+  const goTo = (depth: number) =>
+    run(async () => {
+      crumbs = crumbs.slice(0, depth);
+      await browseNode(true);
+    });
+
+  const showMore = () => run(() => browseNode(false));
+
+  function describeGroup(group: Group) {
+    const details = [`${group.trackCount} track${group.trackCount === 1 ? "" : "s"}`];
+    if (group.albumArtist !== null) details.push(group.albumArtist);
+    if (group.year !== null) details.push(String(group.year));
+    return details.join(" · ");
   }
 
   /** Scans one folder, or all of them when `folderId` is null. */
@@ -319,26 +386,61 @@
       {/each}
     </ul>
   {/if}
+  <div class="row browse">
+    <label>
+      Browse by
+      <select value={ruleId} onchange={(e) => selectRule(e.currentTarget.value)}>
+        {#each sortRules as rule (rule.id)}
+          <option value={rule.id}>{rule.name}</option>
+        {/each}
+      </select>
+    </label>
+    <nav class="crumbs">
+      <button class="link" onclick={() => goTo(0)} disabled={crumbs.length === 0}>All</button>
+      {#each crumbs as crumb, depth}
+        <span>›</span>
+        <button class="link" onclick={() => goTo(depth + 1)} disabled={depth === crumbs.length - 1}>
+          {crumb.name}
+        </button>
+      {/each}
+    </nav>
+  </div>
+  {#if groups.length > 0}
+    <ul class="groups">
+      {#each groups as group (`${group.key}`)}
+        <li>
+          <button class="link" onclick={() => openGroup(group)}>{group.name}</button>
+          <span class="details">{describeGroup(group)}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
   {#if tracks.length > 0}
     <table class="tracks">
       <thead>
-        <tr><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th>Time</th></tr>
+        <tr><th>#</th><th>Title</th><th>Artist</th><th>Album</th><th>Year</th><th>Time</th></tr>
       </thead>
       <tbody>
-        {#each tracks.slice(0, shownTracks) as track (track.id)}
+        {#each tracks as track (track.id)}
           <tr ondblclick={() => playTrack(track)} title="Double-click to play">
             <td>{track.trackNumber ?? ""}</td>
             <td>{track.title ?? fileName(track.path)}</td>
             <td>{track.artist ?? ""}</td>
             <td>{track.album ?? ""}</td>
+            <td>{track.year ?? ""}</td>
             <td>{formatTime(track.duration)}</td>
           </tr>
         {/each}
       </tbody>
     </table>
-    {#if tracks.length > shownTracks}
-      <p>First {shownTracks} of {tracks.length} tracks.</p>
-    {/if}
+  {/if}
+  {#if groups.length + tracks.length < total}
+    <p>
+      Showing {groups.length + tracks.length} of {total}.
+      <button onclick={showMore}>Show more</button>
+    </p>
+  {:else if total === 0 && folders.length > 0}
+    <p>Nothing here.</p>
   {/if}
 
   {#if deviceEvents.length > 0}
@@ -425,6 +527,48 @@
 
   .folder-path {
     overflow-wrap: anywhere;
+  }
+
+  .browse {
+    margin-top: 1rem;
+    align-items: center;
+  }
+
+  .crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  .link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .link:disabled {
+    text-decoration: none;
+    cursor: default;
+  }
+
+  .groups {
+    padding: 0;
+    list-style: none;
+  }
+
+  .groups li {
+    margin-top: 0.3rem;
+  }
+
+  .details {
+    margin-left: 0.5rem;
+    opacity: 0.7;
+    font-size: 0.9rem;
   }
 
   .tracks {

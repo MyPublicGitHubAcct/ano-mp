@@ -7,8 +7,10 @@ the Tauri process, and device-change events reach the UI. Phase 1 complete:
 FFmpeg decodes every format through `FFmpegAudioFormat`, and `PlayerEngine`
 plays, pauses, seeks and hands off gaplessly to a queued next track, checked
 by offline tests and by ear in the app. Phase 2 (metadata and library) is in
-progress: the core reads tags and embedded art with TagLib, and the Rust
-library database and incremental folder scanner are in place (2026-09-26).
+progress: the core reads tags and embedded art with TagLib, the Rust library
+database and incremental folder scanner are in place, and the library is
+browsed a page at a time under configurable sort/grouping rules
+(2026-09-26). Security-scoped bookmarks are the last Phase 2 item.
 
 ## 1. Architecture
 
@@ -70,12 +72,12 @@ Why this split:
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
-| Library: SQLite schema and migrations, folders, incremental parallel scanner, `library_*` commands | `app/src-tauri/src/library/` |
-| 25 passing `cargo test` tests (C API wrappers, schema, folders, scanner) | `app/src-tauri/src` |
+| Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, `library_*` commands | `app/src-tauri/src/library/` |
+| 49 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
-| Dev UI: device name, test tone, player panel (file picker or typed paths, transport, seek, volume, next track), library panel (add/scan/remove folders, track list) | `app/src/routes/+page.svelte` |
+| Dev UI: device name, test tone, player panel (file picker or typed paths, transport, seek, volume, next track), library panel (add/scan/remove folders, browse by sort rule) | `app/src/routes/+page.svelte` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
 
 Build and test:
@@ -420,17 +422,91 @@ Rules from the start, so the later ports stay cheap:
   - Known limits: compilations tagged without an album artist split into one
     album per track artist. Several artists in one tag ("A; B") count as one
     artist. Folder overlap checks compare paths case-sensitively.
-    `library_tracks` returns every row, unsorted beyond folder and path;
-    paging and ordering come with the sort rules and Phase 3. Scans run only
-    when asked, with no rescan at launch and no file watching yet.
-- Logical sort/grouping rules: by album artist → album → disc/track, by folder,
+    `library_tracks` returned every row unsorted; `library_browse` (below)
+    replaced it. Scans run only when asked, with no rescan at launch and no
+    file watching yet.
+- [x] Logical sort/grouping rules: by album artist → album → disc/track, by folder,
   by genre, by year. Rules are configurable (feeds the admin screen).
+
+  Done 2026-09-26 (`library/rules.rs`, `browse.rs`, `sort_key.rs`,
+  `genres.rs`):
+  - **Rules are data.** A rule is an id, a name, a list of grouping levels
+    (album artist, artist, album, genre, year, or the folder tree on its
+    own) and a track order (album artist, artist, album, year, disc, track
+    number, title, path). The built-ins are album artist → album, genre →
+    album artist → album (both with tracks by disc, number, title, path),
+    year → album, and folder. The rules and the ignored leading articles
+    (default "The" and "A") are one JSON value under `library.sort` in
+    `settings`; there is no schema change. Reading it keeps what is
+    usable: a rule that doesn't parse or validate (e.g. from a newer
+    version) is dropped, and anything missing or invalid falls back to the
+    built-ins.
+  - **Browsing is one node at a time.** `library_browse(ruleId, path,
+    offset, limit)` returns a page of the node's groups (key, display name,
+    track count; albums also carry album artist and year) or tracks, and
+    the node's total. The path holds one group key per level (an id, a
+    year, a genre; null for "Unknown …"). Under the folder rule it is a
+    library folder id and then folder names, and a node lists subfolders,
+    then tracks, paged as one list. Paging is limit (at most 1000) + offset
+    over an order that always ends in a unique key, so pages don't repeat
+    or skip rows. SQL is assembled only from fixed fragments chosen by the
+    rule; every value is a bound parameter.
+  - **Sort order** comes from `anomp_sort_key(text, articles)`, an SQL
+    function registered on every connection in `db::configure`. It returns
+    a BLOB that sorts bytewise: text folded with ICU (NFKD, marks removed,
+    lowercase, so "élodie" sorts with "Elodie"), digit runs by value
+    ("Track 2" before "Track 10"), '/' first (a folder's files before its
+    neighbours'), and an optional leading article skipped ("The Beatles"
+    under B; display names are unchanged). This replaces the planned custom
+    collation: a key is computed once per row and compared with memcmp,
+    whereas a collation folds both strings on every comparison, and the
+    articles arrive as a bound parameter rather than per-connection state.
+    Ties fall back to the original text, then the id. Missing values sort
+    last. A missing disc number counts as disc 1, since single-disc albums
+    usually have none. Genres that differ only in case or accents are one
+    group. `icu_normalizer`/`icu_properties` were already linked (via
+    Tauri's `url`), so folding adds no new code.
+  - **Genres:** a track is under each of its genres. `anomp_genres(tag)`
+    splits a tag at ';' (the core joins values with "; ") into a JSON
+    array for SQLite's `json_each`, and `anomp_has_genre(tag, genre)`
+    filters. Splitting at query time avoids a `track_genres` table and a
+    scanner change. A recursive CTE did the same, but at 4× the cost.
+  - **Year** is the album's year (the earliest among its tracks, from an
+    `album_years` CTE joined only when the rule groups by year), else the
+    track's own.
+  - Speed (release build, 50,000 synthetic tracks in an in-memory database,
+    count + page of 200): album artists 28 ms, one album's tracks 0.2 ms,
+    genres 71 ms, one genre's artists 63 ms, years 62 ms, one year's albums
+    63 ms, every track by title 34 ms (85 ms at offset 40,000), a folder of
+    2,000 subfolders 54 ms. Group levels scan every track, so they grow
+    linearly. A keyset cursor or cached keys are the next steps if Phase 7
+    finds this too slow.
+  - Tauri: `library_browse`, `library_sort_settings`,
+    `library_save_sort_rule` (adds, or replaces by id),
+    `library_remove_sort_rule` (not the last), `library_set_ignored_articles`
+    and `library_reset_sort_settings`. `TrackSummary` gained genre and year.
+    The dev UI has a rule picker, breadcrumbs, a click-through list with
+    "Show more", and double-click to play.
+  - Known limits: compilations tagged without an album artist still split
+    into one album per track artist (left for now). Folding doesn't
+    decompose letters like "ø", "ł" or "ß", and CJK sorts by code point
+    rather than by reading. Articles are skipped only before a space ("The
+    Beatles", not "L'Amour"). Genres split only at ';', not '/' or ','
+    ("Hip-Hop/Rap" is one genre). Two artists whose names differ only in
+    non-ASCII case (the schema's `NOCASE`) are separate, adjacent groups.
+    The genre group's display name is the spelling that sorts first
+    bytewise, not the most common one. Pages come from separate queries, so
+    a scan between them can shift rows.
 - macOS sandbox: user-selected folders plus security-scoped bookmarks. Store
   bookmarks, not raw paths, so the same model works on iOS later.
 - **Tests:** Catch2 tests for tag reading over fixture files (done, above);
   `cargo test` for schema, scanner (done: `library/db.rs`, `library/mod.rs`
   and `library/scanner.rs`, over temp folders of fixture copies) and sort
-  rules.
+  rules (done: `sort_key.rs`, `genres.rs`, `rules.rs` and `browse.rs`, over
+  in-memory databases of synthetic rows: disc/track order, missing values,
+  accents and case, articles, natural numbers, the folder tree, multiple
+  genres, album years, paging, and saving, resetting and falling back from
+  bad stored settings).
 
 ### Phase 3 — Frontend: core player UI
 - Library browser (artists / albums / tracks / folders), search, queue view,

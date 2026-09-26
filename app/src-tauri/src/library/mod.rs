@@ -1,9 +1,14 @@
-//! The music library: the SQLite database, the folders in it, and the
-//! incremental folder scanner that fills it from the core's tag reader.
+//! The music library: the SQLite database, the folders in it, the
+//! incremental folder scanner that fills it from the core's tag reader, and
+//! browsing it under configurable sort rules.
 
+pub mod browse;
 pub mod commands;
 pub mod db;
+pub mod genres;
+pub mod rules;
 pub mod scanner;
+pub mod sort_key;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -134,40 +139,52 @@ pub struct TrackSummary {
     pub artist: Option<String>,
     pub album: Option<String>,
     pub album_artist: Option<String>,
+    pub genre: Option<String>,
+    pub year: Option<u32>,
     pub disc_number: Option<u32>,
     pub track_number: Option<u32>,
     pub duration: f64,
 }
 
-/// Every track, by folder and then path within it.
+/// The columns `track_from_row` reads, from `TRACKS_FROM`.
+const TRACK_COLUMNS: &str = "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
+     album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration";
+
+/// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
+const TRACKS_FROM: &str = "FROM tracks t
+     JOIN folders f ON f.id = t.folder_id
+     LEFT JOIN artists artist ON artist.id = t.artist_id
+     LEFT JOIN albums album ON album.id = t.album_id
+     LEFT JOIN artists album_artist ON album_artist.id = t.album_artist_id";
+
+fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
+    let folder: String = row.get(1)?;
+    let relative: String = row.get(2)?;
+    Ok(TrackSummary {
+        id: row.get(0)?,
+        path: track_path(Path::new(&folder), &relative)
+            .to_string_lossy()
+            .into_owned(),
+        title: row.get(3)?,
+        artist: row.get(4)?,
+        album: row.get(5)?,
+        album_artist: row.get(6)?,
+        genre: row.get(7)?,
+        year: row.get(8)?,
+        disc_number: row.get(9)?,
+        track_number: row.get(10)?,
+        duration: row.get(11)?,
+    })
+}
+
+/// Every track, by folder and then path within it (bytewise), for tests.
+/// The app browses with `browse`.
+#[cfg(test)]
 pub fn tracks(conn: &Connection) -> Result<Vec<TrackSummary>, Error> {
-    let mut statement = conn.prepare(
-        "SELECT t.id, f.path, t.relative_path, t.title, artist.name, album.title,
-                album_artist.name, t.disc_number, t.track_number, t.duration
-         FROM tracks t
-         JOIN folders f ON f.id = t.folder_id
-         LEFT JOIN artists artist ON artist.id = t.artist_id
-         LEFT JOIN albums album ON album.id = t.album_id
-         LEFT JOIN artists album_artist ON album_artist.id = t.album_artist_id
-         ORDER BY f.path, t.relative_path",
-    )?;
-    let rows = statement.query_map([], |row| {
-        let folder: String = row.get(1)?;
-        let relative: String = row.get(2)?;
-        Ok(TrackSummary {
-            id: row.get(0)?,
-            path: track_path(Path::new(&folder), &relative)
-                .to_string_lossy()
-                .into_owned(),
-            title: row.get(3)?,
-            artist: row.get(4)?,
-            album: row.get(5)?,
-            album_artist: row.get(6)?,
-            disc_number: row.get(7)?,
-            track_number: row.get(8)?,
-            duration: row.get(9)?,
-        })
-    })?;
+    let mut statement = conn.prepare(&format!(
+        "SELECT {TRACK_COLUMNS} {TRACKS_FROM} ORDER BY f.path, t.relative_path"
+    ))?;
+    let rows = statement.query_map([], track_from_row)?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
