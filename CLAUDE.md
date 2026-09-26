@@ -13,7 +13,7 @@ services, library sort/grouping rules and visualization preferences.
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
 Current state: the C++ core plus a scaffolded Tauri app that links it and shows
-`anomp_version()` (Phase 0 in progress); `docs/` is empty.
+`anomp_version()`, plays a test tone and reports device changes (Phase 0 done); `docs/` is empty.
 
 ## Build & test
 
@@ -46,6 +46,12 @@ into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo b
 fetches JUCE again. `build.rs` reruns when `core/` or the top-level `CMakeLists.txt`
 changes. FFI declarations and their safe wrappers live only in
 `app/src-tauri/src/anomp.rs`; add a wrapper there for each new C API function.
+
+**The engine is main-thread only.** JUCE's message loop rides on the main run loop
+that Tauri runs, so `anomp_engine_*` calls must happen on the main thread and event
+callbacks arrive there. `app/src-tauri/src/audio.rs` enforces this: the engine lives
+in a main-thread `thread_local`, commands go through `with_engine` (which hops to
+the main thread if needed), and the engine is dropped on `RunEvent::Exit`.
 
 ## Architecture
 

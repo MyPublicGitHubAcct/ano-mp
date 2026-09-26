@@ -1,4 +1,5 @@
 mod anomp;
+mod audio;
 
 #[tauri::command]
 fn core_version() -> String {
@@ -8,7 +9,23 @@ fn core_version() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![core_version])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(|app| {
+            if let Err(error) = audio::init(app.handle()) {
+                eprintln!("[audio] {error}");
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            core_version,
+            audio::audio_device_name,
+            audio::play_test_tone,
+            audio::stop_test_tone
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                audio::shutdown();
+            }
+        });
 }

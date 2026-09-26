@@ -2,8 +2,9 @@
 
 Status as of 2026-09-25: repository skeleton in place, C++ core builds and its
 Catch2 suite passes on macOS. The Phase 0–7 toolchain (§3) is installed.
-Phase 0 in progress: the Tauri app links the core and shows its version; the
-JUCE-in-Tauri audio spike is next.
+Phase 0 complete: the Tauri app links the core, JUCE plays a test tone inside
+the Tauri process, and device-change events reach the UI. Phase 1 (FFmpeg
+decoding and the playback engine) is next.
 
 ## 1. Architecture
 
@@ -57,10 +58,12 @@ Why this split:
 | Presets `debug` / `release` (Ninja) | `CMakePresets.json` |
 | `anomp_core` static lib, `FormatRegistry` (JUCE built-in decoders for now; replaced by FFmpeg in Phase 1) | `core/src` |
 | C API: `anomp_version`, `anomp_can_decode_extension` | `core/include/anomp/anomp.h` |
-| 5 passing Catch2 tests | `core/tests` |
+| 7 passing Catch2 tests | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API, 2 `cargo test` tests | `app/src-tauri/src/anomp.rs` |
+| `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
+| Main-thread engine host and `audio_device_name` / `play_test_tone` / `stop_test_tone` commands | `app/src-tauri/src/audio.rs` |
 
 Build and test:
 
@@ -182,11 +185,27 @@ Rules from the start, so the later ports stay cheap:
   the Apple frameworks (CoreAudio, AudioToolbox, CoreMIDI, Accelerate,
   AVFoundation, Foundation, AppKit).
 - [x] Call `anomp_version()` from a Tauri command and show it in the UI.
-- [ ] **Spike: JUCE inside a Tauri process.** Tauri (tao) owns the main thread and
+- [x] **Spike: JUCE inside a Tauri process.** Tauri (tao) owns the main thread and
   run loop. Verify that JUCE's `AudioDeviceManager` plays audio when
   initialised via `ScopedJuceInitialiser_GUI` without a `JUCEApplication`, and
   that device-change notifications still arrive.
-- **Exit:** a tone plays from a Tauri app on macOS.
+  Findings (2026-09-25):
+  - Works with no JUCE changes. Without a `JUCEApplication`, JUCE leaves
+    `NSApp`'s delegate alone and posts its messages to a CFRunLoop source on
+    the *main* run loop, which tao's `[NSApp run]` services. The one rule:
+    create, use and destroy the engine on the main thread.
+  - `AudioEngine` (core) owns the `ScopedJuceInitialiser_GUI`, the
+    `AudioDeviceManager` and a test-tone source; the C API is
+    `anomp_engine_*` plus one event callback (`ANOMP_EVENT_DEVICE_CHANGED` for
+    now; Phase 1 adds playback events to the same callback).
+  - Rust keeps the engine in a main-thread `thread_local`, reaches it from
+    commands directly or through `run_on_main_thread`, and drops it on
+    `RunEvent::Exit` so JUCE shuts down before the process exits.
+  - Device changes checked by creating and removing a public CoreAudio
+    aggregate device while the app runs: each change reached the Svelte UI
+    as an `audio-device-changed` event.
+- [x] **Exit:** a tone plays from a Tauri app on macOS. Confirmed by ear
+  2026-09-25. **Phase 0 complete.**
 
 ### Phase 1 — Playback engine (C++ core)
 - `scripts/build-ffmpeg.sh`: fetch a pinned FFmpeg release, configure it
@@ -339,7 +358,7 @@ Rules from the start, so the later ports stay cheap:
 
 | Risk | Mitigation |
 |---|---|
-| JUCE message loop vs. Tauri's main-thread ownership | Phase 0 spike before any other work; fall back to driving CoreAudio via JUCE's `AudioIODevice` without MessageManager-dependent features |
+| JUCE message loop vs. Tauri's main-thread ownership | **Resolved on macOS (Phase 0):** JUCE's messages ride tao's main run loop; keep the engine on the main thread. Re-check on iOS (Phase 8), Linux and Windows |
 | iOS problems found late (iOS work is deferred to Phase 8) | Keep the core platform-neutral and store bookmarks rather than paths from the start; if any late surprise would be costly, pull the Phase 8 simulator spike forward once Xcode is available |
 | Licensing (JUCE commercial tier, FFmpeg LGPL, TagLib MPL) | JUCE license in place before any distribution (release gate, §8.1); FFmpeg always shipped as shared libs; App Store LGPL opinion before Phase 8 ships (§4.1) |
 | AAC patent exposure from shipping FFmpeg's AAC decoder | Licensing opinion before release; CoreAudio fallback on Apple (§4.3) |

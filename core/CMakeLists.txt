@@ -1,6 +1,7 @@
 # anomp_core: the JUCE-based audio engine, exposed to the Tauri (Rust) layer
 # through the plain C API in include/anomp/anomp.h.
 add_library(anomp_core STATIC
+    src/AudioEngine.cpp
     src/FormatRegistry.cpp
     src/anomp_c_api.cpp)
 
