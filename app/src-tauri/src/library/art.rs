@@ -3,19 +3,24 @@
 //! it with no IPC round trip, and it is cached in memory so scrolling an
 //! album list doesn't re-read files.
 //!
-//! `lookup` is the one place art comes from. Its only source for now is the
-//! picture embedded in the files; Phase 4 adds the Cover Art Archive.
+//! `lookup` is the one place art comes from: the picture the user chose for
+//! the album, else the first found among the album-art sources in the order
+//! set in `metadata::settings` (embedded pictures and images in the album's
+//! folder so far; downloaded online art comes with PLAN.md Phase 4.4).
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::params;
+use rusqlite::{params, Connection, OptionalExtension};
 use tauri::http::{header, Response, StatusCode};
 
+use super::access::{self, OpenFolder};
 use super::commands::LibraryState;
 use super::{track_path, Error};
 use crate::anomp;
+use crate::metadata::folder_art;
+use crate::metadata::settings::{self, Kind, SourceId};
 
 /// The URI scheme the webview loads art from.
 pub const SCHEME: &str = "anomp-art";
@@ -107,54 +112,148 @@ pub fn lookup(library: &LibraryState, key: ArtKey) -> Result<Option<Arc<Art>>, E
     if let Some(cached) = library.art.get(key) {
         return Ok(cached);
     }
-    let art = embedded(library, key)?.map(Arc::new);
+    let art = find(library, key)?.map(Arc::new);
     library.art.insert(key, art.clone());
     Ok(art)
 }
 
-/// The picture embedded in the track, or in the first of an album's tracks
-/// that has one.
-fn embedded(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
-    let files: Vec<PathBuf> = {
+/// A file of the album or track: its library folder and path within it.
+struct TrackFile {
+    folder_id: i64,
+    relative: String,
+}
+
+/// The library folders of an album's files, opened as they're needed and
+/// held until the lookup ends. A folder that can't be opened (e.g. on an
+/// unmounted drive) is skipped.
+struct Folders<'a> {
+    library: &'a LibraryState,
+    open: HashMap<i64, Option<OpenFolder>>,
+}
+
+impl Folders<'_> {
+    fn root(&mut self, folder_id: i64) -> Option<&Path> {
+        let library = self.library;
+        self.open
+            .entry(folder_id)
+            .or_insert_with(|| access::open_folder(&library.conn(), folder_id).ok())
+            .as_ref()
+            .map(|folder| folder.path.as_path())
+    }
+}
+
+/// The user's choice of picture, if any, then the first picture from the
+/// album-art sources in the configured order. Only local sources and
+/// pictures already downloaded are used; this never goes online.
+fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
+    let (settings, choice, files) = {
         let conn = library.conn();
-        let (sql, id) = match key {
-            ArtKey::Album(id) => (
-                "SELECT f.path, t.relative_path FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 WHERE t.album_id = ?1
-                 ORDER BY IFNULL(t.disc_number, 1), t.track_number NULLS LAST, t.relative_path
-                 LIMIT ?2",
-                id,
-            ),
-            ArtKey::Track(id) => (
-                "SELECT f.path, t.relative_path FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 WHERE t.id = ?1 LIMIT ?2",
-                id,
-            ),
+        let choice = match key {
+            ArtKey::Album(id) => chosen_art(&conn, id)?,
+            ArtKey::Track(_) => None,
         };
-        let mut statement = conn.prepare_cached(sql)?;
-        let rows = statement.query_map(params![id, ALBUM_FILES_TRIED], |row| {
-            Ok(track_path(
-                PathBuf::from(row.get::<_, String>(0)?).as_path(),
-                &row.get::<_, String>(1)?,
-            ))
-        })?;
-        rows.collect::<Result<_, _>>()?
+        (
+            settings::service_settings(&conn)?,
+            choice,
+            track_files(&conn, key)?,
+        )
     };
-    for path in files {
-        // Under the sandbox the file is readable only while its folder is open.
-        let _folder = library.open_folder_of(&path).map_err(Error::Invalid)?;
-        if let Ok(tags) = anomp::read_tags(&path, true) {
-            if let Some(picture) = tags.picture {
-                return Ok(Some(Art {
-                    mime_type: picture
-                        .mime_type
-                        .unwrap_or_else(|| "application/octet-stream".into()),
-                    data: picture.data,
-                }));
-            }
+    let mut folders = Folders {
+        library,
+        open: HashMap::new(),
+    };
+    if let Some((source, reference)) = choice {
+        // A choice whose picture has gone falls back to the order.
+        if let Some(art) = from_source(source, reference.as_deref(), &files, &mut folders) {
+            return Ok(Some(art));
         }
     }
-    Ok(None)
+    Ok(settings
+        .sources_for(Kind::AlbumArt)
+        .into_iter()
+        .find_map(|source| from_source(source, None, &files, &mut folders)))
+}
+
+/// The picture the user chose for album `album_id`: its source and reference
+/// (see migration 003's `album_art`).
+fn chosen_art(
+    conn: &Connection,
+    album_id: i64,
+) -> Result<Option<(SourceId, Option<String>)>, Error> {
+    let row: Option<(String, Option<String>)> = conn
+        .prepare_cached("SELECT source, reference FROM album_art WHERE album_id = ?1")?
+        .query_row([album_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()?;
+    // A source this version doesn't know is ignored.
+    Ok(row.and_then(|(source, reference)| Some((SourceId::from_str(&source)?, reference))))
+}
+
+/// The track's file, or the first few of an album's in track order.
+fn track_files(conn: &Connection, key: ArtKey) -> Result<Vec<TrackFile>, Error> {
+    let (sql, id) = match key {
+        ArtKey::Album(id) => (
+            "SELECT folder_id, relative_path FROM tracks WHERE album_id = ?1
+             ORDER BY IFNULL(disc_number, 1), track_number NULLS LAST, relative_path
+             LIMIT ?2",
+            id,
+        ),
+        ArtKey::Track(id) => (
+            "SELECT folder_id, relative_path FROM tracks WHERE id = ?1 LIMIT ?2",
+            id,
+        ),
+    };
+    let mut statement = conn.prepare_cached(sql)?;
+    let rows = statement.query_map(params![id, ALBUM_FILES_TRIED], |row| {
+        Ok(TrackFile {
+            folder_id: row.get(0)?,
+            relative: row.get(1)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// A picture from `source`: the one `reference` names, or the best it has.
+fn from_source(
+    source: SourceId,
+    reference: Option<&str>,
+    files: &[TrackFile],
+    folders: &mut Folders,
+) -> Option<Art> {
+    match source {
+        SourceId::Embedded => files.iter().find_map(|file| {
+            let path = track_path(folders.root(file.folder_id)?, &file.relative);
+            let picture = anomp::read_tags(&path, true).ok()?.picture?;
+            Some(Art {
+                mime_type: picture
+                    .mime_type
+                    .unwrap_or_else(|| "application/octet-stream".into()),
+                data: picture.data,
+            })
+        }),
+        SourceId::Folder => {
+            let mut tried = HashSet::new();
+            files.iter().find_map(|file| {
+                let root = folders.root(file.folder_id)?.to_path_buf();
+                let candidates = match reference {
+                    Some(reference) => vec![track_path(&root, reference)],
+                    None => folder_art::folders_for(&root, &file.relative)
+                        .into_iter()
+                        .filter(|dir| tried.insert(dir.clone()))
+                        .filter_map(|dir| folder_art::find(&dir))
+                        .collect(),
+                };
+                candidates.iter().find_map(|path| {
+                    let (mime_type, data) = folder_art::read(path)?;
+                    Some(Art {
+                        mime_type: mime_type.into(),
+                        data,
+                    })
+                })
+            })
+        }
+        // Online pictures are served once downloaded (PLAN.md Phase 4.4).
+        SourceId::MusicBrainz | SourceId::CoverArtArchive => None,
+    }
 }
 
 /// The response to a request for `anomp-art://localhost<path>`.
@@ -188,6 +287,7 @@ pub fn respond(library: Option<&LibraryState>, path: &str) -> Response<Vec<u8>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::library::{db, test_library};
 
     #[test]
     fn parses_keys() {
@@ -228,5 +328,104 @@ mod tests {
         );
         cache.clear();
         assert!(cache.get(ArtKey::Album(1)).is_none());
+    }
+
+    /// A library folder holding one album, "Artist/Album/CD1/01.flac" with
+    /// an embedded PNG, and "Artist/Album/cover.jpg" above its disc folder.
+    fn album_with_two_pictures() -> (tempfile::TempDir, LibraryState, i64) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let disc = root.join("Artist/Album/CD1");
+        std::fs::create_dir_all(&disc).unwrap();
+        std::fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../core/tests/fixtures/tagged-vorbis.flac"),
+            disc.join("01.flac"),
+        )
+        .unwrap();
+        std::fs::write(root.join("Artist/Album/cover.jpg"), b"jpeg bytes").unwrap();
+
+        let library = test_library::Library::from_conn(db::open_in_memory().unwrap());
+        let folder_id = library.add_folder(root.to_str().unwrap());
+        library.add(
+            folder_id,
+            test_library::track("Artist/Album/CD1/01.flac")
+                .artist("Artist")
+                .album("Album"),
+        );
+        let album_id = library
+            .conn
+            .query_row("SELECT id FROM albums", [], |row| row.get(0))
+            .unwrap();
+        (dir, LibraryState::for_tests(library.conn), album_id)
+    }
+
+    fn mime(library: &LibraryState, key: ArtKey) -> Option<String> {
+        library.art.clear();
+        lookup(library, key)
+            .unwrap()
+            .map(|art| art.mime_type.clone())
+    }
+
+    #[test]
+    fn follows_the_source_order_and_the_users_choice() {
+        let (_dir, library, album) = album_with_two_pictures();
+        let album = ArtKey::Album(album);
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+
+        let set_order = |order: Vec<SourceId>, enabled: bool| {
+            let conn = library.conn();
+            let mut settings = settings::service_settings(&conn).unwrap();
+            settings.order.insert(Kind::AlbumArt, order);
+            for source in &mut settings.sources {
+                source.enabled = enabled;
+            }
+            settings::save_service_settings(&conn, settings).unwrap();
+        };
+        set_order(vec![SourceId::Folder, SourceId::Embedded], true);
+        let art = {
+            library.art.clear();
+            lookup(&library, album).unwrap().unwrap()
+        };
+        assert_eq!(art.mime_type, "image/jpeg");
+        assert_eq!(art.data, b"jpeg bytes");
+
+        // The user's choice beats the order.
+        let choose = |source: &str, reference: Option<&str>| {
+            library
+                .conn()
+                .execute(
+                    "INSERT OR REPLACE INTO album_art (album_id, source, reference)
+                     VALUES (?1, ?2, ?3)",
+                    params![1, source, reference],
+                )
+                .unwrap();
+        };
+        choose("embedded", None);
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+        // A chosen picture that has gone, or from an unknown source, falls
+        // back to the order.
+        choose("folder", Some("Artist/Album/gone.jpg"));
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+        choose("lastfm", Some("https://example.com/a.jpg"));
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+        choose("folder", Some("Artist/Album/cover.jpg"));
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+
+        // With every source off, only the choice is left.
+        set_order(vec![], false);
+        assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
+        library.conn().execute("DELETE FROM album_art", []).unwrap();
+        assert_eq!(mime(&library, album), None);
+    }
+
+    #[test]
+    fn a_track_uses_its_own_file_and_folder() {
+        let (_dir, library, _album) = album_with_two_pictures();
+        assert_eq!(
+            mime(&library, ArtKey::Track(1)).as_deref(),
+            Some("image/png")
+        );
+        assert_eq!(mime(&library, ArtKey::Track(99)), None);
     }
 }

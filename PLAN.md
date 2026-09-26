@@ -13,7 +13,9 @@ time under configurable sort/grouping rules, and library folders are kept as
 security-scoped bookmarks in a sandboxed app bundle. Phase 3 complete
 (2026-09-26): the queue (with gapless hand-off across it, shuffle, repeat
 and persistence), full-text search, cover art, the responsive player UI,
-and macOS Now Playing and media keys through `MediaControls`.
+and macOS Now Playing and media keys through `MediaControls`. Phase 4
+started (2026-09-26): steps 4.1–4.3 (source settings, HTTP client, folder
+art, MusicBrainz matching) are done.
 
 ## 1. Architecture
 
@@ -79,7 +81,8 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| 95 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art cache, queue, Now Playing sync), plus 3 ignored 50,000-track benchmarks | `app/src-tauri/src` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching | `app/src-tauri/src/metadata/` |
+| 133 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching), plus 3 ignored 50,000-track benchmarks and 1 ignored live MusicBrainz test | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -895,14 +898,216 @@ Rules from the start, so the later ports stay cheap:
   **Phase 3 complete.**
 
 ### Phase 4 — Online metadata services
-- MusicBrainz client in Rust: a meaningful `User-Agent` (required), a
-  **≤1 request/second** rate limiter, and results cached in SQLite.
-- Matching: use MBIDs from tags when present; otherwise search on
-  artist/album/title and score by duration and track count.
-- Cover Art Archive for album art. Optionally AcoustID/Chromaprint
-  fingerprinting later (needs an API key and adds a dependency).
-- The user can enable or disable each service (admin screen) and the app
-  degrades gracefully offline.
+Goal: enrich the library with album details, artist information and cover
+art from online sources and local files, with **more than one source for
+each kind of data and the user choosing between them**: an ordered list of
+sources per kind (the first with a result wins), and a per-album choice
+that pins a specific source's match or picture. Every service can be turned
+off, and the app works offline on what it has already fetched.
+
+**Sources considered** (checked 2026-09-26; "terms" is about a
+closed-source commercial app, §4.1, and every online source is re-checked
+before release, §8.1):
+
+| Source | Provides | Access and limits | Terms | Plan |
+|---|---|---|---|---|
+| Embedded art (tags) | Album/track art | Local, already read by the core | — | On (exists) |
+| Folder images | Album art (`cover`, `folder`, `front`, `album`, `albumart*` .jpg/.png/.webp next to the tracks) | Local; readable through the folder's bookmark | — | On |
+| MusicBrainz | Release, recording and artist metadata (dates, label, catalogue number, country, release type, genres), and links to Wikidata, Discogs etc. | No key; a `User-Agent` with contact details; **~1 request/s per IP**, 503 when exceeded | Core data CC0; MetaBrainz asks commercial users to become supporters | On, the primary source |
+| Cover Art Archive | Album art by release or release-group MBID; 250/500/1200 px thumbnails | No key; no limits today; images redirect (307) to archive.org | Images belong to their owners; showing them in a player is the norm | On |
+| Wikidata + Wikipedia | Artist and album descriptions, reached through MusicBrainz URL relationships | No key; `User-Agent` | Text CC BY-SA: show attribution and a link with it | On |
+| Discogs | Release metadata (credits, labels, catalogue numbers, styles) and images | 60 requests/min authenticated, 25 unauthenticated; images need authentication. A personal access token supplied by the user, since a secret shipped in a desktop app isn't secret | API terms require attribution; check caching rules | Off until a token is entered |
+| fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | Project API key, optional personal key | Check | Off (later) |
+| TheAudioDB | Artist bios and images, album descriptions | Free key "123" limited to 30 requests/min and one result per search; $8/month premium | Not stated; check | Off (later), user-supplied key |
+| iTunes Search API | Large album art, release dates | No key; low rate limit | Tied to Apple's affiliate/promotion terms | Off; only after a terms check |
+| Deezer | Album art up to 1000 px, search | No key | Check | Off; only after a terms check |
+| AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan | Deferred (after Phase 4) |
+| Last.fm | Artist bios, tags, similar artists | API key | **Non-commercial only** without written permission, 100 MB storage cap, mandatory branding | Excluded |
+| Spotify | — | OAuth; endpoints cut back in 2024 | Terms don't fit enriching a local library | Excluded |
+
+Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
+
+**Design decisions:**
+- **Tags stay the library's identity.** Titles, artists, albums and the
+  grouping come from the files, which the app never writes. Online data adds
+  fields (release date, label, catalogue number, country, release type,
+  genres, descriptions) and pictures, shown next to the tag values with
+  their source. A per-field "prefer online value" display option belongs to
+  the Phase 6 fields screen.
+- **Providers behind traits.** Each source is a provider declaring what it
+  can supply: `Release` (album match and details), `AlbumArt`,
+  `ArtistInfo`, `ArtistImage`. Matching, art and the UI see only the traits,
+  so adding a source is one module.
+- **Choosing a source.** The settings (`metadata.services` in `settings`,
+  read with the same keep-what's-usable fallback as `library.sort`) hold a
+  master "online services" switch, per-service enabled flags and API keys,
+  "match automatically after a scan", and an ordered source list per kind.
+  Automatic matching walks that order. Per album, the user can open "Find
+  details" or "Choose cover" to see candidates from every enabled source,
+  labelled by source, and pick one. A pick is stored as `chosen_by = 'user'`
+  and automatic runs never replace it; "Use automatic" clears it.
+- **Storage (migration 003):** `album_links` (album, source, status,
+  external ID, score, `chosen_by`, the normalized details as JSON,
+  checked-at; one row per album and source, so an album can be linked to
+  MusicBrainz and Discogs at once), `artist_links` likewise, and
+  `album_art` (the user's chosen picture: source and reference).
+  All cascade from their album or artist. They are separate from the
+  scanner's columns, which a rescan overwrites; album and artist ids survive
+  rescans because the scanner upserts them. A "not found" result is stored
+  too, so it isn't retried on every launch (retried after 30 days, or on
+  request).
+- **HTTP:** `ureq` 3 (blocking: the work runs on its own thread at ≤1
+  request/s, so async adds nothing), rustls with *ring* and the OS trust
+  store through `rustls-platform-verifier`, so the TLS stack is the same on
+  all four OSes, iOS included, with no OpenSSL on Linux. `User-Agent`:
+  `ano-mp/<version> ( <contact> )`. A token-bucket limiter per host (MB 1/s,
+  Discogs 1/s, others per their limits), timeouts, and backoff on
+  503/429/`Retry-After`. Responses are cached in `mb_cache` (used for every
+  source despite its name, keyed by source and URL) with a time-to-live per
+  kind (lookups 30 days, searches 7 days).
+- **Downloaded images** go to a size-capped folder in the app cache dir,
+  named by a hash of the URL, not into SQLite, and can always be fetched
+  again.
+- **The art URI handler never goes online.** It serves the user's choice,
+  then local sources (embedded, folder), then downloaded images, and says
+  404 otherwise. Fetching is done by the metadata worker, which emits
+  `metadata-changed` (album and artist ids) so the UI reloads that art.
+- **One metadata worker thread** owns the HTTP client and the limiters and
+  takes jobs from a queue: user requests (a candidates dialog, the playing
+  album) before background enrichment. It opens its own DB connection, like
+  the scanner, and never holds the shared one while waiting on the network.
+- **Offline:** a connection failure marks the service unreachable and
+  backs off (1 min, doubling to 30 min); background work pauses, cached
+  data keeps showing, and user requests fail at once with "offline". The UI
+  shows the status per service.
+- **Tests never touch the network.** Providers take a `Transport` trait;
+  tests use a fake that serves recorded responses committed as fixtures.
+  Each service gets one `#[ignore]`d live smoke test.
+
+**MusicBrainz matching** (album → release):
+1. A release MBID from the tags: look it up directly (score 1).
+2. Otherwise search releases by album title and album artist (Lucene
+   special characters escaped, "Various Artists" handled), then fetch the
+   top few candidates with their tracklists.
+3. Score each on title and artist similarity (folded like `sort_key`),
+   track count, per-track durations (aligned by disc and track number;
+   ±3 s counts as a match), and year. Accept automatically at a score of
+   0.85 or more that also leads the runner-up by 0.05; otherwise keep the
+   candidates for the "Find details" dialog and mark the album "needs
+   review". The scorer is a pure function, tested on its own.
+4. The release's release group gives the Cover Art Archive a fallback when
+   the release has no front cover.
+
+**Steps:**
+- [x] 4.1 Foundation: migration 003, `metadata::settings`, the HTTP client
+  (`Transport`, limiter, `User-Agent`, backoff), the response cache. Tests
+  with the fake transport.
+
+  Done 2026-09-26 (`app/src-tauri/src/metadata/`):
+  - `settings.rs`: `SourceId` (embedded, folder, musicbrainz,
+    cover-art-archive; the serialized id is what the `source` columns
+    store) and `Kind` (release, albumArt). `ServiceSettings` holds the
+    online switch, auto-match, per-source enabled flag and key, and an
+    order per kind. Stored settings are completed on read: unknown
+    sources dropped, missing ones appended in default order, each kind's
+    order listing exactly its sources. `sources_for(kind)` gives the usable
+    ones in order: enabled, online only with the switch on, keyed if they
+    need a key, and with what they rely on usable (the Cover Art Archive
+    needs MusicBrainz).
+  - `http.rs`: `Client` over a `Transport` (ureq in the app, a scripted
+    fake in tests) and a `Clock` (the fake one advances on sleep, so the
+    tests run the limiter and backoff without waiting). Per-host minimum
+    interval (MusicBrainz 1 s, others 250 ms); 503/429 retried up to 3
+    tries, honouring `Retry-After` up to 30 s; an unreachable host is
+    refused at once for 1 min, doubling to 30 min, until it answers or
+    `retry_now`. `get_json` reads through the cache and falls back to a
+    stale copy when offline. The `User-Agent` is `ano-mp/<core version> (
+    <repo URL> )`, the version from `anomp_version()` so no new copy of it.
+  - `cache.rs`: `mb_cache` as a URL → body cache for every service.
+  - Commands: `metadata_settings` (with each source's name, kinds and
+    dependencies for the UI), `metadata_save_settings`,
+    `metadata_reset_settings`; typed wrappers in `api.ts`.
+  - Provider traits are left until a second source of the same kind
+    exists (Discogs, 4.7); MusicBrainz is called directly until then.
+  - The online modules have no caller in the app until the worker (4.5),
+    so they carry `#[allow(dead_code)]` until then.
+- [x] 4.2 Local art: folder images as an `AlbumArt` source; `art::lookup`
+  walks the user's choice, then local sources in the configured order.
+
+  Done 2026-09-26 (`metadata/folder_art.rs`, `library/art.rs`):
+  - An image directly in a track's folder named `cover`, `folder`,
+    `front`, `album` or `albumart` (that order, any case; .jpg, .jpeg,
+    .png, .webp; at most 32 MB), then Windows Media Player's
+    `AlbumArt*Large`/`AlbumArtSmall`. For a track in a disc folder ("CD1",
+    "Disc 2") the folder above is tried too, never above the library
+    folder.
+  - `art::lookup` tries the user's pick in `album_art` (falling back to the
+    order if that picture has gone or its source is unknown), then
+    `sources_for(AlbumArt)`. It opens each library folder by id through
+    `access::open_folder`, and skips one that can't be opened rather than
+    failing the request. Saving the settings clears the art cache.
+- [x] 4.3 MusicBrainz provider and the matcher; album links and details
+  stored.
+
+  Done 2026-09-26 (`metadata/musicbrainz.rs`, `matcher.rs`, `albums.rs`):
+  - Search (`release:(…) AND artist:(…) tracks:N`, Lucene-escaped terms
+    rather than phrases, 10 hits, cached 7 days) and lookup (recordings,
+    artist credits, labels, release group, genres; cached 30 days). Tag
+    MBIDs are checked to be UUIDs before going into a URL. `Release`
+    keeps title, credit, date, country, status, barcode, labels and
+    catalogue numbers, release group and its types and first date, genres
+    (the release's, else its group's, most voted first), track list with
+    lengths, and whether the Cover Art Archive has a front cover.
+  - Scoring as designed above, plus title and artist as **gates**: the
+    weighted score is multiplied by a factor that is 1 at a similarity of
+    0.7 and 0 at 0.3, so another album by the same artist, or the same
+    title by another artist, can't get through on track count and year.
+    Titles compare folded (`sort_key::fold`), punctuation-blind, "&" as
+    "and", with a bracketed suffix ignored at a small cost.
+  - `match_album`: a user's choice is left alone; a tagged release MBID
+    is looked up (1 request) and trusted, falling back to a search if
+    MusicBrainz no longer has it; otherwise one search plus lookups of
+    the best 3 hits (about 4 s at the rate limit). The result is stored
+    as matched, review (best candidate kept) or none. `choose_release`
+    stores the user's pick; `clear_link` returns an album to automatic.
+  - Tests: recorded responses for "In Rainbows" (a search and four
+    releases, trimmed; CC0) in `metadata/fixtures/musicbrainz/`, served by
+    the fake transport. `live_search_and_lookup` (ignored; `cargo test
+    live_ -- --ignored`) checks the real service, TLS and `User-Agent`.
+  - Artist links (`artist_links`) are filled with artist info in 4.7.
+- [ ] 4.4 Cover Art Archive provider and the image cache.
+- [ ] 4.5 The metadata worker: job queue, priorities, background
+  enrichment after a scan (if enabled), progress and `metadata-changed`
+  events, offline backoff.
+- [ ] 4.6 Commands and UI: album details with source labels, "Find
+  details" and "Choose cover" dialogs with candidates per source, and a
+  Services panel (master switch, enable, order, keys, status) that Phase 6
+  folds into the admin screen.
+- [ ] 4.7 More sources: Wikidata/Wikipedia descriptions, then Discogs
+  (user token). fanart.tv, TheAudioDB, iTunes and Deezer after their terms
+  are checked.
+- [ ] 4.8 Select and configure the alternative sources. Go through the
+  sources table above and decide which ones ship, recording each decision
+  and its reason in the table. For each source that ships:
+  - Settle its terms (commercial use, attribution, caching, image display)
+    and record the outcome; §8.1 still re-checks them before release.
+  - Add its `SourceId`, the kinds it supplies, what it relies on, and
+    whether it needs a key.
+  - Set its defaults: enabled or not, and its place in each kind's order.
+  - Decide how it gets a key: supplied by the user, or a project key
+    shipped with the app if its terms allow that. Decide where keys are
+    stored (the settings JSON, or the OS keychain).
+  - Set its request interval in `http::request_interval` from its
+    published limits.
+  - Show its attribution wherever its data appears, if its terms require
+    one.
+  - Add recorded-response fixtures and an ignored live test.
+  - Make sure the Services panel (4.6) lists it, with a key field if it
+    needs one.
+- **Exit:** a library of tagged and untagged albums gets details and covers
+  from MusicBrainz and the Cover Art Archive; the user can reorder or turn
+  off sources, pick another source's cover or match for an album, and the
+  app behaves the same with the network off, showing what it cached.
 
 ### Phase 5 — Visualization
 - Core: lock-free FIFO tap on the output; FFT (`juce::dsp::FFT`) → log-spaced
@@ -1056,6 +1261,10 @@ These need answers first; most need the owner rather than engineering.
 - [ ] **Privacy policy and support page:** required by the App Store, and the
       app contacts MusicBrainz and Cover Art Archive. Host a short policy and
       support URL.
+- [ ] **Metadata service terms** (Phase 4): re-read the terms of every
+      source that is on by default or selectable, for commercial use,
+      attribution, caching and image display. Decide on a MetaBrainz
+      supporter plan. Set the `User-Agent` contact to a real address.
 - [ ] **Crash reporting:** decide none vs. opt-in (e.g. Sentry). Anything
       opt-in must appear in the privacy policy.
 

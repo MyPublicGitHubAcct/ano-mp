@@ -2,6 +2,7 @@ mod anomp;
 mod audio;
 mod library;
 mod media;
+mod metadata;
 mod queue;
 
 use tauri::Manager;
@@ -65,6 +66,9 @@ pub fn run() {
             library::commands::library_remove_sort_rule,
             library::commands::library_set_ignored_articles,
             library::commands::library_reset_sort_settings,
+            metadata::commands::metadata_settings,
+            metadata::commands::metadata_save_settings,
+            metadata::commands::metadata_reset_settings,
             queue::queue_state,
             queue::queue_play,
             queue::queue_play_node,

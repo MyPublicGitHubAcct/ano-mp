@@ -25,7 +25,11 @@ The core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 from it, and `library_browse` pages through it under configurable sort/grouping
 rules (stored in `settings`). Each folder keeps a security-scoped bookmark
 (`library/access.rs`, over the core's `FolderAccess`), and the bundled app is
-sandboxed (`Entitlements.plist`). `docs/` is empty.
+sandboxed (`Entitlements.plist`). Phase 4 (online metadata) is in progress:
+`app/src-tauri/src/metadata/` has the source settings (which sources supply
+each kind of data, in what order), the rate-limited HTTP client, folder-image
+art and MusicBrainz matching; see `PLAN.md` Phase 4 for the remaining steps.
+`docs/` is empty.
 
 ## Build & test
 
@@ -130,6 +134,15 @@ the next track from `TrackEnded`); `anomp.h` states the rule.
 Search uses FTS5 tables kept in step by triggers (migration 002); a schema change
 to `tracks`, `artists` or `albums` columns they index must update those triggers
 in a new migration.
+
+Metadata services (`app/src-tauri/src/metadata/`) go through `http::Client`,
+which rate-limits per host and backs off when offline; never call a service
+another way. Tests never touch the network: they use the fake `Transport` and
+`Clock` (`http::testing`) with recorded responses in `metadata/fixtures/`, and
+live checks are `#[ignore]`d (`cargo test live_ -- --ignored`). A link row
+with `chosen_by = 'user'` or an `album_art` row is the user's pick, and
+automatic matching must never replace it. The `anomp-art` handler serves
+only local and already-downloaded pictures; it never goes online.
 
 ## Architecture
 

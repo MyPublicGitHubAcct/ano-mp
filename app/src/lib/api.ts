@@ -115,6 +115,43 @@ export function artUrl(key: { albumId: number } | { trackId: number }, generatio
   return `${convertFileSrc(name, "anomp-art")}?g=${generation}`;
 }
 
+// ---- Metadata sources ---------------------------------------------------------
+
+export type MetadataKind = "release" | "albumArt";
+export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive";
+
+export type SourceInfo = {
+  id: SourceId;
+  name: string;
+  kinds: MetadataKind[];
+  /** Contacts a service, so it obeys the online switch. */
+  online: boolean;
+  needsKey: boolean;
+  /** A source it relies on (the Cover Art Archive needs MusicBrainz). */
+  requires: SourceId | null;
+  homepage: string | null;
+};
+
+export type SourceSettings = { id: SourceId; enabled: boolean; apiKey: string | null };
+
+export type ServiceSettings = {
+  online: boolean;
+  autoMatch: boolean;
+  sources: SourceSettings[];
+  /** Per kind, every source that supplies it, first choice first. */
+  order: Record<MetadataKind, SourceId[]>;
+};
+
+export type MetadataSettings = { sources: SourceInfo[]; settings: ServiceSettings };
+
+export const metadata = {
+  settings: () => invoke<MetadataSettings>("metadata_settings"),
+  /** Art may come from other sources afterwards; reload it. */
+  saveSettings: (settings: ServiceSettings) =>
+    invoke<MetadataSettings>("metadata_save_settings", { settings }),
+  resetSettings: () => invoke<MetadataSettings>("metadata_reset_settings"),
+};
+
 // ---- Player and queue ---------------------------------------------------------
 
 export type PlayerState = "empty" | "stopped" | "playing" | "paused";

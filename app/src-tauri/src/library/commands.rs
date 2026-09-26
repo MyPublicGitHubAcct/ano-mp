@@ -64,6 +64,19 @@ impl LibraryState {
     }
 }
 
+#[cfg(test)]
+impl LibraryState {
+    /// A library over `conn`, for tests; scans aren't possible.
+    pub fn for_tests(conn: Connection) -> LibraryState {
+        LibraryState {
+            db_path: PathBuf::new(),
+            conn: Mutex::new(conn),
+            scanning: AtomicBool::new(false),
+            art: ArtCache::default(),
+        }
+    }
+}
+
 /// Runs `f` with the library on a blocking thread.
 pub async fn on_library<R: Runtime, T: Send + 'static>(
     app: &AppHandle<R>,

@@ -12,6 +12,7 @@ use super::{genres, sort_key, Error};
 const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_initial.sql"),
     include_str!("migrations/002_search.sql"),
+    include_str!("migrations/003_metadata.sql"),
 ];
 
 /// Opens (creating if needed) the library database at `path` and brings its
@@ -105,7 +106,17 @@ mod tests {
                 "SELECT name FROM sqlite_schema WHERE type = 'table'
                  AND name NOT LIKE '%search%' ORDER BY name"
             ),
-            ["albums", "artists", "folders", "mb_cache", "settings", "tracks"]
+            [
+                "album_art",
+                "album_links",
+                "albums",
+                "artist_links",
+                "artists",
+                "folders",
+                "mb_cache",
+                "settings",
+                "tracks"
+            ]
         );
         assert_eq!(
             names(
