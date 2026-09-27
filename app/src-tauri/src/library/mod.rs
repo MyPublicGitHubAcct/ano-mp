@@ -82,7 +82,10 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
 
 /// Adds the folder at the absolute `path` (resolving symlinks and `..`),
 /// unscanned, with a bookmark to it (see `access`). Refuses a folder that is inside, or contains, one already in
-/// the library, so no file is listed twice.
+/// the library, so no file is listed twice. Adding a library folder again
+/// replaces its bookmark and returns it unchanged otherwise: picking it
+/// again is how a sandboxed app regains a folder whose bookmark no longer
+/// resolves (e.g. after the app's signature changed).
 pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     if !path.is_absolute() {
         return Err(Error::Invalid(format!(
@@ -98,9 +101,16 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     let text = path
         .to_str()
         .ok_or_else(|| Error::Invalid(format!("Path is not valid UTF-8: {}", path.display())))?;
-    check_overlap(conn, &path, None)?;
     // The durable handle to the folder (library::access).
     let bookmark = anomp::create_bookmark(&path).map_err(Error::Invalid)?;
+    if let Some(existing) = folders(conn)?.into_iter().find(|f| f.path == text) {
+        conn.execute(
+            "UPDATE folders SET bookmark = ?1 WHERE id = ?2",
+            params![bookmark, existing.id],
+        )?;
+        return Ok(existing);
+    }
+    check_overlap(conn, &path, None)?;
     conn.execute(
         "INSERT INTO folders (path, bookmark, added_at) VALUES (?1, ?2, ?3)",
         params![text, bookmark, unix_now()],
@@ -270,13 +280,30 @@ mod tests {
         assert!(error(Path::new("Music")).starts_with("Path is not absolute"));
         assert!(error(&dir.path().join("missing")).starts_with("Cannot open"));
         assert!(error(&music.join("notes.txt")).starts_with("Not a folder"));
-        assert!(error(&music).ends_with("is already in the library"));
-        assert!(error(&music.join("Jazz/..")).ends_with("is already in the library"));
         assert!(error(&music.join("Jazz")).contains("overlaps"));
         assert!(error(dir.path()).contains("overlaps"));
         // A sibling whose name merely starts the same way is fine.
         std::fs::create_dir(dir.path().join("Music 2")).unwrap();
         add_folder(&conn, &dir.path().join("Music 2")).unwrap();
+    }
+
+    #[test]
+    fn adding_a_folder_again_replaces_its_bookmark() {
+        let conn = db::open_in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let music = dir.path().join("Music");
+        std::fs::create_dir_all(music.join("Jazz")).unwrap();
+        let folder = add_folder(&conn, &music).unwrap();
+        conn.execute("UPDATE folders SET bookmark = x'00', last_scan_at = 7", [])
+            .unwrap();
+
+        let again = add_folder(&conn, &music.join("Jazz/..")).unwrap();
+        assert_eq!((again.id, again.last_scan_at), (folder.id, Some(7)));
+        assert_eq!(folders(&conn).unwrap(), [again]);
+        let bookmark: Vec<u8> = conn
+            .query_row("SELECT bookmark FROM folders", [], |row| row.get(0))
+            .unwrap();
+        assert!(crate::anomp::FolderAccess::start(&bookmark).is_ok());
     }
 
     #[test]

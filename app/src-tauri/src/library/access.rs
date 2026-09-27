@@ -23,8 +23,9 @@ pub struct OpenFolder {
 
 /// Resolves library folder `folder_id` and starts accessing it. If the folder
 /// moved, its stored path is updated (and its tracks, stored relative to it,
-/// follow); a stale bookmark is replaced. A folder added before bookmarks
-/// were saved gets one now if it can be read. Fails with `Error::Invalid` if
+/// follow); a stale bookmark is replaced, and so is one that no longer
+/// resolves if the folder can still be read (`rebookmark`). A folder added
+/// before bookmarks were saved gets one now if it can be read. Fails with `Error::Invalid` if
 /// the folder can't be resolved, e.g. on an unmounted drive.
 pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Error> {
     let (stored, bookmark): (String, Option<Vec<u8>>) = conn
@@ -46,8 +47,17 @@ pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Erro
         });
     };
 
-    let access = FolderAccess::start(&bookmark)
-        .map_err(|error| Error::Invalid(format!("Folder not available: {stored} ({error})")))?;
+    let access = match FolderAccess::start(&bookmark) {
+        Ok(access) => access,
+        Err(error) => match rebookmark(conn, folder_id, &stored) {
+            Some(open) => return Ok(open),
+            None => {
+                return Err(Error::Invalid(format!(
+                    "Folder not available: {stored} ({error})"
+                )))
+            }
+        },
+    };
     let path = access.path().to_path_buf();
     if path != Path::new(&stored) {
         let text = path.to_str().ok_or_else(|| {
@@ -85,6 +95,25 @@ pub fn open_folder_of(conn: &Connection, path: &Path) -> Result<Option<OpenFolde
         }
     }
     Ok(None)
+}
+
+/// Replaces a bookmark that no longer resolves while its folder is still
+/// readable at the stored path. macOS ties a security-scoped bookmark to the
+/// code signature of the app that made it, and an ad-hoc signature (every
+/// development build) changes with each build, so a rebuilt app can't
+/// resolve its predecessor's bookmarks. Outside the sandbox the folder is
+/// still readable and gets a new bookmark; inside it, it isn't, and the
+/// user must pick the folder again.
+fn rebookmark(conn: &Connection, folder_id: i64, stored: &str) -> Option<OpenFolder> {
+    let path = Path::new(stored);
+    std::fs::read_dir(path).ok()?;
+    let bookmark = anomp::create_bookmark(path).ok()?;
+    let access = FolderAccess::start(&bookmark).ok()?;
+    save_bookmark(conn, folder_id, &bookmark).ok()?;
+    Some(OpenFolder {
+        path: access.path().to_path_buf(),
+        _access: Some(access),
+    })
 }
 
 fn save_bookmark(conn: &Connection, folder_id: i64, bookmark: &[u8]) -> rusqlite::Result<()> {
@@ -157,6 +186,22 @@ mod tests {
         let open = open_folder(&conn, folder.id).unwrap();
         assert_eq!(open.path, after);
         assert_eq!(Path::new(&folders(&conn).unwrap()[0].path), after);
+    }
+
+    #[test]
+    fn unresolvable_bookmarks_of_readable_folders_are_replaced() {
+        let conn = db::open_in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let folder = add_folder(&conn, dir.path()).unwrap();
+        // As a rebuilt, ad-hoc signed app sees its predecessor's bookmark.
+        conn.execute("UPDATE folders SET bookmark = x'00'", [])
+            .unwrap();
+
+        let open = open_folder(&conn, folder.id).unwrap();
+        assert_eq!(open.path, Path::new(&folder.path));
+        let bookmark = bookmark_of(&conn, folder.id).unwrap();
+        assert_ne!(bookmark, [0]);
+        assert!(FolderAccess::start(&bookmark).is_ok());
     }
 
     #[test]

@@ -126,8 +126,9 @@ class LibraryStore {
     attempt(async () => {
       const path = await open({ multiple: false, directory: true });
       if (path === null) return;
+      // A folder already in the library comes back with a fresh bookmark.
       const folder = await api.addFolder(path);
-      this.folders = [...this.folders, folder];
+      this.folders = [...this.folders.filter((f) => f.id !== folder.id), folder];
       await this.scan(folder.id);
     });
 

@@ -134,7 +134,12 @@ bookmark is resolved, so anything that opens library files goes through
 `library::access::open_folder`/`open_folder_of` first and holds the result
 until the file is open (as `scan_folder`, `player_load` and `player_set_next`
 do). `tauri dev` runs unsandboxed, so a missing call only fails in a
-sandboxed bundle (`npm run tauri build -- --bundles app`: ad-hoc signed,
+sandboxed bundle. A security-scoped bookmark resolves only in the build
+that made it while the app is ad-hoc signed (the identity changes each
+build; the error is "isn't in the correct format"): `open_folder` replaces
+it when the folder is still readable, as in dev, but a rebuilt sandboxed
+bundle needs its folders picked again (`add_folder` on a library folder
+replaces its bookmark) (`npm run tauri build -- --bundles app`: ad-hoc signed,
 hardened runtime off, FFmpeg embedded in `Contents/Frameworks`). The
 `bundle.macOS.frameworks` list in `tauri.conf.json` names FFmpeg's major
 versions, so update it when the FFmpeg pin changes. Only debug builds have an
