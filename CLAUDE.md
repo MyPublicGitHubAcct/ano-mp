@@ -57,6 +57,12 @@ binary frames over a Tauri `Channel` while the UI subscribes, and the
 renderers in `app/src/lib/visualizer/` draw them (the cover wall's albums
 come from `library/covers.rs`). What remains is checking them by eye with
 music playing.
+Phase 6 (settings) is built: `settings.rs` holds the typed `AppSettings`
+(display, playback/ReplayGain, output device, visualizer) under `app` in
+`settings`, applied by `settings_save`; the UI is `SettingsPage.svelte` with
+its sections in `components/settings/`, and reads the settings through
+`state/settings.svelte.ts` (loaded in `routes/+layout.ts` before any page
+renders). What remains is checking device switching and ReplayGain by ear.
 `docs/` is empty.
 
 ## Build & test
@@ -110,6 +116,7 @@ npm run tauri dev            # run the desktop app
 npm run check                # svelte-check / TypeScript
 npm test                     # frontend unit tests (node --test tests/, plain .mjs)
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
+ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/settings.ts
 ../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```
 
@@ -164,6 +171,16 @@ The media controls (`anomp_media_controls_*`) are main-thread only too, and
 `run_on_main_thread` called on the main thread runs the closure at once; it
 doesn't defer it. Engine event callbacks may call the engine (the queue arms
 the next track from `TrackEnded`); `anomp.h` states the rule.
+
+The settings' TypeScript types (`app/src/lib/generated/settings.ts`) are
+generated from the Rust types by ts-rs (a dev-dependency: derive it with
+`#[cfg_attr(test, derive(ts_rs::TS))]` and list the type in
+`settings::bindings`); `cargo test` fails while the file is stale, so
+regenerate and commit it after changing them. Never edit it by hand. A new
+setting goes in `AppSettings` with a default and a `validate` rule; stored
+values are read leniently, so no migration is needed. Track gains
+(ReplayGain) are computed in Rust (`PlaybackSettings::gain`) and passed to
+the engine with each track.
 
 Search uses FTS5 tables kept in step by triggers (migration 002); a schema change
 to `tracks`, `artists` or `albums` columns they index must update those triggers

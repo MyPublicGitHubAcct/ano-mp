@@ -255,6 +255,21 @@ impl Queue {
         self.items.iter().map(|item| item.track.track_id).collect()
     }
 
+    /// The tracks the engine has open for the queue: the current item's if
+    /// it's loaded, then the armed next item's (the same track twice with
+    /// repeat one).
+    pub fn engine_track_ids(&self) -> Vec<i64> {
+        if !self.loaded {
+            return Vec::new();
+        }
+        let current = self.current_item().map(|item| item.track.track_id);
+        let armed = self
+            .armed
+            .and_then(|uid| self.index_of(uid))
+            .map(|index| self.items[index].track.track_id);
+        current.into_iter().chain(armed).collect()
+    }
+
     /// Replaces what the items show with `tracks` (e.g. after a rescan);
     /// items whose track isn't in it are left as they were.
     pub fn update_tracks(&mut self, tracks: &HashMap<i64, TrackInfo>) {
@@ -971,6 +986,22 @@ mod tests {
         let state = queue.state();
         assert_eq!(state.current, Some(2));
         assert!(!state.has_next && state.has_previous);
+    }
+
+    #[test]
+    fn names_the_tracks_the_engine_has_open() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        assert!(queue.engine_track_ids().is_empty());
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        assert_eq!(queue.engine_track_ids(), [1, 2]);
+        end_track(&mut queue, &mut p);
+        end_track(&mut queue, &mut p);
+        assert_eq!(queue.engine_track_ids(), [3]);
+        queue.set_repeat(&mut p, Repeat::One);
+        assert_eq!(queue.engine_track_ids(), [3, 3]);
+        queue.detach();
+        assert!(queue.engine_track_ids().is_empty());
     }
 
     #[test]

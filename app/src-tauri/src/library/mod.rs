@@ -186,13 +186,16 @@ pub struct TrackSummary {
     pub disc_number: Option<u32>,
     pub track_number: Option<u32>,
     pub duration: f64,
+    pub bitrate_kbps: Option<u32>,
+    /// Hz.
+    pub sample_rate: u32,
 }
 
 /// The columns `track_from_row` reads, from `TRACKS_FROM`.
 pub(super) const TRACK_COLUMNS: &str =
     "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
      album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id,
-     t.artist_id";
+     t.artist_id, t.bitrate_kbps, t.sample_rate";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
 pub(super) const TRACKS_FROM: &str = "FROM tracks t
@@ -220,6 +223,8 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         duration: row.get(11)?,
         album_id: row.get(12)?,
         artist_id: row.get(13)?,
+        bitrate_kbps: row.get(14)?,
+        sample_rate: row.get(15)?,
     })
 }
 

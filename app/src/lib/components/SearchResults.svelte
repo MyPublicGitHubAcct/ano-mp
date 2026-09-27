@@ -13,13 +13,14 @@
     type SearchResults,
     type Track,
   } from "$lib/api";
-  import { fileName, formatTime, plural } from "$lib/format";
+  import { plural } from "$lib/format";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
+  import TrackText from "./TrackText.svelte";
 
   const FIRST = { artists: 6, albums: 12, tracks: 50 };
   const MORE = 50;
@@ -193,11 +194,7 @@
               oncontextmenu={(event) => trackMenu(event, track)}
             >
               <Art albumId={track.albumId} trackId={track.id} size="2.25rem" />
-              <span class="text">
-                <span class="name">{track.title ?? fileName(track.path)}</span>
-                <span class="muted small">{[track.artist, track.album].filter(Boolean).join(" · ")}</span>
-              </span>
-              <span class="muted time">{formatTime(track.duration)}</span>
+              <TrackText {track} />
             </button>
           </li>
         {/each}
@@ -269,6 +266,10 @@
     height: auto !important;
   }
 
+  .tracks {
+    container-type: inline-size;
+  }
+
   .track {
     display: flex;
     align-items: center;
@@ -285,13 +286,6 @@
     background: var(--hover);
   }
 
-  .text {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-width: 0;
-  }
-
   .name,
   .small {
     overflow: hidden;
@@ -304,11 +298,7 @@
     font-size: 0.8rem;
   }
 
-  .time {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .playing .name {
+  .playing :global(.name) {
     color: var(--accent);
     font-weight: 600;
   }

@@ -354,9 +354,10 @@ fn write_track(
              folder_id, relative_path, file_size, file_mtime_ns, title, artist_id, album_id,
              album_artist_id, genre, track_number, track_total, disc_number, disc_total, year,
              duration, sample_rate, channels, bitrate_kbps, musicbrainz_recording_id,
-             musicbrainz_release_track_id, scanned_at)
+             musicbrainz_release_track_id, scanned_at, replaygain_track_gain,
+             replaygain_track_peak, replaygain_album_gain, replaygain_album_peak)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                 ?18, ?19, ?20, ?21)
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)
          ON CONFLICT (folder_id, relative_path) DO UPDATE SET
              file_size = excluded.file_size,
              file_mtime_ns = excluded.file_mtime_ns,
@@ -376,7 +377,11 @@ fn write_track(
              bitrate_kbps = excluded.bitrate_kbps,
              musicbrainz_recording_id = excluded.musicbrainz_recording_id,
              musicbrainz_release_track_id = excluded.musicbrainz_release_track_id,
-             scanned_at = excluded.scanned_at",
+             scanned_at = excluded.scanned_at,
+             replaygain_track_gain = excluded.replaygain_track_gain,
+             replaygain_track_peak = excluded.replaygain_track_peak,
+             replaygain_album_gain = excluded.replaygain_album_gain,
+             replaygain_album_peak = excluded.replaygain_album_peak",
     )?
     .execute(params![
         folder_id,
@@ -400,6 +405,10 @@ fn write_track(
         tags.musicbrainz_recording_id,
         tags.musicbrainz_release_track_id,
         now,
+        tags.replay_gain.track_gain,
+        tags.replay_gain.track_peak,
+        tags.replay_gain.album_gain,
+        tags.replay_gain.album_peak,
     ])?;
     Ok(())
 }

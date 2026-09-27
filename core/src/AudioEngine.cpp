@@ -34,12 +34,89 @@ juce::String AudioEngine::openDefaultDevice()
         error = "No audio output device available";
 
     if (error.isEmpty())
-    {
-        deviceManager.removeAudioCallback (&sourcePlayer);
-        deviceManager.addAudioCallback (&sourcePlayer);
-    }
+        connectPlayer();
 
     return error;
+}
+
+void AudioEngine::connectPlayer()
+{
+    deviceManager.removeAudioCallback (&sourcePlayer);
+    deviceManager.addAudioCallback (&sourcePlayer);
+}
+
+juce::AudioIODeviceType* AudioEngine::outputDeviceType()
+{
+    // Creates the device types on first use.
+    deviceManager.getAvailableDeviceTypes();
+    return deviceManager.getCurrentDeviceTypeObject();
+}
+
+juce::StringArray AudioEngine::outputDeviceNames()
+{
+    auto* type = outputDeviceType();
+    if (type == nullptr)
+        return {};
+
+    type->scanForDevices();
+    return type->getDeviceNames (false);
+}
+
+juce::String AudioEngine::openDevice (const juce::String& name, int bufferSize)
+{
+    auto* type = outputDeviceType();
+    if (type == nullptr)
+        return "No audio output device available";
+
+    const auto names = outputDeviceNames();
+    auto deviceName = name;
+
+    if (deviceName.isEmpty())
+    {
+        const auto index = type->getDefaultDeviceIndex (false);
+        if (! juce::isPositiveAndBelow (index, names.size()))
+            return "No audio output device available";
+        deviceName = names[index];
+    }
+    else if (! names.contains (deviceName))
+    {
+        return "No output device called \"" + deviceName + "\"";
+    }
+
+    auto setup = deviceManager.getAudioDeviceSetup();
+    setup.outputDeviceName = deviceName;
+    setup.inputDeviceName = {};
+    setup.useDefaultOutputChannels = true;
+    setup.useDefaultInputChannels = false;
+    setup.inputChannels.clear();
+    setup.bufferSize = juce::jmax (0, bufferSize); // 0: the device's default.
+    setup.sampleRate = 0.0;                        // The device's current rate.
+
+    auto error = deviceManager.setAudioDeviceSetup (setup, true);
+
+    if (error.isEmpty() && deviceManager.getCurrentAudioDevice() == nullptr)
+        error = "Cannot open " + deviceName;
+
+    if (error.isEmpty())
+        connectPlayer();
+
+    return error;
+}
+
+bool AudioEngine::getDeviceInfo (DeviceInfo& info) const
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr)
+        return false;
+
+    info.bufferSize = device->getCurrentBufferSizeSamples();
+    info.defaultBufferSize = device->getDefaultBufferSize();
+    info.bufferSizes = device->getAvailableBufferSizes();
+    info.bufferSizes.sort();
+    info.sampleRate = device->getCurrentSampleRate();
+    info.outputLatencySeconds =
+        info.sampleRate > 0.0 ? (device->getOutputLatencyInSamples() + info.bufferSize) / info.sampleRate : 0.0;
+    return true;
 }
 
 juce::String AudioEngine::currentDeviceName() const

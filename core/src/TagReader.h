@@ -2,6 +2,8 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <limits>
+
 namespace anomp
 {
 /** A file's tags and audio properties. Strings are empty and numbers 0 when
@@ -15,6 +17,12 @@ struct TrackTags
     // (e.g. MP3 encoder delay and padding); the player measures exactly on load.
     double durationSeconds = 0.0;
     int sampleRate = 0, channels = 0, bitrateKbps = 0;
+
+    // ReplayGain: gains in dB relative to ReplayGain's reference level
+    // (Opus R128 gains are converted), peaks as linear sample values; NaN
+    // when the file doesn't say.
+    double trackGainDb = std::numeric_limits<double>::quiet_NaN(), trackPeak = std::numeric_limits<double>::quiet_NaN(),
+           albumGainDb = std::numeric_limits<double>::quiet_NaN(), albumPeak = std::numeric_limits<double>::quiet_NaN();
 
     // MusicBrainz identifiers, named after the entity they identify (Picard's
     // "track id" is the recording, its "album id" the release).

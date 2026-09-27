@@ -1,7 +1,7 @@
 <script lang="ts">
   // The sort rules as library views, the library folders with add, rescan
-  // and remove, and scan progress; and the online sources with what the
-  // metadata worker is doing.
+  // and remove, and scan progress; the online sources with what the
+  // metadata worker is doing, and the settings.
   import { ask } from "@tauri-apps/plugin-dialog";
   import { plural } from "$lib/format";
   import { folderName, library } from "$lib/state/library.svelte";
@@ -146,14 +146,25 @@
   <div class="bottom">
     <button
       class="item"
-      class:active={ui.servicesInMain && library.query === ""}
+      class:active={ui.settingsInMain && ui.settingsSection === "sources" && library.query === ""}
       onclick={() => {
         library.query = "";
-        ui.showServices();
+        ui.showSettings("sources");
       }}
     >
       <span class="with-icon"><Icon name="cloud" size="1.1rem" /> Online sources</span>
       <span class="muted small" title={metadataStatus.summary}>{metadataStatus.summary}</span>
+    </button>
+    <button
+      class="item"
+      class:active={ui.settingsInMain && ui.settingsSection !== "sources" && library.query === ""}
+      title="Settings (⌘,)"
+      onclick={() => {
+        library.query = "";
+        ui.showSettings(ui.settingsSection === "sources" ? "library" : undefined);
+      }}
+    >
+      <span class="with-icon"><Icon name="gear" size="1.1rem" /> Settings</span>
     </button>
     <a class="dev muted small" href="/dev">Developer tools</a>
   </div>

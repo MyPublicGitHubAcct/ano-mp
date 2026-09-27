@@ -1,17 +1,26 @@
 <script lang="ts">
   // The album being browsed: its cover (click to choose another), what the
-  // details sources say about it with the source named, its match status,
-  // and "Find details…" and "Choose cover…"; then its description (from
-  // Wikipedia, credited under its licence). "Details" opens a table of
+  // details sources say about it (the facts the display settings choose)
+  // with the source named, its match status, and "Find details…" and
+  // "Choose cover…"; then its description (from Wikipedia, credited under
+  // its licence) unless the settings turn descriptions off. "Details" opens a table of
   // every field with where it comes from: the tags, or a source. Reloads
   // after a scan and when `metadata-changed` names the album. A source that
   // doesn't keep its releases (Discogs) is asked for the release each time
   // the album is shown, and its data carries the credit its terms require.
   import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { metadata, type AlbumDetails, type AlbumLink, type Release, type SourceId } from "$lib/api";
+  import {
+    metadata,
+    type AlbumDetails,
+    type AlbumFact,
+    type AlbumLink,
+    type Release,
+    type SourceId,
+  } from "$lib/api";
   import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent, plural } from "$lib/format";
   import { library } from "$lib/state/library.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui, type AlbumRef } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
@@ -103,19 +112,23 @@
     return online.length > 0 ? online : (details?.genres ?? []);
   });
 
+  /** The facts the display settings choose, in their order. */
   const summary = $derived.by(() => {
     const release = matched?.release;
     if (!release) return "";
-    return [
-      release.date ? formatDate(release.date) : null,
-      formatLabels(release.labels) || null,
-      release.country,
-      release.formats.length > 0 ? formatMedia(release.formats) : null,
-      release.releaseType ? [release.releaseType, ...release.secondaryTypes].join(" · ") : null,
-    ]
+    const facts: Record<AlbumFact, string | null> = {
+      date: release.date ? formatDate(release.date) : null,
+      label: formatLabels(release.labels) || null,
+      country: release.country,
+      format: release.formats.length > 0 ? formatMedia(release.formats) : null,
+      type: release.releaseType ? [release.releaseType, ...release.secondaryTypes].join(" · ") : null,
+    };
+    return appSettings.display.albumFacts
+      .map((fact) => facts[fact])
       .filter(Boolean)
       .join(" · ");
   });
+  const showDescription = $derived(appSettings.display.showDescriptions);
 
   function status(link: AlbumLink | null) {
     if (!details) return "";
@@ -270,7 +283,7 @@
       </div>
     </div>
   </div>
-  {#if description}
+  {#if description && showDescription}
     <div class="description">
       {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
       {#if description.paragraphs.length > SHORT_DESCRIPTION}

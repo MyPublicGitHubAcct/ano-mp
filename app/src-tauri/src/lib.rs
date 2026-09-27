@@ -4,6 +4,7 @@ mod library;
 mod media;
 mod metadata;
 mod queue;
+mod settings;
 mod visualizer;
 
 use tauri::webview::PageLoadEvent;
@@ -26,11 +27,16 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            if let Err(error) = audio::init(app.handle()) {
-                eprintln!("[audio] {error}");
-            }
+            // The library first: the settings live in it, and name the
+            // output device the engine opens.
             if let Err(error) = library::commands::init(app.handle()) {
                 eprintln!("[library] {error}");
+            }
+            if let Err(error) = settings::init(app.handle()) {
+                eprintln!("[settings] {error}");
+            }
+            if let Err(error) = audio::init(app.handle()) {
+                eprintln!("[audio] {error}");
             }
             if let Err(error) = queue::init(app.handle()) {
                 eprintln!("[queue] {error}");
@@ -62,6 +68,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             core_version,
             audio::audio_device_name,
+            audio::audio_output_status,
+            settings::settings_get,
+            settings::settings_save,
             audio::play_test_tone,
             audio::stop_test_tone,
             audio::player_load,

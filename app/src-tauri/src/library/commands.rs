@@ -21,6 +21,7 @@ use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
 use super::search::{self, SearchKind, SearchResults};
 use super::{db, track_path, Error, Folder};
+use crate::anomp::ReplayGain;
 use crate::metadata::images::ImageCache;
 
 /// Frontend event with a `ScanProgress` payload.
@@ -58,20 +59,33 @@ impl LibraryState {
         access::open_folder_of(&self.conn(), path).map_err(|e| e.to_string())
     }
 
-    /// The file of track `track_id`.
-    pub fn track_file(&self, track_id: i64) -> Result<PathBuf, String> {
-        let row: Option<(String, String)> = self
+    /// The file of track `track_id`, and its ReplayGain tags.
+    pub fn track_file(&self, track_id: i64) -> Result<(PathBuf, ReplayGain), String> {
+        let row: Option<(String, String, ReplayGain)> = self
             .conn()
             .query_row(
-                "SELECT f.path, t.relative_path FROM tracks t JOIN folders f ON f.id = t.folder_id
+                "SELECT f.path, t.relative_path, t.replaygain_track_gain, t.replaygain_track_peak,
+                        t.replaygain_album_gain, t.replaygain_album_peak
+                 FROM tracks t JOIN folders f ON f.id = t.folder_id
                  WHERE t.id = ?1",
                 [track_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        ReplayGain {
+                            track_gain: row.get(2)?,
+                            track_peak: row.get(3)?,
+                            album_gain: row.get(4)?,
+                            album_peak: row.get(5)?,
+                        },
+                    ))
+                },
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        let (folder, relative) = row.ok_or("The track is no longer in the library")?;
-        Ok(track_path(Path::new(&folder), &relative))
+        let (folder, relative, gain) = row.ok_or("The track is no longer in the library")?;
+        Ok((track_path(Path::new(&folder), &relative), gain))
     }
 }
 

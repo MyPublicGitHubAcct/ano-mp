@@ -1,9 +1,23 @@
 // Types of the Tauri commands' payloads and events, and typed wrappers for
-// them. Hand-written to match the Rust structs (serde camelCase); PLAN.md
-// Phase 6 generates them with specta/ts-rs.
+// them. The settings' types are generated from the Rust ones
+// (`generated/settings.ts`, checked by `cargo test`); the rest are
+// hand-written to match the Rust structs (serde camelCase).
 
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  AppSettings,
+  CoverBasis,
+  MetadataSettings,
+  OutputStatus,
+  ServiceSettings,
+  SettingsPayload,
+  SortRule,
+  SortSettings,
+  SourceId,
+} from "./generated/settings";
+
+export type * from "./generated/settings";
 
 // ---- Library ----------------------------------------------------------------
 
@@ -23,6 +37,9 @@ export type Track = {
   discNumber: number | null;
   trackNumber: number | null;
   duration: number;
+  bitrateKbps: number | null;
+  /** Hz. */
+  sampleRate: number;
 };
 
 /** An artist, album or library folder id, or a year; a genre or folder name. */
@@ -41,26 +58,6 @@ export type Group = {
 
 export type BrowsePage = { groups: Group[]; tracks: Track[]; total: number };
 
-export type Level = "albumArtist" | "artist" | "album" | "genre" | "year" | "folder";
-export type TrackKey =
-  | "albumArtist"
-  | "artist"
-  | "album"
-  | "year"
-  | "discNumber"
-  | "trackNumber"
-  | "title"
-  | "path";
-export type AlbumOrder = "title" | "year";
-export type SortRule = {
-  id: string;
-  name: string;
-  levels: Level[];
-  trackOrder: TrackKey[];
-  /** Where the rule lists albums; "title" when missing. */
-  albumOrder?: AlbumOrder;
-};
-export type SortSettings = { rules: SortRule[]; ignoredArticles: string[] };
 /** A stored rule's id, or a whole rule. */
 export type RuleSpec = string | SortRule;
 
@@ -165,8 +162,6 @@ export type ArtistPage = {
   info: ArtistInfo;
 };
 
-/** Which albums the visualizer's cover wall shows around the current track. */
-export type CoverBasis = "year" | "artist";
 export type CoverAlbum = { id: number; title: string; artist: string | null; year: number | null };
 export type CoverWall = {
   basis: CoverBasis;
@@ -189,6 +184,11 @@ export const library = {
   sortSettings: () => invoke<SortSettings>("library_sort_settings"),
   /** Adds a rule, or replaces the one with its id. */
   saveSortRule: (rule: SortRule) => invoke<SortSettings>("library_save_sort_rule", { rule }),
+  /** The last rule can't be removed. */
+  removeSortRule: (ruleId: string) => invoke<SortSettings>("library_remove_sort_rule", { ruleId }),
+  setIgnoredArticles: (articles: string[]) => invoke<SortSettings>("library_set_ignored_articles", { articles }),
+  /** Back to the built-in rules and articles. */
+  resetSortSettings: () => invoke<SortSettings>("library_reset_sort_settings"),
   search: (query: string, offset: number, limit: number, kinds?: SearchKind[]) =>
     invoke<SearchResults>("library_search", { query, kinds: kinds ?? null, offset, limit }),
   /** Also asks for the artist to be looked up if needed; `metadata-changed` names them when done. */
@@ -208,46 +208,6 @@ export function artUrl(key: { albumId: number } | { trackId: number }, generatio
 }
 
 // ---- Metadata sources ---------------------------------------------------------
-
-export type MetadataKind = "release" | "albumArt" | "artistInfo" | "albumInfo";
-export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive" | "wikipedia" | "discogs";
-
-export type SourceInfo = {
-  id: SourceId;
-  name: string;
-  kinds: MetadataKind[];
-  /** Contacts a service, so it obeys the online switch. */
-  online: boolean;
-  needsKey: boolean;
-  /** What its key is called ("Personal access token"), and where to get one. */
-  keyName: string | null;
-  keyUrl: string | null;
-  enabledByDefault: boolean;
-  /** Whether its details are kept; if not (Discogs), they're fetched when shown and need a connection. */
-  storesDetails: boolean;
-  /** Shown next to its data, linked to the page it's from, as its terms require. */
-  credit: string | null;
-  /** Shown with the source in the settings, as its terms require. */
-  notice: string | null;
-  /** A source it relies on (the Cover Art Archive and Wikipedia need MusicBrainz). */
-  requires: SourceId | null;
-  homepage: string | null;
-  /** The hosts it contacts, as `MetadataProgress.unreachable` names them. */
-  hosts: string[];
-};
-
-/** `hasKey`: its key is in the keychain; change it with `metadata.setKey`, never through the settings. */
-export type SourceSettings = { id: SourceId; enabled: boolean; hasKey: boolean };
-
-export type ServiceSettings = {
-  online: boolean;
-  autoMatch: boolean;
-  sources: SourceSettings[];
-  /** Per kind, every source that supplies it, first choice first. */
-  order: Record<MetadataKind, SourceId[]>;
-};
-
-export type MetadataSettings = { sources: SourceInfo[]; settings: ServiceSettings };
 
 /** Albums and artists whose details or art changed; sent in batches. */
 export type MetadataChanged = { albums: number[]; artists: number[] };
@@ -466,6 +426,16 @@ export function candidateArtUrl(albumId: number, candidate: Pick<CoverCandidate,
   return candidate.preview === null ? url : `${url}?ref=${encodeURIComponent(candidate.preview)}`;
 }
 
+// ---- Settings -------------------------------------------------------------------
+
+export const settings = {
+  get: () => invoke<SettingsPayload>("settings_get"),
+  /** Applies and saves them; `settings-changed` follows. Fails, saving nothing, if a new output device won't open. */
+  save: (settings: AppSettings) => invoke<AppSettings>("settings_save", { settings }),
+  /** The output devices there are now, and the one playing. */
+  outputStatus: () => invoke<OutputStatus>("audio_output_status"),
+};
+
 // ---- Player and queue ---------------------------------------------------------
 
 export type PlayerState = "empty" | "stopped" | "playing" | "paused";
@@ -570,6 +540,7 @@ type Events = {
   "library-scan-progress": ScanProgress;
   "metadata-changed": MetadataChanged;
   "metadata-progress": MetadataProgress;
+  "settings-changed": AppSettings;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

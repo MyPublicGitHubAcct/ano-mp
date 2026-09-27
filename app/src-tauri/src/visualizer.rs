@@ -16,12 +16,15 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use crate::anomp::{AnalysisConfig, AnalysisFrame};
 use crate::audio;
 
-/// What the frontend's visualizations are drawn from.
-pub const CONFIG: AnalysisConfig = AnalysisConfig {
-    bands: 64,
-    waveform_length: 512,
-    frames_per_second: 60.0,
-};
+/// What the frontend's visualizations are drawn from, at `frame_rate`
+/// analyses a second (`settings::VisualizerSettings`).
+pub fn config(frame_rate: u32) -> AnalysisConfig {
+    AnalysisConfig {
+        bands: 64,
+        waveform_length: 512,
+        frames_per_second: f64::from(frame_rate),
+    }
+}
 
 /// The version byte `encode` starts with.
 pub const FORMAT_VERSION: u8 = 1;
@@ -181,16 +184,24 @@ fn lock<S>(shared: &Mutex<Subscribers<S>>) -> MutexGuard<'_, Subscribers<S>> {
 /// locked while the engine is called, since stopping waits for the
 /// analysis thread, which locks them to send.
 fn sync<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    sync_or_restart(app, false)
+}
+
+/// Like `sync`, but also restarts a running analysis, e.g. with a new
+/// frame rate.
+fn sync_or_restart<R: Runtime>(app: &AppHandle<R>, restart: bool) -> Result<(), String> {
     let Some(state) = app.try_state::<VisualizerState>() else {
         return Ok(());
     };
     let shared = state.0.clone();
     let app = app.clone();
+    let config = config(crate::settings::current(&app).visualizer.frame_rate);
     audio::on_main(&app.clone(), move || {
         let wanted = !lock(&shared).is_empty();
         audio::engine_mut(|engine| {
-            if wanted && !engine.is_analysing() {
-                let started = engine.start_analysis(CONFIG, forwarder(app, shared));
+            if wanted && (restart || !engine.is_analysing()) {
+                // Replaces the running analysis, if any.
+                let started = engine.start_analysis(config, forwarder(app, shared));
                 if !started {
                     return Err("The audio engine refused the analysis settings".to_string());
                 }
@@ -220,6 +231,13 @@ fn forwarder<R: Runtime>(
                 }
             });
         }
+    }
+}
+
+/// Restarts the analysis, if it's running, with the settings' frame rate.
+pub fn restart<R: Runtime>(app: &AppHandle<R>) {
+    if let Err(error) = sync_or_restart(app, true) {
+        eprintln!("[visualizer] {error}");
     }
 }
 

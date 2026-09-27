@@ -82,6 +82,16 @@ class LibraryStore {
     savePreference("ruleId", ruleId);
   }
 
+  /** Takes rules the settings changed, staying where it is unless its rule is gone. */
+  setRules(rules: SortRule[]) {
+    this.rules = rules;
+    if (!this.rule) {
+      this.ruleId = rules[0].id;
+      this.crumbs = [];
+      savePreference("ruleId", this.ruleId);
+    }
+  }
+
   /** Sets how the current rule orders albums, and saves it with the rule. */
   setAlbumOrder = (albumOrder: AlbumOrder) =>
     attempt(async () => {
@@ -178,7 +188,7 @@ export function adHocRule(levels: Level[], albumOrder?: AlbumOrder): SortRule {
     name: "Search",
     levels,
     trackOrder: levels.includes("album") ? standardTrackOrder : ["album", ...standardTrackOrder],
-    albumOrder,
+    albumOrder: albumOrder ?? "title",
   };
 }
 

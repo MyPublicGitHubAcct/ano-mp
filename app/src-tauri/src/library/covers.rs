@@ -18,6 +18,7 @@ const ENOUGH_ALBUMS: usize = 16;
 const YEAR_SPANS: [u32; 5] = [0, 1, 2, 3, 5];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum CoverBasis {
     Year,

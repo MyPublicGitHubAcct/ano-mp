@@ -18,6 +18,7 @@ const SETTINGS_KEY: &str = "metadata.services";
 
 /// A kind of data that sources supply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(rename = "MetadataKind"))]
 #[serde(rename_all = "camelCase")]
 pub enum Kind {
     /// An album's match at a service, and the details that come with it.
@@ -42,6 +43,7 @@ impl Kind {
 /// A metadata source. The serialized id is also what the `source` columns
 /// of migration 003 store, so it must never change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "kebab-case")]
 pub enum SourceId {
     /// The picture embedded in the audio files.
@@ -65,6 +67,7 @@ pub enum SourceId {
 
 /// What the UI shows about a source.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceInfo {
     pub id: SourceId,
@@ -196,6 +199,7 @@ impl SourceId {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSettings {
     pub id: SourceId,
@@ -217,6 +221,7 @@ impl SourceSettings {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     /// The switch for every online source; local ones are unaffected.
@@ -226,6 +231,7 @@ pub struct ServiceSettings {
     /// One entry per source, in `SourceId::ALL` order.
     pub sources: Vec<SourceSettings>,
     /// For each kind, every source that supplies it, in priority order.
+    #[cfg_attr(test, ts(type = "Record<MetadataKind, Array<SourceId>>"))]
     pub order: BTreeMap<Kind, Vec<SourceId>>,
 }
 

@@ -45,6 +45,14 @@ typedef struct anomp_tags
     int channels;
     int bitrate_kbps; /**< Average or nominal; 0 if unknown. */
 
+    /* ReplayGain, NaN when the file doesn't say: gains in dB (Opus R128
+       gains are converted to ReplayGain's reference level), peaks as linear
+       sample values (1 is full scale). */
+    double replaygain_track_gain;
+    double replaygain_track_peak;
+    double replaygain_album_gain;
+    double replaygain_album_peak;
+
     /* MusicBrainz IDs, named after what they identify (Picard's "track id"
        is the recording, its "album id" the release). */
     const char* musicbrainz_recording_id;
@@ -189,6 +197,43 @@ int anomp_engine_open_default_device(anomp_engine* engine, char* error, size_t e
     open. */
 size_t anomp_engine_device_name(anomp_engine* engine, char* buffer, size_t buffer_size);
 
+/** Looks for output devices (of the platform's default device type, e.g.
+    Core Audio) and returns how many there are. */
+int anomp_engine_output_device_count(anomp_engine* engine);
+
+/** Writes the name of output device `index` (0-based, as found by the last
+    anomp_engine_output_device_count) like anomp_engine_device_name. Returns
+    0 for an index out of range. */
+size_t anomp_engine_output_device_name(anomp_engine* engine, int index, char* buffer, size_t buffer_size);
+
+/** Opens the output device called `name` (UTF-8; null or "" for the
+    system's default device) with a buffer of `buffer_size` samples (0 for
+    the device's default; a size the device doesn't offer also gets the
+    default). Returns 1 on success, otherwise 0 and writes the error as
+    anomp_engine_open_default_device does. A name that isn't an output
+    device fails without closing the open device; a device that fails to
+    open may leave none open. Playback carries on through the new device. */
+int anomp_engine_open_device(anomp_engine* engine, const char* name, int buffer_size, char* error, size_t error_size);
+
+/** The open output device's settings. */
+typedef struct anomp_device_info
+{
+    int buffer_size;         /**< Samples per block. */
+    int default_buffer_size; /**< What the device prefers. */
+    double sample_rate;      /**< Hz. */
+    double output_latency;   /**< Seconds from the player to the speakers: one buffer plus
+                                  what the device reports. */
+} anomp_device_info;
+
+/** Fills `info` with the open device's settings and returns 1, or returns 0
+    (leaving `info` alone) if no device is open or `info` is null. */
+int anomp_engine_device_info(anomp_engine* engine, anomp_device_info* info);
+
+/** Writes up to `capacity` of the buffer sizes the open device offers,
+    smallest first, into `sizes` (may be null when `capacity` is 0), and
+    returns how many there are; 0 if no device is open. */
+int anomp_engine_buffer_sizes(anomp_engine* engine, int* sizes, int capacity);
+
 /* ---- Player -------------------------------------------------------------
    One current track plus an optional next track that follows it gaplessly.
    The host owns the queue: on ANOMP_EVENT_TRACK_ENDED with `advanced` set,
@@ -196,15 +241,29 @@ size_t anomp_engine_device_name(anomp_engine* engine, char* buffer, size_t buffe
    Paths are absolute, UTF-8. Functions that take `error` write the message
    there on failure, with the buffer rules of anomp_engine_device_name. */
 
-/** Opens `path` as the current track (clearing the next one) and stops at its
-    start. A TRACK_ENDED without `advanced` for the replaced track that has not
-    been dispatched yet is dropped. Returns 1 on success; on failure returns 0
-    and nothing changes. */
-int anomp_engine_load(anomp_engine* engine, const char* path, char* error, size_t error_size);
+/** Largest track gain (about +18 dB); larger gains are clamped to it. */
+#define ANOMP_MAX_TRACK_GAIN 8.0
 
-/** Opens `path` as the track after the current one; a null `path` clears
-    it. Returns 1 on success, 0 on failure (the previous next track stays). */
-int anomp_engine_set_next(anomp_engine* engine, const char* path, char* error, size_t error_size);
+/** Opens `path` as the current track (clearing the next one) and stops at its
+    start. `gain` is the track's own linear gain, e.g. from ReplayGain,
+    clamped to 0..ANOMP_MAX_TRACK_GAIN (1 leaves it as is); it applies
+    before the volume and before the analysis sees the audio. A
+    TRACK_ENDED without `advanced` for the replaced track that has not been
+    dispatched yet is dropped. Returns 1 on success; on failure returns 0
+    and nothing changes. */
+int anomp_engine_load(anomp_engine* engine, const char* path, double gain, char* error, size_t error_size);
+
+/** Opens `path` as the track after the current one, with its own `gain`
+    (as for anomp_engine_load), which takes over with it sample-exactly; a
+    null `path` clears it. Returns 1 on success, 0 on failure (the previous
+    next track stays). */
+int anomp_engine_set_next(anomp_engine* engine, const char* path, double gain, char* error, size_t error_size);
+
+/** Changes the gain of the current and next tracks opened from `path` (the
+    same absolute UTF-8 path they were opened with), ramping over a block, e.g.
+    when ReplayGain is turned on. Matching by file rather than by current or
+    next can't race a hand-off. Returns how many tracks it changed (0..2). */
+int anomp_engine_set_track_gain(anomp_engine* engine, const char* path, double gain);
 
 /** Starts or resumes playback. Returns 0 if no track is loaded. */
 int anomp_engine_play(anomp_engine* engine);

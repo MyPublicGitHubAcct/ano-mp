@@ -3,6 +3,11 @@
 //! JUCE delivers its messages through the main run loop, which Tauri (tao)
 //! runs, so the engine is created in `setup`, lives in a main-thread
 //! thread-local, and is dropped on `RunEvent::Exit` before the process ends.
+//!
+//! The output device is the one the settings name (`settings::OutputSettings`),
+//! or the system default. While the named one is missing (unplugged), the
+//! default plays, and the named one is reopened when the device list shows
+//! it again.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -11,12 +16,16 @@ use std::sync::mpsc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::anomp::{Engine, Event, PlayerState};
+use crate::anomp::{DeviceInfo, Engine, Event, PlayerState};
 use crate::library::access::OpenFolder;
 use crate::library::commands::LibraryState;
+use crate::settings::{self, OutputSettings};
 
 thread_local! {
     static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
+    /// The device list when reopening the chosen device last failed, so a
+    /// device that won't open isn't retried until the list changes.
+    static FAILED_RETRY: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
 }
 
 /// Frontend event emitted when the output device list or device changes.
@@ -40,6 +49,19 @@ pub struct TrackEndedPayload {
     advanced: bool,
 }
 
+/// The output devices, and which one plays.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct OutputStatus {
+    /// Every output device there is now.
+    pub devices: Vec<String>,
+    /// The open device, if any.
+    pub current: Option<DeviceInfo>,
+    /// The settings name a device that isn't there: the default plays.
+    pub chosen_missing: bool,
+}
+
 #[derive(Serialize)]
 pub struct PlayerStatus {
     state: PlayerState,
@@ -48,15 +70,18 @@ pub struct PlayerStatus {
     volume: f64,
 }
 
-/// Creates the engine and opens the default output device. Call on the main thread.
+/// Creates the engine and opens the output device the settings name (or
+/// the default). Call on the main thread, after `settings::init`.
 pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let mut engine = Engine::new().ok_or("Failed to start the audio engine")?;
+    let output = settings::current(app).output;
     let app = app.clone();
     engine.set_event_handler(move |event| {
         crate::media::player_event(event);
         let _ = match event {
             Event::DeviceChanged => {
                 eprintln!("[audio] device changed");
+                reopen_chosen(&app);
                 app.emit(DEVICE_CHANGED_EVENT, ())
             }
             Event::StateChanged(state) => app.emit(PLAYER_STATE_EVENT, state),
@@ -72,9 +97,73 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             }
         };
     });
-    let opened = engine.open_default_device();
+    let opened = open_output(&mut engine, &output);
     ENGINE.with_borrow_mut(|slot| *slot = Some(engine));
     opened
+}
+
+/// Opens the device `output` names with its buffer size, falling back on
+/// the default device (with the same buffer size) if it can't be opened;
+/// the error is the named device's.
+fn open_output(engine: &mut Engine, output: &OutputSettings) -> Result<(), String> {
+    let opened = engine.open_device(output.device.as_deref(), output.buffer_size);
+    if opened.is_err() && output.device.is_some() {
+        if let Err(error) = engine.open_device(None, output.buffer_size) {
+            eprintln!("[audio] cannot open the default device either: {error}");
+        }
+    }
+    opened
+}
+
+/// Opens the output `output` names, for new settings. On failure the
+/// default device plays and the error is returned.
+pub fn apply_output<R: Runtime>(app: &AppHandle<R>, output: &OutputSettings) -> Result<(), String> {
+    let output = output.clone();
+    let result = with_engine(app, move |engine| open_output(engine, &output))?;
+    FAILED_RETRY.with_borrow_mut(|failed| *failed = None);
+    result
+}
+
+/// After a device change: reopens the device the settings name if it has
+/// come back. Main thread (engine events arrive there).
+fn reopen_chosen<R: Runtime>(app: &AppHandle<R>) {
+    let output = settings::current(app).output;
+    let Some(chosen) = output.device.clone() else {
+        return;
+    };
+    let result = engine_mut(|engine| {
+        if engine.device_name().as_deref() == Some(chosen.as_str()) {
+            return None;
+        }
+        let devices = engine.output_devices();
+        let retried = FAILED_RETRY.with_borrow(|failed| failed.as_ref() == Some(&devices));
+        if retried || !devices.contains(&chosen) {
+            return None;
+        }
+        Some((
+            engine.open_device(Some(&chosen), output.buffer_size),
+            devices,
+        ))
+    });
+    match result {
+        Ok(Some((Ok(()), _))) => {
+            eprintln!("[audio] back to {chosen}");
+            FAILED_RETRY.with_borrow_mut(|failed| *failed = None);
+        }
+        Ok(Some((Err(error), devices))) => {
+            eprintln!("[audio] cannot reopen {chosen}: {error}");
+            FAILED_RETRY.with_borrow_mut(|failed| *failed = Some(devices));
+            // Opening it may have closed the one that was playing.
+            let _ = engine_mut(|engine| {
+                if engine.device_name().is_none() {
+                    let _ = engine.open_device(None, output.buffer_size);
+                }
+            });
+        }
+        // The engine is busy: this event came from inside one of its calls,
+        // which reports the change again when it's done.
+        Ok(None) | Err(_) => {}
+    }
 }
 
 /// Drops the engine, shutting JUCE down. Call on the main thread.
@@ -137,6 +226,22 @@ pub fn audio_device_name<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>
     with_engine(&app, |engine| engine.device_name())
 }
 
+/// The output devices there are, and the one playing.
+#[tauri::command]
+pub fn audio_output_status<R: Runtime>(app: AppHandle<R>) -> Result<OutputStatus, String> {
+    let chosen = settings::current(&app).output.device;
+    with_engine(&app, move |engine| {
+        let devices = engine.output_devices();
+        let current = engine.device_info();
+        let chosen_missing = chosen.is_some_and(|chosen| !devices.contains(&chosen));
+        OutputStatus {
+            devices,
+            current,
+            chosen_missing,
+        }
+    })
+}
+
 #[tauri::command]
 pub fn play_test_tone<R: Runtime>(app: AppHandle<R>, frequency: f64) -> Result<(), String> {
     with_engine(&app, move |engine| engine.play_test_tone(frequency))?
@@ -165,7 +270,7 @@ fn open_library_folder<R: Runtime>(
 #[tauri::command]
 pub fn player_load<R: Runtime>(app: AppHandle<R>, path: PathBuf) -> Result<(), String> {
     let _folder = open_library_folder(&app, &path)?;
-    with_engine(&app, move |engine| engine.load(&path))??;
+    with_engine(&app, move |engine| engine.load(&path, 1.0))??;
     crate::queue::detach(&app)
 }
 
@@ -177,7 +282,9 @@ pub fn player_set_next<R: Runtime>(app: AppHandle<R>, path: Option<PathBuf>) -> 
         .as_deref()
         .map(|path| open_library_folder(&app, path))
         .transpose()?;
-    with_engine(&app, move |engine| engine.set_next(path.as_deref()))??;
+    with_engine(&app, move |engine| {
+        engine.set_next(path.as_deref().map(|path| (path, 1.0)))
+    })??;
     crate::queue::detach(&app)
 }
 

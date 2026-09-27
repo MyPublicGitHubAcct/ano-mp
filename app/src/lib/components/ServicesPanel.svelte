@@ -4,7 +4,7 @@
   // takes one, whether it can be reached now, and any notice its terms
   // require), and for each kind of data the order the sources are tried in.
   // Every change is saved at once; keys go to the keychain, never into the
-  // settings. Phase 6 folds this into the admin screen.
+  // settings. A section of the settings page (SettingsPage).
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -19,7 +19,6 @@
   import { library } from "$lib/state/library.svelte";
   import { metadataStatus } from "$lib/state/metadata.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
-  import { ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
 
   const KINDS: { kind: MetadataKind; name: string; about: string }[] = [
@@ -150,14 +149,7 @@
   }
 </script>
 
-<section class="services" aria-labelledby="services-heading">
-  <header class="hero">
-    <div>
-      <h1 id="services-heading">Online sources</h1>
-      <p class="muted">Where album details, covers and biographies come from, beyond your files’ tags.</p>
-    </div>
-    <button class="icon" title="Close" aria-label="Close" onclick={() => ui.back()}><Icon name="close" /></button>
-  </header>
+<div class="services">
 
   <div class="status" role="status">
     <Icon name="cloud" />
@@ -169,7 +161,7 @@
 
   {#if settings && data}
     <section aria-labelledby="general-heading">
-      <h2 id="general-heading">General</h2>
+      <h3 id="general-heading">General</h3>
       <label class="switch">
         <input
           type="checkbox"
@@ -201,7 +193,7 @@
     </section>
 
     <section aria-labelledby="sources-heading">
-      <h2 id="sources-heading">Sources</h2>
+      <h3 id="sources-heading">Sources</h3>
       <ul class="sources">
         {#each data.sources as info (info.id)}
           {@const source = sourceSettings(info.id)}
@@ -265,12 +257,12 @@
     </section>
 
     <section aria-labelledby="order-heading">
-      <h2 id="order-heading">Order</h2>
+      <h3 id="order-heading">Order</h3>
       <p class="muted small">For each kind of data, sources are tried from the top. A cover you choose for an album comes first.</p>
       <div class="orders">
         {#each KINDS as { kind, name, about } (kind)}
           <div class="order">
-            <h3>{name}</h3>
+            <h4>{name}</h4>
             <p class="muted small">{about}</p>
             <ol>
               {#each settings.order[kind] as id, index (id)}
@@ -305,35 +297,15 @@
   {:else}
     <p class="muted">Loading…</p>
   {/if}
-</section>
+</div>
 
 <style>
-  .services {
-    height: 100%;
-    overflow-y: auto;
-    padding: 1rem 1.5rem 2rem;
-    max-width: 52rem;
-  }
-
-  .hero {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  h1 {
-    margin: 0 0 0.25rem;
-    font-size: clamp(1.4rem, 2.6vw, 2rem);
-  }
-
-  h2 {
+  h3 {
     font-size: 1rem;
     margin: 1.5rem 0 0.5rem;
   }
 
-  h3 {
+  h4 {
     font-size: 0.9rem;
     margin: 0;
   }
@@ -529,9 +501,4 @@
     margin-top: 1.5rem;
   }
 
-  @media (max-width: 640px) {
-    .services {
-      padding: 1rem;
-    }
-  }
 </style>

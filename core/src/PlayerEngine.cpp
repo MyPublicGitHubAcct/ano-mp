@@ -11,6 +11,11 @@ namespace
 {
 constexpr int outputChannels = 2;
 
+float clampTrackGain (float gain)
+{
+    return gain > 0.0f ? juce::jmin (gain, PlayerEngine::maxTrackGain) : 0.0f; // NaN becomes 0.
+}
+
 // Read-ahead per track: about 3 s at 44.1 kHz. BufferingAudioSource prefills
 // a quarter of a second when the track is opened.
 constexpr int readAheadSamples = 1 << 17;
@@ -27,10 +32,16 @@ constexpr int maxResampleRatio = 8;
     on the read-ahead thread). */
 struct PlayerEngine::Track
 {
-    Track (std::unique_ptr<juce::AudioFormatReader> reader, juce::TimeSliceThread* thread)
-        : sampleRate (reader->sampleRate),
+    Track (const juce::File& fileToPlay,
+           std::unique_ptr<juce::AudioFormatReader> reader,
+           juce::TimeSliceThread* thread,
+           float initialGain)
+        : file (fileToPlay),
+          sampleRate (reader->sampleRate),
           length (reader->lengthInSamples),
-          readerSource (reader.release(), true)
+          readerSource (reader.release(), true),
+          gain (initialGain),
+          appliedGain (initialGain)
     {
         if (thread != nullptr)
         {
@@ -52,7 +63,9 @@ struct PlayerEngine::Track
     juce::int64 remaining() const noexcept { return length - position; }
 
     /** Reads up to `wanted` samples, stopping at the end of the track, and
-        returns how many were read. A mono file fills both channels. */
+        returns how many were read, with the track's gain applied (ramped
+        from the previous read's if it changed). A mono file fills both
+        channels. */
     int read (juce::AudioBuffer<float>& buffer, int startSample, int wanted)
     {
         const auto count = static_cast<int> (juce::jmin (static_cast<juce::int64> (wanted), remaining()));
@@ -60,6 +73,12 @@ struct PlayerEngine::Track
         {
             source().getNextAudioBlock (juce::AudioSourceChannelInfo (&buffer, startSample, count));
             position += count;
+
+            if (! juce::exactlyEqual (appliedGain, gain))
+                buffer.applyGainRamp (startSample, count, appliedGain, gain);
+            else if (! juce::exactlyEqual (gain, 1.0f))
+                buffer.applyGain (startSample, count, gain);
+            appliedGain = gain;
         }
         return count;
     }
@@ -70,11 +89,13 @@ struct PlayerEngine::Track
         source().setNextReadPosition (newPosition);
     }
 
+    const juce::File file;
     const double sampleRate;
     const juce::int64 length;
     juce::AudioFormatReaderSource readerSource;
     std::unique_ptr<juce::BufferingAudioSource> buffered; // Declared last: freed before readerSource.
     juce::int64 position = 0;
+    float gain, appliedGain; // Changed under the player's lock.
 };
 
 //==============================================================================
@@ -154,7 +175,9 @@ PlayerEngine::PlayerEngine (juce::AudioFormatManager& formatsToUse, juce::TimeSl
 
 PlayerEngine::~PlayerEngine() = default;
 
-std::unique_ptr<PlayerEngine::Track> PlayerEngine::openTrack (const juce::File& file, juce::String& error) const
+std::unique_ptr<PlayerEngine::Track> PlayerEngine::openTrack (const juce::File& file,
+                                                              float gain,
+                                                              juce::String& error) const
 {
     if (! file.existsAsFile())
     {
@@ -176,14 +199,14 @@ std::unique_ptr<PlayerEngine::Track> PlayerEngine::openTrack (const juce::File& 
         return nullptr;
     }
 
-    return std::make_unique<Track> (std::move (reader), readAheadThread);
+    return std::make_unique<Track> (file, std::move (reader), readAheadThread, clampTrackGain (gain));
 }
 
 //==============================================================================
-juce::String PlayerEngine::load (const juce::File& file)
+juce::String PlayerEngine::load (const juce::File& file, float gain)
 {
     juce::String error;
-    auto track = openTrack (file, error);
+    auto track = openTrack (file, gain, error);
     if (track == nullptr)
         return error;
 
@@ -203,13 +226,13 @@ juce::String PlayerEngine::load (const juce::File& file)
     return {};
 }
 
-juce::String PlayerEngine::setNext (const juce::File& file)
+juce::String PlayerEngine::setNext (const juce::File& file, float gain)
 {
     if (getState() == State::empty)
         return "No track is loaded";
 
     juce::String error;
-    auto track = openTrack (file, error);
+    auto track = openTrack (file, gain, error);
     if (track == nullptr)
         return error;
 
@@ -220,6 +243,21 @@ juce::String PlayerEngine::setNext (const juce::File& file)
         oldRetired = std::move (retired);
     }
     return {};
+}
+
+int PlayerEngine::setTrackGain (const juce::File& file, float gain)
+{
+    const juce::ScopedLock sl (lock);
+    int changed = 0;
+    for (auto* track : { current.get(), next.get() })
+    {
+        if (track != nullptr && track->file == file)
+        {
+            track->gain = clampTrackGain (gain);
+            ++changed;
+        }
+    }
+    return changed;
 }
 
 void PlayerEngine::clearNext()

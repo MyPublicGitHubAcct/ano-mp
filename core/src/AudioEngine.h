@@ -29,6 +29,30 @@ public:
     /** Name of the open output device, or empty if none is open. */
     juce::String currentDeviceName() const;
 
+    /** Looks for output devices of the default device type (Core Audio on
+        Apple platforms) and returns their names. */
+    juce::StringArray outputDeviceNames();
+
+    /** Opens the output device `name` (empty for the system default) with
+        `bufferSize` samples per block (0, or a size the device doesn't
+        offer, for its default), at the device's current sample rate. The
+        player carries on through it. A name that isn't in
+        outputDeviceNames() fails without touching the open device; a
+        device that fails to open may leave none open. Returns an empty
+        string on success, otherwise the error. */
+    juce::String openDevice (const juce::String& name, int bufferSize);
+
+    struct DeviceInfo
+    {
+        int bufferSize = 0, defaultBufferSize = 0;
+        juce::Array<int> bufferSizes; // Smallest first.
+        double sampleRate = 0.0;
+        double outputLatencySeconds = 0.0;
+    };
+
+    /** The open device's settings; false if none is open. */
+    bool getDeviceInfo (DeviceInfo& info) const;
+
     /** The player's events are dispatched from a timer on the main thread. */
     PlayerEngine& player() noexcept { return playerEngine; }
 
@@ -54,6 +78,9 @@ public:
                               double framesPerSecond);
 
 private:
+    juce::AudioIODeviceType* outputDeviceType();
+    void connectPlayer();
+
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
 

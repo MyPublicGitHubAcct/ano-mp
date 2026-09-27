@@ -1,24 +1,28 @@
-// The visualizer's choices (remembered per viewer until Phase 6 moves them
-// into the settings), what it shows under the track's name, and full screen.
+// The visualizer: which visualization and cover wall (from the settings),
+// what it shows under the track's name, and full screen.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { CoverBasis } from "$lib/api";
 import { VISUALIZATIONS } from "$lib/visualizer";
+import { appSettings } from "./settings.svelte";
 import { attempt } from "./toasts.svelte";
-import { loadPreference, savePreference } from "./ui.svelte";
 
 class VisualizerStore {
-  // Not VISUALIZATIONS[0]: the cover wall imports this store, so the list may not exist yet.
-  choice = $state(loadPreference("visualization", "bars"));
-  coverBasis = $state<CoverBasis>(loadPreference("coverBasis", "year"));
+  get choice() {
+    return appSettings.visualizer.visualization;
+  }
+
+  get coverBasis(): CoverBasis {
+    return appSettings.visualizer.coverBasis;
+  }
+
   /** A line from the visualization, e.g. which albums the cover wall shows. */
   caption = $state<string | null>(null);
   /** The window is full screen, showing the visualizer alone. */
   fullscreen = $state(false);
 
   choose(id: string) {
-    this.choice = id;
-    savePreference("visualization", id);
+    if (id !== this.choice) void appSettings.save((next) => (next.visualizer.visualization = id));
   }
 
   /** The next (or with -1, previous) visualization. */
@@ -28,8 +32,7 @@ class VisualizerStore {
   }
 
   setCoverBasis(basis: CoverBasis) {
-    this.coverBasis = basis;
-    savePreference("coverBasis", basis);
+    if (basis !== this.coverBasis) void appSettings.save((next) => (next.visualizer.coverBasis = basis));
   }
 
   /** Renderers call this every frame; it changes state only when the text does. */

@@ -13,6 +13,7 @@ struct anomp_engine
     anomp::AudioEngine engine;
     anomp_event_callback callback = nullptr;
     void* userData = nullptr;
+    juce::StringArray outputDevices; // As found by anomp_engine_output_device_count.
 };
 
 /** Owns the storage behind the public struct's pointers. */
@@ -198,6 +199,10 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
         handle->sample_rate = tags.sampleRate;
         handle->channels = tags.channels;
         handle->bitrate_kbps = tags.bitrateKbps;
+        handle->replaygain_track_gain = tags.trackGainDb;
+        handle->replaygain_track_peak = tags.trackPeak;
+        handle->replaygain_album_gain = tags.albumGainDb;
+        handle->replaygain_album_peak = tags.albumPeak;
         handle->musicbrainz_recording_id = handle->owned.recordingId.c_str();
         handle->musicbrainz_release_id = handle->owned.releaseId.c_str();
         handle->musicbrainz_release_group_id = handle->owned.releaseGroupId.c_str();
@@ -349,13 +354,69 @@ extern "C" size_t anomp_engine_device_name (anomp_engine* engine, char* buffer, 
     return copyUtf8 (engine != nullptr ? engine->engine.currentDeviceName() : juce::String(), buffer, bufferSize);
 }
 
-extern "C" int anomp_engine_load (anomp_engine* engine, const char* path, char* error, size_t errorSize)
+extern "C" int anomp_engine_output_device_count (anomp_engine* engine)
 {
-    return withPath (engine, path, error, errorSize,
-                     [] (anomp::PlayerEngine& player, const juce::File& file) { return player.load (file); });
+    if (engine == nullptr)
+        return 0;
+    engine->outputDevices = engine->engine.outputDeviceNames();
+    return engine->outputDevices.size();
 }
 
-extern "C" int anomp_engine_set_next (anomp_engine* engine, const char* path, char* error, size_t errorSize)
+extern "C" size_t anomp_engine_output_device_name (anomp_engine* engine, int index, char* buffer, size_t bufferSize)
+{
+    const auto valid = engine != nullptr && juce::isPositiveAndBelow (index, engine->outputDevices.size());
+    return copyUtf8 (valid ? engine->outputDevices[index] : juce::String(), buffer, bufferSize);
+}
+
+extern "C" int anomp_engine_open_device (anomp_engine* engine,
+                                         const char* name,
+                                         int bufferSize,
+                                         char* error,
+                                         size_t errorSize)
+{
+    const auto message =
+        engine != nullptr
+            ? engine->engine.openDevice (name != nullptr ? juce::String::fromUTF8 (name) : juce::String(), bufferSize)
+            : juce::String ("Null engine");
+    copyUtf8 (message, error, errorSize);
+    return message.isEmpty() ? 1 : 0;
+}
+
+extern "C" int anomp_engine_device_info (anomp_engine* engine, anomp_device_info* info)
+{
+    anomp::AudioEngine::DeviceInfo device;
+    if (engine == nullptr || info == nullptr || ! engine->engine.getDeviceInfo (device))
+        return 0;
+
+    info->buffer_size = device.bufferSize;
+    info->default_buffer_size = device.defaultBufferSize;
+    info->sample_rate = device.sampleRate;
+    info->output_latency = device.outputLatencySeconds;
+    return 1;
+}
+
+extern "C" int anomp_engine_buffer_sizes (anomp_engine* engine, int* sizes, int capacity)
+{
+    anomp::AudioEngine::DeviceInfo device;
+    if (engine == nullptr || ! engine->engine.getDeviceInfo (device))
+        return 0;
+
+    for (int i = 0; sizes != nullptr && i < juce::jmin (capacity, device.bufferSizes.size()); ++i)
+        sizes[i] = device.bufferSizes[i];
+    return device.bufferSizes.size();
+}
+
+extern "C" int anomp_engine_load (anomp_engine* engine, const char* path, double gain, char* error, size_t errorSize)
+{
+    return withPath (engine, path, error, errorSize, [gain] (anomp::PlayerEngine& player, const juce::File& file)
+                     { return player.load (file, static_cast<float> (gain)); });
+}
+
+extern "C" int anomp_engine_set_next (anomp_engine* engine,
+                                      const char* path,
+                                      double gain,
+                                      char* error,
+                                      size_t errorSize)
 {
     if (engine != nullptr && path == nullptr)
     {
@@ -364,8 +425,20 @@ extern "C" int anomp_engine_set_next (anomp_engine* engine, const char* path, ch
         return 1;
     }
 
-    return withPath (engine, path, error, errorSize,
-                     [] (anomp::PlayerEngine& player, const juce::File& file) { return player.setNext (file); });
+    return withPath (engine, path, error, errorSize, [gain] (anomp::PlayerEngine& player, const juce::File& file)
+                     { return player.setNext (file, static_cast<float> (gain)); });
+}
+
+extern "C" int anomp_engine_set_track_gain (anomp_engine* engine, const char* path, double gain)
+{
+    if (engine == nullptr || path == nullptr)
+        return 0;
+
+    const auto text = juce::String::fromUTF8 (path);
+    if (! juce::File::isAbsolutePath (text))
+        return 0;
+
+    return engine->engine.player().setTrackGain (juce::File (text), static_cast<float> (gain));
 }
 
 extern "C" int anomp_engine_play (anomp_engine* engine)

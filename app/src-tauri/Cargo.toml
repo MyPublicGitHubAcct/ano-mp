@@ -49,6 +49,9 @@ apple-native-keyring-store = { version = "1.0", features = ["keychain"] }
 
 [dev-dependencies]
 tempfile = "3"
+# TypeScript types for the settings (settings::bindings), checked by a test
+# against app/src/lib/generated/settings.ts; test-only, so not in the app.
+ts-rs = { version = "12", default-features = false, features = ["serde-compat"] }
 
 # See https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

@@ -31,6 +31,7 @@ use crate::audio;
 use crate::library::browse::{self, GroupKey, RuleSpec};
 use crate::library::commands::{on_library, LibraryState};
 use crate::library::Error;
+use crate::settings::{self, PlaybackSettings};
 use model::{Player, Queue, QueueState, Repeat, Saved, TrackInfo, Uid};
 
 thread_local! {
@@ -52,33 +53,42 @@ struct SavedPlayer {
 }
 
 /// The engine as the queue drives it, opening library files through their
-/// folder's bookmark (`library::access`).
+/// folder's bookmark (`library::access`), each with its ReplayGain gain.
 pub struct EnginePlayer<'a> {
     engine: &'a mut Engine,
     library: &'a LibraryState,
+    playback: PlaybackSettings,
 }
 
 impl EnginePlayer<'_> {
     /// Resolves the track's folder and holds it open until `open` has
-    /// opened the file (see `library::access`).
+    /// opened the file (see `library::access`) with the track's gain.
     fn open(
         &mut self,
         track_id: i64,
-        open: impl FnOnce(&mut Engine, &std::path::Path) -> Result<(), String>,
+        open: impl FnOnce(&mut Engine, &std::path::Path, f64) -> Result<(), String>,
     ) -> Result<(), String> {
-        let path = self.library.track_file(track_id)?;
+        let (path, tags) = self.library.track_file(track_id)?;
         let _folder = self.library.open_folder_of(&path)?;
-        open(self.engine, &path)
+        open(self.engine, &path, self.playback.gain(&tags))
+    }
+
+    /// Gives the engine's copy of the track its gain under the current
+    /// settings.
+    fn refresh_gain(&mut self, track_id: i64) -> Result<(), String> {
+        let (path, tags) = self.library.track_file(track_id)?;
+        self.engine.set_track_gain(&path, self.playback.gain(&tags));
+        Ok(())
     }
 }
 
 impl Player for EnginePlayer<'_> {
     fn load(&mut self, track_id: i64) -> Result<(), String> {
-        self.open(track_id, |engine, path| engine.load(path))
+        self.open(track_id, |engine, path, gain| engine.load(path, gain))
     }
     fn set_next(&mut self, track_id: Option<i64>) -> Result<(), String> {
         match track_id {
-            Some(id) => self.open(id, |engine, path| engine.set_next(Some(path))),
+            Some(id) => self.open(id, |engine, path, gain| engine.set_next(Some((path, gain)))),
             None => self.engine.set_next(None),
         }
     }
@@ -160,6 +170,7 @@ where
     T: Send + 'static,
 {
     let app = app.clone();
+    let playback = settings::current(&app).playback;
     audio::on_main(&app.clone(), move || {
         let library = app
             .try_state::<LibraryState>()
@@ -171,6 +182,7 @@ where
                 let mut player = EnginePlayer {
                     engine,
                     library: &library,
+                    playback,
                 };
                 f(queue, &mut player)
             })?;
@@ -278,6 +290,20 @@ pub fn on_track_ended<R: Runtime>(app: &AppHandle<R>, advanced: bool) {
         queue.on_track_ended(player, advanced)
     }) {
         eprintln!("[queue] {error}");
+    }
+}
+
+/// The ReplayGain settings changed: gives the tracks the engine has open
+/// their new gains.
+pub fn refresh_gains<R: Runtime>(app: &AppHandle<R>) {
+    let result = run(app, |queue, player| {
+        queue
+            .engine_track_ids()
+            .into_iter()
+            .try_for_each(|track_id| player.refresh_gain(track_id))
+    });
+    if let Err(error) = result.and_then(|refreshed| refreshed) {
+        eprintln!("[queue] cannot change the gain: {error}");
     }
 }
 

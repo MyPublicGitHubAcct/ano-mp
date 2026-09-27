@@ -1,7 +1,8 @@
 <script lang="ts">
   // One node of the library under the current sort rule: its groups (album
-  // artists, albums, subfolders…) and/or its tracks, fetched a page at a
-  // time as they scroll into view. Click or Enter opens a group; double-click
+  // artists, albums, subfolders…) and/or its tracks (with the fields the
+  // display settings choose), fetched a page at a time as they scroll into
+  // view. Click or Enter opens a group; double-click
   // or Enter plays the node's tracks from a track; right-click or the ⋯
   // button offers play next and add to queue, the artist's page, and an
   // album's "Find details" and "Choose cover". Inside an artist, the header
@@ -17,14 +18,16 @@
     type Level,
     type Track,
   } from "$lib/api";
-  import { fileName, formatTime, plural } from "$lib/format";
+  import { fileName, plural } from "$lib/format";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
   import AlbumInfo from "./AlbumInfo.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
+  import TrackText from "./TrackText.svelte";
   import VirtualList from "./VirtualList.svelte";
 
   type Entry = { kind: "group"; group: Group } | { kind: "track"; track: Track };
@@ -40,6 +43,7 @@
   let request = 0;
 
   const albums = $derived(library.level === "album");
+  const showNumbers = $derived(appSettings.display.trackColumns.includes("trackNumber"));
   const rowHeight = $derived(albums ? 60 : 40);
   const title = $derived(library.crumbs.at(-1)?.name ?? library.rule?.name ?? "Library");
 
@@ -272,12 +276,8 @@
             {:else}
               {@const track = entry.track}
               <div class="entry track" class:playing={player.currentItem?.trackId === track.id}>
-                <span class="number muted">{track.trackNumber ?? ""}</span>
-                <div class="text">
-                  <span class="name">{track.title ?? fileName(track.path)}</span>
-                  <span class="muted small">{[track.artist, track.album].filter(Boolean).join(" · ")}</span>
-                </div>
-                <span class="time muted">{formatTime(track.duration)}</span>
+                {#if showNumbers}<span class="number muted">{track.trackNumber ?? ""}</span>{/if}
+                <TrackText {track} />
                 <button
                   class="icon"
                   title="More"
@@ -382,12 +382,7 @@
     flex: none;
   }
 
-  .time {
-    font-variant-numeric: tabular-nums;
-    flex: none;
-  }
-
-  .playing .name {
+  .playing :global(.name) {
     color: var(--accent);
     font-weight: 600;
   }

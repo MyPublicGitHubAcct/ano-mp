@@ -38,6 +38,10 @@ struct RawTags {
     sample_rate: c_int,
     channels: c_int,
     bitrate_kbps: c_int,
+    replaygain_track_gain: f64,
+    replaygain_track_peak: f64,
+    replaygain_album_gain: f64,
+    replaygain_album_peak: f64,
     musicbrainz_recording_id: *const c_char,
     musicbrainz_release_id: *const c_char,
     musicbrainz_release_group_id: *const c_char,
@@ -50,6 +54,15 @@ struct RawTags {
 }
 
 const ANOMP_TAGS_PICTURE: c_int = 1;
+
+#[repr(C)]
+#[derive(Default)]
+struct RawDeviceInfo {
+    buffer_size: c_int,
+    default_buffer_size: c_int,
+    sample_rate: f64,
+    output_latency: f64,
+}
 
 #[repr(C)]
 struct RawBookmark {
@@ -170,18 +183,42 @@ extern "C" {
         error_size: usize,
     ) -> c_int;
     fn anomp_engine_device_name(engine: *mut RawEngine, buffer: *mut c_char, size: usize) -> usize;
+    fn anomp_engine_output_device_count(engine: *mut RawEngine) -> c_int;
+    fn anomp_engine_output_device_name(
+        engine: *mut RawEngine,
+        index: c_int,
+        buffer: *mut c_char,
+        size: usize,
+    ) -> usize;
+    fn anomp_engine_open_device(
+        engine: *mut RawEngine,
+        name: *const c_char,
+        buffer_size: c_int,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_int;
+    fn anomp_engine_device_info(engine: *mut RawEngine, info: *mut RawDeviceInfo) -> c_int;
+    fn anomp_engine_buffer_sizes(
+        engine: *mut RawEngine,
+        sizes: *mut c_int,
+        capacity: c_int,
+    ) -> c_int;
     fn anomp_engine_load(
         engine: *mut RawEngine,
         path: *const c_char,
+        gain: f64,
         error: *mut c_char,
         error_size: usize,
     ) -> c_int;
     fn anomp_engine_set_next(
         engine: *mut RawEngine,
         path: *const c_char,
+        gain: f64,
         error: *mut c_char,
         error_size: usize,
     ) -> c_int;
+    fn anomp_engine_set_track_gain(engine: *mut RawEngine, path: *const c_char, gain: f64)
+        -> c_int;
     fn anomp_engine_play(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_pause(engine: *mut RawEngine);
     fn anomp_engine_stop(engine: *mut RawEngine);
@@ -267,6 +304,7 @@ pub struct Tags {
     pub sample_rate: u32,
     pub channels: u32,
     pub bitrate_kbps: Option<u32>,
+    pub replay_gain: ReplayGain,
     /// MusicBrainz IDs, named after what they identify (Picard's "track id"
     /// is the recording, its "album id" the release).
     pub musicbrainz_recording_id: Option<String>,
@@ -278,6 +316,18 @@ pub struct Tags {
     /// The front cover, or else the first embedded picture; only read when
     /// asked for.
     pub picture: Option<Picture>,
+}
+
+/// A file's ReplayGain tags (Opus R128 gains converted to ReplayGain's
+/// reference level).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ReplayGain {
+    /// dB.
+    pub track_gain: Option<f64>,
+    /// Linear; 1 is full scale.
+    pub track_peak: Option<f64>,
+    pub album_gain: Option<f64>,
+    pub album_peak: Option<f64>,
 }
 
 /// An embedded picture.
@@ -325,6 +375,7 @@ impl Tags {
                 .filter(|text| !text.is_empty())
         };
         let number = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
+        let finite = |value: f64| value.is_finite().then_some(value);
         Tags {
             title: text(raw.title),
             artist: text(raw.artist),
@@ -340,6 +391,12 @@ impl Tags {
             sample_rate: number(raw.sample_rate).unwrap_or(0),
             channels: number(raw.channels).unwrap_or(0),
             bitrate_kbps: number(raw.bitrate_kbps),
+            replay_gain: ReplayGain {
+                track_gain: finite(raw.replaygain_track_gain),
+                track_peak: finite(raw.replaygain_track_peak),
+                album_gain: finite(raw.replaygain_album_gain),
+                album_peak: finite(raw.replaygain_album_peak),
+            },
             musicbrainz_recording_id: text(raw.musicbrainz_recording_id),
             musicbrainz_release_id: text(raw.musicbrainz_release_id),
             musicbrainz_release_group_id: text(raw.musicbrainz_release_group_id),
@@ -559,6 +616,27 @@ impl AnalysisFrame<'_> {
     }
 }
 
+/// Largest gain `Engine::load` and friends apply (about +18 dB); the core
+/// clamps to it (`ANOMP_MAX_TRACK_GAIN`).
+pub const MAX_TRACK_GAIN: f64 = 8.0;
+
+/// The open output device's settings.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceInfo {
+    pub name: String,
+    /// Samples per block.
+    pub buffer_size: u32,
+    pub default_buffer_size: u32,
+    /// What the device offers, smallest first.
+    pub buffer_sizes: Vec<u32>,
+    /// Hz.
+    pub sample_rate: f64,
+    /// Seconds from the player to the speakers.
+    pub output_latency: f64,
+}
+
 /// Called on the core's analysis thread, never the main thread.
 type AnalysisHandler = Box<dyn FnMut(&AnalysisFrame<'_>) + Send>;
 
@@ -606,30 +684,116 @@ impl Engine {
         self.handler = handler;
     }
 
+    /// Unused: the app opens devices with `open_device`, `None` for the default.
+    #[allow(dead_code)]
     pub fn open_default_device(&mut self) -> Result<(), String> {
         let raw = self.raw.as_ptr();
         // SAFETY: `raw` is a live engine; the error buffer is supplied by `with_error`.
         with_error(|error, size| unsafe { anomp_engine_open_default_device(raw, error, size) })
     }
 
-    /// Opens `path` as the current track, clears the next track, and stops
-    /// at the start. On failure nothing changes.
-    pub fn load(&mut self, path: &Path) -> Result<(), String> {
+    /// Opens the output device `name` (`None` for the system default) with
+    /// `buffer_size` samples per block (`None`, or a size the device doesn't
+    /// offer, for its default). A name that isn't an output device fails
+    /// without touching the open device; one that fails to open may leave
+    /// none open.
+    pub fn open_device(
+        &mut self,
+        name: Option<&str>,
+        buffer_size: Option<u32>,
+    ) -> Result<(), String> {
+        let name = name
+            .map(|name| {
+                CString::new(name).map_err(|_| "Device name contains a NUL byte".to_string())
+            })
+            .transpose()?;
+        let name_ptr = name.as_ref().map_or(std::ptr::null(), |n| n.as_ptr());
+        let buffer_size = buffer_size.map_or(0, |size| c_int::try_from(size).unwrap_or(0));
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; `name_ptr` is null or points into
+        // `name`, which lives until the end of this function.
+        with_error(|error, size| unsafe {
+            anomp_engine_open_device(raw, name_ptr, buffer_size, error, size)
+        })
+    }
+
+    /// The names of the output devices there are now.
+    pub fn output_devices(&mut self) -> Vec<String> {
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine.
+        let count = unsafe { anomp_engine_output_device_count(raw) };
+        (0..count)
+            .map(|index| {
+                read_string(|buffer, size| {
+                    // SAFETY: `read_string` supplies a valid buffer and size.
+                    unsafe { anomp_engine_output_device_name(raw, index, buffer, size) }
+                })
+            })
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    /// The open device's settings, or `None` if no device is open.
+    pub fn device_info(&self) -> Option<DeviceInfo> {
+        let raw = self.raw.as_ptr();
+        let mut info = RawDeviceInfo::default();
+        // SAFETY: `raw` is a live engine and `info` valid for the call.
+        if unsafe { anomp_engine_device_info(raw, &mut info) } == 0 {
+            return None;
+        }
+        // SAFETY: a null array with capacity 0 only counts.
+        let count = unsafe { anomp_engine_buffer_sizes(raw, std::ptr::null_mut(), 0) };
+        let mut sizes = vec![0 as c_int; usize::try_from(count).unwrap_or(0)];
+        // SAFETY: `sizes` holds `count` entries.
+        let written = unsafe { anomp_engine_buffer_sizes(raw, sizes.as_mut_ptr(), count) };
+        sizes.truncate(usize::try_from(written).unwrap_or(0));
+        let positive = |value: c_int| u32::try_from(value).unwrap_or(0);
+        Some(DeviceInfo {
+            name: self.device_name().unwrap_or_default(),
+            buffer_size: positive(info.buffer_size),
+            default_buffer_size: positive(info.default_buffer_size),
+            buffer_sizes: sizes.into_iter().map(positive).filter(|&n| n > 0).collect(),
+            sample_rate: info.sample_rate,
+            output_latency: info.output_latency,
+        })
+    }
+
+    /// Opens `path` as the current track with its own linear `gain` (1
+    /// leaves it as is; see `MAX_TRACK_GAIN`), clears the next track, and
+    /// stops at the start. On failure nothing changes.
+    pub fn load(&mut self, path: &Path, gain: f64) -> Result<(), String> {
         let path = path_to_cstring(path)?;
         let raw = self.raw.as_ptr();
         // SAFETY: `raw` is a live engine and `path` a valid C string for the call.
-        with_error(|error, size| unsafe { anomp_engine_load(raw, path.as_ptr(), error, size) })
+        with_error(|error, size| unsafe {
+            anomp_engine_load(raw, path.as_ptr(), gain, error, size)
+        })
     }
 
-    /// Opens `path` as the track that follows the current one gaplessly, or
-    /// clears it with `None`. On failure the previous next track stays.
-    pub fn set_next(&mut self, path: Option<&Path>) -> Result<(), String> {
-        let path = path.map(path_to_cstring).transpose()?;
+    /// Opens `path` as the track that follows the current one gaplessly,
+    /// with its own `gain` (as for `load`), or clears it with `None`. On
+    /// failure the previous next track stays.
+    pub fn set_next(&mut self, next: Option<(&Path, f64)>) -> Result<(), String> {
+        let path = next.map(|(path, _)| path_to_cstring(path)).transpose()?;
+        let gain = next.map_or(1.0, |(_, gain)| gain);
         let path_ptr = path.as_ref().map_or(std::ptr::null(), |p| p.as_ptr());
         let raw = self.raw.as_ptr();
         // SAFETY: `raw` is a live engine; `path_ptr` is null or points into
         // `path`, which lives until the end of this function.
-        with_error(|error, size| unsafe { anomp_engine_set_next(raw, path_ptr, error, size) })
+        with_error(|error, size| unsafe { anomp_engine_set_next(raw, path_ptr, gain, error, size) })
+    }
+
+    /// Changes the gain of the current and next tracks opened from `path`,
+    /// e.g. when ReplayGain is turned on; returns how many changed. Matching
+    /// by file can't race a hand-off.
+    pub fn set_track_gain(&mut self, path: &Path, gain: f64) -> usize {
+        let Ok(path) = path_to_cstring(path) else {
+            return 0;
+        };
+        // SAFETY: `raw` is a live engine and `path` a valid C string for the call.
+        let changed =
+            unsafe { anomp_engine_set_track_gain(self.raw.as_ptr(), path.as_ptr(), gain) };
+        usize::try_from(changed).unwrap_or(0)
     }
 
     /// Starts or resumes playback. Returns false if no track is loaded.
@@ -693,18 +857,12 @@ impl Engine {
 
     /// Name of the open output device, or `None` if none is open.
     pub fn device_name(&self) -> Option<String> {
-        // SAFETY: a null buffer with size 0 only queries the length.
-        let len = unsafe { anomp_engine_device_name(self.raw.as_ptr(), std::ptr::null_mut(), 0) };
-        if len == 0 {
-            return None;
-        }
-        let mut buffer = vec![0u8; len + 1];
-        // SAFETY: the buffer and its length are valid for the call.
-        unsafe {
-            anomp_engine_device_name(self.raw.as_ptr(), buffer.as_mut_ptr().cast(), buffer.len())
-        };
-        buffer.truncate(len);
-        Some(String::from_utf8_lossy(&buffer).into_owned())
+        let raw = self.raw.as_ptr();
+        let name = read_string(|buffer, size| {
+            // SAFETY: `read_string` supplies a valid buffer and size.
+            unsafe { anomp_engine_device_name(raw, buffer, size) }
+        });
+        (!name.is_empty()).then_some(name)
     }
 
     /// Starts analysing what the player plays, calling `handler` on the
@@ -944,6 +1102,20 @@ extern "C" fn on_media_command(command: *const RawMediaCommand, user_data: *mut 
     }
 }
 
+/// Reads a string from a C API function with the buffer rules of
+/// `anomp_engine_device_name`: `call` gets a buffer and its size, and
+/// returns the full length.
+fn read_string(mut call: impl FnMut(*mut c_char, usize) -> usize) -> String {
+    let len = call(std::ptr::null_mut(), 0);
+    if len == 0 {
+        return String::new();
+    }
+    let mut buffer = vec![0u8; len + 1];
+    let written = call(buffer.as_mut_ptr().cast(), buffer.len()).min(len);
+    buffer.truncate(written);
+    String::from_utf8_lossy(&buffer).into_owned()
+}
+
 /// Calls a C API function that reports failure as a message in a caller
 /// buffer; `call` receives the buffer and its size and returns 1 on success.
 fn with_error(call: impl FnOnce(*mut c_char, usize) -> c_int) -> Result<(), String> {
@@ -1062,7 +1234,70 @@ mod tests {
         assert_eq!(tags.title, None);
         assert_eq!(tags.track_number, None);
         assert_eq!(tags.picture, None);
+        assert_eq!(tags.replay_gain, ReplayGain::default());
         assert_eq!(tags.sample_rate, 44100);
+    }
+
+    #[test]
+    fn replay_gain_is_none_unless_finite() {
+        let raw = RawTags {
+            title: std::ptr::null(),
+            artist: std::ptr::null(),
+            album: std::ptr::null(),
+            album_artist: std::ptr::null(),
+            genre: std::ptr::null(),
+            track_number: 0,
+            track_total: 0,
+            disc_number: 0,
+            disc_total: 0,
+            year: 0,
+            duration: 1.0,
+            sample_rate: 44100,
+            channels: 2,
+            bitrate_kbps: 0,
+            replaygain_track_gain: -6.5,
+            replaygain_track_peak: f64::NAN,
+            replaygain_album_gain: f64::INFINITY,
+            replaygain_album_peak: 0.5,
+            musicbrainz_recording_id: std::ptr::null(),
+            musicbrainz_release_id: std::ptr::null(),
+            musicbrainz_release_group_id: std::ptr::null(),
+            musicbrainz_release_track_id: std::ptr::null(),
+            musicbrainz_artist_id: std::ptr::null(),
+            musicbrainz_album_artist_id: std::ptr::null(),
+            picture: std::ptr::null(),
+            picture_size: 0,
+            picture_mime_type: std::ptr::null(),
+        };
+        // SAFETY: every pointer is null, which `from_raw` allows.
+        let tags = unsafe { Tags::from_raw(&raw) };
+        assert_eq!(
+            tags.replay_gain,
+            ReplayGain {
+                track_gain: Some(-6.5),
+                track_peak: None,
+                album_gain: None,
+                album_peak: Some(0.5),
+            }
+        );
+    }
+
+    #[test]
+    fn reads_strings_of_any_length() {
+        let text = "Built-in Output ♪";
+        let copy = |buffer: *mut c_char, size: usize| {
+            if size > 0 {
+                let count = text.len().min(size - 1);
+                // SAFETY: the caller's buffer holds `size` bytes.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(text.as_ptr(), buffer.cast(), count);
+                    *buffer.add(count) = 0;
+                }
+            }
+            text.len()
+        };
+        assert_eq!(read_string(copy), text);
+        assert_eq!(read_string(|_, _| 0), "");
     }
 
     #[test]

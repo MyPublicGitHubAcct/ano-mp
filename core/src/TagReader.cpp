@@ -4,7 +4,9 @@
 #include <tfilestream.h>
 #include <tpropertymap.h>
 
+#include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace anomp
 {
@@ -51,6 +53,45 @@ int year (const TagLib::PropertyMap& properties)
 {
     const auto digits = first (properties, "DATE").substring (0, 4);
     return digits.length() == 4 && digits.containsOnly ("0123456789") ? digits.getIntValue() : 0;
+}
+
+/** A ReplayGain value such as "-6.54 dB" or "0.98765", or NaN if `key` is
+    missing or isn't a number within `limit` of 0. */
+double replayGainValue (const TagLib::PropertyMap& properties, const char* key, double limit)
+{
+    const auto text = first (properties, key).upToFirstOccurrenceOf ("dB", false, true).trim();
+    const auto valid = text.isNotEmpty() && text.containsOnly ("+-.0123456789") && text.containsAnyOf ("0123456789");
+    const auto value = valid ? text.getDoubleValue() : 0.0;
+    return valid && std::abs (value) <= limit ? value : std::numeric_limits<double>::quiet_NaN();
+}
+
+/** An Opus R128 gain (a Q7.8 integer, relative to -23 LUFS) as a ReplayGain
+    gain in dB (relative to about -18 LUFS), or NaN. */
+double r128Gain (const TagLib::PropertyMap& properties, const char* key)
+{
+    const auto text = first (properties, key);
+    const auto digits = text.startsWithChar ('-') || text.startsWithChar ('+') ? text.substring (1) : text;
+    if (digits.isEmpty() || digits.length() > 5 || ! digits.containsOnly ("0123456789"))
+        return std::numeric_limits<double>::quiet_NaN();
+    return text.getIntValue() / 256.0 + 5.0;
+}
+
+void readReplayGain (const TagLib::PropertyMap& properties, TrackTags& result)
+{
+    // Gains beyond ±60 dB and peaks above 16 (+24 dBFS) are nonsense.
+    result.trackGainDb = replayGainValue (properties, "REPLAYGAIN_TRACK_GAIN", 60.0);
+    result.albumGainDb = replayGainValue (properties, "REPLAYGAIN_ALBUM_GAIN", 60.0);
+    result.trackPeak = replayGainValue (properties, "REPLAYGAIN_TRACK_PEAK", 16.0);
+    result.albumPeak = replayGainValue (properties, "REPLAYGAIN_ALBUM_PEAK", 16.0);
+
+    if (std::isnan (result.trackGainDb))
+        result.trackGainDb = r128Gain (properties, "R128_TRACK_GAIN");
+    if (std::isnan (result.albumGainDb))
+        result.albumGainDb = r128Gain (properties, "R128_ALBUM_GAIN");
+    if (result.trackPeak < 0.0)
+        result.trackPeak = std::numeric_limits<double>::quiet_NaN();
+    if (result.albumPeak < 0.0)
+        result.albumPeak = std::numeric_limits<double>::quiet_NaN();
 }
 
 juce::String sniffMimeType (const juce::MemoryBlock& data)
@@ -124,6 +165,7 @@ juce::String readTags (const juce::File& file,
             numberAndTotal (properties, "DISCNUMBER", { "DISCTOTAL", "TOTALDISCS" }, result.discNumber,
                             result.discTotal);
             result.year = year (properties);
+            readReplayGain (properties, result);
 
             result.musicBrainzRecordingId = joined (properties, "MUSICBRAINZ_TRACKID");
             result.musicBrainzReleaseId = joined (properties, "MUSICBRAINZ_ALBUMID");

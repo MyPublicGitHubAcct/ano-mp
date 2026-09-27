@@ -30,6 +30,12 @@ thread of its own while the visualizer is open, Rust streams the frames
 to the webview in a compact binary form, and eight visualizations draw
 them, including a wall of covers from the current track's year or
 artist; what remains is checking them by eye with music playing.
+Phase 6 built (2026-09-26): one Settings screen (⌘,) for the library's
+folders, the sort rules, what lists and album pages show, playback (the
+output device, its buffer size, ReplayGain) and the visualizer, plus the
+online sources; the settings have a typed schema in Rust with generated
+TypeScript types. What remains is checking device switching and
+ReplayGain by ear.
 
 ## 1. Architecture
 
@@ -89,7 +95,8 @@ Why this split:
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
-| 63 passing Catch2 tests (~2675 assertions) | `core/tests` |
+| Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
+| 67 passing Catch2 tests | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -99,8 +106,10 @@ Why this split:
 | Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions, Discogs as an opt-in second album-details source (only matches stored, the token in the keychain) | `app/src-tauri/src/metadata/` |
 | Visualizer stream: frames encoded and sent over a Tauri `Channel` while subscribed (`visualizer_*` commands); the cover wall's albums (`library_cover_wall`) | `app/src-tauri/src/visualizer.rs`, `app/src-tauri/src/library/covers.rs` |
 | Visualizer UI: eight canvas visualizations, picker, full screen, colours from the cover | `app/src/lib/visualizer/`, `app/src/lib/components/Visualizer*.svelte` |
+| Settings: typed `AppSettings` (display, playback, output, visualizer) stored under `app`, lenient reading, applied on save; TypeScript types generated with ts-rs and checked by `cargo test` | `app/src-tauri/src/settings.rs`, `app/src/lib/generated/settings.ts` |
+| Settings screen: library folders, sort rule editor, displayed fields, output device and buffer size, ReplayGain, visualizer, online sources | `app/src/lib/components/SettingsPage.svelte`, `app/src/lib/components/settings/` |
 | 5 frontend tests (`npm test`: frame decoding, key estimation) | `app/tests/` |
-| 232 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 245 passing `cargo test` tests (settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -1706,12 +1715,79 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   cancel.
 
 ### Phase 6 — Admin / settings screen
-- Settings are persisted in SQLite (or a Tauri store), with a typed schema in
-  Rust and shared TS types (generated with `specta`/`ts-rs`).
-- Sections: displayed fields and columns, enabled services, library folders
-  and rescan, sort/grouping rules, visualization choice and parameters, audio
-  output device and buffer size (desktop), and replay-gain on/off. The
-  visualizer's choice and cover-wall basis move here from `localStorage`.
+- [x] Settings are persisted in SQLite, with a typed schema in Rust and
+  shared TS types (generated with ts-rs).
+- [x] Sections: displayed fields and columns, enabled services, library
+  folders and rescan, sort/grouping rules, visualization choice and
+  parameters, audio output device and buffer size (desktop), and
+  ReplayGain. The visualizer's choice and cover-wall basis moved here from
+  `localStorage`.
+
+  Built 2026-09-26. Design:
+  - **Storage**: `settings.rs` keeps `AppSettings` (display, playback,
+    output, visualizer) as one JSON value under `app` in `settings`; the
+    sort rules (`library.sort`) and online sources (`metadata.services`)
+    keep their keys and commands. Reading keeps each stored value that
+    still parses and validates, field by field, and a list keeps the items
+    it can, so a setting written by an older or newer version costs only
+    that setting. `settings_save` validates the whole value, applies it,
+    stores it and emits `settings-changed`.
+  - **Types**: ts-rs (a dev-dependency, so not in the app) generates
+    `app/src/lib/generated/settings.ts` for every settings type (these,
+    the sort rules, the online sources, the output status); a test fails
+    when the file is stale (`ANOMP_WRITE_BINDINGS=1 cargo test bindings`
+    rewrites it). The other payloads are still hand-written in `api.ts`;
+    moving them over is mechanical (derive `TS`, list the type in
+    `bindings`).
+  - **Output device**: `AudioEngine::openDevice` opens a device by name
+    (of the platform's default type, Core Audio here) with a buffer size,
+    at the device's own rate; an unknown name fails without touching the
+    open device. The settings keep the name (null for the system default)
+    and the buffer size (null for the device's). A device that won't open
+    falls back to the default, and saving one reopens the previous and
+    saves nothing. While the chosen device is unplugged the default plays
+    (JUCE does that); when the device list shows it again, `audio.rs`
+    reopens it, once per device list if that fails.
+  - **ReplayGain**: `TagReader` reads the REPLAYGAIN_* tags in every
+    format and Opus R128 gains (converted: Q7.8 dB + 5 to ReplayGain's
+    level); migration 004 stores them and marks every file for re-reading
+    at the next scan. Each `PlayerEngine` track has its own gain, applied
+    as it's read (before the resampler, the tap and the volume), so a
+    hand-off switches gain on the exact sample; the host passes it with
+    `load`/`set_next`, and `anomp_engine_set_track_gain` changes it by
+    file, which can't race a hand-off. `PlaybackSettings::gain` picks
+    track or album gain (each falling back on the other), adds the preamp
+    (or uses the untagged gain), limits it by the matching peak if asked,
+    and clamps to +18 dB. A new setting reaches the current and armed
+    tracks at once (`queue::refresh_gains`).
+  - **Display**: track lists show the chosen fields as columns beside the
+    title when the list is at least 44rem wide, under it when narrower
+    (`TrackText.svelte`); the number leads and the length ends the row.
+    Album pages show the chosen release facts in order, and descriptions
+    and biographies can be turned off.
+  - **Visualizer**: choice and cover wall basis, the analysis frame rate
+    (a change restarts the running analysis), a sensitivity that scales
+    the bands, colours from the cover or not, and changing visualization
+    on a timer. The old `localStorage` choices are carried over once.
+  - **UI**: one Settings view (⌘, or the sidebar) with sections down the
+    side (along the top when narrow); the sidebar's Online sources item
+    opens its section. Everything saves as it changes, except a sort rule's
+    edits, which save together.
+- **Checked**: core tests for per-track gains (switching at the hand-off,
+  changes by file, clamping), ReplayGain tags in all ten formats and R128
+  conversion, the device API's null and unknown-name cases; Rust tests for
+  settings (round trip, validation, keeping the usable parts of stored
+  JSON), gain calculation, the migration, the queue's open tracks and the
+  bindings. In the app: every section renders with the real library and
+  output device, and a change is saved and read back.
+- **Not checked**: switching output devices and buffer sizes by ear,
+  unplugging and replugging the chosen device, and ReplayGain on tagged
+  music (none of the dev library's files are tagged), including a mode
+  change mid-track.
+- **Known limits**: only the default device type is listed (on Windows,
+  WASAPI but not ASIO; Phase 10); the sample rate follows the device's;
+  "System default" opens the default at the time and doesn't follow later
+  changes to it; the queue's items don't use the display columns.
 
 ### Phase 7 — Hardening (macOS)
 - CI (GitHub Actions, macOS runner): CMake build + ctest, `cargo test`,

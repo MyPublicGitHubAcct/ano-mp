@@ -1,6 +1,7 @@
 <script lang="ts">
   // An artist's page: who they are (from MusicBrainz), their biography (from
-  // Wikipedia, credited under its licence), their albums grouped by release
+  // Wikipedia, credited under its licence; unless the settings turn
+  // descriptions off), their albums grouped by release
   // type, and the albums of others they appear on. Once matched on
   // MusicBrainz, it links to their releases the library lacks
   // (DiscographyPage). Reloads when the
@@ -10,6 +11,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { library as api, metadata, queue, type ArtistAlbum, type ArtistPage } from "$lib/api";
   import { lifeSpan, plural } from "$lib/format";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { bySection } from "$lib/releases";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
@@ -77,6 +79,7 @@
 
   const mb = $derived(page?.info.musicbrainz ?? null);
   const biography = $derived(page?.info.biography ?? null);
+  const showDescriptions = $derived(appSettings.display.showDescriptions);
   const paragraphs = $derived(
     biography === null ? [] : expanded ? biography.paragraphs : biography.paragraphs.slice(0, SHORT_BIOGRAPHY),
   );
@@ -99,7 +102,7 @@
       case "review":
         return `Several artists on MusicBrainz are called ${name}, and none is clearly this one.`;
       case "matched":
-        return "No biography found.";
+        return showDescriptions ? "No biography found." : "";
     }
   }
 
@@ -222,7 +225,7 @@
   {:else}
     <section class="about" aria-labelledby="about-heading">
       <h2 id="about-heading">About</h2>
-      {#if biography}
+      {#if biography && showDescriptions}
         <div class="biography">
           {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
         </div>
@@ -234,7 +237,7 @@
           <a href={biography.url} onclick={openLink}>“{biography.title}”</a>, under
           <a href={biography.licenseUrl} onclick={openLink}>{biography.license}</a>.
         </p>
-      {:else}
+      {:else if status()}
         <p class="status muted" aria-live="polite">{status()}</p>
       {/if}
       <div class="links">

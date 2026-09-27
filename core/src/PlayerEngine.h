@@ -45,15 +45,27 @@ public:
     ~PlayerEngine() override;
 
     //==============================================================================
-    /** Replaces the current track (and clears the next one), leaving the
-        player stopped at the start. An end of the replaced track that
-        dispatchEvents() has not yet reported is dropped. Returns an empty
-        string on success, otherwise the error; on failure nothing changes. */
-    juce::String load (const juce::File& file);
+    /** Largest track gain (about +18 dB). */
+    static constexpr float maxTrackGain = 8.0f;
 
-    /** Opens `file` as the track that follows the current one gaplessly.
+    /** Replaces the current track (and clears the next one), leaving the
+        player stopped at the start. `gain` is the track's own linear gain
+        (e.g. ReplayGain), clamped to 0..maxTrackGain, applied as the track
+        is read: before the resampler, the tap and the volume. An end of the
+        replaced track that dispatchEvents() has not yet reported is dropped.
+        Returns an empty string on success, otherwise the error; on failure
+        nothing changes. */
+    juce::String load (const juce::File& file, float gain = 1.0f);
+
+    /** Opens `file` as the track that follows the current one gaplessly,
+        with its own `gain` (see load()), which takes over with it.
         Returns an empty string on success, otherwise the error. */
-    juce::String setNext (const juce::File& file);
+    juce::String setNext (const juce::File& file, float gain = 1.0f);
+
+    /** Changes the gain of the current and next tracks opened from `file`,
+        ramping from the old gain over the next read. Returns how many
+        tracks changed. */
+    int setTrackGain (const juce::File& file, float gain);
 
     void clearNext();
 
@@ -120,7 +132,7 @@ private:
     struct Track;
     class Resampler;
 
-    std::unique_ptr<Track> openTrack (const juce::File& file, juce::String& error) const;
+    std::unique_ptr<Track> openTrack (const juce::File& file, float gain, juce::String& error) const;
 
     // All below run with `lock` held.
     void renderChunk (float* const* output, int numSamples);

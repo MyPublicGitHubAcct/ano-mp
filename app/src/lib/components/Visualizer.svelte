@@ -1,12 +1,14 @@
 <script lang="ts">
   // A canvas that draws a visualization once per animation frame from the
   // core's analysis (streamed while this is mounted), with the current
-  // track's cover and the colours taken from it. Frames arrive about 60
-  // times a second outside Svelte's reactivity; the draw loop reads the
-  // latest.
+  // track's cover and, unless the settings say otherwise, the colours taken
+  // from it. Frames arrive up to 60 times a second (the settings' frame
+  // rate) outside Svelte's reactivity; the draw loop reads the latest, with
+  // the spectrum scaled by the settings' sensitivity.
   import { artUrl, subscribeToAnalysis } from "$lib/api";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { toasts } from "$lib/state/toasts.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { visualization } from "$lib/visualizer";
@@ -21,7 +23,10 @@
   let fresh = false;
   let beat = false;
   let cover: HTMLImageElement | null = null;
-  let palette: Palette = DEFAULT_PALETTE;
+  /** The cover's colours, if it has been read. */
+  let coverPalette: Palette | null = null;
+  const colorsFromCover = $derived(appSettings.visualizer.colorsFromCover);
+  const sensitivity = $derived(appSettings.visualizer.sensitivity);
 
   // The analysis stream.
   $effect(() => {
@@ -29,6 +34,9 @@
     let cancelled = false;
     subscribeToAnalysis((buffer) => {
       if (!decodeFrame(buffer, frame)) return;
+      if (sensitivity !== 1) {
+        for (let i = 0; i < frame.bands.length; i++) frame.bands[i] = Math.min(1, frame.bands[i] * sensitivity);
+      }
       fresh = true;
       beat ||= frame.beat;
     })
@@ -56,7 +64,7 @@
     const url = coverUrl;
     if (url === null) {
       cover = null;
-      palette = DEFAULT_PALETTE;
+      coverPalette = null;
       return;
     }
     let current = true;
@@ -67,7 +75,7 @@
       image.onload = () => {
         if (!current) return;
         cover = image;
-        palette = paletteFrom(image) ?? DEFAULT_PALETTE;
+        coverPalette = paletteFrom(image);
       };
       image.onerror = () => {
         if (!current) return;
@@ -75,7 +83,7 @@
         if (cors) load(false);
         else {
           cover = null;
-          palette = DEFAULT_PALETTE;
+          coverPalette = null;
         }
       };
       image.src = url;
@@ -125,7 +133,7 @@
           beat,
           track: current && { trackId: current.trackId, albumId: current.albumId },
           cover,
-          palette,
+          palette: (colorsFromCover && coverPalette) || DEFAULT_PALETTE,
           settings: { coverBasis: visualizer.coverBasis },
         };
         renderer.draw(scene);

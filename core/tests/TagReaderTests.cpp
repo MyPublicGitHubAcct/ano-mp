@@ -9,6 +9,7 @@
 #include <fileref.h>
 #include <tpropertymap.h>
 
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -293,6 +294,74 @@ TEST_CASE ("Tags round-trip through every format", "[tags]")
         CHECK (std::string_view (tags->picture_mime_type) == "image/jpeg");
     }
     CHECK (tags->sample_rate > 0);
+}
+
+TEST_CASE ("ReplayGain tags in every format", "[tags][replaygain]")
+{
+    const auto* fixture =
+        GENERATE ("wav-s16-44k.wav", "aiff-s16-44k.aiff", "flac-44k.flac", "alac-44k.m4a", "mp3-44k.mp3", "aac-44k.m4a",
+                  "aac-adts-44k.aac", "vorbis-44k.ogg", "opus-48k.opus", "wma-44k.wma");
+    INFO (fixture);
+    TempCopy copy (fixture);
+
+    {
+        TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (! ref.isNull());
+        auto properties = ref.properties();
+        properties["REPLAYGAIN_TRACK_GAIN"] = TagLib::String ("-6.54 dB");
+        properties["REPLAYGAIN_TRACK_PEAK"] = TagLib::String ("0.988");
+        properties["REPLAYGAIN_ALBUM_GAIN"] = TagLib::String ("+1.5 dB");
+        properties["REPLAYGAIN_ALBUM_PEAK"] = TagLib::String ("1.25");
+        CHECK (ref.setProperties (properties).isEmpty());
+        REQUIRE (ref.save());
+    }
+
+    const auto tags = readTags (copy.file(), 0);
+    CHECK (tags->replaygain_track_gain == Catch::Approx (-6.54));
+    CHECK (tags->replaygain_track_peak == Catch::Approx (0.988));
+    CHECK (tags->replaygain_album_gain == Catch::Approx (1.5));
+    CHECK (tags->replaygain_album_peak == Catch::Approx (1.25));
+}
+
+TEST_CASE ("ReplayGain from Opus R128 gains, and nonsense left out", "[tags][replaygain]")
+{
+    TempCopy copy ("opus-48k.opus");
+
+    const auto write = [&] (std::initializer_list<std::pair<const char*, const char*>> values)
+    {
+        TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (! ref.isNull());
+        TagLib::PropertyMap properties;
+        for (const auto& [key, value] : values)
+            properties[key] = TagLib::String (value);
+        CHECK (ref.setProperties (properties).isEmpty());
+        REQUIRE (ref.save());
+    };
+
+    // Q7.8 relative to -23 LUFS: -1792 / 256 = -7 dB, +5 dB to ReplayGain's level.
+    write ({ { "R128_TRACK_GAIN", "-1792" }, { "R128_ALBUM_GAIN", "+512" } });
+    auto tags = readTags (copy.file(), 0);
+    CHECK (tags->replaygain_track_gain == Catch::Approx (-2.0));
+    CHECK (tags->replaygain_album_gain == Catch::Approx (7.0));
+    CHECK (std::isnan (tags->replaygain_track_peak));
+    CHECK (std::isnan (tags->replaygain_album_peak));
+
+    // ReplayGain tags win over R128 ones; unreadable values are left out.
+    write ({ { "R128_TRACK_GAIN", "-1792" },
+             { "REPLAYGAIN_TRACK_GAIN", "-3 dB" },
+             { "R128_ALBUM_GAIN", "-" },
+             { "REPLAYGAIN_TRACK_PEAK", "-0.5" },
+             { "REPLAYGAIN_ALBUM_PEAK", "loud" } });
+    tags = readTags (copy.file(), 0);
+    CHECK (tags->replaygain_track_gain == Catch::Approx (-3.0));
+    CHECK (std::isnan (tags->replaygain_album_gain));
+    CHECK (std::isnan (tags->replaygain_track_peak));
+    CHECK (std::isnan (tags->replaygain_album_peak));
+
+    // None at all.
+    const auto untagged = readTags (fixtureFile ("flac-44k.flac"), 0);
+    CHECK (std::isnan (untagged->replaygain_track_gain));
+    CHECK (std::isnan (untagged->replaygain_album_gain));
 }
 
 TEST_CASE ("Tag reading errors", "[tags][c-api]")

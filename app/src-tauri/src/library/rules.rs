@@ -16,6 +16,7 @@ const SETTINGS_KEY: &str = "library.sort";
 
 /// What tracks are grouped by at one level of a rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Level {
     AlbumArtist,
@@ -34,6 +35,7 @@ pub enum Level {
 /// What tracks are sorted by within a group, in order of precedence. Ties
 /// left after all of them fall back on the track id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum TrackKey {
     AlbumArtist,
@@ -50,6 +52,7 @@ pub enum TrackKey {
 
 /// How albums are ordered where a rule lists them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum AlbumOrder {
     /// By title (ignoring leading articles), then album artist.
@@ -61,6 +64,7 @@ pub enum AlbumOrder {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SortRule {
     /// Unique among the rules.
@@ -116,6 +120,7 @@ fn all_different<T: Eq + std::hash::Hash>(items: &[T]) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SortSettings {
     /// Never empty.

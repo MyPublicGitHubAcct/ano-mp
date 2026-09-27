@@ -2,8 +2,10 @@
   // The visualizer: a visualization filling the main area (or, full screen,
   // the window), with the picker, the cover wall's year/artist switch, full
   // screen and close along the top, and the track along the bottom. The
-  // controls fade out while the pointer rests.
+  // controls fade out while the pointer rests. If the settings say so, it
+  // moves on to the next visualization every so often.
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { VISUALIZATIONS, visualization } from "$lib/visualizer";
@@ -25,6 +27,15 @@
 
   $effect(() => {
     wake();
+    return () => clearTimeout(timer);
+  });
+
+  // The next visualization every `cycleSeconds`, counted from the last change.
+  $effect(() => {
+    const seconds = appSettings.visualizer.cycleSeconds;
+    void visualizer.choice;
+    if (seconds <= 0) return;
+    const timer = setTimeout(() => visualizer.cycle(1), seconds * 1000);
     return () => clearTimeout(timer);
   });
 

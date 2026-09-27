@@ -275,6 +275,64 @@ TEST_CASE ("PlayerEngine volume scales the output", "[player]")
     CHECK (maxError (h.output, blockSize, expected, blockSize, 3 * blockSize, 0.5f) < 1e-7f);
 }
 
+TEST_CASE ("PlayerEngine applies each track's gain, switching at the hand-off", "[player][gapless][gain]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+
+    Harness h (44100.0, readAhead);
+    auto first = decode ("flac-44k.flac");
+    auto second = decode ("wav-s16-44k.wav");
+    for (size_t ch = 0; ch < 2; ++ch)
+    {
+        for (auto& sample : first[ch])
+            sample *= 0.5f;
+        for (auto& sample : second[ch])
+            sample *= 2.0f;
+    }
+    const auto expected = concat (first, second);
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac"), 0.5f).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav"), 2.0f).isEmpty());
+    REQUIRE (h.player.play());
+    h.takeEvents();
+    const auto stoppedAt = h.renderUntilStopped (200000);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced", "ended", stateStopped });
+    CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) < 1e-6f);
+}
+
+TEST_CASE ("PlayerEngine changes a track's gain by its file", "[player][gain]")
+{
+    Harness h (44100.0, false);
+    const auto expected = decode ("flac-44k.flac");
+    const auto file = fixtureFile ("flac-44k.flac");
+
+    REQUIRE (h.player.load (file).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+    REQUIRE (h.player.play());
+    h.render (2 * blockSize);
+    CHECK (maxError (h.output, blockSize, expected, blockSize, blockSize) < 1e-7f);
+
+    // Only the track opened from that file changes; one block ramps to it.
+    CHECK (h.player.setTrackGain (fixtureFile ("mp3-44k.mp3"), 0.25f) == 0);
+    CHECK (h.player.setTrackGain (file, 0.25f) == 1);
+    h.render (3 * blockSize);
+    CHECK (maxError (h.output, 3 * blockSize, expected, 3 * blockSize, 2 * blockSize, 0.25f) < 1e-7f);
+
+    // Gains are clamped: NaN and negatives to silence, large ones to the maximum.
+    CHECK (h.player.setTrackGain (file, 100.0f) == 1);
+    h.render (2 * blockSize);
+    CHECK (maxError (h.output, 6 * blockSize, expected, 6 * blockSize, blockSize, anomp::PlayerEngine::maxTrackGain)
+           < 1e-5f);
+    CHECK (h.player.setTrackGain (file, std::numeric_limits<float>::quiet_NaN()) == 1);
+    h.render (2 * blockSize);
+    CHECK (peak (h.output, 8 * blockSize, 9 * blockSize) == 0.0f);
+
+    // The same file as current and next changes both.
+    REQUIRE (h.player.setNext (file).isEmpty());
+    CHECK (h.player.setTrackGain (file, 1.0f) == 2);
+}
+
 TEST_CASE ("PlayerEngine seeks to the exact sample", "[player]")
 {
     const auto readAhead = GENERATE (false, true);

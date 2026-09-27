@@ -1,6 +1,6 @@
 <script lang="ts">
   // The player: sidebar | browser (or search results, an artist's page, the
-  // releases of theirs the library lacks, or the online sources) | queue, with the now-playing bar along the bottom.
+  // releases of theirs the library lacks, or the settings) | queue, with the now-playing bar along the bottom.
   // The now-playing view takes the queue's place with the cover. Below 900 px
   // the queue becomes an overlay; below 640 px the sidebar becomes a drawer.
   import ArtistPage from "$lib/components/ArtistPage.svelte";
@@ -13,13 +13,14 @@
   import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
   import QueuePanel from "$lib/components/QueuePanel.svelte";
   import SearchResults from "$lib/components/SearchResults.svelte";
-  import ServicesPanel from "$lib/components/ServicesPanel.svelte";
+  import SettingsPage from "$lib/components/SettingsPage.svelte";
   import VisualizerView from "$lib/components/VisualizerView.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
   import { library } from "$lib/state/library.svelte";
   import { metadataStatus } from "$lib/state/metadata.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
 
@@ -30,11 +31,13 @@
     const stopLibrary = library.connect();
     const stopMetadata = metadataStatus.connect();
     const stopVisualizer = visualizer.connect();
+    const stopSettings = appSettings.connect();
     return () => {
       stopPlayer();
       stopLibrary();
       stopMetadata();
       stopVisualizer();
+      stopSettings();
     };
   });
 
@@ -52,6 +55,12 @@
       event.preventDefault();
       ui.searchInput?.focus();
       ui.searchInput?.select();
+      return;
+    }
+    if (command && event.key === ",") {
+      event.preventDefault();
+      library.query = "";
+      ui.showSettings();
       return;
     }
     // A dialog handles its own keys (Escape closes it).
@@ -108,8 +117,8 @@
       <ArtistPage />
     {:else if ui.discographyInMain}
       <DiscographyPage />
-    {:else if ui.servicesInMain}
-      <ServicesPanel />
+    {:else if ui.settingsInMain}
+      <SettingsPage />
     {:else}
       <BrowsePane />
     {/if}

@@ -20,6 +20,7 @@ use crate::library::art::{self, CoverCandidate};
 use crate::library::commands::{on_library, LibraryState};
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataSettings {
     /// Every source this version knows, in the order the UI lists them.

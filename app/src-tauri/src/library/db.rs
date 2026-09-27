@@ -13,6 +13,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_initial.sql"),
     include_str!("migrations/002_search.sql"),
     include_str!("migrations/003_metadata.sql"),
+    include_str!("migrations/004_replay_gain.sql"),
 ];
 
 /// Opens (creating if needed) the library database at `path` and brings its
@@ -165,6 +166,27 @@ mod tests {
             .unwrap();
         let error = open(&path).unwrap_err().to_string();
         assert!(error.contains("newer version"), "{error}");
+    }
+
+    #[test]
+    fn replay_gain_migration_marks_every_file_for_reading() {
+        let mut conn = open_in_memory_at(3).unwrap();
+        conn.execute_batch(
+            "INSERT INTO folders (path, added_at) VALUES ('/Music', 0);
+             INSERT INTO tracks (folder_id, relative_path, file_size, file_mtime_ns, duration,
+                                 sample_rate, channels, scanned_at)
+             VALUES (1, 'a.flac', 10, 1234, 1.0, 44100, 2, 0);",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let (mtime, gain): (i64, Option<f64>) = conn
+            .query_row(
+                "SELECT file_mtime_ns, replaygain_track_gain FROM tracks",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((mtime, gain), (-1, None));
     }
 
     #[test]

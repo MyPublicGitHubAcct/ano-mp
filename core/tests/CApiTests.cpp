@@ -38,9 +38,9 @@ TEST_CASE ("C API engine functions accept a null engine", "[c-api][engine]")
     CHECK (anomp_engine_play_test_tone (nullptr, 440.0) == 0);
     anomp_engine_stop_test_tone (nullptr);
 
-    CHECK (anomp_engine_load (nullptr, "/a.flac", buffer, sizeof (buffer)) == 0);
+    CHECK (anomp_engine_load (nullptr, "/a.flac", 1.0, buffer, sizeof (buffer)) == 0);
     CHECK (std::string_view (buffer) == "Null engine");
-    CHECK (anomp_engine_set_next (nullptr, nullptr, buffer, sizeof (buffer)) == 0);
+    CHECK (anomp_engine_set_next (nullptr, nullptr, 1.0, buffer, sizeof (buffer)) == 0);
     CHECK (anomp_engine_play (nullptr) == 0);
     anomp_engine_pause (nullptr);
     anomp_engine_stop (nullptr);
@@ -51,6 +51,15 @@ TEST_CASE ("C API engine functions accept a null engine", "[c-api][engine]")
     CHECK (anomp_engine_position (nullptr) == 0.0);
     CHECK (anomp_engine_duration (nullptr) == 0.0);
     CHECK (anomp_engine_advance_count (nullptr) == 0);
+    CHECK (anomp_engine_set_track_gain (nullptr, "/a.flac", 0.5) == 0);
+
+    CHECK (anomp_engine_output_device_count (nullptr) == 0);
+    CHECK (anomp_engine_output_device_name (nullptr, 0, buffer, sizeof (buffer)) == 0);
+    CHECK (anomp_engine_open_device (nullptr, nullptr, 0, buffer, sizeof (buffer)) == 0);
+    CHECK (std::string_view (buffer) == "Null engine");
+    anomp_device_info info {};
+    CHECK (anomp_engine_device_info (nullptr, &info) == 0);
+    CHECK (anomp_engine_buffer_sizes (nullptr, nullptr, 0) == 0);
 }
 
 TEST_CASE ("C API engine without an open device", "[c-api][engine]")
@@ -61,6 +70,24 @@ TEST_CASE ("C API engine without an open device", "[c-api][engine]")
     CHECK (anomp_engine_device_name (engine, nullptr, 0) == 0);
     CHECK (anomp_engine_play_test_tone (engine, 440.0) == 0);
     anomp_engine_stop_test_tone (engine);
+
+    anomp_device_info info { 1, 2, 3.0, 4.0 };
+    CHECK (anomp_engine_device_info (engine, &info) == 0);
+    CHECK (info.buffer_size == 1); // Left alone.
+    int sizes[4] = {};
+    CHECK (anomp_engine_buffer_sizes (engine, sizes, 4) == 0);
+
+    // Listing devices doesn't open one, and an unknown name fails without opening one.
+    const auto count = anomp_engine_output_device_count (engine);
+    CHECK (count >= 0);
+    char name[256] = "unchanged";
+    CHECK (anomp_engine_output_device_name (engine, count, name, sizeof (name)) == 0);
+    CHECK (std::string_view (name).empty());
+    CHECK (anomp_engine_output_device_name (engine, -1, nullptr, 0) == 0);
+    char error[256] = "";
+    CHECK (anomp_engine_open_device (engine, "No such device \xe2\x99\xaa", 0, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "No output device called \"No such device \xe2\x99\xaa\"");
+    CHECK (anomp_engine_device_name (engine, nullptr, 0) == 0);
 
     anomp_engine_destroy (engine);
 }
@@ -74,22 +101,27 @@ TEST_CASE ("C API player commands without an open device", "[c-api][engine]")
     CHECK (anomp_engine_state (engine) == ANOMP_STATE_EMPTY);
     CHECK (anomp_engine_play (engine) == 0);
 
-    CHECK (anomp_engine_load (engine, nullptr, error, sizeof (error)) == 0);
+    CHECK (anomp_engine_load (engine, nullptr, 1.0, error, sizeof (error)) == 0);
     CHECK (std::string_view (error) == "Null path");
-    CHECK (anomp_engine_load (engine, "fixtures/flac-44k.flac", error, sizeof (error)) == 0);
+    CHECK (anomp_engine_load (engine, "fixtures/flac-44k.flac", 1.0, error, sizeof (error)) == 0);
     CHECK (std::string_view (error).starts_with ("Path is not absolute"));
-    CHECK (anomp_engine_load (engine, fixturePath ("missing.flac").c_str(), error, sizeof (error)) == 0);
+    CHECK (anomp_engine_load (engine, fixturePath ("missing.flac").c_str(), 1.0, error, sizeof (error)) == 0);
     CHECK (std::string_view (error).starts_with ("File not found"));
     CHECK (anomp_engine_state (engine) == ANOMP_STATE_EMPTY);
 
-    REQUIRE (anomp_engine_load (engine, fixturePath ("flac-44k.flac").c_str(), error, sizeof (error)) == 1);
+    REQUIRE (anomp_engine_load (engine, fixturePath ("flac-44k.flac").c_str(), 1.0, error, sizeof (error)) == 1);
     CHECK (std::string_view (error).empty());
     CHECK (anomp_engine_state (engine) == ANOMP_STATE_STOPPED);
     CHECK (anomp_engine_duration (engine) == Catch::Approx (22371 / 44100.0));
     CHECK (anomp_engine_advance_count (engine) == 0);
 
-    CHECK (anomp_engine_set_next (engine, fixturePath ("wav-s16-44k.wav").c_str(), error, sizeof (error)) == 1);
-    CHECK (anomp_engine_set_next (engine, nullptr, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_set_next (engine, fixturePath ("wav-s16-44k.wav").c_str(), 0.5, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_set_next (engine, nullptr, 1.0, error, sizeof (error)) == 1);
+
+    CHECK (anomp_engine_set_track_gain (engine, fixturePath ("flac-44k.flac").c_str(), 0.5) == 1);
+    CHECK (anomp_engine_set_track_gain (engine, fixturePath ("wav-s16-44k.wav").c_str(), 0.5) == 0);
+    CHECK (anomp_engine_set_track_gain (engine, "flac-44k.flac", 0.5) == 0);
+    CHECK (anomp_engine_set_track_gain (engine, nullptr, 0.5) == 0);
 
     CHECK (anomp_engine_seek (engine, 0.25) == 1);
     CHECK (anomp_engine_position (engine) == Catch::Approx (0.25));
