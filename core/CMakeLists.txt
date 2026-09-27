@@ -1,11 +1,13 @@
 # anomp_core: the JUCE-based audio engine, exposed to the Tauri (Rust) layer
 # through the plain C API in include/anomp/anomp.h.
 add_library(anomp_core STATIC
+    src/AnalysisThread.cpp
     src/AudioEngine.cpp
     src/FFmpegAudioFormat.cpp
     src/FormatRegistry.cpp
     src/MediaControls.cpp
     src/PlayerEngine.cpp
+    src/SpectrumAnalyser.cpp
     src/TagReader.cpp
     src/anomp_c_api.cpp)
 
@@ -43,6 +45,8 @@ target_link_libraries(anomp_core
     PUBLIC
         juce::juce_audio_formats
         juce::juce_audio_devices
+        # FFT for the visualizer's analysis (SpectrumAnalyser).
+        juce::juce_dsp
     PRIVATE
         FFmpeg::avformat
         TagLib::tag

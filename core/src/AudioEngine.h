@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AnalysisThread.h"
 #include "FormatRegistry.h"
 #include "PlayerEngine.h"
 
@@ -42,6 +43,16 @@ public:
     /** Called on the main thread when the device list or the open device changes. */
     std::function<void()> onDeviceChanged;
 
+    /** Starts analysing what the player plays for the visualizer, calling
+        `callback` on an analysis thread (see AnalysisThread), or stops with
+        a null callback. Replaces a running analysis, first waiting for its
+        callback to return, so once this returns the old callback is never
+        called again. */
+    void setAnalysisCallback (AnalysisThread::Callback callback,
+                              int numBands,
+                              int waveformLength,
+                              double framesPerSecond);
+
 private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
@@ -55,6 +66,7 @@ private:
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer sourcePlayer;
     juce::ToneGeneratorAudioSource tone;
+    std::unique_ptr<AnalysisThread> analysis; // Reads the player's tap; stopped first.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioEngine)
 };

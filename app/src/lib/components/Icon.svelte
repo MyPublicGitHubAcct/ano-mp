@@ -28,6 +28,7 @@
     search: "M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z",
     cloud: "M7 19a5 5 0 0 1-.7-9.95A6.5 6.5 0 0 1 18.8 10 4.5 4.5 0 0 1 18 19z",
     check: "M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L20.1 8.4 18.7 7z",
+    wave: "M3 10h2v4H3zm4-4h2v12H7zm4-3h2v18h-2zm4 5h2v8h-2zm4 2h2v4h-2z",
   } as const;
 
   export type IconName = keyof typeof paths;

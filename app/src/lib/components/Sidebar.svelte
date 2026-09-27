@@ -41,6 +41,18 @@
     <li>
       <button
         class="item"
+        class:active={ui.visualizerInMain && library.query === ""}
+        onclick={() => {
+          library.query = "";
+          ui.showVisualizer();
+        }}
+      >
+        <span class="with-icon"><Icon name="wave" size="1.1rem" /> Visualizer</span>
+      </button>
+    </li>
+    <li>
+      <button
+        class="item"
         class:active={ui.queueInMain && library.query === ""}
         onclick={() => {
           library.query = "";

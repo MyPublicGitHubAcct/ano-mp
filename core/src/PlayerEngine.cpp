@@ -338,6 +338,7 @@ void PlayerEngine::prepareToPlay (int samplesPerBlockExpected, double sampleRate
 {
     const juce::ScopedLock sl (lock);
     deviceRate = sampleRate;
+    tap.setSampleRate (sampleRate);
 
     const auto chunkSize = juce::jmax (samplesPerBlockExpected, 256);
     scratch.setSize (outputChannels, chunkSize);
@@ -384,6 +385,13 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
 
     for (int ch = outputChannels; ch < out.getNumChannels(); ++ch)
         out.clear (ch, info.startSample, info.numSamples);
+
+    if (playing)
+    {
+        const auto* left = out.getReadPointer (0, info.startSample);
+        const auto* right = out.getNumChannels() > 1 ? out.getReadPointer (1, info.startSample) : left;
+        tap.push (left, right, info.numSamples);
+    }
 
     // Pause and play fade over one block; volume changes ramp the same way.
     const auto targetGain = playing ? volume.load() : 0.0f;

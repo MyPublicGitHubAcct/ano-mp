@@ -25,6 +25,11 @@ sources table; Discogs ships, off by default, as a second album-details
 source that keeps only its matches (details fetched when shown, the
 user's token in the keychain), and the rest are excluded or wait for
 written consent. What remains of Phase 4 is checking its exit in the app.
+Phase 5 built (2026-09-26): the core analyses what the player plays on a
+thread of its own while the visualizer is open, Rust streams the frames
+to the webview in a compact binary form, and eight visualizations draw
+them, including a wall of covers from the current track's year or
+artist; what remains is checking them by eye with music playing.
 
 ## 1. Architecture
 
@@ -83,7 +88,8 @@ Why this split:
 | TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
-| 52 passing Catch2 tests (~2090 assertions) | `core/tests` |
+| Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
+| 63 passing Catch2 tests (~2675 assertions) | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -91,7 +97,10 @@ Why this split:
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
 | Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions, Discogs as an opt-in second album-details source (only matches stored, the token in the keychain) | `app/src-tauri/src/metadata/` |
-| 222 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| Visualizer stream: frames encoded and sent over a Tauri `Channel` while subscribed (`visualizer_*` commands); the cover wall's albums (`library_cover_wall`) | `app/src-tauri/src/visualizer.rs`, `app/src-tauri/src/library/covers.rs` |
+| Visualizer UI: eight canvas visualizations, picker, full screen, colours from the cover | `app/src/lib/visualizer/`, `app/src/lib/components/Visualizer*.svelte` |
+| 5 frontend tests (`npm test`: frame decoding, key estimation) | `app/tests/` |
+| 232 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -1623,19 +1632,86 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   app behaves the same with the network off, showing what it cached.
 
 ### Phase 5 — Visualization
-- Core: lock-free FIFO tap on the output; FFT (`juce::dsp::FFT`) → log-spaced
+- [x] Core: lock-free FIFO tap on the output; FFT (`juce::dsp::FFT`) → log-spaced
   bins plus peak/RMS levels, published at ~30–60 Hz via callback.
-- Rust forwards the frames over a Tauri `Channel` (binary/compact payload,
+- [x] Rust forwards the frames over a Tauri `Channel` (binary/compact payload,
   not per-frame JSON if it proves costly).
-- Frontend: canvas/WebGL renderers (spectrum bars, oscilloscope, VU) that
+- [x] Frontend: canvas/WebGL renderers (spectrum bars, oscilloscope, VU) that
   users pick in preferences.
+- [x] A cover wall (covers of albums from the current track's year or
+  by its artist), and unusual visualizations: ridgelines, the circle of
+  fifths with a key estimate, a vectorscope, a kaleidoscope of the cover.
+
+  Built 2026-09-26. Design:
+  - **The tap** (`SignalTap`) is a ring of relaxed atomic floats (32768
+    samples a channel) that `PlayerEngine` writes each block while
+    playing, before the volume (so turning it down doesn't shrink the
+    visuals) and not while paused or stopped. Readers copy the latest
+    window without taking it; a race costs at worst a glitched frame.
+  - **Analysis** (`SpectrumAnalyser`) takes the latest 8192 samples: bands
+    from a 2048-point FFT (about 43 ms, so the bars keep up), each band's
+    loudest bin on a 70 dB scale tilted +3 dB an octave around 1 kHz;
+    chroma (12 pitch classes, 80 Hz–5 kHz) from an 8192-point FFT for
+    semitone resolution; peak and RMS over 2048 samples; a waveform
+    starting at the latest rising zero crossing (a triggered scope); and
+    beats, a bass (below 250 Hz) flux 1.5 deviations above its last
+    1.5 s, at most 4 a second.
+  - **`AnalysisThread`** runs only while a callback is set, at a steady
+    rate (60 fps from Rust), and only when the tap has new samples. After
+    150 ms without any it sends one silent frame and then nothing, so a
+    paused player costs no IPC. The callback is on that thread, never the
+    main one; the C API says it mustn't call the engine.
+  - **Rust** (`visualizer.rs`) starts the analysis for the first
+    subscriber and stops it after the last, on the main thread, never
+    holding the subscriber lock while it waits for the analysis thread.
+    Frames are 2.2 KB of binary (`encode` documents the layout: bands
+    and chroma as bytes, the waveform as 16-bit), which go through
+    Tauri's fetch path (over 1 KB). A page load drops all subscribers,
+    since a reloaded page's channels accept frames that nobody reads.
+  - **The cover wall** asks `library_cover_wall` for albums from the
+    track's album year, widening by up to ±5 years until there are 16,
+    or by the track's performer (their albums and those they appear on).
+    The UI loads each cover as a 256 px thumbnail, leaves out albums
+    without one, maps tiles to bands by distance from the centre (bass in
+    the middle) and flips tiles on beats.
+  - Every visualization takes its colours from the current cover
+    (`palette.ts`); the art scheme now sends
+    `Access-Control-Allow-Origin: *` so a canvas may read a cover's
+    pixels. The VU meters put 0 VU at -12 dBFS RMS, not the studio's -18,
+    which mastered music would pin.
+  - The choice of visualization and the wall's year/artist switch are per
+    viewer (`localStorage`) until Phase 6 moves them into the settings.
+    Full screen (F, or double-click) is the window's, and shows the
+    visualizer alone; V cycles the visualizations.
+- **Checked**: the core's analysis on synthetic signals (tones at three
+  rates, a chord's pitch classes, levels, the trigger, kicks found and a
+  steady tone not, the thread's frames and single silent frame, the
+  player's pre-volume tap, the C API); the frame encoding against a byte
+  string the frontend test decodes too; subscribers; cover walls. The app
+  starts and shows the Visualizer view's entries. Each visualization was
+  rendered in headless WebKit from synthetic frames and SVG covers and
+  looked at, which found and fixed a clipped ring, an overshooting
+  vectorscope, seams in the kaleidoscope and the VU calibration.
+- **Not checked**: anything with real music in the app: that frames
+  arrive through the `Channel` at 60 fps without stutter, how
+  responsive and how busy each visualization feels, the beat detector
+  on real music, full screen, and the CPU cost (the canvas at Retina
+  size, the wall's hundred tiles). WebKitGTK and WebView2 (Phases 9–10)
+  may need a lighter mode.
+- **Known limits**: the bands' lowest octave has less than a bin each
+  at 2048 points and is interpolated; the key estimate needs about ten
+  seconds of music and trusts tonal music; the analysis sees what the
+  player renders, a few blocks ahead of the speakers (output latency),
+  and the bands lag about 20 ms behind the latest sample, which roughly
+  cancel.
 
 ### Phase 6 — Admin / settings screen
 - Settings are persisted in SQLite (or a Tauri store), with a typed schema in
   Rust and shared TS types (generated with `specta`/`ts-rs`).
 - Sections: displayed fields and columns, enabled services, library folders
   and rescan, sort/grouping rules, visualization choice and parameters, audio
-  output device and buffer size (desktop), and replay-gain on/off.
+  output device and buffer size (desktop), and replay-gain on/off. The
+  visualizer's choice and cover-wall basis move here from `localStorage`.
 
 ### Phase 7 — Hardening (macOS)
 - CI (GitHub Actions, macOS runner): CMake build + ctest, `cargo test`,

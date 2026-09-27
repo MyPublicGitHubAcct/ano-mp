@@ -14,12 +14,14 @@
   import QueuePanel from "$lib/components/QueuePanel.svelte";
   import SearchResults from "$lib/components/SearchResults.svelte";
   import ServicesPanel from "$lib/components/ServicesPanel.svelte";
+  import VisualizerView from "$lib/components/VisualizerView.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
   import { library } from "$lib/state/library.svelte";
   import { metadataStatus } from "$lib/state/metadata.svelte";
   import { player } from "$lib/state/player.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
+  import { visualizer } from "$lib/state/visualizer.svelte";
 
   const SEEK_STEP = 5;
 
@@ -27,10 +29,12 @@
     const stopPlayer = player.connect();
     const stopLibrary = library.connect();
     const stopMetadata = metadataStatus.connect();
+    const stopVisualizer = visualizer.connect();
     return () => {
       stopPlayer();
       stopLibrary();
       stopMetadata();
+      stopVisualizer();
     };
   });
 
@@ -52,8 +56,15 @@
     }
     // A dialog handles its own keys (Escape closes it).
     if (typing(event.target) || event.altKey || ui.menu || ui.dialog) return;
-    if (event.key === "Escape" && ui.canGoBack && library.query.trim() === "") {
+    const visualizing = ui.visualizerInMain && library.query.trim() === "";
+    if (event.key === "Escape" && visualizing && visualizer.fullscreen) {
+      visualizer.setFullscreen(false);
+    } else if (event.key === "Escape" && ui.canGoBack && library.query.trim() === "") {
       ui.back();
+    } else if (visualizing && !command && event.key.toLowerCase() === "v") {
+      visualizer.cycle(event.shiftKey ? -1 : 1);
+    } else if (visualizing && !command && event.key.toLowerCase() === "f") {
+      visualizer.setFullscreen(!visualizer.fullscreen);
     } else if (event.key === " " && !command) {
       event.preventDefault();
       player.toggle();
@@ -73,7 +84,12 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:queue-open={ui.queueOpen} class:sidebar-open={ui.sidebarOpen}>
+<div
+  class="app"
+  class:queue-open={ui.queueOpen}
+  class:sidebar-open={ui.sidebarOpen}
+  class:immersive={ui.visualizerInMain && visualizer.fullscreen && library.query.trim() === ""}
+>
   <aside class="sidebar"><Sidebar /></aside>
   {#if ui.sidebarOpen}
     <button class="scrim" aria-label="Close the library" onclick={() => (ui.sidebarOpen = false)}></button>
@@ -86,6 +102,8 @@
       <QueuePanel main />
     {:else if ui.nowPlayingInMain}
       <NowPlaying />
+    {:else if ui.visualizerInMain}
+      <VisualizerView />
     {:else if ui.artistInMain}
       <ArtistPage />
     {:else if ui.discographyInMain}
@@ -153,6 +171,17 @@
   }
 
   .scrim {
+    display: none;
+  }
+
+  /* Full screen: the visualizer alone. */
+  .app.immersive {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "main";
+  }
+
+  .app.immersive > :not(.main) {
     display: none;
   }
 

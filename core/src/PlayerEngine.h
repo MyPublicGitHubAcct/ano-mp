@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SignalTap.h"
+
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <atomic>
@@ -78,6 +80,11 @@ public:
     float getVolume() const noexcept { return volume.load(); }
     bool hasNext() const;
 
+    /** What the player renders while playing, before the volume is applied
+        (so the visualizer doesn't shrink with it), at the device rate.
+        Nothing is pushed while paused or stopped. */
+    const SignalTap& getTap() const noexcept { return tap; }
+
     /** How many times a next track has taken over since the engine was
         created. onTrackEnded reports a hand-off at the next dispatchEvents();
         this counts it as it happens, so a host about to change the next
@@ -131,6 +138,7 @@ private:
     std::unique_ptr<Track> retired; // Handed off on the audio thread, freed in dispatchEvents().
     std::unique_ptr<Resampler> resampler;
     juce::AudioBuffer<float> scratch;
+    SignalTap tap;
     double deviceRate = 0.0;
     float appliedGain = 0.0f; // Gain at the end of the previous block.
     int pendingAdvances = 0;

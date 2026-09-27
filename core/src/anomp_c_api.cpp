@@ -421,6 +421,63 @@ extern "C" int64_t anomp_engine_advance_count (anomp_engine* engine)
     return engine != nullptr ? engine->engine.player().getAdvanceCount() : 0;
 }
 
+extern "C" int anomp_engine_set_analysis_callback (anomp_engine* engine,
+                                                   const anomp_analysis_config* config,
+                                                   anomp_analysis_callback callback,
+                                                   void* userData)
+{
+    if (engine == nullptr)
+        return 0;
+
+    if (callback == nullptr)
+    {
+        engine->engine.setAnalysisCallback (nullptr, 0, 0, 0.0);
+        return 1;
+    }
+
+    using Analyser = anomp::SpectrumAnalyser;
+    using Thread = anomp::AnalysisThread;
+
+    if (config == nullptr || config->band_count < Analyser::minBands || config->band_count > Analyser::maxBands
+        || config->waveform_length < Analyser::minWaveformLength
+        || config->waveform_length > Analyser::maxWaveformLength
+        || ! (config->frames_per_second >= Thread::minFramesPerSecond
+              && config->frames_per_second <= Thread::maxFramesPerSecond))
+        return 0;
+
+    try
+    {
+        engine->engine.setAnalysisCallback (
+            [callback, userData] (const anomp::AnalysisFrame& frame)
+            {
+                const anomp_analysis_frame event {
+                    frame.silent ? 1 : 0,
+                    static_cast<int> (frame.bands.size()),
+                    frame.bands.data(),
+                    frame.lowestHz,
+                    frame.highestHz,
+                    frame.chroma.data(),
+                    frame.peak[0],
+                    frame.peak[1],
+                    frame.rms[0],
+                    frame.rms[1],
+                    static_cast<int> (frame.left.size()),
+                    frame.left.data(),
+                    frame.right.data(),
+                    frame.onset,
+                    frame.beat ? 1 : 0,
+                };
+                callback (&event, userData);
+            },
+            config->band_count, config->waveform_length, config->frames_per_second);
+        return 1;
+    }
+    catch (...)
+    {
+        return 0;
+    }
+}
+
 extern "C" int anomp_media_controls_supported (void) { return anomp::MediaControls::isSupported() ? 1 : 0; }
 
 extern "C" anomp_media_controls* anomp_media_controls_create (anomp_media_command_callback callback, void* userData)

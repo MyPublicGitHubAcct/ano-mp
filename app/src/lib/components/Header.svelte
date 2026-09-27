@@ -17,6 +17,8 @@
       <span class="current">Queue</span>
     {:else if ui.nowPlayingInMain}
       <span class="current">Now Playing</span>
+    {:else if ui.visualizerInMain}
+      <span class="current">Visualizer</span>
     {:else if ui.artistInMain}
       <button class="crumb" onclick={() => ui.back()}>Back</button>
       <span class="separator" aria-hidden="true">›</span>

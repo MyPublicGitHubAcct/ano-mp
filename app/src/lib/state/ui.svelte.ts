@@ -4,7 +4,7 @@ import type { ArtistInfo } from "$lib/api";
 
 export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
 
-export type MainView = "library" | "queue" | "nowPlaying" | "artist" | "discography" | "services";
+export type MainView = "library" | "queue" | "nowPlaying" | "visualizer" | "artist" | "discography" | "services";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
 
@@ -15,7 +15,7 @@ export type Dialog =
   | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo };
 
 /** Views that `back` returns from. */
-const OPENED: MainView[] = ["nowPlaying", "artist", "discography", "services"];
+const OPENED: MainView[] = ["nowPlaying", "visualizer", "artist", "discography", "services"];
 
 class Ui {
   /** What the main area shows when not searching: the library browser, the
@@ -28,7 +28,7 @@ class Ui {
       current track. */
   queueOpen = $state(true);
   dialog = $state.raw<Dialog | null>(null);
-  /** The views the now-playing, artist, discography and services views were opened from, for `back`. */
+  /** The views the now-playing, visualizer, artist, discography and services views were opened from, for `back`. */
   #history: { view: MainView; artist: ArtistRef | null }[] = [];
 
   get queueInMain() {
@@ -37,6 +37,10 @@ class Ui {
 
   get nowPlayingInMain() {
     return this.mainView === "nowPlaying";
+  }
+
+  get visualizerInMain() {
+    return this.mainView === "visualizer";
   }
 
   get artistInMain() {
@@ -71,6 +75,11 @@ class Ui {
     this.#open("nowPlaying");
   }
 
+  /** Shows the visualizer in the main area. */
+  showVisualizer() {
+    this.#open("visualizer");
+  }
+
   /** Shows an artist's page in the main area. */
   showArtist(artist: ArtistRef) {
     if (this.mainView === "artist" && this.artist?.id === artist.id) return;
@@ -90,7 +99,7 @@ class Ui {
     this.#open("services");
   }
 
-  /** Back to the view the now-playing, artist, discography or services view was opened from. */
+  /** Back to the view the now-playing, visualizer, artist, discography or services view was opened from. */
   back() {
     if (!this.canGoBack) return;
     const previous = this.#history.pop();

@@ -85,6 +85,34 @@ struct RawMediaTrack {
 type RawMediaCommandCallback =
     extern "C" fn(command: *const RawMediaCommand, user_data: *mut c_void);
 
+#[repr(C)]
+struct RawAnalysisConfig {
+    band_count: c_int,
+    waveform_length: c_int,
+    frames_per_second: f64,
+}
+
+#[repr(C)]
+struct RawAnalysisFrame {
+    silent: c_int,
+    band_count: c_int,
+    bands: *const f32,
+    lowest_hz: f32,
+    highest_hz: f32,
+    chroma: *const f32,
+    peak_left: f32,
+    peak_right: f32,
+    rms_left: f32,
+    rms_right: f32,
+    waveform_length: c_int,
+    waveform_left: *const f32,
+    waveform_right: *const f32,
+    onset: f32,
+    beat: c_int,
+}
+
+type RawAnalysisCallback = extern "C" fn(frame: *const RawAnalysisFrame, user_data: *mut c_void);
+
 const ANOMP_MEDIA_PLAY: c_int = 1;
 const ANOMP_MEDIA_PAUSE: c_int = 2;
 const ANOMP_MEDIA_TOGGLE: c_int = 3;
@@ -164,6 +192,12 @@ extern "C" {
     fn anomp_engine_position(engine: *mut RawEngine) -> f64;
     fn anomp_engine_duration(engine: *mut RawEngine) -> f64;
     fn anomp_engine_advance_count(engine: *mut RawEngine) -> i64;
+    fn anomp_engine_set_analysis_callback(
+        engine: *mut RawEngine,
+        config: *const RawAnalysisConfig,
+        callback: Option<RawAnalysisCallback>,
+        user_data: *mut c_void,
+    ) -> c_int;
     fn anomp_media_controls_supported() -> c_int;
     fn anomp_media_controls_create(
         callback: Option<RawMediaCommandCallback>,
@@ -461,6 +495,73 @@ pub enum Event {
 
 type EventHandler = Box<dyn FnMut(Event)>;
 
+/// How the core analyses the audio for the visualizer; the core refuses
+/// values outside the ranges in `anomp.h`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnalysisConfig {
+    /// 4..=256 spectrum bands.
+    pub bands: u32,
+    /// 16..=2048 samples per channel.
+    pub waveform_length: u32,
+    /// 1..=120.
+    pub frames_per_second: f64,
+}
+
+/// One analysis of what the player plays (`anomp_analysis_frame`), borrowed
+/// from the core for the duration of the handler call.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnalysisFrame<'a> {
+    /// No audio has played for a moment; everything else is zero.
+    pub silent: bool,
+    /// 0..=1, log-spaced from `lowest_hz` to `highest_hz`, low first.
+    pub bands: &'a [f32],
+    pub lowest_hz: f32,
+    pub highest_hz: f32,
+    /// Energy per pitch class, C first, the strongest 1.
+    pub chroma: [f32; 12],
+    /// Linear, left and right.
+    pub peak: [f32; 2],
+    pub rms: [f32; 2],
+    /// The latest samples per channel, from a rising zero crossing.
+    pub left: &'a [f32],
+    pub right: &'a [f32],
+    /// How much louder the spectrum got since the previous frame, 0..=1.
+    pub onset: f32,
+    pub beat: bool,
+}
+
+impl AnalysisFrame<'_> {
+    /// # Safety
+    /// `raw`'s pointers must be null or valid for their lengths (the
+    /// chroma for 12 values) while the result is used.
+    unsafe fn from_raw(raw: &RawAnalysisFrame) -> AnalysisFrame<'_> {
+        let slice = |data: *const f32, len: c_int| match usize::try_from(len) {
+            Ok(len) if !data.is_null() && len > 0 => std::slice::from_raw_parts(data, len),
+            _ => &[],
+        };
+        let mut chroma = [0.0; 12];
+        if !raw.chroma.is_null() {
+            chroma.copy_from_slice(std::slice::from_raw_parts(raw.chroma, 12));
+        }
+        AnalysisFrame {
+            silent: raw.silent != 0,
+            bands: slice(raw.bands, raw.band_count),
+            lowest_hz: raw.lowest_hz,
+            highest_hz: raw.highest_hz,
+            chroma,
+            peak: [raw.peak_left, raw.peak_right],
+            rms: [raw.rms_left, raw.rms_right],
+            left: slice(raw.waveform_left, raw.waveform_length),
+            right: slice(raw.waveform_right, raw.waveform_length),
+            onset: raw.onset,
+            beat: raw.beat != 0,
+        }
+    }
+}
+
+/// Called on the core's analysis thread, never the main thread.
+type AnalysisHandler = Box<dyn FnMut(&AnalysisFrame<'_>) + Send>;
+
 /// The audio engine. Must be created, used and dropped on the main thread,
 /// which must be running the platform run loop; `!Send` and `!Sync` enforce
 /// that it stays on the thread that created it.
@@ -471,6 +572,8 @@ pub struct Engine {
     // handler may call engine functions, which borrow `self` mutably while
     // it runs.
     handler: *mut EventHandler,
+    // Double-boxed like `handler`; null while no analysis runs.
+    analysis: *mut AnalysisHandler,
     _not_send: PhantomData<*mut ()>,
 }
 
@@ -481,6 +584,7 @@ impl Engine {
         Some(Engine {
             raw,
             handler: std::ptr::null_mut(),
+            analysis: std::ptr::null_mut(),
             _not_send: PhantomData,
         })
     }
@@ -603,6 +707,67 @@ impl Engine {
         Some(String::from_utf8_lossy(&buffer).into_owned())
     }
 
+    /// Starts analysing what the player plays, calling `handler` on the
+    /// core's analysis thread (never this one) about `frames_per_second`
+    /// times a second while audio plays, and once more with a silent frame
+    /// when it stops. Replaces a running analysis. Returns false, leaving any
+    /// running analysis as it was, if the core refuses `config`.
+    pub fn start_analysis(
+        &mut self,
+        config: AnalysisConfig,
+        handler: impl FnMut(&AnalysisFrame<'_>) + Send + 'static,
+    ) -> bool {
+        let raw_config = RawAnalysisConfig {
+            band_count: c_int::try_from(config.bands).unwrap_or(c_int::MAX),
+            waveform_length: c_int::try_from(config.waveform_length).unwrap_or(c_int::MAX),
+            frames_per_second: config.frames_per_second,
+        };
+        let handler: *mut AnalysisHandler = Box::into_raw(Box::new(Box::new(handler)));
+        // SAFETY: `raw` is a live engine; `handler` stays valid while
+        // registered. The core has stopped the previous analysis, waiting for
+        // its callback, before this returns, so the previous handler can be
+        // freed; if the call fails, the new one was never registered.
+        unsafe {
+            let started = anomp_engine_set_analysis_callback(
+                self.raw.as_ptr(),
+                &raw_config,
+                Some(on_analysis),
+                handler.cast(),
+            ) != 0;
+            if !started {
+                drop(Box::from_raw(handler));
+                return false;
+            }
+            if !self.analysis.is_null() {
+                drop(Box::from_raw(self.analysis));
+            }
+        }
+        self.analysis = handler;
+        true
+    }
+
+    /// Stops the analysis, if any, waiting for a handler call in progress.
+    pub fn stop_analysis(&mut self) {
+        // SAFETY: `raw` is a live engine; after the call the core no longer
+        // uses the handler, so it can be freed.
+        unsafe {
+            anomp_engine_set_analysis_callback(
+                self.raw.as_ptr(),
+                std::ptr::null(),
+                None,
+                std::ptr::null_mut(),
+            );
+            if !self.analysis.is_null() {
+                drop(Box::from_raw(self.analysis));
+            }
+        }
+        self.analysis = std::ptr::null_mut();
+    }
+
+    pub fn is_analysing(&self) -> bool {
+        !self.analysis.is_null()
+    }
+
     pub fn play_test_tone(&mut self, frequency_hz: f64) -> bool {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_play_test_tone(self.raw.as_ptr(), frequency_hz) != 0 }
@@ -616,6 +781,8 @@ impl Engine {
 
 impl Drop for Engine {
     fn drop(&mut self) {
+        // Frees the analysis handler once the analysis thread has stopped.
+        self.stop_analysis();
         // SAFETY: `raw` is live and is never used again; the callback is
         // cleared first so the core cannot call into a freed handler, and
         // then nothing else holds `handler`.
@@ -817,6 +984,19 @@ extern "C" fn on_event(event: *const RawEvent, user_data: *mut c_void) {
     handler(event);
 }
 
+extern "C" fn on_analysis(frame: *const RawAnalysisFrame, user_data: *mut c_void) {
+    // SAFETY: the core passes a valid frame for the duration of the call, and
+    // `user_data` is the handler registered by `start_analysis`, which only
+    // this (the analysis) thread calls.
+    let (frame, handler) = unsafe {
+        (
+            AnalysisFrame::from_raw(&*frame),
+            &mut *user_data.cast::<AnalysisHandler>(),
+        )
+    };
+    handler(&frame);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -967,5 +1147,66 @@ mod tests {
             MediaControls::supported(),
             cfg!(any(target_os = "macos", target_os = "ios"))
         );
+    }
+
+    #[test]
+    fn raw_analysis_frames_become_slices() {
+        let bands = [0.1f32, 0.5, 0.9];
+        let chroma: [f32; 12] = std::array::from_fn(|i| i as f32 / 11.0);
+        let left = [0.25f32, -0.25];
+        let right = [0.5f32, -0.5];
+        let raw = RawAnalysisFrame {
+            silent: 0,
+            band_count: 3,
+            bands: bands.as_ptr(),
+            lowest_hz: 30.0,
+            highest_hz: 16000.0,
+            chroma: chroma.as_ptr(),
+            peak_left: 0.8,
+            peak_right: 0.7,
+            rms_left: 0.4,
+            rms_right: 0.3,
+            waveform_length: 2,
+            waveform_left: left.as_ptr(),
+            waveform_right: right.as_ptr(),
+            onset: 0.2,
+            beat: 1,
+        };
+        // SAFETY: every pointer is valid for its length for the whole test.
+        let frame = unsafe { AnalysisFrame::from_raw(&raw) };
+        assert_eq!(
+            frame,
+            AnalysisFrame {
+                silent: false,
+                bands: &bands,
+                lowest_hz: 30.0,
+                highest_hz: 16000.0,
+                chroma,
+                peak: [0.8, 0.7],
+                rms: [0.4, 0.3],
+                left: &left,
+                right: &right,
+                onset: 0.2,
+                beat: true,
+            }
+        );
+
+        // Null pointers and bad lengths read as empty.
+        let empty = RawAnalysisFrame {
+            silent: 1,
+            band_count: -1,
+            bands: bands.as_ptr(),
+            chroma: std::ptr::null(),
+            waveform_length: 2,
+            waveform_left: std::ptr::null(),
+            waveform_right: std::ptr::null(),
+            beat: 0,
+            ..raw
+        };
+        // SAFETY: as above; null pointers are never read.
+        let frame = unsafe { AnalysisFrame::from_raw(&empty) };
+        assert!(frame.silent && !frame.beat);
+        assert!(frame.bands.is_empty() && frame.left.is_empty() && frame.right.is_empty());
+        assert_eq!(frame.chroma, [0.0; 12]);
     }
 }

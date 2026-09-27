@@ -21,6 +21,15 @@
     }
   }
 
+  function toggleVisualizer() {
+    if (ui.visualizerInMain && library.query === "") {
+      ui.back();
+    } else {
+      library.query = "";
+      ui.showVisualizer();
+    }
+  }
+
   function toggleMute() {
     if (player.volume > 0) {
       lastVolume = player.volume;
@@ -103,6 +112,14 @@
       oninput={(event) => player.setVolume(Number(event.currentTarget.value))}
       onkeydown={(event) => event.stopPropagation()}
     />
+    <button
+      class="icon toggle"
+      class:on={ui.visualizerInMain}
+      title={ui.visualizerInMain ? "Close the visualizer" : "Show the visualizer"}
+      aria-label="Visualizer"
+      aria-pressed={ui.visualizerInMain}
+      onclick={toggleVisualizer}><Icon name="wave" /></button
+    >
     <button
       class="icon toggle"
       class:on={ui.queueInMain || (ui.queueOpen && !ui.nowPlayingInMain)}

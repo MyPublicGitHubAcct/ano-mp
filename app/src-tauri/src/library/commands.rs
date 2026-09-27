@@ -16,6 +16,7 @@ use super::access::{self, OpenFolder};
 use super::art::ArtCache;
 use super::artists::{self, ArtistPage};
 use super::browse::{self, BrowsePage, GroupKey};
+use super::covers::{self, CoverBasis, CoverWall};
 use super::rules::{self, SortRule, SortSettings};
 use super::scanner::{self, ScanFailure, ScanReport};
 use super::search::{self, SearchKind, SearchResults};
@@ -195,6 +196,20 @@ pub async fn library_artist<R: Runtime>(
     .await?;
     crate::metadata::worker::viewing_artist(&app, artist_id);
     Ok(page)
+}
+
+/// The albums the visualizer's cover wall shows around track `track_id`;
+/// see `library::covers`. Null if the track has no year (or artist).
+#[tauri::command]
+pub async fn library_cover_wall<R: Runtime>(
+    app: AppHandle<R>,
+    track_id: i64,
+    basis: CoverBasis,
+) -> Result<Option<CoverWall>, String> {
+    on_library(&app, move |library| {
+        covers::cover_wall(&library.conn(), track_id, basis)
+    })
+    .await
 }
 
 /// The sort rules and ignored articles.

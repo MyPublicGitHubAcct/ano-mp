@@ -18,6 +18,7 @@ AudioEngine::AudioEngine()
 
 AudioEngine::~AudioEngine()
 {
+    analysis.reset();
     stopTimer();
     deviceManager.removeChangeListener (this);
     sourcePlayer.setSource (nullptr);
@@ -64,6 +65,17 @@ bool AudioEngine::playTestTone (double frequencyHz)
 }
 
 void AudioEngine::stopTestTone() { sourcePlayer.setSource (&playerEngine); }
+
+void AudioEngine::setAnalysisCallback (AnalysisThread::Callback callback,
+                                       int numBands,
+                                       int waveformLength,
+                                       double framesPerSecond)
+{
+    analysis.reset();
+    if (callback)
+        analysis = std::make_unique<AnalysisThread> (playerEngine.getTap(), numBands, waveformLength, framesPerSecond,
+                                                     std::move (callback));
+}
 
 void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
 {

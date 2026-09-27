@@ -594,6 +594,10 @@ pub fn respond(
         Ok(Some(art)) => Response::builder()
             .header(header::CONTENT_TYPE, art.mime_type.as_str())
             .header(header::CACHE_CONTROL, cache_control)
+            // The page is on another origin (tauri://), and the visualizer
+            // reads a cover's pixels for its colours, which a canvas allows
+            // only for images loaded with CORS.
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .body(art.data.clone())
             .expect("a valid response"),
         Ok(None) => status(StatusCode::NOT_FOUND),
@@ -919,6 +923,11 @@ mod tests {
             (StatusCode::OK, b"png bytes".to_vec())
         );
         assert_eq!(get(&format!("{album}/embedded"), None).0, StatusCode::OK);
+        // Readable by the visualizer's canvas.
+        assert_eq!(
+            respond(Some(&library), &album, None).headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "*"
+        );
         for escape in ["..%2F..%2Fetc%2Fhosts.png", "%2Fetc%2Fcover.jpg"] {
             assert_eq!(
                 get(&format!("{album}/folder"), Some(&format!("ref={escape}"))).0,

@@ -4,7 +4,9 @@ mod library;
 mod media;
 mod metadata;
 mod queue;
+mod visualizer;
 
+use tauri::webview::PageLoadEvent;
 use tauri::Manager;
 
 #[tauri::command]
@@ -17,6 +19,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(visualizer::VisualizerState::default())
+        .on_page_load(|webview, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                visualizer::page_loading(webview.app_handle());
+            }
+        })
         .setup(|app| {
             if let Err(error) = audio::init(app.handle()) {
                 eprintln!("[audio] {error}");
@@ -71,6 +79,7 @@ pub fn run() {
             library::commands::library_browse,
             library::commands::library_search,
             library::commands::library_artist,
+            library::commands::library_cover_wall,
             library::commands::library_sort_settings,
             library::commands::library_save_sort_rule,
             library::commands::library_remove_sort_rule,
@@ -113,7 +122,9 @@ pub fn run() {
             queue::queue_toggle,
             queue::queue_seek,
             queue::queue_set_shuffle,
-            queue::queue_set_repeat
+            queue::queue_set_repeat,
+            visualizer::visualizer_subscribe,
+            visualizer::visualizer_unsubscribe
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

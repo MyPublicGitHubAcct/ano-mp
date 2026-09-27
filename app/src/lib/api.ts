@@ -2,7 +2,7 @@
 // them. Hand-written to match the Rust structs (serde camelCase); PLAN.md
 // Phase 6 generates them with specta/ts-rs.
 
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ---- Library ----------------------------------------------------------------
@@ -165,6 +165,19 @@ export type ArtistPage = {
   info: ArtistInfo;
 };
 
+/** Which albums the visualizer's cover wall shows around the current track. */
+export type CoverBasis = "year" | "artist";
+export type CoverAlbum = { id: number; title: string; artist: string | null; year: number | null };
+export type CoverWall = {
+  basis: CoverBasis;
+  /** "1997", "1995–1999", or the artist's name. */
+  label: string;
+  years: [number, number] | null;
+  artistId: number | null;
+  /** The current track's album first, if it has one. */
+  albums: CoverAlbum[];
+};
+
 export const library = {
   folders: () => invoke<Folder[]>("library_folders"),
   addFolder: (path: string) => invoke<Folder>("library_add_folder", { path }),
@@ -180,6 +193,9 @@ export const library = {
     invoke<SearchResults>("library_search", { query, kinds: kinds ?? null, offset, limit }),
   /** Also asks for the artist to be looked up if needed; `metadata-changed` names them when done. */
   artist: (artistId: number) => invoke<ArtistPage>("library_artist", { artistId }),
+  /** Null if the track has no year (or artist). */
+  coverWall: (trackId: number, basis: CoverBasis) =>
+    invoke<CoverWall | null>("library_cover_wall", { trackId, basis }),
 };
 
 /** The URL of an album's (or an album-less track's) art. `generation`
@@ -512,6 +528,20 @@ export const queue = {
   setShuffle: (shuffle: boolean) => invoke<void>("queue_set_shuffle", { shuffle }),
   setRepeat: (repeat: Repeat) => invoke<void>("queue_set_repeat", { repeat }),
 };
+
+// ---- Visualizer ------------------------------------------------------------------
+
+/** Streams the core's analysis (binary frames; `visualizer/frame.ts` decodes them) to `onFrame` until the
+    returned function is called. The core analyses only while something is subscribed. */
+export async function subscribeToAnalysis(onFrame: (frame: ArrayBuffer) => void): Promise<() => Promise<void>> {
+  const channel = new Channel<ArrayBuffer>();
+  channel.onmessage = onFrame;
+  const id = await invoke<number>("visualizer_subscribe", { channel });
+  return async () => {
+    channel.onmessage = () => {};
+    await invoke<void>("visualizer_unsubscribe", { id });
+  };
+}
 
 // ---- Dev page -------------------------------------------------------------------
 

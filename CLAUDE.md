@@ -49,6 +49,14 @@ runs on the worker through `worker::call`. 4.8 settled which sources ship
 opt-in second album-details source (`metadata/discogs.rs`) behind
 `albums::ReleaseSource`, which MusicBrainz implements too. What remains of
 Phase 4 is checking its exit in the app.
+Phase 5 (visualization) is built: `PlayerEngine` writes what it plays to a
+`SignalTap`, `AnalysisThread` runs `SpectrumAnalyser` over it while a
+callback is set (`anomp_engine_set_analysis_callback`, called on that
+thread, never the main one), `app/src-tauri/src/visualizer.rs` streams
+binary frames over a Tauri `Channel` while the UI subscribes, and the
+renderers in `app/src/lib/visualizer/` draw them (the cover wall's albums
+come from `library/covers.rs`). What remains is checking them by eye with
+music playing.
 `docs/` is empty.
 
 ## Build & test
@@ -100,6 +108,7 @@ The app (run from `app/`; `npm install` once):
 ```sh
 npm run tauri dev            # run the desktop app
 npm run check                # svelte-check / TypeScript
+npm test                     # frontend unit tests (node --test tests/, plain .mjs)
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
 ../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```

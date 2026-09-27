@@ -1,4 +1,5 @@
 add_executable(anomp_core_tests
+    AnalysisTests.cpp
     FormatRegistryTests.cpp
     CApiTests.cpp
     FFmpegAudioFormatTests.cpp

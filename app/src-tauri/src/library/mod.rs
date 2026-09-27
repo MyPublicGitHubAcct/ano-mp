@@ -10,6 +10,7 @@ pub mod artists;
 mod bench;
 pub mod browse;
 pub mod commands;
+pub mod covers;
 pub mod db;
 pub mod genres;
 pub mod rules;

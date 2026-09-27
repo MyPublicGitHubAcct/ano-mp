@@ -33,9 +33,14 @@
       <h1 class="muted">Not playing</h1>
       <p class="muted">Double-click a track in the library to play it.</p>
     {/if}
-    <button class="back link" onclick={() => ui.back()}>
-      <Icon name="close" size="1rem" /> Close
-    </button>
+    <div class="actions">
+      <button class="link" onclick={() => ui.showVisualizer()}>
+        <Icon name="wave" size="1rem" /> Visualizer
+      </button>
+      <button class="link" onclick={() => ui.back()}>
+        <Icon name="close" size="1rem" /> Close
+      </button>
+    </div>
   </div>
   <div class="cover">
     <div class="frame">
@@ -104,9 +109,14 @@
     margin-top: 0.75rem;
   }
 
-  .back {
+  .actions {
     align-self: flex-start;
     margin-top: 1.25rem;
+    display: flex;
+    gap: 1.25rem;
+  }
+
+  .actions .link {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -154,7 +164,7 @@
       align-items: center;
     }
 
-    .back {
+    .actions {
       align-self: center;
     }
   }

@@ -240,6 +240,75 @@ double anomp_engine_duration(anomp_engine* engine);
     engine. */
 int64_t anomp_engine_advance_count(anomp_engine* engine);
 
+/* ---- Analysis ------------------------------------------------------------
+   What the player plays, analysed for a visualizer: a spectrum, pitch
+   classes, levels, the waveform and beats. It is measured before the
+   volume, so turning the volume down doesn't shrink it. Analysis runs on a
+   thread of its own only while a callback is set, and frames are delivered
+   on that thread: the callback must not call any engine function. */
+
+/** How to analyse. Values outside the documented ranges are refused. */
+typedef struct anomp_analysis_config
+{
+    int band_count;           /**< 4..256 spectrum bands. */
+    int waveform_length;      /**< 16..2048 samples per channel. */
+    double frames_per_second; /**< 1..120. */
+} anomp_analysis_config;
+
+/** One analysis. Pointers are valid only for the duration of the callback. */
+typedef struct anomp_analysis_frame
+{
+    /** 1 once no audio has played for 150 ms (paused, stopped, no device):
+        every value below is 0. Sent once; the next frame comes when audio
+        plays again. */
+    int silent;
+
+    /** `band_count` values, 0..1, log-spaced from `lowest_hz` to
+        `highest_hz`, low first: each band's loudest component, 0 at
+        -70 dB and 1 at full scale, tilted up 3 dB per octave around 1 kHz
+        so typical music looks level. */
+    int band_count;
+    const float* bands;
+    float lowest_hz;
+    float highest_hz;
+
+    /** 12 values, 0..1: energy per pitch class, C first, the strongest 1. */
+    const float* chroma;
+
+    /** Linear 0..1 per channel over about the last 40 ms. */
+    float peak_left;
+    float peak_right;
+    float rms_left;
+    float rms_right;
+
+    /** The latest `waveform_length` samples per channel (-1..1), starting
+        at a rising zero crossing where there is one near, so a periodic
+        wave draws in place. */
+    int waveform_length;
+    const float* waveform_left;
+    const float* waveform_right;
+
+    /** How much louder the spectrum got since the previous frame, 0..1. */
+    float onset;
+    /** 1 when this frame starts a beat: a jump in the bass well above the
+        last second and a half, at most 4 a second. */
+    int beat;
+} anomp_analysis_frame;
+
+typedef void (*anomp_analysis_callback)(const anomp_analysis_frame* frame, void* user_data);
+
+/** Starts analysing with `config`, calling `callback` on the analysis
+    thread about `frames_per_second` times a second while audio plays, or
+    stops with a null callback (`config` is then ignored and may be null).
+    Replaces any analysis running, waiting for its callback to return, so
+    once this returns the previous callback and `user_data` are no longer
+    used. Returns 1 on success, 0 for a null engine or an invalid config
+    (the running analysis, if any, is left as it was). Main thread only. */
+int anomp_engine_set_analysis_callback(anomp_engine* engine,
+                                       const anomp_analysis_config* config,
+                                       anomp_analysis_callback callback,
+                                       void* user_data);
+
 /* ---- Media controls ------------------------------------------------------
    The OS's media controls: what is playing, shown by the system (Control
    Center and the menu-bar Now Playing widget on macOS, the lock screen on
