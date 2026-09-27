@@ -1,9 +1,12 @@
 mod anomp;
 mod audio;
+mod features;
+mod history;
 mod library;
 mod media;
 mod metadata;
 mod queue;
+mod remote;
 mod settings;
 mod visualizer;
 
@@ -47,6 +50,13 @@ pub fn run() {
             if let Err(error) = metadata::worker::init(app.handle()) {
                 eprintln!("[metadata] {error}");
             }
+            if let Err(error) = library::analysis::init(app.handle()) {
+                eprintln!("[analysis] {error}");
+            }
+            if let Err(error) = history::init(app.handle()) {
+                eprintln!("[history] {error}");
+            }
+            remote::init(app.handle());
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(
@@ -132,6 +142,32 @@ pub fn run() {
             queue::queue_seek,
             queue::queue_set_shuffle,
             queue::queue_set_repeat,
+            queue::queue_start_radio,
+            queue::queue_stop_radio,
+            queue::player_set_loop,
+            audio::player_set_tempo,
+            audio::player_practice,
+            audio::player_signal_path,
+            features::analysis_status,
+            features::analysis_waveform,
+            features::analysis_track,
+            features::history_recent,
+            features::history_top,
+            features::history_highlights,
+            features::history_clear,
+            features::history_listenbrainz_status,
+            features::history_set_listenbrainz_token,
+            features::library_recently_added,
+            features::library_on_this_day,
+            features::library_more_in_genre,
+            features::library_health,
+            features::library_lyrics,
+            features::prefs_get,
+            features::prefs_set_track,
+            features::prefs_set_album,
+            remote::remote_status,
+            remote::remote_new_code,
+            remote::remote_forget,
             visualizer::visualizer_subscribe,
             visualizer::visualizer_unsubscribe
         ])
@@ -139,6 +175,8 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                remote::shutdown(app);
+                library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
                 queue::shutdown(app);
                 media::shutdown();

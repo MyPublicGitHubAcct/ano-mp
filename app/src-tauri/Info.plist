@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by Tauri. -->
+<plist version="1.0">
+<dict>
+    <!-- Shown when macOS asks whether the app may use the local network:
+         the LAN remote (PLAN.md O14), only while it is turned on. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>ano-mp uses your local network for its remote control, so a phone on the same network can control playback. It is used only while Remote control is on in Settings.</string>
+</dict>
+</plist>

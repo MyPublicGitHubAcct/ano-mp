@@ -20,6 +20,7 @@ FetchContent_MakeAvailable(JUCE)
 
 include(cmake/FFmpeg.cmake)
 include(cmake/TagLib.cmake)
+include(cmake/Signalsmith.cmake)
 
 add_subdirectory(core)
 

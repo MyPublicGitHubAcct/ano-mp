@@ -119,6 +119,32 @@ bool AudioEngine::getDeviceInfo (DeviceInfo& info) const
     return true;
 }
 
+bool AudioEngine::setSampleRate (double sampleRate)
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    if (device == nullptr || ! (sampleRate > 0.0))
+        return false;
+    if (juce::approximatelyEqual (device->getCurrentSampleRate(), sampleRate))
+        return true;
+    if (! device->getAvailableSampleRates().contains (sampleRate))
+        return false;
+
+    auto setup = deviceManager.getAudioDeviceSetup();
+    setup.sampleRate = sampleRate;
+    if (deviceManager.setAudioDeviceSetup (setup, true).isNotEmpty())
+        return false;
+    connectPlayer();
+
+    device = deviceManager.getCurrentAudioDevice();
+    return device != nullptr && juce::approximatelyEqual (device->getCurrentSampleRate(), sampleRate);
+}
+
+OutputRoute::Headphones AudioEngine::outputIsHeadphones() const
+{
+    auto* device = deviceManager.getCurrentAudioDevice();
+    return device != nullptr ? OutputRoute::headphones (device->getName()) : OutputRoute::Headphones::unknown;
+}
+
 juce::String AudioEngine::currentDeviceName() const
 {
     if (auto* device = deviceManager.getCurrentAudioDevice())

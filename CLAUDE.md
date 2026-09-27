@@ -63,6 +63,21 @@ Phase 6 (settings) is built: `settings.rs` holds the typed `AppSettings`
 its sections in `components/settings/`, and reads the settings through
 `state/settings.svelte.ts` (loaded in `routes/+layout.ts` before any page
 renders). What remains is checking device switching and ReplayGain by ear.
+Phase 6b (the optional features O1–O19, `PLAN.md` §4.6) is built: each
+has a switch in Settings › Features (`FeatureSettings` in `settings.rs`,
+`FeaturesOptions.svelte`), and code that honours it. The core analyses
+files (`FileAnalyser`, `anomp_analyse_file`: loudness, peaks, silences,
+spectrum cutoff, waveform), plays parts of files with an optional skip
+region (`anomp_track_options`), loops A–B, stretches tempo and pitch
+(Signalsmith Stretch, `cmake/Signalsmith.cmake`), crossfeeds
+(`Crossfeed`) and reports the signal path. Rust has the analysis worker
+(`library/analysis.rs`), how each track is played (`library/playback.rs`:
+parts, trims, gain offsets, computed ReplayGain, silence skips), cue
+sheets (`library/cue.rs`), discovery, health, lyrics and preferences
+(`library/{discover,health,lyrics,prefs}.rs`), the listening history and
+ListenBrainz (`history/`), library radio (`queue/radio.rs`) and the LAN
+remote (`remote/`). The UI adds the Home, History and Library health
+views. What remains is checking them in the app (Phase 6b's exit).
 `docs/` is empty.
 
 ## Build & test
@@ -96,7 +111,9 @@ you regenerate. The script rewrites every fixture, but only the Vorbis ones chan
 them. The two `tagged-*` fixtures carry the tags `TagReaderTests.cpp` expects.
 
 JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt`, TagLib
-2.3.2 (tarball + SHA-256) in `cmake/TagLib.cmake`, all fetched by FetchContent into
+2.3.2 (tarball + SHA-256) in `cmake/TagLib.cmake`, Signalsmith Stretch 1.4.0 and its
+FFT library (MIT, header-only, tarballs + SHA-256) in `cmake/Signalsmith.cmake`, all
+fetched by FetchContent into
 `build/<preset>/_deps` — the first configure takes several minutes. TagLib is a
 separate static lib (`libtag.a`), so `build.rs` links it next to `anomp_core`.
 The `release` preset sets `ANOMP_BUILD_TESTS=OFF`, so tests only run in `debug`.
@@ -122,7 +139,7 @@ ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/setti
 
 `app/src-tauri/build.rs` builds `anomp_core` with the `cmake` crate (Ninja, tests off)
 into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo build
-fetches JUCE again. `build.rs` reruns when `core/` or the top-level `CMakeLists.txt`
+fetches JUCE again. `build.rs` reruns when `core/`, `cmake/` or the top-level `CMakeLists.txt`
 changes. FFI declarations and their safe wrappers live only in
 `app/src-tauri/src/anomp.rs`; add a wrapper there for each new C API function.
 
@@ -182,7 +199,21 @@ values are read leniently, so no migration is needed. Track gains
 (ReplayGain) are computed in Rust (`PlaybackSettings::gain`) and passed to
 the engine with each track.
 
-Search uses FTS5 tables kept in step by triggers (migration 002); a schema change
+A track is a part of a file: `tracks` is unique on (folder, path,
+`range_start`), with `range_end` NULL for the end of the file (migration
+005), so a cue sheet's tracks or a file's chapters are rows of one file.
+Anything that opens a track for playback goes through
+`library::playback::track_play`, which turns the row, the user's
+preferences, the analysis and the feature settings into the engine's
+`TrackOptions`; refresh a gain with `set_track_gain_at` (by file and
+start), never by file alone. Each optional feature checks its switch in
+`FeatureSettings` where it acts (commands refuse, workers idle, the UI
+hides); a new one gets a switch there, off by default if it costs a lot,
+changes what is heard, goes online or listens on the network. The LAN
+remote answers local addresses only and keeps only hashes of tokens; any
+change to `remote/` needs the security review in `PLAN.md` §8.1.
+
+Search uses FTS5 tables kept in step by triggers (migration 005 recreated them); a schema change
 to `tracks`, `artists` or `albums` columns they index must update those triggers
 in a new migration.
 

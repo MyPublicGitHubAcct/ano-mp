@@ -35,6 +35,29 @@ public:
 
     using juce::AudioFormat::createWriterFor;
 
+    /** Keys a reader sets in its metadataValues, describing the file before
+        it is decoded to float: FFmpeg's codec name ("flac", "mp3"…), "1"
+        for a lossless codec, the source's bit depth (lossless only), and
+        the bit rate in bits a second, where known. */
+    static constexpr const char* codecKey = "anomp.codec";
+    static constexpr const char* losslessKey = "anomp.lossless";
+    static constexpr const char* bitsKey = "anomp.bits";
+    static constexpr const char* bitRateKey = "anomp.bitRate";
+
+    /** A chapter a container records: MP4 and Matroska chapters, ID3v2
+        CHAP frames, Ogg CHAPTERxxx comments, a FLAC cue sheet's tracks. */
+    struct Chapter
+    {
+        double start = 0.0; ///< Seconds.
+        double end = -1.0;  ///< Seconds; -1 for the end of the file.
+        juce::String title;
+    };
+
+    /** Reads `file`'s chapters from its header, without decoding. Safe to
+        call from any thread. Returns an error message, or an empty string
+        on success (with no chapters if it has none). */
+    static juce::String readChapters (const juce::File& file, juce::Array<Chapter>& chapters);
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FFmpegAudioFormat)
 };

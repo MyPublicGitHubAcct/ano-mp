@@ -23,6 +23,10 @@
   import { appSettings } from "$lib/state/settings.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
+  import { features } from "$lib/state/features.svelte";
+  import HomeView from "$lib/components/HomeView.svelte";
+  import HistoryView from "$lib/components/HistoryView.svelte";
+  import HealthView from "$lib/components/HealthView.svelte";
 
   const SEEK_STEP = 5;
 
@@ -32,7 +36,9 @@
     const stopMetadata = metadataStatus.connect();
     const stopVisualizer = visualizer.connect();
     const stopSettings = appSettings.connect();
+    const stopFeatures = features.connect();
     return () => {
+      stopFeatures();
       stopPlayer();
       stopLibrary();
       stopMetadata();
@@ -119,11 +125,17 @@
       <DiscographyPage />
     {:else if ui.settingsInMain}
       <SettingsPage />
+    {:else if ui.mainView === "home"}
+      <HomeView />
+    {:else if ui.mainView === "history"}
+      <HistoryView />
+    {:else if ui.mainView === "health"}
+      <HealthView />
     {:else}
       <BrowsePane />
     {/if}
   </main>
-  {#if ui.queueOpen && (ui.mainView === "library" || ui.artistInMain || ui.discographyInMain || library.query.trim() !== "")}
+  {#if ui.queueOpen && (["library", "home", "history", "health"].includes(ui.mainView) || ui.artistInMain || ui.discographyInMain || library.query.trim() !== "")}
     <aside class="queue"><QueuePanel /></aside>
   {/if}
   <footer class="bar"><NowPlayingBar /></footer>

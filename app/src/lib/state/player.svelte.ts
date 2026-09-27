@@ -20,6 +20,8 @@ class PlayerStore {
   hasPrevious = $state(false);
   loaded = $state(false);
   resumeAt = $state(0);
+  /** Library radio keeps adding tracks (O9). */
+  radio = $state(false);
   #revision = 0;
 
   get playing() {
@@ -48,6 +50,7 @@ class PlayerStore {
     this.hasPrevious = state.hasPrevious;
     this.loaded = state.loaded;
     this.resumeAt = state.resumeAt;
+    this.radio = state.radio;
     for (const skipped of state.skipped) toasts.show(`Skipped “${skipped.title}”: ${skipped.error}`);
   }
 

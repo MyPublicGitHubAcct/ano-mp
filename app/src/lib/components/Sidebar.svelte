@@ -6,6 +6,7 @@
   import { plural } from "$lib/format";
   import { folderName, library } from "$lib/state/library.svelte";
   import { metadataStatus } from "$lib/state/metadata.svelte";
+  import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
@@ -16,6 +17,20 @@
     ui.sidebarOpen = false;
   }
 
+  const f = $derived(features.on);
+  const views = $derived(
+    [
+      {
+        id: "home" as const,
+        name: "Home",
+        icon: "home" as const,
+        on: f.recentlyAdded || f.onThisDay || f.listeningHistory,
+      },
+      { id: "history" as const, name: "History", icon: "history" as const, on: f.listeningHistory },
+      { id: "health" as const, name: "Library health", icon: "health" as const, on: f.healthReport },
+    ].filter((view) => view.on),
+  );
+
   const isOpen = (folderId: number) =>
     ui.mainView === "library" &&
     library.rule?.levels[0] === "folder" &&
@@ -25,6 +40,20 @@
 
 <nav class="sidebar" aria-label="Library">
   <ul class="top">
+    {#each views as view (view.id)}
+      <li>
+        <button
+          class="item"
+          class:active={ui.mainView === view.id && library.query === ""}
+          onclick={() => {
+            library.query = "";
+            ui.showView(view.id);
+          }}
+        >
+          <span class="with-icon"><Icon name={view.icon} size="1.1rem" /> {view.name}</span>
+        </button>
+      </li>
+    {/each}
     <li>
       <button
         class="item"
@@ -69,7 +98,7 @@
 
   <h2>Library</h2>
   <ul>
-    {#each library.rules as rule (rule.id)}
+    {#each library.rules.filter((rule) => f.classical || !rule.levels.some((level) => level === "composer" || level === "work")) as rule (rule.id)}
       <li>
         <button
           class="item"

@@ -88,6 +88,16 @@ pub trait Transport: Send + Sync {
         auth: Option<&str>,
         limit: u64,
     ) -> Result<Response, TransportError>;
+
+    /// Sends `body` as a `content_type` POST (ListenBrainz submissions).
+    fn post(
+        &self,
+        url: &str,
+        content_type: &str,
+        body: &[u8],
+        auth: Option<&str>,
+        limit: u64,
+    ) -> Result<Response, TransportError>;
 }
 
 /// The real transport.
@@ -109,6 +119,17 @@ impl UreqTransport {
     }
 }
 
+/// A ureq error as the client sees it.
+fn transport_error(error: ureq::Error) -> TransportError {
+    match error {
+        ureq::Error::Io(_)
+        | ureq::Error::Timeout(_)
+        | ureq::Error::HostNotFound
+        | ureq::Error::ConnectionFailed => TransportError::Unreachable(error.to_string()),
+        other => TransportError::Failed(other.to_string()),
+    }
+}
+
 impl Transport for UreqTransport {
     fn get(
         &self,
@@ -121,43 +142,64 @@ impl Transport for UreqTransport {
         if let Some(auth) = auth {
             request = request.header("Authorization", auth);
         }
-        let mut response = request.call().map_err(|error| match error {
-            ureq::Error::Io(_)
-            | ureq::Error::Timeout(_)
-            | ureq::Error::HostNotFound
-            | ureq::Error::ConnectionFailed => TransportError::Unreachable(error.to_string()),
+        let response = request.call().map_err(transport_error)?;
+        read_response(response, limit)
+    }
+
+    fn post(
+        &self,
+        url: &str,
+        content_type: &str,
+        body: &[u8],
+        auth: Option<&str>,
+        limit: u64,
+    ) -> Result<Response, TransportError> {
+        let mut request = self
+            .0
+            .post(url)
+            .header("Content-Type", content_type)
+            .header("Accept", "application/json");
+        if let Some(auth) = auth {
+            request = request.header("Authorization", auth);
+        }
+        let response = request.send(body).map_err(transport_error)?;
+        read_response(response, limit)
+    }
+}
+
+fn read_response(
+    mut response: ureq::http::Response<ureq::Body>,
+    limit: u64,
+) -> Result<Response, TransportError> {
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
+    let content_type = header("content-type");
+    let retry_after = header("retry-after")
+        .and_then(|value| value.trim().parse().ok())
+        .map(Duration::from_secs);
+    let status = response.status().as_u16();
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(limit)
+        .read_to_vec()
+        .map_err(|error| match error {
+            ureq::Error::Io(_) | ureq::Error::Timeout(_) => {
+                TransportError::Unreachable(error.to_string())
+            }
             other => TransportError::Failed(other.to_string()),
         })?;
-        let header = |name: &str| {
-            response
-                .headers()
-                .get(name)
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_owned)
-        };
-        let content_type = header("content-type");
-        let retry_after = header("retry-after")
-            .and_then(|value| value.trim().parse().ok())
-            .map(Duration::from_secs);
-        let status = response.status().as_u16();
-        let body = response
-            .body_mut()
-            .with_config()
-            .limit(limit)
-            .read_to_vec()
-            .map_err(|error| match error {
-                ureq::Error::Io(_) | ureq::Error::Timeout(_) => {
-                    TransportError::Unreachable(error.to_string())
-                }
-                other => TransportError::Failed(other.to_string()),
-            })?;
-        Ok(Response {
-            status,
-            content_type,
-            retry_after,
-            body,
-        })
-    }
+    Ok(Response {
+        status,
+        content_type,
+        retry_after,
+        body,
+    })
 }
 
 /// Time as the client sees it, so tests can run the limiter and backoff
@@ -226,10 +268,26 @@ impl Client {
         auth: Option<&str>,
         limit: u64,
     ) -> Result<Response, Error> {
+        self.send(url, |transport| transport.get(url, accept, auth, limit))
+    }
+
+    /// POSTs `body` as JSON to `url` with `auth`, like `get_with_auth`
+    /// (rate limits, busy retries, offline backoff).
+    pub fn post_json(&self, url: &str, body: &str, auth: Option<&str>) -> Result<Response, Error> {
+        self.send(url, |transport| {
+            transport.post(url, "application/json", body.as_bytes(), auth, JSON_LIMIT)
+        })
+    }
+
+    fn send(
+        &self,
+        url: &str,
+        call: impl Fn(&dyn Transport) -> Result<Response, TransportError>,
+    ) -> Result<Response, Error> {
         let host = host_of(url).ok_or_else(|| Error::Invalid(format!("Not a URL: {url}")))?;
         for attempt in 1..=BUSY_TRIES {
             self.wait_turn(host)?;
-            let response = match self.transport.get(url, accept, auth, limit) {
+            let response = match call(self.transport.as_ref()) {
                 Ok(response) => response,
                 Err(TransportError::Unreachable(message)) => {
                     self.mark_unreachable(host);
@@ -441,6 +499,8 @@ pub mod testing {
         pub requests: Arc<Mutex<Vec<(String, Duration)>>>,
         /// The `Authorization` header sent with each request.
         pub auths: Arc<Mutex<Vec<Option<String>>>>,
+        /// The bodies of POST requests.
+        pub bodies: Arc<Mutex<Vec<String>>>,
         clock: Option<FakeClock>,
     }
 
@@ -507,6 +567,21 @@ pub mod testing {
                 .get_mut(url)
                 .and_then(VecDeque::pop_front)
                 .unwrap_or_else(|| Ok(response(404, "")))
+        }
+
+        fn post(
+            &self,
+            url: &str,
+            _content_type: &str,
+            body: &[u8],
+            auth: Option<&str>,
+            limit: u64,
+        ) -> Result<Response, TransportError> {
+            self.bodies
+                .lock()
+                .unwrap()
+                .push(String::from_utf8_lossy(body).into_owned());
+            self.get(url, "", auth, limit)
         }
     }
 

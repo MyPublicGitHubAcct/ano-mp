@@ -4,9 +4,19 @@ import type { ArtistInfo } from "$lib/api";
 
 export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
 
-export type MainView = "library" | "queue" | "nowPlaying" | "visualizer" | "artist" | "discography" | "settings";
+export type MainView =
+  | "library"
+  | "queue"
+  | "nowPlaying"
+  | "visualizer"
+  | "artist"
+  | "discography"
+  | "settings"
+  | "home"
+  | "history"
+  | "health";
 /** The parts of the settings view. */
-export type SettingsSection = "library" | "sorting" | "display" | "playback" | "visualizer" | "sources";
+export type SettingsSection = "library" | "sorting" | "display" | "playback" | "visualizer" | "sources" | "features";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
 
@@ -14,10 +24,11 @@ export type AlbumRef = { id: number; title: string };
 export type Dialog =
   | { kind: "findDetails"; album: AlbumRef }
   | { kind: "chooseCover"; album: AlbumRef }
-  | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo };
+  | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo }
+  | { kind: "prefs"; track: { id: number; title: string } | null; album: AlbumRef | null };
 
 /** Views that `back` returns from. */
-const OPENED: MainView[] = ["nowPlaying", "visualizer", "artist", "discography", "settings"];
+const OPENED: MainView[] = ["nowPlaying", "visualizer", "artist", "discography", "settings", "home", "history", "health"];
 
 class Ui {
   /** What the main area shows when not searching: the library browser, the
@@ -96,6 +107,11 @@ class Ui {
     if (this.mainView === "discography" && this.artist?.id === artist.id) return;
     this.#open("discography");
     this.artist = artist;
+  }
+
+  /** Shows a view of its own (Home, History, Health) in the main area. */
+  showView(view: "home" | "history" | "health") {
+    this.#open(view);
   }
 
   /** Shows the settings in the main area, at `section` (else where they were left). */

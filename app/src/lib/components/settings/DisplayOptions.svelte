@@ -2,7 +2,7 @@
   // What track lists show besides the title (as columns when wide, under
   // the title when narrow), what an album's summary line says, and whether
   // Wikipedia's descriptions and biographies show.
-  import { ALBUM_FACTS, TRACK_COLUMNS, columnText, textColumns } from "$lib/columns";
+  import { ALBUM_FACTS, TRACK_COLUMNS, columnAvailable, columnText, textColumns } from "$lib/columns";
   import type { Track } from "$lib/api";
   import { appSettings } from "$lib/state/settings.svelte";
   import OrderedChoices from "./OrderedChoices.svelte";
@@ -26,6 +26,15 @@
     duration: 622,
     bitrateKbps: 1024,
     sampleRate: 44100,
+    addedAt: 1790000000,
+    playCount: 12,
+    lastPlayed: 1790400000,
+    hasPrefs: false,
+    composer: "Nina Simone",
+    work: null,
+    movementName: null,
+    movementNumber: null,
+    rangeStart: 0,
   };
 
   const preview = $derived(
@@ -41,7 +50,7 @@
 <h3>Track lists</h3>
 <div class="field stacked">
   <OrderedChoices
-    options={TRACK_COLUMNS}
+    options={TRACK_COLUMNS.filter((column) => columnAvailable(column.id, appSettings.current.features))}
     value={display.trackColumns}
     onchange={(columns) => appSettings.save((next) => (next.display.trackColumns = columns))}
     label="Track list columns"

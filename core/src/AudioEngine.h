@@ -2,6 +2,7 @@
 
 #include "AnalysisThread.h"
 #include "FormatRegistry.h"
+#include "OutputRoute.h"
 #include "PlayerEngine.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -52,6 +53,13 @@ public:
 
     /** The open device's settings; false if none is open. */
     bool getDeviceInfo (DeviceInfo& info) const;
+
+    /** Switches the open device to `sampleRate` if it offers it (PLAN.md
+        O10), reopening it. Returns true if it runs at that rate afterwards. */
+    bool setSampleRate (double sampleRate);
+
+    /** Whether the open device plays through headphones (OutputRoute). */
+    OutputRoute::Headphones outputIsHeadphones() const;
 
     /** The player's events are dispatched from a timer on the main thread. */
     PlayerEngine& player() noexcept { return playerEngine; }

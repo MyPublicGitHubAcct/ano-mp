@@ -23,9 +23,18 @@ block(SCOPE_FOR VARIABLES PROPAGATE taglib_SOURCE_DIR taglib_BINARY_DIR)
 endblock()
 
 # TagLib's own target only declares include directories for installed builds.
+# Installed headers are flat, and include each other by bare name, so the
+# format folders the core reads format-specific frames from (ID3v2 SYLT in
+# MPEG, AIFF and WAV files) are listed too.
 target_include_directories(tag SYSTEM INTERFACE
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib>
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/toolkit>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/mpeg>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/mpeg/id3v2>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/mpeg/id3v2/frames>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff/aiff>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff/wav>
     $<BUILD_INTERFACE:${taglib_BINARY_DIR}>)
 
 add_library(TagLib::tag ALIAS tag)

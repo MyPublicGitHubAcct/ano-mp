@@ -8,6 +8,14 @@
 //! before, which turning shuffle off restores. After every change the queue
 //! re-arms the engine's next track if it should now be a different one, so a
 //! reorder, a removal or a new repeat mode still hands off gaplessly.
+//!
+//! Some tracks belong together (PLAN.md O3, O6, O7): tracks that segue into
+//! each other, the movements of a work, an album the user never wants
+//! shuffled. The host gives them a `unit`, and shuffle moves each run of
+//! adjacent items with one unit as a block, in order. Tracks the user marked
+//! to skip are passed over by next, previous and the automatic advance,
+//! but play when chosen directly. In radio mode (O9) the host keeps adding
+//! tracks as the queue nears its end (`radio_seed`).
 
 use std::collections::{HashMap, HashSet};
 
@@ -24,7 +32,7 @@ pub type Uid = u64;
 pub const RESTART_THRESHOLD: f64 = 3.0;
 
 /// What the queue shows about a track.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackInfo {
     pub track_id: i64,
@@ -35,6 +43,15 @@ pub struct TrackInfo {
     pub album: Option<String>,
     pub album_id: Option<i64>,
     pub duration: f64,
+    /// Passed over in album and shuffle play; it still plays when chosen.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub skip: bool,
+    /// Adjacent items with the same unit shuffle as one block, in order.
+    #[serde(skip)]
+    pub unit: Option<i64>,
+    /// Why library radio picked it ("same label, 1994").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -107,6 +124,8 @@ pub struct QueueState {
     /// relaunch), `resume_at` is where it will start, in seconds.
     pub loaded: bool,
     pub resume_at: f64,
+    /// Library radio keeps adding tracks as the queue runs out.
+    pub radio: bool,
 }
 
 /// The queue as saved across launches.
@@ -143,6 +162,8 @@ pub struct Queue {
     changed: bool,
     list_changed: bool,
     skipped: Vec<Skipped>,
+    /// Radio mode (O9): the host adds tracks as the queue runs out.
+    radio: bool,
 }
 
 impl Queue {
@@ -164,6 +185,7 @@ impl Queue {
             changed: false,
             list_changed: false,
             skipped: Vec::new(),
+            radio: false,
         }
     }
 
@@ -275,15 +297,19 @@ impl Queue {
     pub fn update_tracks(&mut self, tracks: &HashMap<i64, TrackInfo>) {
         for item in &mut self.items {
             if let Some(track) = tracks.get(&item.track.track_id) {
-                if *track != item.track {
-                    item.track = track.clone();
+                // Why radio picked it stays.
+                let track = TrackInfo {
+                    reason: item.track.reason.clone(),
+                    ..track.clone()
+                };
+                if track != item.track {
+                    item.track = track;
                     self.list_changed = true;
                 }
             }
         }
     }
 
-    #[cfg(test)]
     pub fn is_loaded(&self) -> bool {
         self.loaded
     }
@@ -329,6 +355,7 @@ impl Queue {
             }),
             loaded: self.loaded,
             resume_at: if self.loaded { 0.0 } else { self.resume_at },
+            radio: self.radio,
         };
         self.changed = false;
         self.list_changed = false;
@@ -337,9 +364,9 @@ impl Queue {
 
     // ---- Commands ---------------------------------------------------------
 
-    /// Replaces the queue with `tracks` and starts `start` (with shuffle on,
-    /// it plays first and the rest are shuffled). Playing unless `play` is
-    /// false.
+    /// Replaces the queue with `tracks` and starts `start`, which the user
+    /// chose (with shuffle on, it plays first and the rest are shuffled).
+    /// Playing unless `play` is false. Ends radio mode.
     pub fn replace(
         &mut self,
         p: &mut impl Player,
@@ -347,7 +374,22 @@ impl Queue {
         start: usize,
         play: bool,
     ) {
+        self.replace_from(p, tracks, start, play, true);
+    }
+
+    /// `replace`, where `chosen` says whether the user picked the start
+    /// track (a skipped track then still plays) or just played the lot (it
+    /// starts at the first track not to skip).
+    pub fn replace_from(
+        &mut self,
+        p: &mut impl Player,
+        tracks: Vec<TrackInfo>,
+        start: usize,
+        play: bool,
+        chosen: bool,
+    ) {
         self.reconcile(p);
+        self.radio = false;
         if tracks.is_empty() {
             return self.clear(p);
         }
@@ -358,15 +400,54 @@ impl Queue {
         self.unavailable.clear();
         self.list_changed = true;
         let mut start = start.min(self.items.len() - 1);
+        if !chosen && self.items[start].track.skip {
+            start = (start..self.items.len())
+                .find(|&index| !self.items[index].track.skip)
+                .unwrap_or(start);
+        }
         if self.original.is_some() {
             self.original = Some(self.items.iter().map(|item| item.uid).collect());
-            let first = self.items.remove(start);
-            self.items.insert(0, first);
-            self.shuffle_from(1);
+            // The start's run (the rest of its work, say) comes first with it.
+            let end = self.run_end(start);
+            let first: Vec<Item> = self.items.drain(start..end).collect();
+            self.items.splice(0..0, first);
+            let after = end - start;
+            self.shuffle_from(after);
             start = 0;
         }
         self.current = Some(start);
         self.start(p, start, play, 0.0);
+    }
+
+    /// Starts radio mode with `tracks` (the seed first), playing the seed.
+    pub fn start_radio(&mut self, p: &mut impl Player, tracks: Vec<TrackInfo>) {
+        let shuffle = self.original.take().is_some();
+        self.replace(p, tracks, 0, true);
+        if shuffle {
+            self.original = Some(self.items.iter().map(|item| item.uid).collect());
+        }
+        self.radio = true;
+        self.changed = true;
+    }
+
+    /// Radio mode: whether the queue ends within `lookahead` items of the
+    /// current one, and if so the track to pick more like (the last one).
+    pub fn radio_seed(&self, lookahead: usize) -> Option<i64> {
+        let current = self.current?;
+        let near_end = self.repeat == Repeat::Off && self.items.len() - current <= lookahead;
+        near_end.then(|| self.items.last().map(|item| item.track.track_id))?
+    }
+
+    pub fn is_radio(&self) -> bool {
+        self.radio
+    }
+
+    /// Turns radio mode off, e.g. when library radio is turned off.
+    pub fn stop_radio(&mut self) {
+        if self.radio {
+            self.radio = false;
+            self.changed = true;
+        }
     }
 
     /// Adds tracks after the current item (`next`) or at the end, without
@@ -476,6 +557,7 @@ impl Queue {
         self.armed = None;
         self.resume_at = 0.0;
         self.unavailable.clear();
+        self.radio = false;
         self.list_changed = true;
     }
 
@@ -674,12 +756,16 @@ impl Queue {
                     None
                 }
             })
-            .find(|&index| !self.unavailable.contains(&self.items[index].uid))
+            .find(|&index| {
+                let item = &self.items[index];
+                !self.unavailable.contains(&item.uid) && !item.track.skip
+            })
     }
 
     /// What plays after `from` when it ends.
     fn following(&self, from: usize) -> Option<usize> {
         match self.repeat {
+            // A skipped track chosen directly repeats too.
             Repeat::One => (!self.unavailable.contains(&self.items[from].uid)).then_some(from),
             Repeat::All => self.find(from, true, true),
             Repeat::Off => self.find(from, true, false),
@@ -795,21 +881,45 @@ impl Queue {
         let item = self.items.remove(current);
         self.items.insert(0, item);
         self.shuffle_from(1);
-        if n > 2 && Some(self.items[1].uid) == just_played {
+        if n > 2 && Some(self.items[1].uid) == just_played && self.items[1].track.unit.is_none() {
             let other = 2 + (self.random() % (n as u64 - 2)) as usize;
-            self.items.swap(1, other);
+            if self.items[other].track.unit.is_none() {
+                self.items.swap(1, other);
+            }
         }
         self.current = Some(0);
         self.list_changed = true;
         0
     }
 
-    /// Shuffles the items from `from` on (Fisher–Yates).
-    fn shuffle_from(&mut self, from: usize) {
-        for i in (from + 1..self.items.len()).rev() {
-            let j = from + (self.random() % (i - from + 1) as u64) as usize;
-            self.items.swap(i, j);
+    /// The end (exclusive) of the run of items with `index`'s unit that
+    /// starts at `index`.
+    fn run_end(&self, index: usize) -> usize {
+        let unit = self.items[index].track.unit;
+        let mut end = index + 1;
+        while unit.is_some() && end < self.items.len() && self.items[end].track.unit == unit {
+            end += 1;
         }
+        end
+    }
+
+    /// Shuffles the items from `from` on (Fisher–Yates over runs, so
+    /// adjacent items with one unit stay together, in order).
+    fn shuffle_from(&mut self, from: usize) {
+        let mut runs: Vec<Vec<Item>> = Vec::new();
+        for item in self.items.drain(from.min(self.items.len())..) {
+            match runs.last_mut() {
+                Some(run) if item.track.unit.is_some() && run[0].track.unit == item.track.unit => {
+                    run.push(item)
+                }
+                _ => runs.push(vec![item]),
+            }
+        }
+        for i in (1..runs.len()).rev() {
+            let j = (self.random() % (i as u64 + 1)) as usize;
+            runs.swap(i, j);
+        }
+        self.items.extend(runs.into_iter().flatten());
     }
 
     /// xorshift64*: plenty for shuffling, and reproducible in tests.
@@ -909,11 +1019,8 @@ mod tests {
         TrackInfo {
             track_id: id,
             title: format!("Track {id}"),
-            artist: None,
-            artist_id: None,
-            album: None,
-            album_id: None,
             duration: 60.0,
+            ..TrackInfo::default()
         }
     }
 
@@ -1413,5 +1520,99 @@ mod tests {
         queue.toggle(&mut p);
         check(&queue, &p);
         assert_eq!(p.current, Some(1));
+    }
+
+    fn with_units(units: &[(i64, i64)], ids: impl IntoIterator<Item = i64>) -> Vec<TrackInfo> {
+        ids.into_iter()
+            .map(|id| TrackInfo {
+                unit: units
+                    .iter()
+                    .find(|(track, _)| *track == id)
+                    .map(|(_, unit)| *unit),
+                ..info(id)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn shuffle_keeps_units_together_and_in_order() {
+        for seed in 1..20 {
+            let mut p = Fake::default();
+            let mut queue = Queue::new(seed);
+            let units = [(3, 100), (4, 100), (5, 100), (7, 200), (8, 200)];
+            queue.replace(&mut p, with_units(&units, 1..=10), 0, true);
+            queue.set_shuffle(&mut p, true);
+            check(&queue, &p);
+            let order = ids(&queue);
+            let at = |id: i64| order.iter().position(|&x| x == id).unwrap();
+            assert_eq!((at(4), at(5)), (at(3) + 1, at(3) + 2), "{order:?}");
+            assert_eq!(at(8), at(7) + 1, "{order:?}");
+            queue.set_shuffle(&mut p, false);
+            assert_eq!(ids(&queue), (1..=10).collect::<Vec<_>>());
+        }
+    }
+
+    #[test]
+    fn starting_a_shuffled_work_keeps_its_movements_after_it() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(3);
+        queue.set_shuffle(&mut p, true);
+        let units = [(2, 7), (3, 7), (4, 7)];
+        queue.replace(&mut p, with_units(&units, 1..=6), 1, true);
+        assert_eq!(&ids(&queue)[..3], [2, 3, 4]);
+        assert_eq!(current_id(&queue), Some(2));
+    }
+
+    #[test]
+    fn skipped_tracks_play_only_when_chosen() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        let tracks: Vec<TrackInfo> = [1, 2, 3, 4]
+            .into_iter()
+            .map(|id| TrackInfo {
+                skip: id == 2 || id == 4,
+                ..info(id)
+            })
+            .collect();
+        queue.replace(&mut p, tracks.clone(), 0, true);
+        assert_eq!(p.next, Some(3), "2 is passed over");
+        queue.next(&mut p);
+        assert_eq!(current_id(&queue), Some(3));
+        assert_eq!(p.next, None, "4 too");
+        assert!(!queue.state().has_next);
+        queue.previous(&mut p);
+        assert_eq!(current_id(&queue), Some(1));
+
+        // Chosen directly, it plays.
+        let uid = uid_of(&queue, 2);
+        queue.jump(&mut p, uid);
+        assert_eq!(current_id(&queue), Some(2));
+        queue.replace(&mut p, tracks.clone(), 1, true);
+        assert_eq!(current_id(&queue), Some(2));
+        // Playing the lot from it doesn't.
+        queue.replace_from(&mut p, tracks, 1, true, false);
+        assert_eq!(current_id(&queue), Some(3));
+    }
+
+    #[test]
+    fn radio_asks_for_more_near_the_end() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        assert!(!queue.is_radio());
+        assert_eq!(queue.radio_seed(2), None);
+        queue.next(&mut p);
+        assert_eq!(queue.radio_seed(2), Some(3));
+        queue.set_repeat(&mut p, Repeat::All);
+        assert_eq!(queue.radio_seed(2), None, "repeat never runs out");
+
+        queue.start_radio(&mut p, infos([9, 10]));
+        assert!(queue.is_radio());
+        assert!(queue.state().radio);
+        assert_eq!(current_id(&queue), Some(9));
+        queue.add(&mut p, infos([11]), false);
+        assert!(queue.is_radio(), "adding keeps it on");
+        queue.replace(&mut p, infos([1]), 0, true);
+        assert!(!queue.is_radio(), "playing something else ends it");
     }
 }

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use super::access::{self, OpenFolder};
@@ -17,12 +17,13 @@ use super::art::ArtCache;
 use super::artists::{self, ArtistPage};
 use super::browse::{self, BrowsePage, GroupKey};
 use super::covers::{self, CoverBasis, CoverWall};
+use super::playback::{self, TrackPlay};
 use super::rules::{self, SortRule, SortSettings};
-use super::scanner::{self, ScanFailure, ScanReport};
+use super::scanner::{self, ScanFailure, ScanOptions, ScanReport};
 use super::search::{self, SearchKind, SearchResults};
-use super::{db, track_path, Error, Folder};
-use crate::anomp::ReplayGain;
+use super::{db, Error, Folder};
 use crate::metadata::images::ImageCache;
+use crate::settings::FeatureSettings;
 
 /// Frontend event with a `ScanProgress` payload.
 pub const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
@@ -59,33 +60,15 @@ impl LibraryState {
         access::open_folder_of(&self.conn(), path).map_err(|e| e.to_string())
     }
 
-    /// The file of track `track_id`, and its ReplayGain tags.
-    pub fn track_file(&self, track_id: i64) -> Result<(PathBuf, ReplayGain), String> {
-        let row: Option<(String, String, ReplayGain)> = self
-            .conn()
-            .query_row(
-                "SELECT f.path, t.relative_path, t.replaygain_track_gain, t.replaygain_track_peak,
-                        t.replaygain_album_gain, t.replaygain_album_peak
-                 FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 WHERE t.id = ?1",
-                [track_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        ReplayGain {
-                            track_gain: row.get(2)?,
-                            track_peak: row.get(3)?,
-                            album_gain: row.get(4)?,
-                            album_peak: row.get(5)?,
-                        },
-                    ))
-                },
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-        let (folder, relative, gain) = row.ok_or("The track is no longer in the library")?;
-        Ok((track_path(Path::new(&folder), &relative), gain))
+    /// How to play track `track_id` under `features` (`library::playback`).
+    pub fn track_play(
+        &self,
+        track_id: i64,
+        features: &FeatureSettings,
+    ) -> Result<TrackPlay, String> {
+        playback::track_play(&self.conn(), track_id, features)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "The track is no longer in the library".to_string())
     }
 }
 
@@ -279,8 +262,11 @@ pub async fn library_scan<R: Runtime>(
     let _scanning = ClearOnDrop(&state.scanning);
     let db_path = state.db_path.clone();
     let scan_app = app.clone();
+    let options = ScanOptions {
+        parts: crate::settings::current(&app).features.cue_sheets,
+    };
     let reports = tauri::async_runtime::spawn_blocking(move || {
-        scan_folders(&db_path, folder_id, |progress| {
+        scan_folders(&db_path, folder_id, options, |progress| {
             let _ = scan_app.emit(SCAN_PROGRESS_EVENT, progress);
         })
     })
@@ -290,14 +276,47 @@ pub async fn library_scan<R: Runtime>(
     // Files may have new art or tags.
     state.art.clear();
     crate::queue::refresh_tracks(&app).await;
-    // New albums to look up, if the settings say so.
+    // New albums to look up, if the settings say so, and tracks to analyse.
     crate::metadata::worker::enrich_library(&app);
+    super::analysis::library_changed(&app);
     Ok(reports)
+}
+
+/// Marks every file to be read again and rescans the library, e.g. when
+/// cue sheets are turned on or off. Waits for a scan in progress.
+pub fn reread_all<R: Runtime>(app: &AppHandle<R>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<LibraryState>() else {
+            return;
+        };
+        while state.scanning.load(Ordering::SeqCst) {
+            tokio_sleep().await;
+        }
+        if let Err(error) = state
+            .conn()
+            .execute("UPDATE tracks SET file_mtime_ns = -1", [])
+        {
+            eprintln!("[library] {error}");
+            return;
+        }
+        if let Err(error) = library_scan(app.clone(), state, None).await {
+            eprintln!("[library] {error}");
+        }
+    });
+}
+
+async fn tokio_sleep() {
+    let _ = tauri::async_runtime::spawn_blocking(|| {
+        std::thread::sleep(std::time::Duration::from_millis(500))
+    })
+    .await;
 }
 
 fn scan_folders(
     db_path: &Path,
     folder_id: Option<i64>,
+    options: ScanOptions,
     mut progress: impl FnMut(scanner::ScanProgress),
 ) -> Result<Vec<ScanReport>, Error> {
     let mut conn = db::open(db_path)?;
@@ -311,7 +330,7 @@ fn scan_folders(
     let mut reports = Vec::new();
     for folder in folders {
         reports.push(
-            match scanner::scan_folder(&mut conn, folder.id, &mut progress) {
+            match scanner::scan_folder(&mut conn, folder.id, options, &mut progress) {
                 Ok(report) => report,
                 Err(Error::Invalid(error)) => ScanReport {
                     folder_id: folder.id,

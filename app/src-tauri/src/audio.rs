@@ -16,10 +16,10 @@ use std::sync::mpsc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::anomp::{DeviceInfo, Engine, Event, PlayerState};
+use crate::anomp::{DeviceInfo, Engine, Event, PlayerState, SignalPath};
 use crate::library::access::OpenFolder;
 use crate::library::commands::LibraryState;
-use crate::settings::{self, OutputSettings};
+use crate::settings::{self, FeatureSettings, OutputSettings};
 
 thread_local! {
     static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
@@ -75,6 +75,7 @@ pub struct PlayerStatus {
 pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let mut engine = Engine::new().ok_or("Failed to start the audio engine")?;
     let output = settings::current(app).output;
+    let app_for_init = app.clone();
     let app = app.clone();
     engine.set_event_handler(move |event| {
         crate::media::player_event(event);
@@ -82,13 +83,19 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             Event::DeviceChanged => {
                 eprintln!("[audio] device changed");
                 reopen_chosen(&app);
+                // Headphones may have come or gone with it.
+                let features = settings::current(&app).features;
+                let _ = engine_mut(|engine| apply_crossfeed(engine, &features));
                 app.emit(DEVICE_CHANGED_EVENT, ())
             }
             Event::StateChanged(state) => app.emit(PLAYER_STATE_EVENT, state),
-            Event::Position { position, duration } => app.emit(
-                PLAYER_POSITION_EVENT,
-                PositionPayload { position, duration },
-            ),
+            Event::Position { position, duration } => {
+                crate::history::position(&app, position, duration);
+                app.emit(
+                    PLAYER_POSITION_EVENT,
+                    PositionPayload { position, duration },
+                )
+            }
             Event::TrackEnded { advanced } => {
                 // The queue arms the next track, from inside the engine's
                 // event dispatch, which the core allows (anomp.h).
@@ -98,8 +105,29 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         };
     });
     let opened = open_output(&mut engine, &output);
+    apply_crossfeed(&mut engine, &settings::current(&app_for_init).features);
     ENGINE.with_borrow_mut(|slot| *slot = Some(engine));
     opened
+}
+
+/// Sets the engine's crossfeed as `features` say: their level, or off
+/// when it's only for headphones and the OS doesn't say they're plugged in.
+pub fn apply_crossfeed(engine: &mut Engine, features: &FeatureSettings) {
+    let level = features.crossfeed.level();
+    let on = !features.crossfeed_headphones_only || engine.output_is_headphones() == Some(true);
+    engine.set_crossfeed(if on { level } else { 0 });
+}
+
+/// The features changed: crossfeed, and practice mode's loop and tempo.
+pub fn apply_features<R: Runtime>(app: &AppHandle<R>, features: &FeatureSettings) {
+    let features = features.clone();
+    let _ = with_engine(app, move |engine| {
+        apply_crossfeed(engine, &features);
+        if !features.practice_mode {
+            let _ = engine.set_loop(None);
+            engine.set_tempo(1.0, 0.0);
+        }
+    });
 }
 
 /// Opens the device `output` names with its buffer size, falling back on
@@ -315,6 +343,63 @@ pub fn player_seek<R: Runtime>(app: AppHandle<R>, seconds: f64) -> Result<(), St
 #[tauri::command]
 pub fn player_set_volume<R: Runtime>(app: AppHandle<R>, volume: f64) -> Result<(), String> {
     with_engine(&app, move |engine| engine.set_volume(volume))
+}
+
+/// Every step from the file to the speakers (O10).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalPathPayload {
+    path: SignalPath,
+    device: Option<DeviceInfo>,
+    headphones: Option<bool>,
+}
+
+#[tauri::command]
+pub fn player_signal_path<R: Runtime>(app: AppHandle<R>) -> Result<SignalPathPayload, String> {
+    with_engine(&app, |engine| SignalPathPayload {
+        path: engine.signal_path(),
+        device: engine.device_info(),
+        headphones: engine.output_is_headphones(),
+    })
+}
+
+/// Practice mode (O12): plays at `rate` times the speed (0.5 to 1.5)
+/// without changing the pitch, transposed by `semitones` (-12 to 12).
+#[tauri::command]
+pub fn player_set_tempo<R: Runtime>(
+    app: AppHandle<R>,
+    rate: f64,
+    semitones: f64,
+) -> Result<(), String> {
+    let changing = rate != 1.0 || semitones != 0.0;
+    if changing && !settings::current(&app).features.practice_mode {
+        return Err("Practice mode is turned off in Settings › Features".into());
+    }
+    with_engine(&app, move |engine| engine.set_tempo(rate, semitones))?
+        .then_some(())
+        .ok_or_else(|| "The tempo must be 50% to 150%, and the pitch within an octave".to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Practice {
+    /// The loop's start and end in seconds, if one is set.
+    #[serde(rename = "loop")]
+    loop_points: Option<(f64, f64)>,
+    tempo: f64,
+    semitones: f64,
+}
+
+#[tauri::command]
+pub fn player_practice<R: Runtime>(app: AppHandle<R>) -> Result<Practice, String> {
+    with_engine(&app, |engine| {
+        let path = engine.signal_path();
+        Practice {
+            loop_points: engine.loop_points(),
+            tempo: path.tempo,
+            semitones: path.semitones,
+        }
+    })
 }
 
 #[tauri::command]

@@ -9,6 +9,7 @@
   import Icon from "./Icon.svelte";
   import ServicesPanel from "./ServicesPanel.svelte";
   import DisplayOptions from "./settings/DisplayOptions.svelte";
+  import FeaturesOptions from "./settings/FeaturesOptions.svelte";
   import LibraryFolders from "./settings/LibraryFolders.svelte";
   import PlaybackOptions from "./settings/PlaybackOptions.svelte";
   import SortRules from "./settings/SortRules.svelte";
@@ -21,6 +22,7 @@
     { id: "playback", name: "Playback", about: "Where the sound goes, and evening out loudness." },
     { id: "visualizer", name: "Visualizer", about: "What the visualizer shows, and how." },
     { id: "sources", name: "Online sources", about: "Where album details, covers and biographies come from, beyond your files’ tags." },
+    { id: "features", name: "Features", about: "Turn each optional feature on or off, and set its options." },
   ];
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
@@ -76,6 +78,8 @@
           <PlaybackOptions />
         {:else if section.id === "visualizer"}
           <VisualizerOptions />
+        {:else if section.id === "features"}
+          <FeaturesOptions />
         {:else}
           <ServicesPanel />
         {/if}

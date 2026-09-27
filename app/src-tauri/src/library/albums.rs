@@ -51,6 +51,12 @@ pub struct AlbumTrack {
     /// The title, else the file name.
     pub title: String,
     pub duration: f64,
+    /// Classical works (O6): the work it's a movement of, and the movement.
+    pub work: Option<String>,
+    pub movement_name: Option<String>,
+    pub movement_number: Option<u32>,
+    pub composer: Option<String>,
+    pub conductor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -97,9 +103,11 @@ pub fn album_details(library: &LibraryState, album_id: i64) -> Result<Option<Alb
             return Ok(None);
         };
         let mut statement = conn.prepare_cached(
-            "SELECT id, disc_number, track_number, title, relative_path, duration, year, genre
+            "SELECT id, disc_number, track_number, title, relative_path, duration, year, genre,
+                    work, movement_name, movement_number,
+                    (SELECT name FROM artists WHERE id = composer_id), conductor
              FROM tracks WHERE album_id = ?1
-             ORDER BY IFNULL(disc_number, 1), track_number NULLS LAST, relative_path",
+             ORDER BY IFNULL(disc_number, 1), track_number NULLS LAST, relative_path, range_start",
         )?;
         let rows = statement.query_map([album_id], |row| {
             let path: String = row.get(4)?;
@@ -112,6 +120,11 @@ pub fn album_details(library: &LibraryState, album_id: i64) -> Result<Option<Alb
                     title: title
                         .unwrap_or_else(|| path.rsplit('/').next().unwrap_or(&path).to_owned()),
                     duration: row.get(5)?,
+                    work: row.get(8)?,
+                    movement_name: row.get(9)?,
+                    movement_number: row.get(10)?,
+                    composer: row.get(11)?,
+                    conductor: row.get(12)?,
                 },
                 row.get::<_, Option<u32>>(6)?,
                 row.get::<_, Option<String>>(7)?,

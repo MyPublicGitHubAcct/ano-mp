@@ -17,21 +17,24 @@
 //! not loaded: no file is opened until playback is asked for.
 
 pub mod model;
+pub mod radio;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::anomp::{Engine, PlayerState};
+use crate::anomp::{Engine, PlayerState, TrackOptions};
 use crate::audio;
 use crate::library::browse::{self, GroupKey, RuleSpec};
 use crate::library::commands::{on_library, LibraryState};
+use crate::library::playback::TrackPlay;
 use crate::library::Error;
-use crate::settings::{self, PlaybackSettings};
+use crate::settings::{self, FeatureSettings, PlaybackSettings};
 use model::{Player, Queue, QueueState, Repeat, Saved, TrackInfo, Uid};
 
 thread_local! {
@@ -53,43 +56,78 @@ struct SavedPlayer {
 }
 
 /// The engine as the queue drives it, opening library files through their
-/// folder's bookmark (`library::access`), each with its ReplayGain gain.
+/// folder's bookmark (`library::access`), each as `library::playback`
+/// says: its part of the file, its gain, what to skip.
 pub struct EnginePlayer<'a> {
     engine: &'a mut Engine,
     library: &'a LibraryState,
     playback: PlaybackSettings,
+    features: FeatureSettings,
 }
 
 impl EnginePlayer<'_> {
     /// Resolves the track's folder and holds it open until `open` has
-    /// opened the file (see `library::access`) with the track's gain.
+    /// opened the file (see `library::access`).
     fn open(
         &mut self,
         track_id: i64,
-        open: impl FnOnce(&mut Engine, &std::path::Path, f64) -> Result<(), String>,
+        open: impl FnOnce(&mut Engine, &TrackPlay, &TrackOptions) -> Result<(), String>,
     ) -> Result<(), String> {
-        let (path, tags) = self.library.track_file(track_id)?;
-        let _folder = self.library.open_folder_of(&path)?;
-        open(self.engine, &path, self.playback.gain(&tags))
+        let play = self.library.track_play(track_id, &self.features)?;
+        let _folder = self.library.open_folder_of(&play.path)?;
+        open(self.engine, &play, &play.options(&self.playback))
     }
 
     /// Gives the engine's copy of the track its gain under the current
     /// settings.
     fn refresh_gain(&mut self, track_id: i64) -> Result<(), String> {
-        let (path, tags) = self.library.track_file(track_id)?;
-        self.engine.set_track_gain(&path, self.playback.gain(&tags));
+        let play = self.library.track_play(track_id, &self.features)?;
+        let gain = play.options(&self.playback).gain;
+        self.engine.set_track_gain_at(&play.path, play.start, gain);
         Ok(())
+    }
+}
+
+impl EnginePlayer<'_> {
+    /// Practice mode (O12): loops the current track between two points, or
+    /// clears the loop. The engine opens the file again for the jump, so
+    /// its folder is held open meanwhile.
+    fn set_loop(
+        &mut self,
+        track_id: i64,
+        points: Option<(f64, f64)>,
+    ) -> Result<Option<(f64, f64)>, String> {
+        if points.is_some() {
+            let play = self.library.track_play(track_id, &self.features)?;
+            let _folder = self.library.open_folder_of(&play.path)?;
+            self.engine.set_loop(points)?;
+        } else {
+            self.engine.set_loop(None)?;
+        }
+        Ok(self.engine.loop_points())
     }
 }
 
 impl Player for EnginePlayer<'_> {
     fn load(&mut self, track_id: i64) -> Result<(), String> {
-        self.open(track_id, |engine, path, gain| engine.load(path, gain))
+        let match_rate = self.features.match_sample_rate;
+        let features = self.features.clone();
+        self.open(track_id, |engine, play, options| {
+            // Only here, not at a gapless hand-off: switching interrupts output.
+            if match_rate && play.sample_rate > 0 {
+                engine.set_device_sample_rate(f64::from(play.sample_rate));
+            }
+            // Headphones may have been plugged in since the last track.
+            audio::apply_crossfeed(engine, &features);
+            engine.load_track(&play.path, options)
+        })
     }
     fn set_next(&mut self, track_id: Option<i64>) -> Result<(), String> {
         match track_id {
-            Some(id) => self.open(id, |engine, path, gain| engine.set_next(Some((path, gain)))),
-            None => self.engine.set_next(None),
+            Some(id) => self.open(id, |engine, play, options| {
+                engine.set_next_track(Some((&play.path, options)))
+            }),
+            None => self.engine.set_next_track(None),
         }
     }
     fn play(&mut self) -> bool {
@@ -122,7 +160,9 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         Some(library) => {
             let conn = library.conn();
             let saved = load_saved(&conn).map_err(|e| e.to_string())?;
-            let tracks = track_infos(&conn, &saved.queue.tracks).map_err(|e| e.to_string())?;
+            let features = settings::current(app).features;
+            let tracks =
+                track_infos(&conn, &saved.queue.tracks, &features).map_err(|e| e.to_string())?;
             Some((saved, tracks))
         }
         None => None,
@@ -170,7 +210,8 @@ where
     T: Send + 'static,
 {
     let app = app.clone();
-    let playback = settings::current(&app).playback;
+    let settings = settings::current(&app);
+    let (playback, features) = (settings.playback, settings.features);
     audio::on_main(&app.clone(), move || {
         let library = app
             .try_state::<LibraryState>()
@@ -183,6 +224,7 @@ where
                     engine,
                     library: &library,
                     playback,
+                    features,
                 };
                 f(queue, &mut player)
             })?;
@@ -200,11 +242,80 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         }
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
         crate::media::queue_changed(app, &state);
-        // The album playing is looked up ahead of background work.
+        crate::history::queue_changed(app, &state);
+        // The album playing is looked up ahead of background work, and the
+        // track analysed ahead of the library, for its waveform.
         let playing = state.current_item.as_ref().filter(|_| state.loaded);
         crate::metadata::worker::playing(app, playing.and_then(|item| item.track.album_id));
+        if let Some(item) = playing {
+            crate::library::analysis::playing(app, item.track.track_id);
+        }
         save(app, queue);
+        fill_radio(app, queue);
     }
+}
+
+/// Set while radio tracks are being picked, so one refill runs at a time.
+static RADIO_FILLING: AtomicBool = AtomicBool::new(false);
+
+/// Radio mode (or any queue, if the settings say so) near its end: picks
+/// more tracks like the last one on a blocking thread, then adds them.
+fn fill_radio<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
+    let features = settings::current(app).features;
+    if !features.library_radio || !(queue.is_radio() || features.radio_after_queue) {
+        return;
+    }
+    let Some(seed) = queue.radio_seed(2) else {
+        return;
+    };
+    if RADIO_FILLING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let exclude: HashSet<i64> = queue.track_ids().into_iter().collect();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = on_library(&app, move |library| {
+            let conn = library.conn();
+            let picks = radio::picks(&conn, seed, &exclude, radio::BATCH, seed_random())?;
+            with_reasons(&conn, picks, &features)
+        })
+        .await;
+        match result {
+            Ok(tracks) if !tracks.is_empty() => {
+                let _ = run(&app, move |queue, player| {
+                    // Only if it's still wanted.
+                    if queue.radio_seed(2).is_some() {
+                        queue.add(player, tracks, false);
+                    }
+                });
+            }
+            Ok(_) => {}
+            Err(error) => eprintln!("[radio] {error}"),
+        }
+        RADIO_FILLING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// The picks as queue tracks, each with why it was picked.
+fn with_reasons(
+    conn: &Connection,
+    picks: Vec<radio::Pick>,
+    features: &FeatureSettings,
+) -> Result<Vec<TrackInfo>, Error> {
+    let ids: Vec<i64> = picks.iter().map(|pick| pick.track_id).collect();
+    let reasons: HashMap<i64, String> = picks
+        .into_iter()
+        .map(|pick| (pick.track_id, pick.reason))
+        .collect();
+    let mut tracks = track_infos(conn, &ids, features)?;
+    for track in &mut tracks {
+        track.reason = reasons.get(&track.track_id).cloned();
+    }
+    Ok(tracks)
+}
+
+fn seed_random() -> u64 {
+    seed()
 }
 
 fn save<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
@@ -249,23 +360,31 @@ fn load_saved(conn: &Connection) -> Result<SavedPlayer, Error> {
 }
 
 /// What the queue shows about each track in `ids`, in that order; ids not
-/// in the library are left out.
-pub fn track_infos(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackInfo>, Error> {
+/// in the library are left out. `features` decides which tracks are to be
+/// skipped (O7) and which shuffle together (O3, O6, O7).
+pub fn track_infos(
+    conn: &Connection,
+    ids: &[i64],
+    features: &FeatureSettings,
+) -> Result<Vec<TrackInfo>, Error> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
     let ids_json = serde_json::to_string(ids).expect("ids serialize");
     let mut statement = conn.prepare_cached(
         "SELECT t.id, t.title, t.relative_path, artist.name, album.title, t.album_id, t.duration,
-                t.artist_id
+                t.artist_id, IFNULL(tp.skip, ap.skip)
          FROM tracks t
          LEFT JOIN artists artist ON artist.id = t.artist_id
          LEFT JOIN albums album ON album.id = t.album_id
+         LEFT JOIN track_prefs tp ON tp.track_id = t.id
+         LEFT JOIN album_prefs ap ON ap.album_id = t.album_id
          WHERE t.id IN (SELECT value FROM json_each(?1))",
     )?;
     let rows = statement.query_map([ids_json], |row| {
         let title: Option<String> = row.get(1)?;
         let relative: String = row.get(2)?;
+        let skip: Option<i64> = row.get(8)?;
         Ok(TrackInfo {
             track_id: row.get(0)?,
             title: title.unwrap_or_else(|| relative.rsplit('/').next().unwrap_or("").to_owned()),
@@ -274,12 +393,104 @@ pub fn track_infos(conn: &Connection, ids: &[i64]) -> Result<Vec<TrackInfo>, Err
             album_id: row.get(5)?,
             duration: row.get(6)?,
             artist_id: row.get(7)?,
+            skip: features.playback_preferences && skip.unwrap_or(0) != 0,
+            ..TrackInfo::default()
         })
     })?;
-    let by_id: HashMap<i64, TrackInfo> = rows
+    let mut by_id: HashMap<i64, TrackInfo> = rows
         .map(|row| row.map(|track| (track.track_id, track)))
         .collect::<Result<_, _>>()?;
+    let albums: BTreeSet<i64> = by_id.values().filter_map(|track| track.album_id).collect();
+    for album_id in albums {
+        for (track_id, unit) in album_units(conn, album_id, features)? {
+            if let Some(track) = by_id.get_mut(&track_id) {
+                track.unit = Some(unit);
+            }
+        }
+    }
     Ok(ids.iter().filter_map(|id| by_id.get(id).cloned()).collect())
+}
+
+/// Level (dBFS) above which a track's first or last 50 ms count as sound,
+/// for segues (O3).
+const SEGUE_LEVEL: f64 = -60.0;
+
+/// The shuffle units of an album's tracks: the whole album if the user
+/// never wants it shuffled (O7), else each work's movements (O6), else each
+/// run of tracks that segue into one another (O3), as `features` allows.
+fn album_units(
+    conn: &Connection,
+    album_id: i64,
+    features: &FeatureSettings,
+) -> Result<Vec<(i64, i64)>, Error> {
+    use std::hash::{Hash, Hasher};
+    let unit = |parts: &dyn Fn(&mut std::collections::hash_map::DefaultHasher)| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        parts(&mut hasher);
+        hasher.finish() as i64
+    };
+    if !features.segue_shuffle && !features.classical && !features.playback_preferences {
+        return Ok(Vec::new());
+    }
+    let never_shuffle: bool = conn
+        .query_row(
+            "SELECT IFNULL(never_shuffle, 0) FROM album_prefs WHERE album_id = ?1",
+            [album_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .is_some_and(|value| value != 0);
+    let mut statement = conn.prepare_cached(
+        "SELECT t.id, t.work, a.start_level, a.end_level
+         FROM tracks t
+         LEFT JOIN track_analysis a ON a.track_id = t.id AND a.error IS NULL
+             AND a.file_size = t.file_size AND a.file_mtime_ns = t.file_mtime_ns
+         WHERE t.album_id = ?1
+         ORDER BY IFNULL(t.disc_number, 1), t.track_number NULLS LAST, t.relative_path,
+                  t.range_start",
+    )?;
+    let tracks: Vec<(i64, Option<String>, Option<f64>, Option<f64>)> = statement
+        .query_map([album_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .collect::<Result<_, _>>()?;
+
+    if features.playback_preferences && never_shuffle {
+        let key = unit(&|h| (1u8, album_id).hash(h));
+        return Ok(tracks.iter().map(|track| (track.0, key)).collect());
+    }
+    let mut units = Vec::new();
+    let mut run_start: Option<i64> = None;
+    for (index, (id, work, start, _)) in tracks.iter().enumerate() {
+        if let (true, Some(work)) = (
+            features.classical,
+            work.as_deref().filter(|w| !w.is_empty()),
+        ) {
+            units.push((*id, unit(&|h| (2u8, album_id, work).hash(h))));
+            run_start = None;
+            continue;
+        }
+        let sound = |level: Option<f64>| level.is_some_and(|level| level > SEGUE_LEVEL);
+        let segues_in = features.segue_shuffle
+            && index > 0
+            && tracks[index - 1].1.as_deref().is_none_or(str::is_empty)
+            && sound(tracks[index - 1].3)
+            && sound(*start);
+        if segues_in {
+            let first = *run_start.get_or_insert(tracks[index - 1].0);
+            let key = unit(&|h| (3u8, album_id, first).hash(h));
+            if units
+                .last()
+                .is_none_or(|&(last, _)| last != tracks[index - 1].0)
+            {
+                units.push((tracks[index - 1].0, key));
+            }
+            units.push((*id, key));
+        } else {
+            run_start = None;
+        }
+    }
+    Ok(units)
 }
 
 // ---- Engine events and other hosts ------------------------------------------
@@ -317,7 +528,11 @@ pub async fn refresh_tracks<R: Runtime>(app: &AppHandle<R>) {
     let Ok(ids) = run(app, |queue, _| queue.track_ids()) else {
         return;
     };
-    let Ok(tracks) = on_library(app, move |library| track_infos(&library.conn(), &ids)).await
+    let features = settings::current(app).features;
+    let Ok(tracks) = on_library(app, move |library| {
+        track_infos(&library.conn(), &ids, &features)
+    })
+    .await
     else {
         return;
     };
@@ -375,8 +590,9 @@ pub async fn queue_play<R: Runtime>(
     track_ids: Vec<i64>,
     start: usize,
 ) -> Result<(), String> {
+    let features = settings::current(&app).features;
     let tracks = on_library(&app, move |library| {
-        track_infos(&library.conn(), &track_ids)
+        track_infos(&library.conn(), &track_ids, &features)
     })
     .await?;
     run(&app, move |queue, player| {
@@ -396,11 +612,9 @@ pub async fn queue_play_node<R: Runtime>(
     start_track_id: Option<i64>,
 ) -> Result<(), String> {
     let tracks = node_tracks(&app, rule, path, recursive).await?;
-    let start = start_track_id
-        .and_then(|id| tracks.iter().position(|track| track.track_id == id))
-        .unwrap_or(0);
+    let start = start_track_id.and_then(|id| tracks.iter().position(|track| track.track_id == id));
     run(&app, move |queue, player| {
-        queue.replace(player, tracks, start, true)
+        queue.replace_from(player, tracks, start.unwrap_or(0), true, start.is_some())
     })
 }
 
@@ -411,8 +625,9 @@ pub async fn queue_add<R: Runtime>(
     track_ids: Vec<i64>,
     next: bool,
 ) -> Result<(), String> {
+    let features = settings::current(&app).features;
     let tracks = on_library(&app, move |library| {
-        track_infos(&library.conn(), &track_ids)
+        track_infos(&library.conn(), &track_ids, &features)
     })
     .await?;
     run(&app, move |queue, player| queue.add(player, tracks, next))
@@ -437,10 +652,11 @@ async fn node_tracks<R: Runtime>(
     path: Vec<Option<GroupKey>>,
     recursive: bool,
 ) -> Result<Vec<TrackInfo>, String> {
+    let features = settings::current(app).features;
     on_library(app, move |library| {
         let conn = library.conn();
         let ids = browse::node_track_ids_rule(&conn, &rule, &path, recursive)?;
-        track_infos(&conn, &ids)
+        track_infos(&conn, &ids, &features)
     })
     .await
 }
@@ -501,6 +717,71 @@ pub fn queue_set_repeat<R: Runtime>(app: AppHandle<R>, repeat: Repeat) -> Result
     run(&app, move |queue, player| queue.set_repeat(player, repeat))
 }
 
+/// Library radio (O9): replaces the queue with `track_id` and tracks like
+/// it, and keeps adding more as it plays.
+#[tauri::command]
+pub async fn queue_start_radio<R: Runtime>(app: AppHandle<R>, track_id: i64) -> Result<(), String> {
+    let features = settings::current(&app).features;
+    if !features.library_radio {
+        return Err("Library radio is turned off in Settings › Features".into());
+    }
+    let tracks = on_library(&app, move |library| {
+        let conn = library.conn();
+        let picks = radio::picks(
+            &conn,
+            track_id,
+            &HashSet::from([track_id]),
+            radio::BATCH,
+            seed_random(),
+        )?;
+        let mut tracks = track_infos(&conn, &[track_id], &features)?;
+        tracks.extend(with_reasons(&conn, picks, &features)?);
+        Ok(tracks)
+    })
+    .await?;
+    if tracks.is_empty() {
+        return Err("The track is no longer in the library".into());
+    }
+    run(&app, move |queue, player| queue.start_radio(player, tracks))
+}
+
+/// Practice mode (O12): loops the current track between `start` and `end`
+/// seconds, or clears the loop when either is null. Returns the loop set.
+#[tauri::command]
+pub fn player_set_loop<R: Runtime>(
+    app: AppHandle<R>,
+    start: Option<f64>,
+    end: Option<f64>,
+) -> Result<Option<(f64, f64)>, String> {
+    let points = start.zip(end);
+    if points.is_some() && !settings::current(&app).features.practice_mode {
+        return Err("Practice mode is turned off in Settings › Features".into());
+    }
+    run(&app, move |queue, player| {
+        let track_id = queue
+            .current_item()
+            .filter(|_| queue.is_loaded())
+            .map(|item| item.track.track_id)
+            .ok_or("Nothing is playing")?;
+        player.set_loop(track_id, points)
+    })?
+}
+
+/// Ends radio mode; the queue stays as it is.
+#[tauri::command]
+pub fn queue_stop_radio<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    run(&app, |queue, _| queue.stop_radio())
+}
+
+/// The settings changed: radio mode ends if library radio was turned off,
+/// and tracks' shuffle units and skips follow the features.
+pub async fn features_changed<R: Runtime>(app: &AppHandle<R>) {
+    if !settings::current(app).features.library_radio {
+        let _ = run(app, |queue, _| queue.stop_radio());
+    }
+    refresh_tracks(app).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -520,7 +801,12 @@ mod tests {
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        let infos = track_infos(&library.conn, &[ids[1], 999, ids[0], ids[1]]).unwrap();
+        let infos = track_infos(
+            &library.conn,
+            &[ids[1], 999, ids[0], ids[1]],
+            &FeatureSettings::default(),
+        )
+        .unwrap();
         let titles: Vec<&str> = infos.iter().map(|info| info.title.as_str()).collect();
         assert_eq!(titles, ["Untitled.flac", "One", "Untitled.flac"]);
         assert_eq!(infos[1].album.as_deref(), Some("X"));
@@ -561,5 +847,75 @@ mod tests {
             )
             .unwrap();
         assert_eq!(load_saved(&library.conn).unwrap().queue, Saved::default());
+    }
+
+    #[test]
+    fn units_follow_segues_works_and_album_preferences() {
+        let library = Library::new([
+            track("a/1.flac").album("A").number(1),
+            track("a/2.flac").album("A").number(2),
+            track("a/3.flac").album("A").number(3),
+            track("a/4.flac").album("A").number(4),
+            track("a/5.flac").album("A").number(5),
+        ]);
+        let conn = &library.conn;
+        conn.execute_batch(
+            "UPDATE tracks SET work = 'Suite' WHERE relative_path IN ('a/4.flac', 'a/5.flac');
+             INSERT INTO track_analysis (track_id, file_size, file_mtime_ns, analysed_at,
+                                         start_level, end_level)
+             SELECT id, 0, 0, 0, -20.0, CASE relative_path WHEN 'a/2.flac' THEN -90.0 ELSE -20.0 END
+             FROM tracks;",
+        )
+        .unwrap();
+        let ids: Vec<i64> = conn
+            .prepare("SELECT id FROM tracks ORDER BY relative_path")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let units = |features: &FeatureSettings| -> Vec<Option<i64>> {
+            track_infos(conn, &ids, features)
+                .unwrap()
+                .into_iter()
+                .map(|track| track.unit)
+                .collect()
+        };
+        let features = FeatureSettings::default();
+        let found = units(&features);
+        // 1 runs into 2; 2 ends in silence; 4 and 5 are one work.
+        assert!(found[0].is_some() && found[0] == found[1]);
+        assert_eq!(found[2], None);
+        assert!(found[3].is_some() && found[3] == found[4] && found[3] != found[0]);
+
+        let none = FeatureSettings {
+            segue_shuffle: false,
+            classical: false,
+            ..FeatureSettings::default()
+        };
+        assert!(units(&none).iter().all(Option::is_none));
+
+        conn.execute(
+            "INSERT INTO album_prefs (album_id, never_shuffle, skip) VALUES (1, 1, NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO track_prefs (track_id, skip) VALUES (?1, 1)",
+            [ids[2]],
+        )
+        .unwrap();
+        let whole = units(&features);
+        assert!(whole.iter().all(|unit| unit.is_some() && *unit == whole[0]));
+        let infos = track_infos(conn, &ids, &features).unwrap();
+        assert!(infos[2].skip && !infos[1].skip);
+        let off = FeatureSettings {
+            playback_preferences: false,
+            ..FeatureSettings::default()
+        };
+        assert!(track_infos(conn, &ids, &off)
+            .unwrap()
+            .iter()
+            .all(|t| !t.skip));
     }
 }

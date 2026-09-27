@@ -215,6 +215,12 @@ fn level_order(level: Level, album_order: AlbumOrder) -> String {
             level_order(level, AlbumOrder::Title)
         );
     }
+    if (level, album_order) == (Level::Album, AlbumOrder::DateAdded) {
+        return format!(
+            "{ALBUM_ADDED} DESC, {}",
+            level_order(level, AlbumOrder::Title)
+        );
+    }
     match level {
         Level::AlbumArtist => {
             "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_artist_id"
@@ -228,10 +234,18 @@ fn level_order(level: Level, album_order: AlbumOrder) -> String {
         }
         Level::Year => "IFNULL(ay.year, t.year) NULLS LAST",
         Level::Genre => "anomp_sort_key(t.genre, NULL) NULLS LAST, t.genre",
+        Level::Composer => {
+            "anomp_sort_key((SELECT name FROM artists WHERE id = t.composer_id), ?1) NULLS LAST,
+             t.composer_id"
+        }
+        Level::Work => "anomp_sort_key(t.work, NULL) NULLS LAST, t.work",
         Level::Folder => unreachable!("rules::validate keeps the folder level on its own"),
     }
     .to_owned()
 }
+
+/// When an album's newest track came into the library.
+const ALBUM_ADDED: &str = "(SELECT max(a.added_at) FROM tracks a WHERE a.album_id = t.album_id)";
 
 /// `node_track_ids` under the folder rule. SQL gives each folder's tracks in
 /// the rule's track order; a stable sort then puts each folder's subfolders
@@ -403,8 +417,8 @@ fn level_filter(
 ) -> Result<String, Error> {
     let value = match (level, key) {
         (_, None) => Value::Null,
-        (Level::Genre, Some(GroupKey::Text(genre))) => Value::Text(genre.clone()),
-        (Level::Genre, Some(GroupKey::Number(_))) | (_, Some(GroupKey::Text(_))) => {
+        (Level::Genre | Level::Work, Some(GroupKey::Text(text))) => Value::Text(text.clone()),
+        (Level::Genre | Level::Work, Some(GroupKey::Number(_))) | (_, Some(GroupKey::Text(_))) => {
             return Err(Error::Invalid(format!(
                 "Wrong kind of key for the {level:?} level"
             )));
@@ -418,6 +432,8 @@ fn level_filter(
         Level::Album => format!("t.album_id IS {value}"),
         Level::Year => format!("{ALBUM_YEAR} IS {value}"),
         Level::Genre => format!("anomp_has_genre(t.genre, {value})"),
+        Level::Composer => format!("t.composer_id IS {value}"),
+        Level::Work => format!("t.work IS {value}"),
         Level::Folder => unreachable!("rules::validate keeps the folder level on its own"),
     })
 }
@@ -471,6 +487,7 @@ fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str)
                 match album_order {
                     AlbumOrder::Title => String::new(),
                     AlbumOrder::Year => format!("{ALBUM_MIN_YEAR} NULLS LAST, "),
+                    AlbumOrder::DateAdded => format!("max(t.added_at) DESC, "),
                 }
             ),
             "Unknown album",
@@ -480,6 +497,21 @@ fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str)
             ALBUM_YEAR.to_owned(),
             format!("{ALBUM_YEAR} NULLS LAST"),
             "Unknown year",
+        ),
+        Level::Composer => (
+            "t.composer_id, (SELECT name FROM artists WHERE id = t.composer_id), NULL, NULL"
+                .to_owned(),
+            "t.composer_id".to_owned(),
+            "anomp_sort_key((SELECT name FROM artists WHERE id = t.composer_id), ?1) NULLS LAST,
+             t.composer_id"
+                .to_owned(),
+            "Unknown composer",
+        ),
+        Level::Work => (
+            "t.work, t.work, NULL, NULL".to_owned(),
+            "t.work".to_owned(),
+            "anomp_sort_key(t.work, NULL) NULLS LAST, t.work".to_owned(),
+            "No work",
         ),
         Level::Genre => unreachable!("handled above"),
         Level::Folder => unreachable!("rules::validate keeps the folder level on its own"),
@@ -516,8 +548,10 @@ fn track_order_terms(order: &[TrackKey]) -> Vec<&'static str> {
             TrackKey::TrackNumber => "t.track_number NULLS LAST",
             TrackKey::Title => "anomp_sort_key(t.title, ?1) NULLS LAST, t.title",
             TrackKey::Path => {
-                "anomp_sort_key(f.path, NULL), f.path, anomp_sort_key(t.relative_path, NULL), t.relative_path"
+                "anomp_sort_key(f.path, NULL), f.path, anomp_sort_key(t.relative_path, NULL), t.relative_path, t.range_start"
             }
+            TrackKey::DateAdded => "t.added_at DESC",
+            TrackKey::Movement => "t.movement_number NULLS LAST",
         })
         .collect()
 }
@@ -1444,5 +1478,77 @@ mod tests {
         )
         .unwrap();
         assert_eq!(page.total, 0);
+    }
+
+    #[test]
+    fn browses_by_composer_and_work() {
+        let library = Library::new([
+            track("1.flac").title("I"),
+            track("2.flac").title("II"),
+            track("3.flac").title("Other"),
+        ]);
+        library
+            .conn
+            .execute_batch(
+                "INSERT INTO artists (name) VALUES ('Beethoven');
+                 UPDATE tracks SET work = 'Symphony No. 5',
+                     composer_id = (SELECT id FROM artists WHERE name = 'Beethoven')
+                 WHERE relative_path IN ('1.flac', '2.flac');
+                 UPDATE tracks SET movement_number = 2 WHERE relative_path = '1.flac';
+                 UPDATE tracks SET movement_number = 1 WHERE relative_path = '2.flac';",
+            )
+            .unwrap();
+        let rule = rule("composer");
+        assert_eq!(
+            library.names(&rule, &[]),
+            [
+                ("Beethoven".to_owned(), 2),
+                ("Unknown composer".to_owned(), 1)
+            ]
+        );
+        let composer = library.key(&rule, &[], "Beethoven");
+        assert_eq!(
+            library.names(&rule, &[composer.clone()]),
+            [("Symphony No. 5".to_owned(), 2)]
+        );
+        let work = library.key(&rule, &[composer.clone()], "Symphony No. 5");
+        assert_eq!(library.titles(&rule, &[composer, work]), ["II", "I"]);
+        let unknown = library.page(&rule, &[None, None]);
+        assert_eq!(titles(&unknown.tracks), ["Other"]);
+        assert_eq!(unknown.tracks[0].composer, None);
+    }
+
+    #[test]
+    fn sorts_by_date_added() {
+        let library = Library::new([
+            track("a.flac").title("Old").album("X"),
+            track("b.flac").title("New").album("Y"),
+        ]);
+        library
+            .conn
+            .execute_batch(
+                "UPDATE tracks SET added_at = 1 WHERE relative_path = 'a.flac';
+                 UPDATE tracks SET added_at = 2 WHERE relative_path = 'b.flac';",
+            )
+            .unwrap();
+        assert_eq!(
+            library.titles(&songs_rule(&[TrackKey::DateAdded]), &[]),
+            ["New", "Old"]
+        );
+        let albums = SortRule {
+            levels: vec![Level::Album],
+            album_order: AlbumOrder::DateAdded,
+            ..songs_rule(&[])
+        };
+        let names: Vec<String> = library
+            .groups(&albums, &[])
+            .into_iter()
+            .map(|group| group.name)
+            .collect();
+        assert_eq!(names, ["Y", "X"]);
+        let page = library.page(&songs_rule(&[TrackKey::Title]), &[]);
+        assert_eq!(page.tracks[0].added_at, 2);
+        assert_eq!(page.tracks[0].play_count, 0);
+        assert!(!page.tracks[0].has_prefs);
     }
 }

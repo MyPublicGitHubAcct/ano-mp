@@ -166,6 +166,18 @@ private:
 
         const auto* descriptor = avcodec_descriptor_get (parameters->codec_id);
         const bool lossless = descriptor != nullptr && (descriptor->props & AV_CODEC_PROP_LOSSLESS) != 0;
+
+        // What the file holds, before decoding to float (FFmpegAudioFormat.h).
+        if (descriptor != nullptr)
+            metadataValues.set (FFmpegAudioFormat::codecKey, descriptor->name);
+        metadataValues.set (FFmpegAudioFormat::losslessKey, lossless ? "1" : "0");
+        const auto sourceBits =
+            parameters->bits_per_raw_sample > 0 ? parameters->bits_per_raw_sample : parameters->bits_per_coded_sample;
+        if (lossless && sourceBits > 0)
+            metadataValues.set (FFmpegAudioFormat::bitsKey, juce::String (sourceBits));
+        const auto bitRate = parameters->bit_rate > 0 ? parameters->bit_rate : format->bit_rate;
+        if (bitRate > 0)
+            metadataValues.set (FFmpegAudioFormat::bitRateKey, juce::String (bitRate));
         preroll = lossless ? 0 : juce::jmax (minimumLossyPreroll, static_cast<juce::int64> (parameters->seek_preroll));
 
         // Timestamps coarser than one sample (ASF uses milliseconds) cannot
@@ -603,5 +615,65 @@ std::unique_ptr<juce::AudioFormatWriter> FFmpegAudioFormat::createWriterFor (std
                                                                              const juce::AudioFormatWriterOptions&)
 {
     return nullptr;
+}
+
+juce::String FFmpegAudioFormat::readChapters (const juce::File& file, juce::Array<Chapter>& chapters)
+{
+    chapters.clear();
+    juce::FileInputStream input (file);
+    if (! input.openedOk())
+        return "Cannot open file: " + file.getFullPathName();
+
+    auto* buffer = static_cast<uint8_t*> (av_malloc (ioBufferSize));
+    auto* io = avio_alloc_context (buffer, ioBufferSize, 0, &input, readPacket, nullptr, seekStream);
+    if (io == nullptr)
+    {
+        av_free (buffer);
+        return "Out of memory";
+    }
+    auto* format = avformat_alloc_context();
+    if (format == nullptr)
+    {
+        av_freep (&io->buffer);
+        avio_context_free (&io);
+        return "Out of memory";
+    }
+    format->pb = io;
+    format->flags |= AVFMT_FLAG_CUSTOM_IO;
+
+    juce::String error;
+    // Chapters come from the header, so the streams needn't be probed.
+    if (avformat_open_input (&format, file.getFileName().toRawUTF8(), nullptr, nullptr) < 0)
+    {
+        error = "Unsupported or unreadable file: " + file.getFullPathName();
+    }
+    else
+    {
+        const auto total =
+            format->duration != AV_NOPTS_VALUE ? static_cast<double> (format->duration) / AV_TIME_BASE : -1.0;
+        for (unsigned int i = 0; i < format->nb_chapters; ++i)
+        {
+            const auto* chapter = format->chapters[i];
+            Chapter entry;
+            entry.start = static_cast<double> (chapter->start) * av_q2d (chapter->time_base);
+            entry.end = chapter->end != AV_NOPTS_VALUE && chapter->end > chapter->start
+                            ? static_cast<double> (chapter->end) * av_q2d (chapter->time_base)
+                            : -1.0;
+            if (const auto* title = av_dict_get (chapter->metadata, "title", nullptr, 0))
+                entry.title = juce::String::fromUTF8 (title->value).trim();
+            chapters.add (entry);
+        }
+        // Chapters without an end run to the next one, or the end of the file.
+        for (int i = 0; i < chapters.size(); ++i)
+            if (chapters.getReference (i).end < 0.0)
+                chapters.getReference (i).end = i + 1 < chapters.size() ? chapters[i + 1].start : total;
+        avformat_close_input (&format);
+    }
+
+    if (format != nullptr)
+        avformat_free_context (format);
+    av_freep (&io->buffer);
+    avio_context_free (&io);
+    return error;
 }
 } // namespace anomp

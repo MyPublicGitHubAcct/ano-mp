@@ -6,7 +6,12 @@
 
 #include <juce_core/juce_core.h>
 
+#include <chapterframe.h>
 #include <fileref.h>
+#include <id3v2tag.h>
+#include <mpegfile.h>
+#include <synchronizedlyricsframe.h>
+#include <textidentificationframe.h>
 #include <tpropertymap.h>
 
 #include <cmath>
@@ -377,4 +382,138 @@ TEST_CASE ("Tag reading errors", "[tags][c-api]")
     // A null error buffer is allowed, and so is freeing null.
     CHECK (anomp_read_tags (nullptr, 0, nullptr, 0) == nullptr);
     anomp_tags_free (nullptr);
+}
+
+TEST_CASE ("Classical work tags and full dates", "[tags][classical]")
+{
+    const auto* fixture = GENERATE ("flac-44k.flac", "mp3-44k.mp3", "alac-44k.m4a");
+    INFO (fixture);
+    TempCopy copy (fixture);
+    {
+        TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (! ref.isNull());
+        auto properties = ref.properties();
+        properties["WORK"] = TagLib::String ("Symphony No. 5 in C minor, Op. 67");
+        properties["MOVEMENTNAME"] = TagLib::String ("Allegro con brio");
+        properties["MOVEMENTNUMBER"] = TagLib::String ("1");
+        properties["COMPOSER"] = TagLib::String ("Ludwig van Beethoven");
+        properties["CONDUCTOR"] = TagLib::String ("Carlos Kleiber");
+        properties["DATE"] = TagLib::String ("1975-03-01T00:00:00");
+        properties["ORIGINALDATE"] = TagLib::String ("1975-03");
+        CHECK (ref.setProperties (properties).isEmpty());
+        REQUIRE (ref.save());
+    }
+
+    const auto tags = readTags (copy.file(), 0);
+    CHECK (std::string_view (tags->work) == "Symphony No. 5 in C minor, Op. 67");
+    CHECK (std::string_view (tags->movement_name) == "Allegro con brio");
+    CHECK (tags->movement_number == 1);
+    CHECK (std::string_view (tags->composer) == "Ludwig van Beethoven");
+    CHECK (std::string_view (tags->conductor) == "Carlos Kleiber");
+    CHECK (std::string_view (tags->date) == "1975-03-01");
+    CHECK (std::string_view (tags->original_date) == "1975-03");
+    CHECK (tags->year == 1975);
+}
+
+TEST_CASE ("A Vorbis MOVEMENT tag is a number or a name", "[tags][classical]")
+{
+    TempCopy copy ("flac-44k.flac");
+    const auto write = [&] (const char* movement)
+    {
+        TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+        TagLib::PropertyMap properties;
+        properties["MOVEMENT"] = TagLib::String (movement);
+        properties["MOVEMENTTOTAL"] = TagLib::String ("4");
+        ref.setProperties (properties);
+        REQUIRE (ref.save());
+    };
+    write ("2");
+    auto tags = readTags (copy.file(), 0);
+    CHECK (tags->movement_number == 2);
+    CHECK (tags->movement_total == 4);
+    CHECK (std::string_view (tags->movement_name).empty());
+
+    write ("Andante con moto");
+    tags = readTags (copy.file(), 0);
+    CHECK (tags->movement_number == 0);
+    CHECK (std::string_view (tags->movement_name) == "Andante con moto");
+
+    // Untagged: empty.
+    const auto untagged = readTags (fixtureFile ("wav-s16-44k.wav"), 0);
+    CHECK (std::string_view (untagged->work).empty());
+    CHECK (std::string_view (untagged->date).empty());
+}
+
+TEST_CASE ("Lyrics are read only when asked, synced ones as LRC", "[tags][lyrics]")
+{
+    TempCopy copy ("mp3-44k.mp3");
+    {
+        TagLib::MPEG::File file (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (file.isValid());
+        auto* tag = file.ID3v2Tag (true);
+        auto properties = tag->properties();
+        properties["LYRICS"] = TagLib::String ("First line\nSecond line");
+        tag->setProperties (properties);
+
+        auto* synced = new TagLib::ID3v2::SynchronizedLyricsFrame (TagLib::String::UTF8);
+        synced->setTimestampFormat (TagLib::ID3v2::SynchronizedLyricsFrame::AbsoluteMilliseconds);
+        synced->setType (TagLib::ID3v2::SynchronizedLyricsFrame::Lyrics);
+        synced->setSynchedText ({ { 1500, "First line" }, { 65250, "Second line" } });
+        tag->addFrame (synced);
+        REQUIRE (file.save());
+    }
+
+    const auto without = readTags (copy.file(), 0);
+    CHECK (std::string_view (without->lyrics).empty());
+    CHECK (std::string_view (without->synced_lyrics).empty());
+
+    const auto tags = readTags (copy.file(), ANOMP_TAGS_LYRICS);
+    CHECK (std::string_view (tags->lyrics) == "First line\nSecond line");
+    CHECK (std::string_view (tags->synced_lyrics) == "[00:01.50]First line\n[01:05.25]Second line\n");
+}
+
+TEST_CASE ("Chapters and cue sheets are read only when asked", "[tags][chapters]")
+{
+    TempCopy copy ("mp3-44k.mp3");
+    {
+        TagLib::MPEG::File file (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (file.isValid());
+        auto* tag = file.ID3v2Tag (true);
+        const auto chapter = [] (const char* id, unsigned int start, unsigned int end, const char* title)
+        {
+            auto* frame = new TagLib::ID3v2::ChapterFrame (TagLib::ByteVector (id), start, end, 0xffffffff, 0xffffffff);
+            auto* text = new TagLib::ID3v2::TextIdentificationFrame ("TIT2", TagLib::String::UTF8);
+            text->setText (title);
+            frame->addEmbeddedFrame (text);
+            return frame;
+        };
+        tag->addFrame (chapter ("ch0", 0, 200, "Intro"));
+        tag->addFrame (chapter ("ch1", 200, 500, "Main theme"));
+        REQUIRE (file.save());
+    }
+
+    CHECK (readTags (copy.file(), 0)->chapter_count == 0);
+
+    const auto tags = readTags (copy.file(), ANOMP_TAGS_CHAPTERS);
+    REQUIRE (tags->chapter_count == 2);
+    CHECK (tags->chapters[0].start == Catch::Approx (0.0));
+    CHECK (tags->chapters[0].end == Catch::Approx (0.2));
+    CHECK (std::string_view (tags->chapters[0].title) == "Intro");
+    CHECK (tags->chapters[1].start == Catch::Approx (0.2));
+    CHECK (tags->chapters[1].end == Catch::Approx (0.5));
+    CHECK (std::string_view (tags->chapters[1].title) == "Main theme");
+
+    // A cue sheet in a Vorbis comment comes back as text.
+    TempCopy flac ("flac-44k.flac");
+    {
+        TagLib::FileRef ref (flac.file().getFullPathName().toRawUTF8());
+        TagLib::PropertyMap properties;
+        properties["CUESHEET"] = TagLib::String ("FILE \"a.flac\" WAVE\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n");
+        ref.setProperties (properties);
+        REQUIRE (ref.save());
+    }
+    const auto cued = readTags (flac.file(), ANOMP_TAGS_CHAPTERS);
+    CHECK (std::string_view (cued->cuesheet).starts_with ("FILE \"a.flac\" WAVE"));
+    CHECK (cued->chapter_count == 0);
+    CHECK (cued->chapters == nullptr);
 }

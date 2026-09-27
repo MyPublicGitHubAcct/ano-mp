@@ -234,9 +234,21 @@ fn bench_node_tracks_and_queue() {
     println!("one album artist's tracks: {}", ms(artist));
 
     let ids = node_track_ids_rule(&library.conn, &by_artist, &[], true).unwrap();
-    let infos = time(5, || track_infos(&library.conn, &ids).unwrap());
+    let infos = time(5, || {
+        track_infos(
+            &library.conn,
+            &ids,
+            &crate::settings::FeatureSettings::default(),
+        )
+        .unwrap()
+    });
     println!("track infos for {} queued tracks: {}", ids.len(), ms(infos));
-    let infos = track_infos(&library.conn, &ids).unwrap();
+    let infos = track_infos(
+        &library.conn,
+        &ids,
+        &crate::settings::FeatureSettings::default(),
+    )
+    .unwrap();
     let json = time(5, || serde_json::to_string(&infos).unwrap());
     println!(
         "queue list as JSON: {} bytes, {}",

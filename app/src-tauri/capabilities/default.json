@@ -8,6 +8,7 @@
     "core:window:allow-set-fullscreen",
     "dialog:allow-open",
     "dialog:allow-ask",
+    "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://*" }, { "url": "http://*" }]

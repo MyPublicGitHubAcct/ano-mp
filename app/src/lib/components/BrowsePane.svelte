@@ -24,6 +24,7 @@
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
+  import { albumFeatureItems, trackFeatureItems } from "$lib/featureMenu";
   import AlbumInfo from "./AlbumInfo.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
@@ -153,6 +154,7 @@
         items.push(
           { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album }) },
           { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album }) },
+          ...albumFeatureItems(album),
         );
       }
       return items;
@@ -167,6 +169,7 @@
       const artist = { id: track.artistId, name: track.artist };
       items.push({ label: "Go to artist", action: () => showArtist(artist) });
     }
+    items.push(...trackFeatureItems({ id: track.id, title: track.title ?? fileName(track.path) }));
     return items;
   }
 
@@ -199,6 +202,7 @@
           >
             <option value="title">Title</option>
             <option value="year">Year</option>
+            <option value="dateAdded">Date added</option>
           </select>
         </label>
       {/if}
@@ -278,6 +282,9 @@
               <div class="entry track" class:playing={player.currentItem?.trackId === track.id}>
                 {#if showNumbers}<span class="number muted">{track.trackNumber ?? ""}</span>{/if}
                 <TrackText {track} />
+                {#if track.hasPrefs && appSettings.current.features.playbackPreferences}
+                  <span class="badge" title="Has playback preferences">⚙</span>
+                {/if}
                 <button
                   class="icon"
                   title="More"
@@ -372,6 +379,11 @@
   }
 
   .small {
+    font-size: 0.8rem;
+  }
+
+  .badge {
+    color: var(--text-faint);
     font-size: 0.8rem;
   }
 

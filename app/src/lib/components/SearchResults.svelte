@@ -13,7 +13,8 @@
     type SearchResults,
     type Track,
   } from "$lib/api";
-  import { plural } from "$lib/format";
+  import { albumFeatureItems, trackFeatureItems } from "$lib/featureMenu";
+  import { fileName, plural } from "$lib/format";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -112,6 +113,7 @@
       const artist = { id: track.artistId, name: track.artist };
       items.push({ label: "Go to artist", action: () => showArtist(artist) });
     }
+    items.push(...trackFeatureItems({ id: track.id, title: track.title ?? fileName(track.path) }));
     ui.openMenu(event, items);
   }
 
@@ -129,6 +131,7 @@
     items.push(
       { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
       { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
+      ...albumFeatureItems(ref),
     );
     ui.openMenu(event, items);
   }

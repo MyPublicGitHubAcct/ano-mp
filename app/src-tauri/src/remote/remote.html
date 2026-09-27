@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>ano-mp remote</title>
+<style>
+  :root { --bg: #f6f6f4; --surface: #fff; --text: #1d1d1f; --muted: #6e6e73; --accent: #c2410c; --border: #e3e3e0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --surface: #1f1f1f; --text: #f2f2f2; --muted: #a0a0a5; --accent: #fb923c; --border: #333; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 32rem; margin: 0 auto; padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom)); }
+  h1 { font-size: 1.1rem; margin: 0 0 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+  .now { display: flex; gap: 1rem; align-items: center; }
+  .now img { width: 5.5rem; height: 5.5rem; border-radius: 8px; object-fit: cover; background: var(--border); flex: none; }
+  .title { font-weight: 600; font-size: 1.05rem; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .controls { display: flex; justify-content: space-around; margin: 1rem 0 .5rem; }
+  button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: .6rem 1rem; }
+  .controls button { width: 3.5rem; height: 3.5rem; font-size: 1.3rem; padding: 0; }
+  .controls .play { background: var(--accent); color: #fff; border-color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=text], input[inputmode=numeric] { width: 100%; font: inherit; padding: .6rem .8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: .5rem 0; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: .5rem; align-items: center; }
+  li:first-child { border-top: none; }
+  li.current { color: var(--accent); font-weight: 600; }
+  li button { padding: .3rem .7rem; font-size: .85rem; flex: none; }
+  .row { display: flex; gap: .5rem; align-items: center; }
+  .error { color: #dc2626; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ano-mp</h1>
+
+  <section id="pair" class="card" hidden>
+    <p>Open <b>Settings › Features › Remote control</b> on your computer, choose <b>Pair a phone</b>, and enter the code it shows.</p>
+    <p><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="Six-digit code"></p>
+    <p><input id="name" type="text" maxlength="64" placeholder="This phone's name"></p>
+    <p class="row"><button id="pair-button">Pair</button> <span id="pair-error" class="error"></span></p>
+  </section>
+
+  <section id="remote" hidden>
+    <div class="card">
+      <div class="now">
+        <img id="art" alt="">
+        <div>
+          <div class="title" id="title">Nothing playing</div>
+          <div class="muted" id="subtitle"></div>
+        </div>
+      </div>
+      <input id="position" type="range" min="0" max="1" step="0.1" value="0" aria-label="Position">
+      <div class="row muted"><span id="elapsed">0:00</span><span style="flex:1"></span><span id="total">0:00</span></div>
+      <div class="controls">
+        <button id="previous" aria-label="Previous">⏮</button>
+        <button id="toggle" class="play" aria-label="Play or pause">▶</button>
+        <button id="next" aria-label="Next">⏭</button>
+      </div>
+      <label class="muted">Volume <input id="volume" type="range" min="0" max="1" step="0.01"></label>
+      <p class="row"><label class="muted"><input id="shuffle" type="checkbox"> Shuffle</label></p>
+    </div>
+
+    <div class="card">
+      <input id="search" type="text" placeholder="Search the library" enterkeyhint="search">
+      <ul id="results"></ul>
+    </div>
+
+    <div class="card">
+      <div class="muted">Queue</div>
+      <ul id="queue"></ul>
+    </div>
+    <p class="error" id="error"></p>
+  </section>
+</main>
+<script>
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let token = null;
+  try { token = localStorage.getItem("anomp.remote.token"); } catch {}
+  let state = null;
+  let seeking = false;
+
+  const time = (s) => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  const el = (tag, text) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
+
+  async function call(path, body) {
+    const response = await fetch(path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) { forget(); throw new Error(data.error || "Pair this phone"); }
+    if (!response.ok) throw new Error(data.error || `Error ${response.status}`);
+    return data;
+  }
+
+  function forget() {
+    token = null;
+    try { localStorage.removeItem("anomp.remote.token"); } catch {}
+    show();
+  }
+
+  function show() {
+    $("pair").hidden = !!token;
+    $("remote").hidden = !token;
+  }
+
+  $("pair-button").onclick = async () => {
+    $("pair-error").textContent = "";
+    try {
+      const result = await call("/api/pair", { code: $("code").value, name: $("name").value || navigator.platform || "Phone" });
+      token = result.token;
+      try { localStorage.setItem("anomp.remote.token", token); } catch {}
+      show();
+      refresh();
+    } catch (error) {
+      $("pair-error").textContent = error.message;
+    }
+  };
+
+  const command = (body) => call("/api/command", body).then(refresh).catch((error) => ($("error").textContent = error.message));
+
+  $("toggle").onclick = () => command({ command: "toggle" });
+  $("next").onclick = () => command({ command: "next" });
+  $("previous").onclick = () => command({ command: "previous" });
+  $("shuffle").onchange = (event) => command({ command: "shuffle", on: event.target.checked });
+  $("volume").onchange = (event) => command({ command: "volume", value: Number(event.target.value) });
+  $("position").oninput = () => (seeking = true);
+  $("position").onchange = (event) => { seeking = false; command({ command: "seek", position: Number(event.target.value) }); };
+
+  let searchTimer = 0;
+  $("search").oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      const q = $("search").value.trim();
+      const list = $("results");
+      list.replaceChildren();
+      if (!q) return;
+      try {
+        const results = await call(`/api/search?q=${encodeURIComponent(q)}`);
+        for (const album of results.albums) {
+          const item = el("li");
+          item.append(el("span", `${album.title}${album.albumArtist ? " — " + album.albumArtist : ""}`));
+          const play = el("button", "Play album");
+          play.onclick = () => command({ command: "playAlbum", albumId: album.id });
+          item.append(play);
+          list.append(item);
+        }
+        for (const track of results.tracks) {
+          const item = el("li");
+          item.append(el("span", `${track.title ?? "Untitled"}${track.artist ? " — " + track.artist : ""}`));
+          const play = el("button", "Play");
+          play.onclick = () => command({ command: "playTrack", trackId: track.id });
+          item.append(play);
+          list.append(item);
+        }
+      } catch (error) {
+        $("error").textContent = error.message;
+      }
+    }, 300);
+  };
+
+  let lastAlbum = null;
+  let lastRevision = -1;
+  async function refresh() {
+    if (!token) return;
+    try {
+      state = await call("/api/state");
+      $("error").textContent = "";
+    } catch (error) {
+      $("error").textContent = error.message;
+      return;
+    }
+    const { queue, player } = state;
+    const item = queue.currentItem;
+    $("title").textContent = item ? item.title : "Nothing playing";
+    $("subtitle").textContent = item ? [item.artist, item.album].filter(Boolean).join(" — ") : "";
+    const album = item?.albumId ?? null;
+    if (album !== lastAlbum) {
+      lastAlbum = album;
+      $("art").src = album === null ? "" : `/art/album/${album}?token=${encodeURIComponent(token)}`;
+    }
+    $("toggle").textContent = player.state === "playing" ? "⏸" : "▶";
+    if (!seeking) {
+      const duration = queue.loaded ? player.duration : item?.duration ?? 0;
+      $("position").max = String(duration || 1);
+      $("position").value = String(queue.loaded ? player.position : queue.resumeAt);
+      $("elapsed").textContent = time(queue.loaded ? player.position : queue.resumeAt);
+      $("total").textContent = time(duration);
+    }
+    if (document.activeElement !== $("volume")) $("volume").value = String(player.volume);
+    $("shuffle").checked = queue.shuffle;
+    if (queue.revision !== lastRevision && queue.items) {
+      lastRevision = queue.revision;
+      const list = $("queue");
+      list.replaceChildren();
+      queue.items.forEach((entry, index) => {
+        const row = el("li");
+        if (index === queue.current) row.className = "current";
+        row.append(el("span", `${entry.title}${entry.artist ? " — " + entry.artist : ""}`));
+        const jump = el("button", "Play");
+        jump.onclick = () => command({ command: "jump", uid: entry.uid });
+        row.append(jump);
+        list.append(row);
+      });
+    } else if (queue.items == null) {
+      [...$("queue").children].forEach((row, index) => (row.className = index === queue.current ? "current" : ""));
+    }
+  }
+
+  show();
+  refresh();
+  setInterval(refresh, 1000);
+</script>
+</body>
+</html>

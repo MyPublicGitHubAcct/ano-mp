@@ -2,7 +2,7 @@
 // `bindings`); don't edit. After changing them, run
 // `ANOMP_WRITE_BINDINGS=1 cargo test bindings` in src-tauri.
 
-export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, };
+export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -26,7 +26,7 @@ albumFacts: Array<AlbumFact>,
  */
 showDescriptions: boolean, };
 
-export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate";
+export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate" | "playCount" | "lastPlayed" | "dateAdded" | "composer";
 
 export type AlbumFact = "date" | "label" | "country" | "format" | "type";
 
@@ -88,6 +88,127 @@ colorsFromCover: boolean,
 cycleSeconds: number, };
 
 export type CoverBasis = "year" | "artist";
+
+/**
+ * The optional features (PLAN.md §4.6, O1–O19), each of which the user
+ * can turn on or off. Local, cheap features are on by default; ones that
+ * cost hours of CPU time (the loudness analysis), change what is heard
+ * (crossfeed, sample-rate switching), go online (ListenBrainz) or listen
+ * on the network (the remote) are off until the user turns them on.
+ */
+export type FeatureSettings = { 
+/**
+ * O1: measures each track's loudness in the background, so tracks
+ * without ReplayGain tags are evened out too.
+ */
+loudnessAnalysis: boolean, 
+/**
+ * O2: the seek bar draws the track's waveform (once analysed).
+ */
+waveformSeekBar: boolean, 
+/**
+ * O3: shuffle keeps tracks that run into each other together, in order.
+ */
+segueShuffle: boolean, 
+/**
+ * O3: jumps over long silences, e.g. before a hidden track, after
+ * `skip_silence_after` seconds of them.
+ */
+skipSilence: boolean, 
+/**
+ * Seconds of silence played before the jump, 1 to 60.
+ */
+skipSilenceAfter: number, 
+/**
+ * O4: the library health report.
+ */
+healthReport: boolean, 
+/**
+ * O5: single-file albums with a cue sheet, and chaptered files, become
+ * a track per cue or chapter.
+ */
+cueSheets: boolean, 
+/**
+ * O6: works, movements and composers from the tags.
+ */
+classical: boolean, 
+/**
+ * O7: the user's own rules for a track or album (skip, never shuffle,
+ * gain, trims).
+ */
+playbackPreferences: boolean, 
+/**
+ * O8: keeps a history of what was played, on this computer only.
+ */
+listeningHistory: boolean, 
+/**
+ * O8: also sends each listen to ListenBrainz with the user's token.
+ */
+listenbrainz: boolean, 
+/**
+ * O9: "Start radio" plays tracks like one, and keeps adding more.
+ */
+libraryRadio: boolean, 
+/**
+ * O9: any queue carries on as radio when it runs out.
+ */
+radioAfterQueue: boolean, 
+/**
+ * O10: clicking the format in the now-playing bar shows every step to
+ * the speakers.
+ */
+signalPath: boolean, 
+/**
+ * O10: switches the device to each track's sample rate when it can.
+ */
+matchSampleRate: boolean, 
+/**
+ * O11: headphone crossfeed.
+ */
+crossfeed: CrossfeedLevel, 
+/**
+ * O11: crossfeed only while the OS says headphones are plugged in.
+ */
+crossfeedHeadphonesOnly: boolean, 
+/**
+ * O12: A–B loops and playing slower or faster.
+ */
+practiceMode: boolean, 
+/**
+ * O13: lyrics from the tags and `.lrc` files next to the tracks.
+ */
+lyrics: boolean, 
+/**
+ * O14: a remote control page for phones on the same network.
+ */
+remoteControl: boolean, 
+/**
+ * Its TCP port, 1024 to 65535.
+ */
+remotePort: number, 
+/**
+ * O15: the albums added most recently.
+ */
+recentlyAdded: boolean, 
+/**
+ * O16: what was played most recently (needs the history).
+ */
+recentlyPlayed: boolean, 
+/**
+ * O17: albums released on this day in earlier years.
+ */
+onThisDay: boolean, 
+/**
+ * O18: five random albums in the same genre on album pages.
+ */
+moreInGenre: boolean, 
+/**
+ * O19: the most played tracks, albums and artists of a year or month
+ * (needs the history).
+ */
+topPlayed: boolean, };
+
+export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 
 /**
  * The output devices, and which one plays.
@@ -152,18 +273,18 @@ albumOrder: AlbumOrder, };
 /**
  * What tracks are grouped by at one level of a rule.
  */
-export type Level = "albumArtist" | "artist" | "album" | "genre" | "year" | "folder";
+export type Level = "albumArtist" | "artist" | "album" | "genre" | "year" | "folder" | "composer" | "work";
 
 /**
  * What tracks are sorted by within a group, in order of precedence. Ties
  * left after all of them fall back on the track id.
  */
-export type TrackKey = "albumArtist" | "artist" | "album" | "year" | "discNumber" | "trackNumber" | "title" | "path";
+export type TrackKey = "albumArtist" | "artist" | "album" | "year" | "discNumber" | "trackNumber" | "title" | "path" | "dateAdded" | "movement";
 
 /**
  * How albums are ordered where a rule lists them.
  */
-export type AlbumOrder = "title" | "year";
+export type AlbumOrder = "title" | "year" | "dateAdded";
 
 export type MetadataSettings = { 
 /**

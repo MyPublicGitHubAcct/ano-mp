@@ -141,3 +141,80 @@ TEST_CASE ("C API player commands without an open device", "[c-api][engine]")
 
     anomp_engine_destroy (engine);
 }
+
+TEST_CASE ("C API tracks, loops, tempo and crossfeed", "[c-api][engine]")
+{
+    char error[256] = "";
+    CHECK (anomp_engine_load_track (nullptr, "/a.flac", nullptr, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "Null engine");
+    CHECK (anomp_engine_set_loop (nullptr, 0.0, 1.0, error, sizeof (error)) == 0);
+    CHECK (anomp_engine_loop (nullptr, nullptr, nullptr) == 0);
+    CHECK (anomp_engine_set_tempo (nullptr, 1.0, 0.0) == 0);
+    CHECK (anomp_engine_set_crossfeed (nullptr, 1) == 0);
+    CHECK (anomp_engine_output_is_headphones (nullptr) == -1);
+    CHECK (anomp_engine_signal_path (nullptr, nullptr) == 0);
+    CHECK (anomp_engine_set_device_sample_rate (nullptr, 48000.0) == 0);
+    CHECK (anomp_engine_set_track_gain_at (nullptr, "/a.flac", 0.0, 1.0) == 0);
+
+    const auto defaults = anomp_track_options_default (0.5);
+    CHECK (defaults.gain == 0.5);
+    CHECK (defaults.start == 0.0);
+    CHECK (defaults.end == 0.0);
+    CHECK (defaults.skip_from < 0.0);
+
+    auto* engine = anomp_engine_create();
+    REQUIRE (engine != nullptr);
+    const auto flac = fixturePath ("flac-44k.flac");
+
+    anomp_signal_path path {};
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.loaded == 0);
+
+    auto options = anomp_track_options_default (1.0);
+    options.start = 0.1;
+    options.end = 0.3;
+    REQUIRE (anomp_engine_load_track (engine, flac.c_str(), &options, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_duration (engine) == Catch::Approx (0.2));
+    options.start = 0.3;
+    options.end = 0.0;
+    REQUIRE (anomp_engine_set_next_track (engine, flac.c_str(), &options, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_set_track_gain_at (engine, flac.c_str(), 0.3, 0.5) == 1);
+    CHECK (anomp_engine_set_next_track (engine, nullptr, nullptr, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_load_track (engine, flac.c_str(), nullptr, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_duration (engine) == Catch::Approx (22371 / 44100.0));
+
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.loaded == 1);
+    CHECK (std::string_view (path.codec) == "flac");
+    CHECK (path.lossless == 1);
+    CHECK (path.bits_per_sample == 16);
+    CHECK (path.file_sample_rate == 44100.0);
+    CHECK (path.tempo == 1.0);
+
+    double start = 0.0, end = 0.0;
+    CHECK (anomp_engine_set_loop (engine, 0.1, 0.2, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error).starts_with ("A loop must"));
+    REQUIRE (anomp_engine_set_loop (engine, 0.1, 0.4, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_loop (engine, &start, &end) == 1);
+    CHECK (start == Catch::Approx (0.1));
+    CHECK (end == Catch::Approx (0.4));
+    CHECK (anomp_engine_set_loop (engine, -1.0, 0.0, error, sizeof (error)) == 1);
+    CHECK (anomp_engine_loop (engine, &start, &end) == 0);
+
+    CHECK (anomp_engine_set_tempo (engine, 0.75, -2.0) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.tempo == 0.75);
+    CHECK (path.semitones == -2.0);
+    CHECK (anomp_engine_set_tempo (engine, 2.0, 0.0) == 0);
+
+    CHECK (anomp_engine_set_crossfeed (engine, ANOMP_CROSSFEED_STRONG) == 1);
+    CHECK (anomp_engine_set_crossfeed (engine, 4) == 0);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.crossfeed == ANOMP_CROSSFEED_STRONG);
+
+    // No device is open.
+    CHECK (anomp_engine_output_is_headphones (engine) == -1);
+    CHECK (anomp_engine_set_device_sample_rate (engine, 48000.0) == 0);
+
+    anomp_engine_destroy (engine);
+}

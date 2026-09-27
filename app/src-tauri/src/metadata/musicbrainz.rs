@@ -24,7 +24,7 @@ const RELEASE_INC: &str = "recordings+artist-credits+labels+release-groups+genre
 
 /// What an artist lookup includes: links to other sites (Wikidata, the
 /// homepage), and genres.
-const ARTIST_INC: &str = "url-rels+genres";
+const ARTIST_INC: &str = "url-rels+genres+artist-rels";
 
 /// What a release group lookup includes: links to other sites (Wikidata).
 const RELEASE_GROUP_INC: &str = "url-rels";
@@ -181,7 +181,25 @@ pub struct Artist {
     pub wikipedia: Option<String>,
     /// The official homepage.
     pub homepage: Option<String>,
+    /// Bands they were in (or members of the band), collaborations and
+    /// subgroups, for library radio (PLAN.md O9). Missing in details
+    /// stored before it.
+    #[serde(default)]
+    pub related: Vec<RelatedArtist>,
 }
+
+/// An artist linked to another on MusicBrainz.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedArtist {
+    pub id: String,
+    pub name: String,
+    /// MusicBrainz's relationship type, e.g. "member of band".
+    pub relation: String,
+}
+
+/// The artist relationships kept for radio.
+const RELATED_KINDS: [&str; 3] = ["member of band", "collaboration", "subgroup"];
 
 /// A release group (an album, across all its releases) as the app keeps it:
 /// the links that lead to a description of the album. The rest of it comes
@@ -675,8 +693,16 @@ struct RawRelation {
     #[serde(rename = "type")]
     relation_type: String,
     url: Option<RawUrl>,
+    artist: Option<RawRelatedArtist>,
     #[serde(default)]
     ended: bool,
+}
+
+#[derive(Deserialize)]
+struct RawRelatedArtist {
+    id: String,
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -741,6 +767,19 @@ impl RawArtistEntry {
             wikidata,
             wikipedia,
             homepage,
+            related: self
+                .relations
+                .iter()
+                .filter(|relation| RELATED_KINDS.contains(&relation.relation_type.as_str()))
+                .filter_map(|relation| {
+                    let artist = relation.artist.as_ref()?;
+                    Some(RelatedArtist {
+                        id: artist.id.clone(),
+                        name: artist.name.clone(),
+                        relation: relation.relation_type.clone(),
+                    })
+                })
+                .collect(),
         }
     }
 }
@@ -1188,5 +1227,38 @@ mod tests {
         assert_eq!(transport.urls().len(), 1);
         assert!(lookup_release(&client, &conn, "../admin").is_err());
         assert_eq!(transport.urls().len(), 1, "a bad id is never requested");
+    }
+
+    #[test]
+    fn parses_related_artists() {
+        let artist = parse_artist(
+            r#"{"id": "a", "name": "Singer", "relations": [
+                {"type": "member of band", "target-type": "artist", "direction": "forward",
+                 "artist": {"id": "b", "name": "The Band"}},
+                {"type": "collaboration", "artist": {"id": "c", "name": "Duo"}},
+                {"type": "teacher", "artist": {"id": "d", "name": "Mentor"}},
+                {"type": "wikidata", "url": {"resource": "https://www.wikidata.org/wiki/Q1"}}
+            ]}"#,
+        )
+        .unwrap();
+        let related: Vec<(&str, &str)> = artist
+            .related
+            .iter()
+            .map(|r| (r.name.as_str(), r.relation.as_str()))
+            .collect();
+        assert_eq!(
+            related,
+            [("The Band", "member of band"), ("Duo", "collaboration")]
+        );
+        assert_eq!(artist.wikidata.as_deref(), Some("Q1"));
+        // Details stored before relationships were kept still read.
+        let stored: Artist = serde_json::from_str(
+            r#"{"id": "a", "name": "Old", "sortName": null, "disambiguation": null, "type": null,
+                "area": null, "beginArea": null, "endArea": null, "begin": null, "end": null,
+                "ended": false, "aliases": [], "genres": [], "wikidata": null, "wikipedia": null,
+                "homepage": null}"#,
+        )
+        .unwrap();
+        assert!(stored.related.is_empty());
     }
 }

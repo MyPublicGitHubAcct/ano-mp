@@ -36,7 +36,9 @@ output device, its buffer size, ReplayGain) and the visualizer, plus the
 online sources; the settings have a typed schema in Rust with generated
 TypeScript types. What remains is checking device switching and
 ReplayGain by ear. Nineteen optional features (O1–O19, §4.6) were
-proposed on 2026-09-27; none has been decided yet. A review of the repo
+proposed on 2026-09-27, and all were accepted and built the same day
+(Phase 6b): each can be turned on or off in Settings › Features. What
+remains of them is checking them in the app. A review of the repo
 on 2026-09-27 added a prioritised backlog: features users expect of any
 library player that the app lacks (F1–F21, §4.7), and hardening for
 security, robustness and maintenance (H1–H21, Phase 7). Their P1 items
@@ -101,7 +103,7 @@ Why this split:
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 67 passing Catch2 tests | `core/tests` |
+| 89 passing Catch2 tests | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -113,8 +115,9 @@ Why this split:
 | Visualizer UI: eight canvas visualizations, picker, full screen, colours from the cover | `app/src/lib/visualizer/`, `app/src/lib/components/Visualizer*.svelte` |
 | Settings: typed `AppSettings` (display, playback, output, visualizer) stored under `app`, lenient reading, applied on save; TypeScript types generated with ts-rs and checked by `cargo test` | `app/src-tauri/src/settings.rs`, `app/src/lib/generated/settings.ts` |
 | Settings screen: library folders, sort rule editor, displayed fields, output device and buffer size, ReplayGain, visualizer, online sources | `app/src/lib/components/SettingsPage.svelte`, `app/src/lib/components/settings/` |
+| Optional features O1–O19 (Phase 6b), each switched in Settings › Features: file analysis, parts of files, loops, tempo and pitch, crossfeed, signal path in the core; analysis, history, radio, discovery, health, lyrics, preferences and the LAN remote in Rust; their views in the UI | `core/src/FileAnalyser.*`, `core/src/Crossfeed.*`, `app/src-tauri/src/{library,history,queue,remote}/`, `app/src/lib/components/` |
 | 5 frontend tests (`npm test`: frame decoding, key estimation) | `app/tests/` |
-| 245 passing `cargo test` tests (settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 300 passing `cargo test` tests (settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -164,9 +167,9 @@ so each OS needs a native machine, VM or CI runner:
 ## 4. Decisions
 
 All decided 2026-09-25 except the two legal checks flagged below, which are
-release gates (§8.1) rather than engineering blockers, and the optional
-features in #6 (proposed 2026-09-27), each of which is still open. #7
-(2026-09-27) sets priorities rather than open questions.
+release gates (§8.1) rather than engineering blockers. The optional
+features in #6 were proposed and accepted on 2026-09-27. #7 (2026-09-27)
+sets priorities rather than open questions.
 
 1. **Licenses: JUCE commercial, closed source (decided).** JUCE 8+ is AGPLv3
    or commercial. We use the commercial license, starting on the free
@@ -211,12 +214,15 @@ features in #6 (proposed 2026-09-27), each of which is still open. #7
    | iOS / iPadOS | 17 |
    | Linux | Ubuntu 24.04 / Fedora 40 (WebKitGTK 4.1) |
    | Windows | 11 (Windows 10 support ended October 2025) |
-6. **Optional features: proposed 2026-09-27, each open.** O1–O19 below
+6. **Optional features: proposed and accepted 2026-09-27.** O1–O19 below
    are features few players have that fit this one's design. None of them
-   is needed for a release or blocks a phase. Each is decided separately:
-   record the decision and its date on the item's **Decision** line. Once
-   one is accepted, give it steps in the phase that builds it, or in a new
-   phase after Phase 7. They follow the rules that already apply:
+   is needed for a release or blocks a phase. All nineteen were accepted
+   and built on 2026-09-27 (Phase 6b); each item's **Decision** line says
+   how, and where it differs from the proposal. The user can turn every
+   one of them on or off in Settings › Features (`FeatureSettings`); the
+   ones that cost hours of CPU time, change what is heard, go online or
+   listen on the network are off by default. They follow the rules that
+   already apply:
    - The app never writes the user's files. Results go in the library DB,
      in tables keyed by track, album or artist id, as `album_links` is.
      Those ids survive rescans because the scanner upserts them.
@@ -245,27 +251,27 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
 #### Optional features (§4.6)
 
-| # | Feature | Touches | Size | Proposal |
+| # | Feature | Touches | Size | Decision (2026-09-27) |
 |---|---|---|---|---|
-| O1 | Loudness analysis for files without ReplayGain tags | core, Rust, migration | M | Yes, first: O2–O4 build on its analysis pass |
-| O2 | Waveform seek bar | Rust, UI | S (after O1) | Yes, with O1 |
-| O3 | Segue-aware shuffle and silence handling | Rust (queue), core for trimming | S–M (after O1) | Yes, segue shuffle first |
-| O4 | Library health report | Rust, UI (analysis checks after O1) | M | Yes; the tag checks can come before O1 |
-| O5 | Cue sheets and chapters as tracks | every layer, migration | L | Open: depends on how common single-file rips are among users |
-| O6 | Classical works and movements | core (tags), migration, browse, UI | M | Yes, from tags; MusicBrainz works later |
-| O7 | Per-track and per-album playback preferences | Rust, migration, UI | S | Yes |
-| O8 | Local listening history, opt-in ListenBrainz | Rust, migration, UI | M | Local history yes; ListenBrainz off by default |
-| O9 | Library radio (endless queue from the library) | Rust (queue) | M (after O8) | Open |
-| O10 | Signal path panel and sample-rate matching | core, Rust, UI | S (panel), M (matching) | Panel yes; matching opt-in |
-| O11 | Headphone crossfeed | core DSP, settings | S | Yes |
-| O12 | Practice mode: A–B loop, tempo without pitch change | core (new dependency), UI | M | Open |
-| O13 | Local synced lyrics (tags and `.lrc` files) | core (tags), Rust, UI | S–M | Yes, local only |
-| O14 | LAN remote control from a phone's browser | Rust (server), entitlements, UI | M | Open, and only after a security review |
-| O15 | Recently added | Rust, migration, UI | S | Yes |
-| O16 | Recently played | Rust, UI | S (after O8) | Yes, with O8 |
-| O17 | Albums released on this day | core (tags), Rust, migration, UI | S–M | Yes |
-| O18 | Five more albums in this genre, at random | Rust, UI | S | Yes |
-| O19 | Top 20 played by year or month | Rust, UI | S (after O8) | Yes, with O8 |
+| O1 | Loudness analysis for files without ReplayGain tags | core, Rust, migration | M | Built; off by default |
+| O2 | Waveform seek bar | Rust, UI | S (after O1) | Built; on |
+| O3 | Segue-aware shuffle and silence handling | Rust (queue), core for trimming | S–M (after O1) | Built; segue shuffle on, skipping silence off |
+| O4 | Library health report | Rust, UI (analysis checks after O1) | M | Built; on |
+| O5 | Cue sheets and chapters as tracks | every layer, migration | L | Built; on |
+| O6 | Classical works and movements | core (tags), migration, browse, UI | M | Built from tags; on |
+| O7 | Per-track and per-album playback preferences | Rust, migration, UI | S | Built; on |
+| O8 | Local listening history, opt-in ListenBrainz | Rust, migration, UI | M | Built; history on, ListenBrainz off |
+| O9 | Library radio (endless queue from the library) | Rust (queue) | M (after O8) | Built; on ("keep playing when the queue ends" off) |
+| O10 | Signal path panel and sample-rate matching | core, Rust, UI | S (panel), M (matching) | Built; panel on, matching off |
+| O11 | Headphone crossfeed | core DSP, settings | S | Built; off by default |
+| O12 | Practice mode: A–B loop, tempo without pitch change | core (new dependency), UI | M | Built; off by default |
+| O13 | Local synced lyrics (tags and `.lrc` files) | core (tags), Rust, UI | S–M | Built, local only; on |
+| O14 | LAN remote control from a phone's browser | Rust (server), entitlements, UI | M | Built; off by default, security review before release |
+| O15 | Recently added | Rust, migration, UI | S | Built; on |
+| O16 | Recently played | Rust, UI | S (after O8) | Built; on |
+| O17 | Albums released on this day | core (tags), Rust, migration, UI | S–M | Built; on |
+| O18 | Five more albums in this genre, at random | Rust, UI | S | Built; on |
+| O19 | Top 20 played by year or month | Rust, UI | S (after O8) | Built; on |
 
 - **O1 Loudness analysis for files without ReplayGain tags.** ReplayGain
   applies only to tagged files today. None of the dev library's files are
@@ -286,13 +292,24 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   - Tests: EBU Tech 3341 test signals, or synthetic tones of known
     loudness, rendered like the chirp fixtures.
   - Cost: decoding a 50,000-track library takes hours of CPU time once.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, off by default for its
+    CPU cost. `anomp_analyse_file` (`core/src/FileAnalyser.*`) measures
+    a whole file or one part of it; the worker is `library/analysis.rs`
+    (a few tracks at a time, the playing track first); results are in
+    `track_analysis` and `album_analysis` (migration 006). An album is
+    gated over 0.5 LU histograms of its tracks' 400 ms blocks, stored
+    per track, so a new track doesn't mean decoding the album again.
+    Computed gains are used only while the feature is on
+    (`library::playback`).
 - **O2 Waveform seek bar.** The analysis also keeps a coarse min/max
   envelope of about 1,000 points a track (about 2 KB as bytes).
   `SeekBar.svelte` draws it, with the played part in the accent colour.
   This shows quiet intros, drops and hidden tracks at a glance, and
   helps O12 set loop points. Until a track is analysed, the seek bar is
-  the plain bar it is today. **Decision:** open.
+  the plain bar it is today. **Decision:** accepted and built
+  2026-09-27, on by default. The envelope is 1,000 (min, max) byte
+  pairs; the playing track is analysed ahead of the rest, even with O1
+  off, so its waveform appears.
 - **O3 Segue-aware shuffle and silence handling.** The analysis records
   each track's leading and trailing silence (below −60 dBFS). It marks a
   segue where one track's last 50 ms and the next track's first 50 ms on
@@ -302,7 +319,14 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   plain shuffle does in almost every player. An optional "skip long
   silence" setting ends a track after N seconds of trailing silence (the
   gap before a hidden track). That needs the engine to accept an end
-  position, which O5 adds too. **Decision:** open.
+  position, which O5 adds too. **Decision:** accepted and built
+  2026-09-27. Segue shuffle is on by default (`queue::album_units` gives
+  each run a shuffle unit; `Queue::shuffle_from` moves runs whole).
+  Skipping silence is off by default and differs from the proposal: a
+  long silence *inside* a track (a hidden track's gap) is jumped over
+  with a one-time skip region in the engine
+  (`anomp_track_options.skip_from`/`skip_to`), so the hidden track still
+  plays; silence that runs to the end ends the track (the range's end).
 - **O4 Library health report.** A read-only view of problems the app can
   detect but otherwise hides. Each row can reveal the file in Finder.
   - Files that fail to decode, or whose decoded length falls short of
@@ -316,7 +340,9 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   - Likely duplicates: the same recording MBID, or the same normalized
     title and artist with a length within 2 s. Audio fingerprinting stays
     deferred with AcoustID (Phase 4).
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, on by default:
+    `library/health.rs` and the Library health view, with "Reveal in
+    Finder" (`opener:allow-reveal-item-in-dir`).
 - **O5 Cue sheets and chapters as tracks.** Shows single-file albums
   (FLAC or APE with a `.cue` sheet, or a FLAC with an embedded cue sheet)
   and chaptered files (MP4 chapters, ID3 `CHAP`) as separate tracks.
@@ -331,7 +357,13 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     engine treats the end as the track's end, so a hand-off to the next
     range of the same file is gapless and sample-exact (the reader's
     seeks are exact).
-  - **Decision:** open. The largest item here: it changes every layer.
+  - **Decision:** accepted and built 2026-09-27, on by default.
+    Migration 005 rebuilds `tracks` keyed by (folder, path, range start)
+    and keeps the FTS triggers; the scanner reads a `.cue` next to the
+    file (UTF-8, else Windows-1252) or a CUESHEET tag
+    (`library/cue.rs`), else chapters FFmpeg finds (MP4, ID3 CHAP, Ogg,
+    FLAC cue sheet blocks; `FFmpegAudioFormat::readChapters`). Turning
+    it on or off re-reads every file.
 - **O6 Classical works and movements.** Most players show "Symphony No. 5
   in C minor, Op. 67: I. Allegro con brio" as one flat title. Tags
   already carry the structure: work, movement name and movement number
@@ -348,7 +380,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     unit, as O3 does segues.
   - Later, MusicBrainz work relationships can fill works for untagged
     files through the metadata worker.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27 from tags, on by
+    default: work, movement, composer (an artist) and conductor in
+    `tracks`; Composer and Work browse levels and a default "Composer"
+    rule; works grouped on album pages with "Play work"; a work is a
+    shuffle unit. MusicBrainz works for untagged files are still later.
 - **O7 Per-track and per-album playback preferences.** The user's own
   rules, set from the context menu, shown as a badge in lists, and stored
   in the DB, never in the files. They cascade from their track or album.
@@ -358,7 +394,10 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   - A gain offset in dB added to ReplayGain, passed with the track's
     gain as now.
   - A start or end trim, using O5's ranges.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, on by default:
+    `track_prefs` and `album_prefs` (migration 006), `library/prefs.rs`,
+    the preferences dialog from track and album menus, and a badge in
+    lists. Trims use O5's ranges.
 - **O8 Local listening history, with opt-in ListenBrainz.** The queue
   adds a row to a `plays` table (track, start time, seconds played) once
   a track passes half its length or 4 minutes, the usual scrobbling
@@ -372,7 +411,12 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     user's token lives in the keychain through `metadata::keys`. Listens
     are queued while offline and sent through `http::Client`. Its terms
     are checked before release like every other source (§8.1).
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27. Local history is on by
+    default (`history/`: a main-thread tracker, a history thread writing
+    `plays`); ListenBrainz is off by default, with the token in the
+    keychain (`keys::Account::ListenBrainz`) and listens queued in
+    `listens_pending`. Its terms still need checking (§8.1). Plays and
+    last played are track columns.
 - **O9 Library radio.** When the queue runs out, or on "Start radio from
   this", the app keeps adding tracks from the local library that fit the
   seed track. It scores tracks by shared or related genres, nearby
@@ -381,7 +425,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   weighted down. Each pick shows why it was chosen ("same label, 1994").
   Everything is local and no service is called. The logic lives in
   `queue/` as a source of next items, tested against the fake engine.
-  **Decision:** open.
+  **Decision:** accepted and built 2026-09-27, on by default:
+  `queue/radio.rs` scores genre, era, label and linked artists;
+  MusicBrainz artist lookups now include `artist-rels` (members,
+  collaborations, subgroups). "Keep playing when the queue ends" is a
+  separate switch, off by default.
 - **O10 Signal path panel and sample-rate matching.** Clicking the format
   in the now-playing bar shows the signal path as it actually is:
   1. The file's codec, bit depth, rate and bitrate.
@@ -400,7 +448,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     using that device.
   - `AudioEngine` needs to reopen the device with a given rate.
 
-  **Decision:** open.
+  **Decision:** accepted and built 2026-09-27: the panel is on by
+  default (`anomp_engine_signal_path`, from the format badge in the
+  playing bar); sample-rate matching is off by default
+  (`anomp_engine_set_device_sample_rate`, only at a load, never at a
+  gapless hand-off).
 - **O11 Headphone crossfeed.** Hard-panned stereo (much of the 1960s)
   tires the ears on headphones. Crossfeed blends a delayed, low-passed
   part of each channel into the other (Bauer's stereo-to-binaural
@@ -415,7 +467,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     interface.
   - Tested offline through `getNextAudioBlock`, as the other engine tests
     are.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, off by default:
+    `core/src/Crossfeed.*` after the tap; "only with headphones" (on by
+    default) uses `OutputRoute` (Core Audio's data source on the
+    built-in output, the audio route on iOS); Bluetooth headphones can't
+    be told from speakers.
 - **O12 Practice mode.** For musicians learning a part or transcribing
   one, which few library players support.
   - An A–B loop set on the seek bar (easier with O2's waveform). The
@@ -429,7 +485,11 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     - Rubber Band is GPL or paid.
     - SoundTouch is LGPL, so it would have to ship as a shared library
       like FFmpeg.
-  - **Decision:** open. Check Signalsmith's quality at 50% first.
+  - **Decision:** accepted and built 2026-09-27, off by default.
+    Signalsmith Stretch 1.4.0 and its FFT library (MIT, header-only) are
+    pinned in `cmake/Signalsmith.cmake`; the A–B loop keeps a second
+    reader of the file waiting at A and swaps the two at B. Its quality
+    at 50% is still to be checked by ear.
 - **O13 Local synced lyrics.** Shows lyrics already on disk.
   - Unsynced lyrics: ID3 `USLT`, Vorbis `LYRICS`/`UNSYNCEDLYRICS`, MP4
     `©lyr`.
@@ -442,7 +502,8 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     `anomp_read_tags`) and never stored in the DB.
   - Online lyrics (LRCLIB and others) stay out of scope. Adding one would
     be a sources-table decision, as in Phase 4.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, local only, on by
+    default: `library/lyrics.rs` and the Now Playing view.
 - **O14 LAN remote control.** Controls the desktop app from a phone's
   browser on the same network, with nothing to install.
   - An opt-in HTTP and WebSocket server in Rust serves a compact remote
@@ -458,7 +519,13 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     token checks, rate limits, and no file access beyond cover art and
     the page itself.
   - The Phase 8 iOS build could later act as a richer remote.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, off by default, and
+    still needs its security review before a release (§8.1). It differs
+    from the proposal: plain HTTP with the page polling once a second
+    instead of a WebSocket (no new dependency), and a pairing code with
+    the page's address instead of a QR code. The safeguards are listed
+    in `remote/mod.rs`; the `network.server` entitlement and the
+    local-network usage text are in place.
 - **O15 Recently added.** A sidebar view of albums ordered by when their
   newest track arrived, grouped into this week, this month and earlier.
   - `scanned_at` can't serve: every rescan rewrites it. A migration adds
@@ -469,12 +536,16 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   - "Date added" also becomes a sort key for the browse rules.
   - Limit: a track's identity is its path, so moving or renaming a file
     makes it look newly added.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, on by default:
+    `tracks.added_at` (migration 005), a "Date added" sort key and album
+    order, and the Home view.
 - **O16 Recently played.** Needs O8's `plays` table. Lists what was
   played, newest first. Consecutive plays from one album collapse into a
   single album row ("11 tracks of …"), so an album doesn't fill the list,
   and one click plays it again. It differs from the queue, which holds
-  only what is queued now. **Decision:** open.
+  only what is queued now. **Decision:** accepted and built 2026-09-27,
+  on by default: `history::views::recently_played`, on the Home and
+  History views.
 - **O17 Albums released on this day.** Albums whose original release
   date falls on today's month and day, labelled with the anniversary
   ("30 years ago today"). It is shown as a card in a home or sidebar
@@ -487,7 +558,10 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
     scan as migration 004 did.
   - Albums dated only to a year or month never match. A 29 February
     release shows on 28 February in other years.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, on by default:
+    `tracks.release_date` from ORIGINALDATE or DATE (migration 005
+    re-reads every file), preferring the MusicBrainz release group's
+    first date.
 - **O18 Five more albums in this genre, at random.** A "More in <genre>"
   row on album pages: five random albums that share a genre with the
   current one, excluding the current album, with a button to draw again.
@@ -499,12 +573,14 @@ Release-only decisions (distribution channels, packaging, signing) are in §8.1.
   - With O8, albums played recently are drawn less often.
   - A random order over the matching albums is cheap at 50,000 tracks
     (a few thousand albums). Check it with the ignored benchmarks.
-  - **Decision:** open.
+  - **Decision:** accepted and built 2026-09-27, on by default:
+    `library::discover::more_in_genre`, on album pages.
 - **O19 Top 20 played by year or month.** Needs O8. The 20 most played
   tracks, albums and artists for a chosen year or month (a "year in
   review"), counted as plays that passed O8's rule. "Play these 20" puts
   them in the queue, and the period can step back and forward.
-  **Decision:** open.
+  **Decision:** accepted and built 2026-09-27, on by default:
+  `history::views::top_played`, on the History view.
 
 #### Expected features (§4.7)
 
@@ -2265,6 +2341,69 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   "System default" opens the default at the time and doesn't follow later
   changes to it; the queue's items don't use the display columns.
 
+### Phase 6b — Optional features (O1–O19)
+
+Built 2026-09-27: all nineteen features of §4.6, each with a switch (and
+its options) in Settings › Features. `FeatureSettings` in `settings.rs`
+holds them, read leniently like the rest of the settings; `settings_save`
+applies a change at once (the analysis starts or stops, the remote
+listens or stops, crossfeed and practice reset, the queue's skips and
+shuffle units follow, and turning cue sheets on or off re-reads every
+file).
+
+- **Core**: `FileAnalyser` (loudness, peaks, silences, spectrum cutoff,
+  waveform) behind `anomp_analyse_file`, over a whole file or a part;
+  more tags from `anomp_read_tags` (work, movement, composer, conductor,
+  full dates, and with flags lyrics, SYLT as LRC, chapters and CUESHEET);
+  the engine plays parts of files (`anomp_track_options`: start, end,
+  one skip region), loops A–B on the exact sample, stretches tempo and
+  pitch (Signalsmith Stretch), crossfeeds after the tap, reports the
+  signal path and switches the device's sample rate; `OutputRoute` says
+  whether the output is headphones.
+- **Library**: migration 005 rebuilds `tracks` for parts of files, the
+  arrival date, release dates and classical tags (keeping ids and the
+  search index, which gains work and composer); migration 006 adds the
+  analysis, plays, pending listens, preferences and paired phones. The
+  scanner splits files by cue sheet or chapters; `library::playback`
+  decides how each track is played; `analysis`, `discover`, `health`,
+  `lyrics` and `prefs` are the features' library code.
+- **Queue and history**: shuffle units, skips, radio mode and its
+  refills in `queue/`; the play tracker, `plays`, ListenBrainz and the
+  history's views in `history/`; the LAN remote in `remote/`.
+- **UI**: the Features settings section; Home (released on this day,
+  recently played, recently added, the history's highlights), History
+  (top 20 of a year or month, recently played) and Library health
+  views; the waveform seek bar; the signal path and practice panels in
+  the playing bar; lyrics in Now Playing; works and "More in this genre"
+  on album pages; "Start radio" and "Playback preferences…" in menus;
+  new track columns, sort keys and browse levels.
+- **Tests**: 89 Catch2 tests (EBU Tech 3341-style loudness cases, true
+  peak, silences, cutoff, parts of files, gapless hand-off between parts,
+  skip regions, loops with and without read-ahead, tempo and pitch,
+  crossfeed, the new tags, SYLT and chapters) and 300 `cargo test` tests
+  (migrations, cue sheets, the scanner's parts, playback options,
+  analysis storage and album gating, shuffle units, skips, radio,
+  history and its views, discovery, health, lyrics, preferences,
+  ListenBrainz with the fake transport, the remote's HTTP parsing,
+  pairing and tokens). A scan and analysis of the dev library ran clean.
+- **Exit (to check in the app)**: the loudness analysis over the whole
+  library and ReplayGain from it by ear; waveforms; a live album's
+  segues in shuffle; a hidden track's gap skipped; a single-file album
+  with a cue sheet playing gaplessly; an audiobook's chapters; classical
+  works on album pages; each preference; plays counting and ListenBrainz
+  receiving them with a real token; radio's picks; the signal path with
+  sample-rate matching on a device that offers several rates; crossfeed
+  with headphones plugged and unplugged; practice mode at 50% and 150%
+  (Signalsmith's quality) and a tight loop; lyrics from an `.lrc` and
+  from SYLT; pairing a phone and controlling playback from it, including
+  the macOS local-network prompt in a sandboxed bundle.
+- **Known limits**: analysing a large library takes hours (debug builds
+  about 7 s for a five-minute track); crossfeed's "only with headphones"
+  can't tell Bluetooth headphones from speakers; the remote polls rather
+  than pushing and pairs by code rather than QR code; MusicBrainz works
+  (O6) and online lyrics stay out; user data keyed by track (plays,
+  preferences, analysis) is lost when a file moves (F10).
+
 ### Phase 7 — Hardening (macOS)
 - CI (GitHub Actions, macOS runner): CMake build + ctest, `cargo test`,
   frontend lint/type-check/tests, all through `scripts/check-all.py`
@@ -2780,6 +2919,13 @@ These need answers first; most need the owner rather than engineering.
       privacy policy covers the Bandcamp sign-in.
 - [ ] **Crash reporting:** decide none vs. opt-in (e.g. Sentry). Anything
       opt-in must appear in the privacy policy.
+- [ ] **ListenBrainz** (O8): read its terms for a commercial client, and
+      name it in the privacy policy (listens are sent with the user's
+      token when they turn it on).
+- [ ] **LAN remote security review** (O14): review `remote/` (address
+      checks, pairing limits, token hashing, request bounds, what it
+      serves) before a release ships it, and describe it in the privacy
+      policy.
 
 ### 8.2 Cross-platform release setup
 Build once (after Phase 7), reused for every platform.

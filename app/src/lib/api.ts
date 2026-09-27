@@ -8,6 +8,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppSettings,
   CoverBasis,
+  DeviceInfo,
   MetadataSettings,
   OutputStatus,
   ServiceSettings,
@@ -40,6 +41,20 @@ export type Track = {
   bitrateKbps: number | null;
   /** Hz. */
   sampleRate: number;
+  /** Unix seconds it came into the library (O15). */
+  addedAt: number;
+  /** In the listening history (O8). */
+  playCount: number;
+  lastPlayed: number | null;
+  /** The user set playback preferences for it or its album (O7). */
+  hasPrefs: boolean;
+  /** Classical works (O6). */
+  composer: string | null;
+  work: string | null;
+  movementName: string | null;
+  movementNumber: number | null;
+  /** Seconds into its file where it starts: > 0 for a cue sheet's track or a chapter (O5). */
+  rangeStart: number;
 };
 
 /** An artist, album or library folder id, or a year; a genre or folder name. */
@@ -282,7 +297,19 @@ export type AlbumLink = {
   credit: string | null;
 };
 
-export type AlbumTrack = { id: number; disc: number | null; number: number | null; title: string; duration: number };
+export type AlbumTrack = {
+  id: number;
+  disc: number | null;
+  number: number | null;
+  title: string;
+  duration: number;
+  /** Classical works (O6). */
+  work: string | null;
+  movementName: string | null;
+  movementNumber: number | null;
+  composer: string | null;
+  conductor: string | null;
+};
 
 export type AlbumDetails = {
   id: number;
@@ -451,6 +478,10 @@ export type QueueItem = {
   album: string | null;
   albumId: number | null;
   duration: number;
+  /** Passed over in album and shuffle play (O7). */
+  skip?: boolean;
+  /** Why library radio picked it (O9). */
+  reason?: string;
 };
 
 export type Skipped = { uid: number; trackId: number; title: string; error: string };
@@ -471,11 +502,177 @@ export type QueueState = {
   /** False after a relaunch until playback starts; `resumeAt` is where it will. */
   loaded: boolean;
   resumeAt: number;
+  /** Library radio keeps adding tracks (O9). */
+  radio: boolean;
 };
+
+/** Every step from the file to the speakers (O10). */
+export type SignalPath = {
+  path: {
+    loaded: boolean;
+    codec: string;
+    lossless: boolean;
+    bitsPerSample: number | null;
+    bitrateKbps: number | null;
+    fileSampleRate: number;
+    fileChannels: number;
+    /** Linear. */
+    trackGain: number;
+    tempo: number;
+    semitones: number;
+    resampling: boolean;
+    crossfeed: number;
+    volume: number;
+    deviceSampleRate: number;
+    deviceBufferSize: number;
+  };
+  device: DeviceInfo | null;
+  /** Whether the OS says the output is headphones; null if it can't tell. */
+  headphones: boolean | null;
+};
+
+/** Practice mode (O12). */
+export type Practice = { loop: [number, number] | null; tempo: number; semitones: number };
 
 export const player = {
   status: () => invoke<PlayerStatus>("player_status"),
   setVolume: (volume: number) => invoke<void>("player_set_volume", { volume }),
+  signalPath: () => invoke<SignalPath>("player_signal_path"),
+  practice: () => invoke<Practice>("player_practice"),
+  /** Loops the current track, or clears the loop with nulls. */
+  setLoop: (start: number | null, end: number | null) =>
+    invoke<[number, number] | null>("player_set_loop", { start, end }),
+  setTempo: (rate: number, semitones: number) => invoke<void>("player_set_tempo", { rate, semitones }),
+};
+
+// ---- Optional features (PLAN.md O1–O19) -----------------------------------------
+
+export type AnalysisProgress = { running: boolean; done: number; remaining: number; failed: number };
+export type TrackAnalysis = {
+  error: string | null;
+  duration: number | null;
+  loudness: number | null;
+  /** dB to ReplayGain's reference. */
+  gain: number | null;
+  truePeak: number | null;
+  albumLoudness: number | null;
+  leadingSilence: number | null;
+  trailingSilence: number | null;
+  gapStart: number | null;
+  gapLength: number | null;
+  cutoffHz: number | null;
+};
+
+/** An album as the discovery and history views list it. */
+export type AlbumCard = {
+  id: number;
+  title: string;
+  artist: string | null;
+  artistId: number | null;
+  year: number | null;
+  /** A time the view is about, Unix seconds. */
+  at: number | null;
+  note: string | null;
+};
+
+export type RecentEntry = {
+  playedAt: number;
+  album: AlbumCard | null;
+  tracks: { trackId: number; title: string; artist: string | null }[];
+};
+export type TopKind = "tracks" | "albums" | "artists";
+export type TopEntry = {
+  id: number;
+  title: string;
+  subtitle: string | null;
+  albumId: number | null;
+  plays: number;
+  trackIds: number[];
+};
+export type TopPlayed = { entries: TopEntry[]; plays: number; years: [number, number] | null };
+export type Highlights = {
+  forgotten: AlbumCard[];
+  yearAgo: AlbumCard[];
+  neverPlayed: AlbumCard[];
+  totalPlays: number;
+};
+export type ListenBrainzStatus = { hasToken: boolean; pending: number; error: string | null };
+
+export type HealthTrack = {
+  trackId: number;
+  path: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  detail: string;
+};
+export type HealthReport = {
+  undecodable: HealthTrack[];
+  truncated: HealthTrack[];
+  transcodes: HealthTrack[];
+  albums: { albumId: number; title: string; artist: string | null; problems: string[] }[];
+  duplicates: { reason: string; tracks: HealthTrack[] }[];
+  analysed: number;
+  tracks: number;
+};
+
+export type Lyrics = {
+  lines: { time: number; text: string }[];
+  text: string | null;
+  source: "lrc" | "tags";
+};
+
+export type TrackPrefs = {
+  skip?: boolean | null;
+  gainOffset?: number | null;
+  trimStart?: number | null;
+  trimEnd?: number | null;
+};
+export type AlbumPrefs = { skip?: boolean | null; neverShuffle?: boolean | null; gainOffset?: number | null };
+
+export type RemoteStatus = {
+  running: boolean;
+  url: string | null;
+  error: string | null;
+  code: string | null;
+  devices: { id: number; name: string; pairedAt: number; lastSeen: number | null }[];
+};
+
+export const features = {
+  analysisStatus: () => invoke<AnalysisProgress>("analysis_status"),
+  /** (min, max) pairs, -127..127; null until analysed. */
+  waveform: (trackId: number) => invoke<number[] | null>("analysis_waveform", { trackId }),
+  trackAnalysis: (trackId: number) => invoke<TrackAnalysis | null>("analysis_track", { trackId }),
+  recentlyPlayed: (limit: number) => invoke<RecentEntry[]>("history_recent", { limit }),
+  topPlayed: (kind: TopKind, year: number, month: number | null) =>
+    invoke<TopPlayed>("history_top", { kind, year, month }),
+  highlights: () => invoke<Highlights>("history_highlights"),
+  clearHistory: () => invoke<void>("history_clear"),
+  listenBrainzStatus: () => invoke<ListenBrainzStatus>("history_listenbrainz_status"),
+  /** Checks the token with ListenBrainz and resolves to its user; null removes it. */
+  setListenBrainzToken: (token: string | null) =>
+    invoke<string | null>("history_set_listenbrainz_token", { token }),
+  recentlyAdded: (limit: number) => invoke<AlbumCard[]>("library_recently_added", { limit }),
+  onThisDay: (date: Date) =>
+    invoke<AlbumCard[]>("library_on_this_day", {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+    }),
+  moreInGenre: (albumId: number, genre: string, seed: number) =>
+    invoke<AlbumCard[]>("library_more_in_genre", { albumId, genre, seed }),
+  health: () => invoke<HealthReport>("library_health"),
+  lyrics: (trackId: number) => invoke<Lyrics | null>("library_lyrics", { trackId }),
+  prefs: (ids: { trackId?: number; albumId?: number }) =>
+    invoke<{ track: TrackPrefs | null; album: AlbumPrefs | null }>("prefs_get", {
+      trackId: ids.trackId ?? null,
+      albumId: ids.albumId ?? null,
+    }),
+  setTrackPrefs: (trackId: number, prefs: TrackPrefs) => invoke<void>("prefs_set_track", { trackId, prefs }),
+  setAlbumPrefs: (albumId: number, prefs: AlbumPrefs) => invoke<void>("prefs_set_album", { albumId, prefs }),
+  remoteStatus: () => invoke<RemoteStatus>("remote_status"),
+  remoteNewCode: () => invoke<RemoteStatus>("remote_new_code"),
+  remoteForget: (deviceId: number) => invoke<RemoteStatus>("remote_forget", { deviceId }),
 };
 
 export const queue = {
@@ -497,6 +694,9 @@ export const queue = {
   seek: (seconds: number) => invoke<void>("queue_seek", { seconds }),
   setShuffle: (shuffle: boolean) => invoke<void>("queue_set_shuffle", { shuffle }),
   setRepeat: (repeat: Repeat) => invoke<void>("queue_set_repeat", { repeat }),
+  /** Library radio (O9): the track, then tracks like it, and more as it plays. */
+  startRadio: (trackId: number) => invoke<void>("queue_start_radio", { trackId }),
+  stopRadio: () => invoke<void>("queue_stop_radio"),
 };
 
 // ---- Visualizer ------------------------------------------------------------------
@@ -541,6 +741,11 @@ type Events = {
   "metadata-changed": MetadataChanged;
   "metadata-progress": MetadataProgress;
   "settings-changed": AppSettings;
+  "analysis-progress": AnalysisProgress;
+  /** Tracks just analysed. */
+  "analysis-changed": number[];
+  "history-changed": null;
+  "library-prefs-changed": null;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

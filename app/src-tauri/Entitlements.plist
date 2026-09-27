@@ -16,5 +16,9 @@
     <!-- Outgoing connections: MusicBrainz and Cover Art Archive (Phase 4). -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <!-- Incoming connections: the LAN remote (PLAN.md O14), which listens
+         only while the user has it on and answers only local addresses. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
 </dict>
 </plist>

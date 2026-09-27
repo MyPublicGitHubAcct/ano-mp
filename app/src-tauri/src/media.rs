@@ -437,6 +437,7 @@ mod tests {
                 album: album_id.map(|id| format!("Album {id}")),
                 album_id,
                 duration: 180.0,
+                ..TrackInfo::default()
             },
         }
     }
@@ -461,6 +462,7 @@ mod tests {
             has_previous,
             loaded,
             resume_at: 0.0,
+            radio: false,
         }
     }
 

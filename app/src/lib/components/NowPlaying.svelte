@@ -2,10 +2,12 @@
   // The current track alone: its title, artist and album on the left and its
   // cover, as large as the area allows, on the right. Narrow windows put the
   // cover on top.
+  import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
+  import LyricsPanel from "./LyricsPanel.svelte";
 
   const item = $derived(player.currentItem);
 </script>
@@ -24,6 +26,7 @@
         <p class="artist">{item.artist}</p>
       {/if}
       {#if item.album}<p class="album muted">{item.album}</p>{/if}
+      {#if item.reason}<p class="reason small">Radio: {item.reason}</p>{/if}
       {#if player.current !== null && player.items.length > 1}
         <p class="position muted small">
           {(player.current + 1).toLocaleString()} of {player.items.length.toLocaleString()} in the queue
@@ -32,6 +35,9 @@
     {:else}
       <h1 class="muted">Not playing</h1>
       <p class="muted">Double-click a track in the library to play it.</p>
+    {/if}
+    {#if item && features.on.lyrics}
+      {#key item.trackId}<LyricsPanel trackId={item.trackId} />{/key}
     {/if}
     <div class="actions">
       <button class="link" onclick={() => ui.showVisualizer()}>
@@ -107,6 +113,10 @@
 
   .position {
     margin-top: 0.75rem;
+  }
+
+  .reason {
+    color: var(--accent);
   }
 
   .actions {

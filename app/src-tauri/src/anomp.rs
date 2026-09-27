@@ -51,9 +51,85 @@ struct RawTags {
     picture: *const u8,
     picture_size: usize,
     picture_mime_type: *const c_char,
+    work: *const c_char,
+    movement_name: *const c_char,
+    movement_number: c_int,
+    movement_total: c_int,
+    composer: *const c_char,
+    conductor: *const c_char,
+    date: *const c_char,
+    original_date: *const c_char,
+    lyrics: *const c_char,
+    synced_lyrics: *const c_char,
+    cuesheet: *const c_char,
+    chapter_count: c_int,
+    chapters: *const RawChapter,
+}
+
+#[repr(C)]
+struct RawChapter {
+    start: f64,
+    end: f64,
+    title: *const c_char,
 }
 
 const ANOMP_TAGS_PICTURE: c_int = 1;
+const ANOMP_TAGS_LYRICS: c_int = 2;
+const ANOMP_TAGS_CHAPTERS: c_int = 4;
+
+#[repr(C)]
+struct RawFileAnalysis {
+    duration: f64,
+    sample_rate: f64,
+    channels: c_int,
+    integrated_lufs: f64,
+    sample_peak: f64,
+    true_peak: f64,
+    histogram_count: c_int,
+    histogram: *const u32,
+    histogram_floor: f64,
+    histogram_step: f64,
+    leading_silence: f64,
+    trailing_silence: f64,
+    gap_start: f64,
+    gap_length: f64,
+    start_level_db: f64,
+    end_level_db: f64,
+    cutoff_hz: f64,
+    envelope_length: c_int,
+    envelope_min: *const f32,
+    envelope_max: *const f32,
+}
+
+type RawAnalysisProgress = extern "C" fn(fraction: f64, user_data: *mut c_void) -> c_int;
+
+#[repr(C)]
+struct RawTrackOptions {
+    gain: f64,
+    start: f64,
+    end: f64,
+    skip_from: f64,
+    skip_to: f64,
+}
+
+#[repr(C)]
+struct RawSignalPath {
+    loaded: c_int,
+    codec: [c_char; 32],
+    lossless: c_int,
+    bits_per_sample: c_int,
+    bitrate_kbps: c_int,
+    file_sample_rate: f64,
+    file_channels: c_int,
+    track_gain: f64,
+    tempo: f64,
+    semitones: f64,
+    resampling: c_int,
+    crossfeed: c_int,
+    volume: f64,
+    device_sample_rate: f64,
+    device_buffer_size: c_int,
+}
 
 #[repr(C)]
 #[derive(Default)]
@@ -153,6 +229,16 @@ extern "C" {
         error_size: usize,
     ) -> *mut RawTags;
     fn anomp_tags_free(tags: *mut RawTags);
+    fn anomp_analyse_file(
+        path: *const c_char,
+        start: f64,
+        end: f64,
+        progress: Option<RawAnalysisProgress>,
+        user_data: *mut c_void,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawFileAnalysis;
+    fn anomp_file_analysis_free(analysis: *mut RawFileAnalysis);
 
     fn anomp_bookmark_create(
         path: *const c_char,
@@ -219,6 +305,39 @@ extern "C" {
     ) -> c_int;
     fn anomp_engine_set_track_gain(engine: *mut RawEngine, path: *const c_char, gain: f64)
         -> c_int;
+    fn anomp_engine_load_track(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        options: *const RawTrackOptions,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_int;
+    fn anomp_engine_set_next_track(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        options: *const RawTrackOptions,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_int;
+    fn anomp_engine_set_track_gain_at(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        start: f64,
+        gain: f64,
+    ) -> c_int;
+    fn anomp_engine_set_loop(
+        engine: *mut RawEngine,
+        start: f64,
+        end: f64,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_int;
+    fn anomp_engine_loop(engine: *mut RawEngine, start: *mut f64, end: *mut f64) -> c_int;
+    fn anomp_engine_set_tempo(engine: *mut RawEngine, rate: f64, semitones: f64) -> c_int;
+    fn anomp_engine_set_crossfeed(engine: *mut RawEngine, level: c_int) -> c_int;
+    fn anomp_engine_output_is_headphones(engine: *mut RawEngine) -> c_int;
+    fn anomp_engine_signal_path(engine: *mut RawEngine, path: *mut RawSignalPath) -> c_int;
+    fn anomp_engine_set_device_sample_rate(engine: *mut RawEngine, sample_rate: f64) -> c_int;
     fn anomp_engine_play(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_pause(engine: *mut RawEngine);
     fn anomp_engine_stop(engine: *mut RawEngine);
@@ -316,6 +435,44 @@ pub struct Tags {
     /// The front cover, or else the first embedded picture; only read when
     /// asked for.
     pub picture: Option<Picture>,
+    /// Classical works: the work this is a movement of, the movement's
+    /// name and number, and who composed and conducted it.
+    pub work: Option<String>,
+    pub movement_name: Option<String>,
+    pub movement_number: Option<u32>,
+    pub movement_total: Option<u32>,
+    pub composer: Option<String>,
+    pub conductor: Option<String>,
+    /// Release dates as precise as tagged: "2004-05-01", "2004-05" or
+    /// "2004"; the original release's where the file says.
+    pub date: Option<String>,
+    pub original_date: Option<String>,
+    /// Only with `TagParts::lyrics`: unsynced lyrics (which may be LRC
+    /// text), and synced ones from an ID3v2 SYLT frame as LRC text.
+    pub lyrics: Option<String>,
+    pub synced_lyrics: Option<String>,
+    /// Only with `TagParts::chapters`: an embedded cue sheet, and the
+    /// chapters the container records.
+    pub cue_sheet: Option<String>,
+    pub chapters: Vec<Chapter>,
+}
+
+/// A chapter of a file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Chapter {
+    /// Seconds from the start of the audio.
+    pub start: f64,
+    /// Seconds; `None` when it runs to the end of the file.
+    pub end: Option<f64>,
+    pub title: Option<String>,
+}
+
+/// What `read_tags_with` reads besides the tags.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TagParts {
+    pub picture: bool,
+    pub lyrics: bool,
+    pub chapters: bool,
 }
 
 /// A file's ReplayGain tags (Opus R128 gains converted to ReplayGain's
@@ -343,12 +500,23 @@ pub struct Picture {
 /// embedded picture only if `include_picture`. Unlike the engine, this may be
 /// called from any thread.
 pub fn read_tags(path: &Path, include_picture: bool) -> Result<Tags, String> {
+    read_tags_with(
+        path,
+        TagParts {
+            picture: include_picture,
+            ..TagParts::default()
+        },
+    )
+}
+
+/// Reads the tags of the file at `path`, and the `parts` asked for, like
+/// `read_tags`.
+pub fn read_tags_with(path: &Path, parts: TagParts) -> Result<Tags, String> {
     let path = path_to_cstring(path)?;
-    let flags = if include_picture {
-        ANOMP_TAGS_PICTURE
-    } else {
-        0
-    };
+    let flag = |on: bool, flag: c_int| if on { flag } else { 0 };
+    let flags = flag(parts.picture, ANOMP_TAGS_PICTURE)
+        | flag(parts.lyrics, ANOMP_TAGS_LYRICS)
+        | flag(parts.chapters, ANOMP_TAGS_CHAPTERS);
     let mut raw = std::ptr::null_mut();
     with_error(|error, size| {
         // SAFETY: `path` is a valid C string and the error buffer is supplied
@@ -407,6 +575,140 @@ impl Tags {
                 mime_type: text(raw.picture_mime_type),
                 data: std::slice::from_raw_parts(raw.picture, raw.picture_size).to_vec(),
             }),
+            work: text(raw.work),
+            movement_name: text(raw.movement_name),
+            movement_number: number(raw.movement_number),
+            movement_total: number(raw.movement_total),
+            composer: text(raw.composer),
+            conductor: text(raw.conductor),
+            date: text(raw.date),
+            original_date: text(raw.original_date),
+            lyrics: text(raw.lyrics),
+            synced_lyrics: text(raw.synced_lyrics),
+            cue_sheet: text(raw.cuesheet),
+            chapters: match usize::try_from(raw.chapter_count) {
+                Ok(count) if !raw.chapters.is_null() && count > 0 => {
+                    std::slice::from_raw_parts(raw.chapters, count)
+                        .iter()
+                        .map(|chapter| Chapter {
+                            start: chapter.start,
+                            end: (chapter.end >= 0.0).then_some(chapter.end),
+                            title: text(chapter.title),
+                        })
+                        .collect()
+                }
+                _ => Vec::new(),
+            },
+        }
+    }
+}
+
+/// What one pass over a file (or part of one) measures: see
+/// `anomp_file_analysis`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileAnalysis {
+    /// Seconds decoded.
+    pub duration: f64,
+    pub sample_rate: f64,
+    /// EBU R128 integrated loudness in LUFS; `None` when silent throughout.
+    pub loudness: Option<f64>,
+    /// Linear, 1 is full scale.
+    pub sample_peak: f64,
+    pub true_peak: f64,
+    /// Blocks per `histogram_step` LU from `histogram_floor` LUFS up.
+    pub histogram: Vec<u32>,
+    pub histogram_floor: f64,
+    pub histogram_step: f64,
+    /// Seconds below -60 dBFS at the start and the end.
+    pub leading_silence: f64,
+    pub trailing_silence: f64,
+    /// The longest silence inside (at least 2 s), if any: start, length.
+    pub gap: Option<(f64, f64)>,
+    /// RMS of the first and last 50 ms in dBFS; `None` for digital silence.
+    pub start_level_db: Option<f64>,
+    pub end_level_db: Option<f64>,
+    /// Where the spectrum drops off a cliff, if it does.
+    pub cutoff_hz: Option<f64>,
+    /// The smallest and largest sample in each slice of the track.
+    pub envelope_min: Vec<f32>,
+    pub envelope_max: Vec<f32>,
+}
+
+/// Decodes the file at `path` (from `start` to `end` seconds; an `end` not
+/// after `start` is the end of the file) once and measures it. `progress`
+/// gets the fraction done about four times a second and returns false to
+/// cancel. May be called from any thread; never uses the engine.
+pub fn analyse_file(
+    path: &Path,
+    start: f64,
+    end: f64,
+    mut progress: impl FnMut(f64) -> bool,
+) -> Result<FileAnalysis, String> {
+    extern "C" fn report(fraction: f64, user_data: *mut c_void) -> c_int {
+        // SAFETY: `user_data` is the `&mut dyn FnMut` below, alive for the call.
+        let progress = unsafe { &mut *user_data.cast::<&mut dyn FnMut(f64) -> bool>() };
+        c_int::from(progress(fraction))
+    }
+    let path = path_to_cstring(path)?;
+    let mut progress: &mut dyn FnMut(f64) -> bool = &mut progress;
+    let user_data: *mut c_void = (&mut progress as *mut &mut dyn FnMut(f64) -> bool).cast();
+    let mut raw = std::ptr::null_mut();
+    with_error(|error, size| {
+        // SAFETY: `path` and the error buffer are valid for the call, and
+        // `user_data` points at `progress`, which outlives it.
+        raw = unsafe {
+            anomp_analyse_file(
+                path.as_ptr(),
+                start,
+                end,
+                Some(report),
+                user_data,
+                error,
+                size,
+            )
+        };
+        c_int::from(!raw.is_null())
+    })?;
+    // SAFETY: `raw` is a non-null result of anomp_analyse_file whose arrays
+    // hold their counts; it is copied once and then freed exactly once.
+    unsafe {
+        let analysis = FileAnalysis::from_raw(&*raw);
+        anomp_file_analysis_free(raw);
+        Ok(analysis)
+    }
+}
+
+impl FileAnalysis {
+    /// # Safety
+    /// `raw` must come from anomp_analyse_file and not yet be freed.
+    unsafe fn from_raw(raw: &RawFileAnalysis) -> FileAnalysis {
+        let floats = |data: *const f32, len: c_int| match usize::try_from(len) {
+            Ok(len) if !data.is_null() => std::slice::from_raw_parts(data, len).to_vec(),
+            _ => Vec::new(),
+        };
+        let finite = |value: f64| value.is_finite().then_some(value);
+        FileAnalysis {
+            duration: raw.duration,
+            sample_rate: raw.sample_rate,
+            loudness: finite(raw.integrated_lufs),
+            sample_peak: raw.sample_peak,
+            true_peak: raw.true_peak,
+            histogram: match usize::try_from(raw.histogram_count) {
+                Ok(len) if !raw.histogram.is_null() => {
+                    std::slice::from_raw_parts(raw.histogram, len).to_vec()
+                }
+                _ => Vec::new(),
+            },
+            histogram_floor: raw.histogram_floor,
+            histogram_step: raw.histogram_step,
+            leading_silence: raw.leading_silence,
+            trailing_silence: raw.trailing_silence,
+            gap: (raw.gap_length > 0.0).then_some((raw.gap_start, raw.gap_length)),
+            start_level_db: finite(raw.start_level_db),
+            end_level_db: finite(raw.end_level_db),
+            cutoff_hz: (raw.cutoff_hz > 0.0).then_some(raw.cutoff_hz),
+            envelope_min: floats(raw.envelope_min, raw.envelope_length),
+            envelope_max: floats(raw.envelope_max, raw.envelope_length),
         }
     }
 }
@@ -620,6 +922,83 @@ impl AnalysisFrame<'_> {
 /// clamps to it (`ANOMP_MAX_TRACK_GAIN`).
 pub const MAX_TRACK_GAIN: f64 = 8.0;
 
+/// How a track is played: part of a file, and a stretch of it to skip.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrackOptions {
+    /// Linear (see `MAX_TRACK_GAIN`).
+    pub gain: f64,
+    /// Seconds into the file where the track starts.
+    pub start: f64,
+    /// Seconds into the file where it ends; `None` for the end of the file.
+    pub end: Option<f64>,
+    /// Seconds within the track: reaching the first jumps to the second, once.
+    pub skip: Option<(f64, f64)>,
+}
+
+impl TrackOptions {
+    fn to_raw(self) -> RawTrackOptions {
+        RawTrackOptions {
+            gain: self.gain,
+            start: self.start,
+            end: self.end.unwrap_or(0.0),
+            skip_from: self.skip.map_or(-1.0, |(from, _)| from),
+            skip_to: self.skip.map_or(-1.0, |(_, to)| to),
+        }
+    }
+}
+
+/// Every step between the file and the speakers (`anomp_signal_path`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignalPath {
+    pub loaded: bool,
+    /// FFmpeg's codec name, e.g. "flac".
+    pub codec: String,
+    pub lossless: bool,
+    /// The source's, for lossless codecs.
+    pub bits_per_sample: Option<u32>,
+    pub bitrate_kbps: Option<u32>,
+    pub file_sample_rate: f64,
+    pub file_channels: u32,
+    /// Linear.
+    pub track_gain: f64,
+    pub tempo: f64,
+    pub semitones: f64,
+    pub resampling: bool,
+    pub crossfeed: u8,
+    /// Linear.
+    pub volume: f64,
+    pub device_sample_rate: f64,
+    pub device_buffer_size: u32,
+}
+
+impl SignalPath {
+    /// # Safety
+    /// `raw.codec` must hold a NUL.
+    unsafe fn from_raw(raw: &RawSignalPath) -> SignalPath {
+        let positive = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
+        SignalPath {
+            loaded: raw.loaded != 0,
+            codec: CStr::from_ptr(raw.codec.as_ptr())
+                .to_string_lossy()
+                .into_owned(),
+            lossless: raw.lossless != 0,
+            bits_per_sample: positive(raw.bits_per_sample),
+            bitrate_kbps: positive(raw.bitrate_kbps),
+            file_sample_rate: raw.file_sample_rate,
+            file_channels: positive(raw.file_channels).unwrap_or(0),
+            track_gain: raw.track_gain,
+            tempo: raw.tempo,
+            semitones: raw.semitones,
+            resampling: raw.resampling != 0,
+            crossfeed: u8::try_from(raw.crossfeed).unwrap_or(0),
+            volume: raw.volume,
+            device_sample_rate: raw.device_sample_rate,
+            device_buffer_size: positive(raw.device_buffer_size).unwrap_or(0),
+        }
+    }
+}
+
 /// The open output device's settings.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -785,7 +1164,9 @@ impl Engine {
 
     /// Changes the gain of the current and next tracks opened from `path`,
     /// e.g. when ReplayGain is turned on; returns how many changed. Matching
-    /// by file can't race a hand-off.
+    /// by file can't race a hand-off. Unused: the queue tells parts of one
+    /// file apart with `set_track_gain_at`.
+    #[allow(dead_code)]
     pub fn set_track_gain(&mut self, path: &Path, gain: f64) -> usize {
         let Ok(path) = path_to_cstring(path) else {
             return 0;
@@ -794,6 +1175,108 @@ impl Engine {
         let changed =
             unsafe { anomp_engine_set_track_gain(self.raw.as_ptr(), path.as_ptr(), gain) };
         usize::try_from(changed).unwrap_or(0)
+    }
+
+    /// Opens part of `path` (see `TrackOptions`) as the current track, like
+    /// `load`.
+    pub fn load_track(&mut self, path: &Path, options: &TrackOptions) -> Result<(), String> {
+        let path = path_to_cstring(path)?;
+        let raw = self.raw.as_ptr();
+        let options = options.to_raw();
+        // SAFETY: `raw` is a live engine; `path` and `options` are valid for the call.
+        with_error(|error, size| unsafe {
+            anomp_engine_load_track(raw, path.as_ptr(), &options, error, size)
+        })
+    }
+
+    /// Opens part of a file as the next track, like `set_next`; `None`
+    /// clears it.
+    pub fn set_next_track(&mut self, next: Option<(&Path, &TrackOptions)>) -> Result<(), String> {
+        let path = next.map(|(path, _)| path_to_cstring(path)).transpose()?;
+        let options = next.map(|(_, options)| options.to_raw());
+        let path_ptr = path.as_ref().map_or(std::ptr::null(), |p| p.as_ptr());
+        let options_ptr = options.as_ref().map_or(std::ptr::null(), |o| o as *const _);
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; the pointers are null or point into
+        // locals that live until the end of this function.
+        with_error(|error, size| unsafe {
+            anomp_engine_set_next_track(raw, path_ptr, options_ptr, error, size)
+        })
+    }
+
+    /// `set_track_gain` for the track opened from `path` starting at
+    /// `start` seconds, telling parts of one file apart.
+    pub fn set_track_gain_at(&mut self, path: &Path, start: f64, gain: f64) -> usize {
+        let Ok(path) = path_to_cstring(path) else {
+            return 0;
+        };
+        // SAFETY: `raw` is a live engine and `path` a valid C string for the call.
+        let changed = unsafe {
+            anomp_engine_set_track_gain_at(self.raw.as_ptr(), path.as_ptr(), start, gain)
+        };
+        usize::try_from(changed).unwrap_or(0)
+    }
+
+    /// Loops the current track between `start` and `end` seconds, or clears
+    /// the loop with `None`. The engine opens the file again, so its folder
+    /// must be open (`library::access`).
+    pub fn set_loop(&mut self, points: Option<(f64, f64)>) -> Result<(), String> {
+        let (start, end) = points.unwrap_or((-1.0, 0.0));
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; the error buffer is supplied by `with_error`.
+        with_error(|error, size| unsafe { anomp_engine_set_loop(raw, start, end, error, size) })
+    }
+
+    /// The loop's start and end in seconds, if one is set.
+    pub fn loop_points(&self) -> Option<(f64, f64)> {
+        let (mut start, mut end) = (0.0, 0.0);
+        // SAFETY: `raw` is a live engine and both outputs are valid for the call.
+        (unsafe { anomp_engine_loop(self.raw.as_ptr(), &mut start, &mut end) } != 0)
+            .then_some((start, end))
+    }
+
+    /// Plays at `rate` times the speed (0.5..=1.5) without changing the
+    /// pitch, transposed by `semitones` (-12..=12). False for values out of
+    /// range.
+    pub fn set_tempo(&mut self, rate: f64, semitones: f64) -> bool {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_set_tempo(self.raw.as_ptr(), rate, semitones) != 0 }
+    }
+
+    /// Crossfeed for headphones: 0 off, 1..=3 stronger.
+    pub fn set_crossfeed(&mut self, level: u8) -> bool {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_set_crossfeed(self.raw.as_ptr(), c_int::from(level)) != 0 }
+    }
+
+    /// Whether the output plays through headphones; `None` if the OS
+    /// doesn't say.
+    pub fn output_is_headphones(&self) -> Option<bool> {
+        // SAFETY: `raw` is a live engine.
+        match unsafe { anomp_engine_output_is_headphones(self.raw.as_ptr()) } {
+            1 => Some(true),
+            0 => Some(false),
+            _ => None,
+        }
+    }
+
+    /// Every step from the file to the speakers.
+    pub fn signal_path(&self) -> SignalPath {
+        // SAFETY: an all-zero RawSignalPath is valid (no pointers inside).
+        let mut raw: RawSignalPath = unsafe { std::mem::zeroed() };
+        // SAFETY: `raw` is a live engine and `raw` valid for the call; the
+        // codec is NUL-terminated within its array.
+        unsafe {
+            anomp_engine_signal_path(self.raw.as_ptr(), &mut raw);
+            SignalPath::from_raw(&raw)
+        }
+    }
+
+    /// Switches the output device to `sample_rate` Hz if it offers it;
+    /// true if it runs at that rate afterwards.
+    pub fn set_device_sample_rate(&mut self, sample_rate: f64) -> bool {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_set_device_sample_rate(self.raw.as_ptr(), sample_rate) != 0 }
     }
 
     /// Starts or resumes playback. Returns false if no track is loaded.
@@ -1229,6 +1712,48 @@ mod tests {
     }
 
     #[test]
+    fn analyses_files_and_parts_of_them() {
+        let mut calls = 0;
+        let whole = analyse_file(&fixture("flac-44k.flac"), 0.0, 0.0, |_| {
+            calls += 1;
+            true
+        })
+        .unwrap();
+        assert!(calls >= 1);
+        assert!((whole.duration - 22371.0 / 44100.0).abs() < 1e-6);
+        assert!(whole.loudness.is_some());
+        assert!(whole.true_peak >= whole.sample_peak);
+        assert_eq!(whole.histogram.len(), 150);
+        assert_eq!((whole.histogram_floor, whole.histogram_step), (-70.0, 0.5));
+        assert_eq!(whole.envelope_min.len(), 1000);
+        assert_eq!(whole.envelope_max.len(), 1000);
+
+        let part = analyse_file(&fixture("flac-44k.flac"), 0.1, 0.3, |_| true).unwrap();
+        assert!((part.duration - 0.2).abs() < 1e-6);
+
+        let error = analyse_file(&fixture("flac-44k.flac"), 0.0, 0.0, |_| false).unwrap_err();
+        assert_eq!(error, "Cancelled");
+        let error = analyse_file(Path::new("relative.flac"), 0.0, 0.0, |_| true).unwrap_err();
+        assert!(error.starts_with("Path is not absolute"), "{error}");
+    }
+
+    #[test]
+    fn reads_chapters_and_lyrics_only_when_asked() {
+        let tags = read_tags_with(
+            &fixture("tagged-vorbis.flac"),
+            TagParts {
+                lyrics: true,
+                chapters: true,
+                ..TagParts::default()
+            },
+        )
+        .unwrap();
+        assert!(tags.chapters.is_empty());
+        assert_eq!(tags.lyrics, None);
+        assert_eq!(tags.picture, None);
+    }
+
+    #[test]
     fn untagged_fields_are_none() {
         let tags = read_tags(&fixture("wav-s16-44k.wav"), true).unwrap();
         assert_eq!(tags.title, None);
@@ -1268,6 +1793,19 @@ mod tests {
             picture: std::ptr::null(),
             picture_size: 0,
             picture_mime_type: std::ptr::null(),
+            work: std::ptr::null(),
+            movement_name: std::ptr::null(),
+            movement_number: 0,
+            movement_total: 0,
+            composer: std::ptr::null(),
+            conductor: std::ptr::null(),
+            date: std::ptr::null(),
+            original_date: std::ptr::null(),
+            lyrics: std::ptr::null(),
+            synced_lyrics: std::ptr::null(),
+            cuesheet: std::ptr::null(),
+            chapter_count: 3,
+            chapters: std::ptr::null(),
         };
         // SAFETY: every pointer is null, which `from_raw` allows.
         let tags = unsafe { Tags::from_raw(&raw) };

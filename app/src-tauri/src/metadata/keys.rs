@@ -1,4 +1,5 @@
-//! Keys for the sources that need one (a Discogs personal access token),
+//! Keys for the sources that need one (a Discogs personal access token, a
+//! ListenBrainz user token for O8),
 //! kept in the OS keychain rather than the library database: a token can
 //! act on the user's account at the service, and the database is a plain
 //! file (PLAN.md 4.8). The settings record only whether a source has a key
@@ -17,8 +18,39 @@ use super::Error;
 #[cfg(all(target_os = "macos", not(test)))]
 const SERVICE: &str = "ano-mp metadata";
 
+/// Whose key: a metadata source's, or another service's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Account {
+    Source(SourceId),
+    /// Listens sent to ListenBrainz (PLAN.md O8).
+    ListenBrainz,
+}
+
+impl Account {
+    /// The keychain entry's account, which must never change.
+    fn id(self) -> &'static str {
+        match self {
+            Account::Source(source) => source.as_str(),
+            Account::ListenBrainz => "listenbrainz",
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Account::Source(source) => source.info().name,
+            Account::ListenBrainz => "ListenBrainz",
+        }
+    }
+}
+
+impl From<SourceId> for Account {
+    fn from(source: SourceId) -> Account {
+        Account::Source(source)
+    }
+}
+
 /// Keys read or written so far: `None` when the keychain has none.
-static CACHE: Mutex<Option<HashMap<SourceId, Option<String>>>> = Mutex::new(None);
+static CACHE: Mutex<Option<HashMap<Account, Option<String>>>> = Mutex::new(None);
 
 /// Whether `key` could be a key: no spaces or control characters, and not
 /// absurdly long.
@@ -26,37 +58,39 @@ pub fn is_valid(key: &str) -> bool {
     !key.is_empty() && key.len() <= 256 && !key.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
-/// The key stored for `source`, if any.
-pub fn get(source: SourceId) -> Result<Option<String>, Error> {
+/// The key stored for `account` (a source, or another service), if any.
+pub fn get(account: impl Into<Account>) -> Result<Option<String>, Error> {
+    let account = account.into();
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     let cache = cache.get_or_insert_with(HashMap::new);
-    if let Some(key) = cache.get(&source) {
+    if let Some(key) = cache.get(&account) {
         return Ok(key.clone());
     }
-    let key = store::read(source)?;
-    cache.insert(source, key.clone());
+    let key = store::read(account.id())?;
+    cache.insert(account, key.clone());
     Ok(key)
 }
 
-/// Stores `key` for `source` (trimmed), or removes it with `None`.
-pub fn set(source: SourceId, key: Option<&str>) -> Result<(), Error> {
+/// Stores `key` for `account` (trimmed), or removes it with `None`.
+pub fn set(account: impl Into<Account>, key: Option<&str>) -> Result<(), Error> {
+    let account = account.into();
     let key = key.map(str::trim).filter(|key| !key.is_empty());
     if let Some(key) = key {
         if !is_valid(key) {
             return Err(Error::Invalid(format!(
                 "That isn't a valid {} key",
-                source.info().name
+                account.name()
             )));
         }
     }
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     match key {
-        Some(key) => store::write(source, key)?,
-        None => store::delete(source)?,
+        Some(key) => store::write(account.id(), key)?,
+        None => store::delete(account.id())?,
     }
     cache
         .get_or_insert_with(HashMap::new)
-        .insert(source, key.map(str::to_owned));
+        .insert(account, key.map(str::to_owned));
     Ok(())
 }
 
@@ -65,31 +99,31 @@ mod store {
     use apple_native_keyring_store::keychain::{Cred, MacKeychainDomain};
     use keyring_core::{Entry, Error as KeyringError};
 
-    use super::{SourceId, SERVICE};
+    use super::SERVICE;
     use crate::metadata::Error;
 
-    fn entry(source: SourceId) -> Result<Entry, Error> {
-        Cred::build(MacKeychainDomain::User, SERVICE, source.as_str()).map_err(failed)
+    fn entry(account: &str) -> Result<Entry, Error> {
+        Cred::build(MacKeychainDomain::User, SERVICE, account).map_err(failed)
     }
 
     fn failed(error: KeyringError) -> Error {
         Error::Invalid(format!("The keychain couldn't be used: {error}"))
     }
 
-    pub fn read(source: SourceId) -> Result<Option<String>, Error> {
-        match entry(source)?.get_password() {
+    pub fn read(account: &str) -> Result<Option<String>, Error> {
+        match entry(account)?.get_password() {
             Ok(key) => Ok(Some(key)),
             Err(KeyringError::NoEntry) => Ok(None),
             Err(error) => Err(failed(error)),
         }
     }
 
-    pub fn write(source: SourceId, key: &str) -> Result<(), Error> {
-        entry(source)?.set_password(key).map_err(failed)
+    pub fn write(account: &str, key: &str) -> Result<(), Error> {
+        entry(account)?.set_password(key).map_err(failed)
     }
 
-    pub fn delete(source: SourceId) -> Result<(), Error> {
-        match entry(source)?.delete_credential() {
+    pub fn delete(account: &str) -> Result<(), Error> {
+        match entry(account)?.delete_credential() {
             Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
             Err(error) => Err(failed(error)),
         }
@@ -100,22 +134,21 @@ mod store {
 /// needs the protected data store). Until then keys can't be saved there.
 #[cfg(all(not(target_os = "macos"), not(test)))]
 mod store {
-    use super::SourceId;
     use crate::metadata::Error;
 
     fn unsupported() -> Error {
         Error::Invalid("Keys can't be saved on this platform yet".into())
     }
 
-    pub fn read(_source: SourceId) -> Result<Option<String>, Error> {
+    pub fn read(_account: &str) -> Result<Option<String>, Error> {
         Ok(None)
     }
 
-    pub fn write(_source: SourceId, _key: &str) -> Result<(), Error> {
+    pub fn write(_account: &str, _key: &str) -> Result<(), Error> {
         Err(unsupported())
     }
 
-    pub fn delete(_source: SourceId) -> Result<(), Error> {
+    pub fn delete(_account: &str) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -124,19 +157,18 @@ mod store {
 /// shared by all tests, so they must use it only through `set` and `get`.
 #[cfg(test)]
 mod store {
-    use super::SourceId;
     use crate::metadata::Error;
 
-    pub fn read(_source: SourceId) -> Result<Option<String>, Error> {
+    pub fn read(_account: &str) -> Result<Option<String>, Error> {
         // Whatever `set` wrote is in the cache; nothing else exists.
         Ok(None)
     }
 
-    pub fn write(_source: SourceId, _key: &str) -> Result<(), Error> {
+    pub fn write(_account: &str, _key: &str) -> Result<(), Error> {
         Ok(())
     }
 
-    pub fn delete(_source: SourceId) -> Result<(), Error> {
+    pub fn delete(_account: &str) -> Result<(), Error> {
         Ok(())
     }
 }

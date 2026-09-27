@@ -14,6 +14,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/002_search.sql"),
     include_str!("migrations/003_metadata.sql"),
     include_str!("migrations/004_replay_gain.sql"),
+    include_str!("migrations/005_track_parts.sql"),
+    include_str!("migrations/006_features.sql"),
 ];
 
 /// Opens (creating if needed) the library database at `path` and brings its
@@ -108,14 +110,21 @@ mod tests {
                  AND name NOT LIKE '%search%' ORDER BY name"
             ),
             [
+                "album_analysis",
                 "album_art",
                 "album_links",
+                "album_prefs",
                 "albums",
                 "artist_links",
                 "artists",
                 "folders",
+                "listens_pending",
                 "mb_cache",
+                "plays",
+                "remote_devices",
                 "settings",
+                "track_analysis",
+                "track_prefs",
                 "tracks"
             ]
         );
@@ -187,6 +196,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!((mtime, gain), (-1, None));
+    }
+
+    #[test]
+    fn track_parts_migration_keeps_ids_and_dates_arrivals() {
+        let mut conn = open_in_memory_at(4).unwrap();
+        conn.execute_batch(
+            "INSERT INTO folders (path, added_at) VALUES ('/Music', 0);
+             INSERT INTO artists (name) VALUES ('Band');
+             INSERT INTO albums (title, artist_id) VALUES ('Record', 1);
+             INSERT INTO tracks (id, folder_id, relative_path, file_size, file_mtime_ns, title,
+                                 artist_id, album_id, album_artist_id, duration, sample_rate,
+                                 channels, scanned_at)
+             VALUES (7, 1, 'a/one.flac', 10, 1700000000123456789, 'One', 1, 1, 1, 1.0, 44100, 2,
+                     1800000000),
+                    (9, 1, 'a/two.flac', 10, -1, NULL, 1, 1, 1, 1.0, 44100, 2, 1800000001);",
+        )
+        .unwrap();
+        migrate(&mut conn).unwrap();
+        let rows: Vec<(i64, i64, f64, Option<f64>, i64)> = conn
+            .prepare(
+                "SELECT id, added_at, range_start, range_end, file_mtime_ns FROM tracks ORDER BY id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                (7, 1700000000, 0.0, None, -1),
+                (9, 1800000001, 0.0, None, -1)
+            ]
+        );
+        // The search index still finds both, the untitled one by its file name.
+        let found: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM tracks_search WHERE tracks_search MATCH 'one OR two'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(found, 2);
+        // Two parts of one file are two tracks.
+        conn.execute(
+            "INSERT INTO tracks (folder_id, relative_path, range_start, file_size, file_mtime_ns,
+                                 duration, sample_rate, channels, scanned_at)
+             VALUES (1, 'a/one.flac', 30.5, 10, 1, 1.0, 44100, 2, 0)",
+            [],
+        )
+        .unwrap();
     }
 
     #[test]

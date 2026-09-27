@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include "Crossfeed.h"
 #include "FormatRegistry.h"
 #include "PlayerEngine.h"
 
@@ -607,4 +608,268 @@ TEST_CASE ("PlayerEngine reports position changes", "[player]")
     h.player.dispatchEvents();
     REQUIRE (positions.size() == 3);
     CHECK (positions.back().first == Catch::Approx (blockSize / 44100.0));
+}
+
+namespace
+{
+using Options = anomp::PlayerEngine::TrackOptions;
+
+/** Samples [from, to) of `audio`. */
+Channels slice (const Channels& audio, int from, int to)
+{
+    Channels result;
+    for (size_t ch = 0; ch < 2; ++ch)
+        result[ch].assign (audio[ch].begin() + from, audio[ch].begin() + to);
+    return result;
+}
+
+Options part (double start, double end)
+{
+    Options options;
+    options.start = start;
+    options.end = end;
+    return options;
+}
+} // namespace
+
+TEST_CASE ("PlayerEngine plays part of a file", "[player][range]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+
+    Harness h (44100.0, readAhead);
+    const auto whole = decode ("flac-44k.flac");
+    const auto file = fixtureFile ("flac-44k.flac");
+
+    REQUIRE (h.player.load (file, part (0.1, 0.3)).isEmpty());
+    CHECK (h.player.getDurationSeconds() == Catch::Approx (0.2));
+    REQUIRE (h.player.play());
+    const auto stoppedAt = h.renderUntilStopped (100000);
+    CHECK (maxError (h.output, blockSize, slice (whole, 4410, 13230), blockSize, stoppedAt - blockSize) == 0.0f);
+
+    // Seeks and positions are within the part.
+    CHECK (h.player.seek (0.05));
+    CHECK (h.player.getPositionSeconds() == Catch::Approx (0.05));
+    CHECK (h.player.seek (1.0));
+    CHECK (h.player.getPositionSeconds() == Catch::Approx (0.2));
+
+    // An end past the file's is its end; a start past it is an error.
+    REQUIRE (h.player.load (file, part (0.3, 99.0)).isEmpty());
+    CHECK (h.player.getDurationSeconds() == Catch::Approx ((length (whole) - 13230) / 44100.0));
+    CHECK (h.player.load (file, part (5.0, 0.0)).startsWith ("The track starts after the end of the file"));
+    CHECK (h.player.load (file, part (std::numeric_limits<double>::quiet_NaN(), 0.0)).isNotEmpty());
+}
+
+TEST_CASE ("PlayerEngine hands off between parts of one file gaplessly", "[player][range][gapless]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+
+    Harness h (44100.0, readAhead);
+    const auto whole = decode ("flac-44k.flac");
+    const auto file = fixtureFile ("flac-44k.flac");
+
+    REQUIRE (h.player.load (file, part (0.0, 0.2)).isEmpty());
+    REQUIRE (h.player.setNext (file, part (0.2, 0.0)).isEmpty());
+    REQUIRE (h.player.play());
+    h.takeEvents();
+
+    h.render (8820 + 1);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+    CHECK (h.player.getPositionSeconds() == Catch::Approx ((length (h.output) - 8820) / 44100.0));
+    CHECK (h.player.getDurationSeconds() == Catch::Approx ((length (whole) - 8820) / 44100.0));
+
+    const auto stoppedAt = h.renderUntilStopped (100000);
+    CHECK (maxError (h.output, blockSize, whole, blockSize, stoppedAt - blockSize) == 0.0f);
+}
+
+TEST_CASE ("PlayerEngine changes the gain of one part of a file", "[player][range][gain]")
+{
+    Harness h (44100.0, false);
+    const auto file = fixtureFile ("flac-44k.flac");
+    REQUIRE (h.player.load (file, part (0.0, 0.2)).isEmpty());
+    REQUIRE (h.player.setNext (file, part (0.2, 0.0)).isEmpty());
+    CHECK (h.player.setTrackGainAt (file, 0.2, 0.5f) == 1);
+    CHECK (h.player.setTrackGainAt (file, 0.0, 0.5f) == 1);
+    CHECK (h.player.setTrackGainAt (file, 0.1, 0.5f) == 0);
+    CHECK (h.player.setTrackGain (file, 0.5f) == 2);
+}
+
+TEST_CASE ("PlayerEngine skips a stretch of a track once", "[player][range]")
+{
+    // Without read-ahead only: with it, the jump lands before the reader has
+    // caught up, a moment of silence that is fine for the silences it skips.
+    Harness h (44100.0, false);
+    const auto whole = decode ("flac-44k.flac");
+
+    auto options = Options {};
+    options.skipFrom = 0.1;
+    options.skipTo = 0.3;
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac"), options).isEmpty());
+    REQUIRE (h.player.play());
+    const auto stoppedAt = h.renderUntilStopped (100000);
+    const auto expected = concat (slice (whole, 0, 4410), slice (whole, 13230, length (whole)));
+    CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) == 0.0f);
+
+    // Once: after a seek back it plays through.
+    h.output = {};
+    REQUIRE (h.player.play());
+    CHECK (h.player.seek (0.0));
+    h.renderUntilStopped (100000);
+    CHECK (length (h.output) > length (whole));
+}
+
+TEST_CASE ("PlayerEngine loops between two points on the exact sample", "[player][loop]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+
+    Harness h (44100.0, readAhead);
+    const auto whole = decode ("flac-44k.flac");
+    auto& player = h.player;
+
+    CHECK (player.setLoop (0.1, 0.35) == "No track is loaded");
+    REQUIRE (player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    CHECK (player.setLoop (0.1, 0.2).startsWith ("A loop must"));
+    CHECK (player.setLoop (-1.0, 0.4).startsWith ("A loop must"));
+    REQUIRE (player.setLoop (0.1, 0.35).isEmpty());
+
+    double start = 0.0, end = 0.0;
+    REQUIRE (player.getLoop (start, end));
+    CHECK (start == Catch::Approx (0.1));
+    CHECK (end == Catch::Approx (0.35));
+
+    REQUIRE (player.play());
+    // Three times round, sending the spare reader back after each block.
+    const auto loopLength = 15435 - 4410;
+    while (length (h.output) < 15435 + 3 * loopLength)
+    {
+        h.renderBlock();
+        player.dispatchEvents();
+    }
+    CHECK (player.getState() == State::playing);
+    auto expected = slice (whole, 0, 15435);
+    for (int i = 0; i < 4; ++i)
+        expected = concat (expected, slice (whole, 4410, 15435));
+    CHECK (maxError (h.output, blockSize, expected, blockSize, length (h.output) - blockSize) == 0.0f);
+    CHECK (player.getPositionSeconds() >= 0.1);
+    CHECK (player.getPositionSeconds() <= 0.35);
+
+    // Cleared, it plays on to the end.
+    player.clearLoop();
+    CHECK_FALSE (player.getLoop (start, end));
+    h.renderUntilStopped (200000);
+    CHECK (player.getState() == State::stopped);
+
+    // A load ends the loop.
+    REQUIRE (player.setLoop (0.1, 0.35).isEmpty());
+    REQUIRE (player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    CHECK_FALSE (player.getLoop (start, end));
+}
+
+TEST_CASE ("PlayerEngine changes tempo and pitch independently", "[player][tempo]")
+{
+    Harness h (44100.0, false);
+    const auto whole = decode ("flac-44k.flac");
+    auto& player = h.player;
+
+    CHECK_FALSE (player.setTempo (0.25, 0.0));
+    CHECK_FALSE (player.setTempo (1.75, 0.0));
+    CHECK_FALSE (player.setTempo (1.0, 13.0));
+    CHECK_FALSE (player.setTempo (std::numeric_limits<double>::quiet_NaN(), 0.0));
+    CHECK (player.setTempo (1.0, 0.0)); // Nothing to do.
+
+    REQUIRE (player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (player.setTempo (1.25, 0.0));
+    REQUIRE (player.play());
+    h.render (8192);
+    // The file is read a quarter faster than the device plays.
+    CHECK (player.getPositionSeconds() == Catch::Approx (8192 * 1.25 / 44100.0).margin (2 / 44100.0));
+    CHECK (peak (h.output, 4096, 8192) > 0.05f);
+    CHECK (player.getSignalInfo().tempo == 1.25);
+
+    // Transposed at the normal tempo.
+    REQUIRE (player.setTempo (1.0, 12.0));
+    const auto before = player.getPositionSeconds();
+    h.render (4096);
+    CHECK (player.getPositionSeconds() - before == Catch::Approx (4096 / 44100.0).margin (2 / 44100.0));
+    CHECK (player.getSignalInfo().semitones == 12.0);
+
+    // Back to normal: the file itself again.
+    REQUIRE (player.setTempo (1.0, 0.0));
+    const auto at = static_cast<int> (std::llround (player.getPositionSeconds() * 44100.0));
+    const auto from = length (h.output);
+    h.render (blockSize);
+    CHECK (maxError (h.output, from, whole, at, blockSize) == 0.0f);
+    CHECK (player.getSignalInfo().tempo == 1.0);
+}
+
+TEST_CASE ("PlayerEngine describes the signal path", "[player][signal]")
+{
+    Harness h (48000.0, false);
+    CHECK_FALSE (h.player.getSignalInfo().loaded);
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac"), 0.5f).isEmpty());
+    auto info = h.player.getSignalInfo();
+    CHECK (info.loaded);
+    CHECK (info.codec == "flac");
+    CHECK (info.lossless);
+    CHECK (info.bitsPerSample == 16);
+    CHECK (info.fileSampleRate == 44100.0);
+    CHECK (info.channels == 2);
+    CHECK (info.gain == 0.5f);
+    CHECK (info.deviceSampleRate == 48000.0);
+
+    REQUIRE (h.player.load (fixtureFile ("mp3-44k.mp3")).isEmpty());
+    info = h.player.getSignalInfo();
+    CHECK (info.codec == "mp3");
+    CHECK_FALSE (info.lossless);
+    CHECK (info.bitsPerSample == 0);
+    CHECK (info.bitrateKbps > 0);
+}
+
+TEST_CASE ("PlayerEngine crossfeeds after the tap", "[player][crossfeed]")
+{
+    Harness h (44100.0, false);
+    const auto whole = decode ("flac-44k.flac");
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    h.player.setCrossfeed (2);
+    CHECK (h.player.getCrossfeed() == 2);
+    REQUIRE (h.player.play());
+    h.render (4096);
+    // Each channel now carries some of the other.
+    CHECK (maxError (h.output, blockSize, whole, blockSize, 2048) > 0.01f);
+    h.player.setCrossfeed (99);
+    CHECK (h.player.getCrossfeed() == anomp::Crossfeed::maxLevel);
+}
+
+TEST_CASE ("Crossfeed blends the channels at low frequencies", "[crossfeed]")
+{
+    anomp::Crossfeed crossfeed;
+    crossfeed.prepare (44100.0);
+
+    const auto settle = [&crossfeed] (float left, float right)
+    {
+        std::vector<float> l (44100, left), r (44100, right);
+        crossfeed.process (l.data(), r.data(), static_cast<int> (l.size()));
+        return std::pair { l.back(), r.back() };
+    };
+
+    // Off: untouched.
+    CHECK (settle (1.0f, 0.0f) == std::pair { 1.0f, 0.0f });
+
+    for (int level = 1; level <= anomp::Crossfeed::maxLevel; ++level)
+    {
+        CAPTURE (level);
+        crossfeed.setLevel (level);
+        // A centred (mono) signal keeps its level at DC.
+        const auto [monoL, monoR] = settle (1.0f, 1.0f);
+        CHECK (monoL == Catch::Approx (1.0).margin (1e-3));
+        CHECK (monoR == Catch::Approx (1.0).margin (1e-3));
+        // A hard-left one reaches the right ear too, more with each level.
+        crossfeed.reset();
+        const auto [left, right] = settle (1.0f, 0.0f);
+        CHECK (right > 0.1f);
+        CHECK (right < left);
+    }
 }

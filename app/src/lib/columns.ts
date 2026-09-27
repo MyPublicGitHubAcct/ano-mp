@@ -1,8 +1,8 @@
 // What track lists can show besides the title (`DisplaySettings.trackColumns`),
 // and the album facts an album's summary line can give.
 
-import type { AlbumFact, Track, TrackColumn } from "$lib/api";
-import { fileName, formatTime } from "$lib/format";
+import type { AlbumFact, FeatureSettings, Track, TrackColumn } from "$lib/api";
+import { fileName, formatDay, formatTime } from "$lib/format";
 
 export const TRACK_COLUMNS: { id: TrackColumn; name: string }[] = [
   { id: "trackNumber", name: "Track number" },
@@ -15,7 +15,18 @@ export const TRACK_COLUMNS: { id: TrackColumn; name: string }[] = [
   { id: "format", name: "Format" },
   { id: "bitrate", name: "Bit rate" },
   { id: "sampleRate", name: "Sample rate" },
+  { id: "playCount", name: "Plays" },
+  { id: "lastPlayed", name: "Last played" },
+  { id: "dateAdded", name: "Date added" },
+  { id: "composer", name: "Composer" },
 ];
+
+/** Whether a column's feature is on: plays need the listening history, the composer the classical tags. */
+export function columnAvailable(column: TrackColumn, features: FeatureSettings) {
+  if (column === "playCount" || column === "lastPlayed") return features.listeningHistory;
+  if (column === "composer") return features.classical;
+  return true;
+}
 
 export const ALBUM_FACTS: { id: AlbumFact; name: string }[] = [
   { id: "date", name: "Release date" },
@@ -32,7 +43,13 @@ export const textColumns = (columns: TrackColumn[]) =>
 
 /** Columns that hold a short number rather than a name, so they get a narrow fixed width. */
 export const isShortColumn = (column: TrackColumn) =>
-  column === "year" || column === "format" || column === "bitrate" || column === "sampleRate";
+  column === "year" ||
+  column === "format" ||
+  column === "bitrate" ||
+  column === "sampleRate" ||
+  column === "playCount" ||
+  column === "lastPlayed" ||
+  column === "dateAdded";
 
 /** "FLAC", "MP3"…: the file's extension. */
 export function formatOf(path: string) {
@@ -64,5 +81,13 @@ export function columnText(column: TrackColumn, track: Track): string {
       return track.bitrateKbps === null ? "" : `${track.bitrateKbps} kbps`;
     case "sampleRate":
       return track.sampleRate > 0 ? `${(track.sampleRate / 1000).toLocaleString()} kHz` : "";
+    case "playCount":
+      return track.playCount > 0 ? track.playCount.toLocaleString() : "";
+    case "lastPlayed":
+      return track.lastPlayed === null ? "" : formatDay(track.lastPlayed);
+    case "dateAdded":
+      return track.addedAt > 0 ? formatDay(track.addedAt) : "";
+    case "composer":
+      return track.composer ?? "";
   }
 }

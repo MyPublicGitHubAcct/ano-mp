@@ -23,8 +23,11 @@
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui, type AlbumRef } from "$lib/state/ui.svelte";
+  import { features } from "$lib/state/features.svelte";
+  import AlbumWorks from "./AlbumWorks.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
+  import MoreInGenre from "./MoreInGenre.svelte";
 
   let { album }: { album: AlbumRef } = $props();
 
@@ -277,12 +280,18 @@
       <div class="buttons">
         <button onclick={findDetails}><Icon name="search" /> Find details…</button>
         <button onclick={chooseCover}>Choose cover…</button>
+        {#if features.on.playbackPreferences}
+          <button onclick={() => (ui.dialog = { kind: "prefs", track: null, album })}>Playback…</button>
+        {/if}
         <button class="link" aria-expanded={open} onclick={() => (open = !open)}>
           {open ? "Hide details" : "Details"}
         </button>
       </div>
     </div>
   </div>
+  {#if details && features.on.classical}
+    <AlbumWorks tracks={details.tracks} />
+  {/if}
   {#if description && showDescription}
     <div class="description">
       {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
@@ -297,6 +306,9 @@
         <a href={description.licenseUrl} onclick={openLink}>{description.license}</a>.
       </p>
     </div>
+  {/if}
+  {#if details && features.on.moreInGenre && details.genres.length > 0}
+    {#key details.id}<MoreInGenre albumId={details.id} genres={details.genres} />{/key}
   {/if}
   {#if open && rows.length > 0}
     <div class="table">

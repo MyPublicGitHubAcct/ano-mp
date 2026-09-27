@@ -67,12 +67,54 @@ typedef struct anomp_tags
     const unsigned char* picture;
     size_t picture_size;
     const char* picture_mime_type; /**< e.g. "image/jpeg"; "" if unknown. */
+
+    /* Classical works: the work this track is a movement of (ID3v2 TIT1,
+       MP4 ©wrk, Vorbis WORK), the movement's name and number (MVNM/MVIN,
+       ©mvn/©mvi, MOVEMENTNAME/MOVEMENTNUMBER), and who composed and
+       conducted it. */
+    const char* work;
+    const char* movement_name;
+    int movement_number;
+    int movement_total;
+    const char* composer;
+    const char* conductor;
+
+    /* Release dates as tagged, as precise as the tag is: "2004-05-01",
+       "2004-05" or "2004"; "" if none. The original release's (ORIGINALDATE,
+       TDOR) where the file has it. */
+    const char* date;
+    const char* original_date;
+
+    /* Only with ANOMP_TAGS_LYRICS: the unsynced lyrics (ID3v2 USLT, MP4
+       ©lyr, Vorbis LYRICS or UNSYNCEDLYRICS, which may itself hold LRC
+       text), and synced lyrics from an ID3v2 SYLT frame as LRC text, one
+       "[mm:ss.xx]line" per line. "" when absent. */
+    const char* lyrics;
+    const char* synced_lyrics;
+
+    /* Only with ANOMP_TAGS_CHAPTERS: a cue sheet embedded as a CUESHEET tag
+       (""), and the chapters the container records: MP4 and Matroska
+       chapters, ID3v2 CHAP frames, Ogg CHAPTERxxx comments and a FLAC cue
+       sheet's tracks. */
+    const char* cuesheet;
+    int chapter_count;
+    const struct anomp_chapter* chapters; /**< `chapter_count` of them, null if none. */
 } anomp_tags;
+
+/** A chapter of a file, as anomp_tags lists them. */
+typedef struct anomp_chapter
+{
+    double start;      /**< Seconds from the start of the audio. */
+    double end;        /**< Seconds; -1 when it runs to the end of the file. */
+    const char* title; /**< "" if untitled. */
+} anomp_chapter;
 
 /** Flags for anomp_read_tags. */
 enum
 {
-    ANOMP_TAGS_PICTURE = 1 /**< Also copy out the embedded picture. */
+    ANOMP_TAGS_PICTURE = 1, /**< Also copy out the embedded picture. */
+    ANOMP_TAGS_LYRICS = 2,  /**< Also read the lyrics. */
+    ANOMP_TAGS_CHAPTERS = 4 /**< Also read chapters and an embedded cue sheet. */
 };
 
 /** Reads the tags of the file at `path` (absolute, UTF-8) without modifying
@@ -84,6 +126,76 @@ anomp_tags* anomp_read_tags(const char* path, int flags, char* error, size_t err
 
 /** Frees tags returned by anomp_read_tags. Null is ignored. */
 void anomp_tags_free(anomp_tags* tags);
+
+/* ---- File analysis ------------------------------------------------------
+   One pass over a file measuring what ReplayGain, a waveform seek bar and
+   a library health check need. Like the tags, it may be called from any
+   thread, concurrently, and uses its own decoder, never the engine's. */
+
+/** What anomp_analyse_file measures. Levels are linear (1 is full scale)
+    unless named in dB. */
+typedef struct anomp_file_analysis
+{
+    double duration;    /**< Seconds decoded. */
+    double sample_rate; /**< Hz. */
+    int channels;
+
+    /** EBU R128 integrated loudness in LUFS (a mono file counts as dual
+        mono); NaN when it is silent throughout. */
+    double integrated_lufs;
+    double sample_peak;
+    double true_peak; /**< Between samples too (4x oversampled). */
+
+    /** How many 400 ms blocks fell in each `histogram_step` LU wide bin
+        from `histogram_floor` LUFS up: enough to gate an album's loudness
+        over all of its tracks later. */
+    int histogram_count;
+    const uint32_t* histogram;
+    double histogram_floor;
+    double histogram_step;
+
+    /** Seconds below -60 dBFS at the start and at the end. */
+    double leading_silence;
+    double trailing_silence;
+    /** The longest silence inside the track (touching neither end), at
+        least 2 s long, e.g. before a hidden track; both 0 if none. */
+    double gap_start;
+    double gap_length;
+    /** RMS of the first and last 50 ms in dBFS; -inf for digital silence. */
+    double start_level_db;
+    double end_level_db;
+
+    /** Hz where the average spectrum drops off a cliff, as a lossy
+        encoder's lowpass leaves it; 0 if it doesn't. */
+    double cutoff_hz;
+
+    /** The smallest and largest sample in each of `envelope_length` (at
+        most 1000) equal slices of the track. */
+    int envelope_length;
+    const float* envelope_min;
+    const float* envelope_max;
+} anomp_file_analysis;
+
+/** Called as a file's analysis starts and then about four times a second,
+    with the fraction done (0..1); return 0 to cancel. */
+typedef int (*anomp_analysis_progress)(double fraction, void* user_data);
+
+/** Decodes the file at `path` (absolute, UTF-8) once and measures it, or
+    only the part of it from `start` to `end` seconds (an `end` not after
+    `start`, e.g. 0, is the end of the file) as anomp_track_options does.
+    `progress` may be null. Returns null on failure or cancellation and
+    writes the error message as anomp_read_tags does. Free the result with
+    anomp_file_analysis_free. */
+anomp_file_analysis* anomp_analyse_file(const char* path,
+                                        double start,
+                                        double end,
+                                        anomp_analysis_progress progress,
+                                        void* user_data,
+                                        char* error,
+                                        size_t error_size);
+
+/** Frees a result of anomp_analyse_file. Null is ignored. */
+void anomp_file_analysis_free(anomp_file_analysis* analysis);
 
 /* ---- Folder access -------------------------------------------------------
    A sandboxed app (the macOS App Sandbox, iOS) may read a folder the user
@@ -265,6 +377,46 @@ int anomp_engine_set_next(anomp_engine* engine, const char* path, double gain, c
     next can't race a hand-off. Returns how many tracks it changed (0..2). */
 int anomp_engine_set_track_gain(anomp_engine* engine, const char* path, double gain);
 
+/** How a track is played: part of a file, and a stretch of it to skip. */
+typedef struct anomp_track_options
+{
+    double gain;  /**< As for anomp_engine_load. */
+    double start; /**< Seconds into the file where the track starts; 0 for its start. */
+    double end;   /**< Seconds into the file where it ends; 0 (or anything not after
+                       `start`) for the end of the file. Positions and durations the
+                       engine reports are within the track, from `start`. */
+    /** When the track reaches `skip_from` seconds (within the track) it
+        jumps to `skip_to`, once, e.g. over a long silence. Negative
+        `skip_from`, or `skip_to` not after it, skips nothing. */
+    double skip_from;
+    double skip_to;
+} anomp_track_options;
+
+/** Options that play a whole file with `gain` and skip nothing. */
+anomp_track_options anomp_track_options_default(double gain);
+
+/** anomp_engine_load for part of a file. A hand-off from one part to the
+    next part of the same file is as gapless and sample-exact as one
+    between files. A null `options` is the whole file at gain 1. */
+int anomp_engine_load_track(anomp_engine* engine,
+                            const char* path,
+                            const anomp_track_options* options,
+                            char* error,
+                            size_t error_size);
+
+/** anomp_engine_set_next for part of a file; a null `path` clears the next
+    track. */
+int anomp_engine_set_next_track(anomp_engine* engine,
+                                const char* path,
+                                const anomp_track_options* options,
+                                char* error,
+                                size_t error_size);
+
+/** anomp_engine_set_track_gain for the track opened from `path` whose
+    options started at `start` seconds, telling two parts of one file
+    apart. */
+int anomp_engine_set_track_gain_at(anomp_engine* engine, const char* path, double start, double gain);
+
 /** Starts or resumes playback. Returns 0 if no track is loaded. */
 int anomp_engine_play(anomp_engine* engine);
 
@@ -291,6 +443,81 @@ double anomp_engine_position(anomp_engine* engine);
 
 /** Length of the current track in seconds, or 0 if none is loaded. */
 double anomp_engine_duration(anomp_engine* engine);
+
+/* ---- Practice ------------------------------------------------------------
+   An A–B loop and playing slower or faster without changing the pitch (or
+   changing the pitch alone), for learning or transcribing a part. */
+
+/** Loops the current track between `start` and `end` seconds (within the
+    track), jumping back at `end` on the exact sample. The engine opens the
+    file again for the jump, so call it while the file can be opened (its
+    folder's bookmark resolved). A loop shorter than 0.25 s is refused.
+    Returns 1 on success; a negative `start` clears the loop (returns 1).
+    The loop ends when another track becomes current. */
+int anomp_engine_set_loop(anomp_engine* engine, double start, double end, char* error, size_t error_size);
+
+/** Writes the loop's start and end (either may be null) and returns 1, or
+    returns 0 when no loop is set. */
+int anomp_engine_loop(anomp_engine* engine, double* start, double* end);
+
+/** Plays at `rate` times the normal speed (0.5..1.5) without changing the
+    pitch, shifted by `semitones` (-12..12). 1 and 0 play the audio as it
+    is. Returns 0, changing nothing, for values out of range. */
+int anomp_engine_set_tempo(anomp_engine* engine, double rate, double semitones);
+
+/* ---- Headphones ----------------------------------------------------------
+   Crossfeed blends a delayed, low-passed part of each channel into the
+   other, so hard-panned stereo is less tiring on headphones. */
+
+enum
+{
+    ANOMP_CROSSFEED_OFF = 0,
+    ANOMP_CROSSFEED_LIGHT = 1,  /**< 700 Hz, 4.5 dB. */
+    ANOMP_CROSSFEED_MEDIUM = 2, /**< 700 Hz, 6 dB. */
+    ANOMP_CROSSFEED_STRONG = 3  /**< 650 Hz, 9.5 dB. */
+};
+
+/** Sets the crossfeed (an ANOMP_CROSSFEED_* value); it applies after the
+    analysis tap, so the visualizer shows the mix as it is. Returns 0 for
+    an unknown level. */
+int anomp_engine_set_crossfeed(anomp_engine* engine, int level);
+
+/** 1 if the open output device plays through headphones as far as the OS
+    can tell (the built-in output's headphone jack on macOS, the audio
+    route on iOS), 0 if not, -1 if it can't tell. */
+int anomp_engine_output_is_headphones(anomp_engine* engine);
+
+/* ---- Signal path ---------------------------------------------------------
+   Every step between the file and the speakers, for showing the user. */
+
+typedef struct anomp_signal_path
+{
+    int loaded;     /**< 0 when no track is loaded; the file fields are then 0 or "". */
+    char codec[32]; /**< FFmpeg's codec name, e.g. "flac", "mp3". */
+    int lossless;
+    int bits_per_sample;     /**< The source's, for lossless codecs; 0 otherwise. */
+    int bitrate_kbps;        /**< 0 if unknown. */
+    double file_sample_rate; /**< Hz. */
+    int file_channels;
+    double track_gain; /**< Linear, as passed with the track. */
+    double tempo;      /**< 1 unless practising. */
+    double semitones;
+    int resampling; /**< 1 if the file's rate differs from the device's. */
+    int crossfeed;  /**< An ANOMP_CROSSFEED_* value. */
+    double volume;  /**< Linear. */
+    double device_sample_rate;
+    int device_buffer_size;
+} anomp_signal_path;
+
+/** Fills `path`; returns 0 for a null engine or `path`. */
+int anomp_engine_signal_path(anomp_engine* engine, anomp_signal_path* path);
+
+/** Switches the open output device to `sample_rate` Hz if it offers that
+    rate, reopening it; playback carries on, with a short interruption.
+    Returns 1 if the device runs at that rate afterwards (it already may
+    have), 0 if it doesn't offer it or none is open. On macOS the rate is
+    the device's, so other apps playing through it change too. */
+int anomp_engine_set_device_sample_rate(anomp_engine* engine, double sample_rate);
 
 /** How many times a next track has taken over gaplessly since the engine was
     created. TRACK_ENDED reports a hand-off up to 50 ms late; this counts it

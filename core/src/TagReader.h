@@ -31,17 +31,44 @@ struct TrackTags
 
     juce::MemoryBlock picture; // Front cover if marked, else the first picture.
     juce::String pictureMimeType;
+
+    // Classical works (PLAN.md O6): the work a track is a movement of, the
+    // movement's own name and number, and who composed and conducted it.
+    juce::String work, movementName, composer, conductor;
+    int movementNumber = 0, movementTotal = 0;
+
+    // The release date as tagged, as precise as it is ("2004-05-01",
+    // "2004-05" or "2004"), and the original release's where the file says.
+    juce::String date, originalDate;
+
+    // Only with TagParts::lyrics: unsynced lyrics, and synced ones as LRC
+    // text ("[mm:ss.xx]line" per line) from an ID3v2 SYLT frame.
+    juce::String lyrics, syncedLyrics;
+
+    // Only with TagParts::chapters: a cue sheet embedded as a CUESHEET tag,
+    // and the chapters the container records (see FFmpegAudioFormat).
+    juce::String cueSheet;
+    struct Chapter
+    {
+        double start = 0.0, end = -1.0; // Seconds; -1 for the end of the file.
+        juce::String title;
+    };
+    juce::Array<Chapter> chapters;
+};
+
+/** What readTags copies out besides the tags themselves, as flags. */
+struct TagParts
+{
+    static constexpr int picture = 1, lyrics = 2, chapters = 4;
 };
 
 /** Reads `file`'s tags with TagLib, opening it read-only. The embedded
-    picture is copied only if `includePicture`. If TagLib reports no duration,
+    picture, the lyrics and the chapters are read only when `parts` (a
+    combination of TagParts) asks for them. If TagLib reports no duration,
     the audio properties come from a reader created by `formats` instead; a
     file with a duration from neither is an error.
 
     Safe to call from any thread, concurrently. Returns an error message,
     or an empty string on success (then `result` is filled). */
-juce::String readTags (const juce::File& file,
-                       bool includePicture,
-                       juce::AudioFormatManager& formats,
-                       TrackTags& result);
+juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManager& formats, TrackTags& result);
 } // namespace anomp

@@ -10,6 +10,7 @@
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
+  import { trackFeatureItems } from "$lib/featureMenu";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
   import VirtualList from "./VirtualList.svelte";
@@ -105,6 +106,7 @@
           ui.showArtist({ id: item.artistId, name: item.artist });
         },
       },
+      ...trackFeatureItems({ id: item.trackId, title: item.title }),
     ]);
   }
 
@@ -125,6 +127,11 @@
         {plural(player.items.length, "track")}{player.items.length > 0 ? ` · ${formatTime(totalTime)}` : ""}
       </span>
     </div>
+    {#if player.radio}
+      <button class="radio" title="Library radio adds tracks as it plays; click to stop" onclick={() => attempt(queue.stopRadio)}>
+        <Icon name="radio" size="1rem" /> Radio
+      </button>
+    {/if}
     <button onclick={() => attempt(queue.clear)} disabled={player.items.length === 0}>Clear</button>
     {#if !main}
       <button
@@ -182,7 +189,11 @@
               <Art albumId={item.albumId} trackId={item.trackId} size="2.25rem" />
               <div class="text">
                 <span class="name">{item.title}</span>
-                <span class="muted small">{item.artist ?? ""}</span>
+                <span class="muted small" title={item.reason ? `Radio: ${item.reason}` : undefined}>
+                  {#if item.reason}<span class="reason">{item.reason}</span> · {/if}{item.artist ?? ""}{item.skip
+                    ? " · skipped in album play"
+                    : ""}
+                </span>
               </div>
               <span class="muted time">{formatTime(item.duration)}</span>
               <button
@@ -203,6 +214,11 @@
 </section>
 
 <style>
+  .reason,
+  .radio {
+    color: var(--accent);
+  }
+
   .panel {
     display: flex;
     flex-direction: column;

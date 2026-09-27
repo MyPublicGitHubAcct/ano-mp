@@ -1,12 +1,15 @@
 #include "anomp/anomp.h"
 #include "AudioEngine.h"
+#include "FileAnalyser.h"
 #include "FolderAccess.h"
 #include "FormatRegistry.h"
 #include "MediaControls.h"
 #include "TagReader.h"
 
+#include <cmath>
 #include <cstring>
 #include <string>
+#include <vector>
 
 struct anomp_engine
 {
@@ -25,7 +28,17 @@ struct TagsHandle : anomp_tags
         std::string recordingId, releaseId, releaseGroupId, releaseTrackId, artistId, albumArtistId;
         juce::MemoryBlock picture;
         std::string pictureMimeType;
+        std::string work, movementName, composer, conductor, date, originalDate;
+        std::string lyrics, syncedLyrics, cueSheet;
+        std::vector<std::string> chapterTitles;
+        std::vector<anomp_chapter> chapters;
     } owned;
+};
+
+/** Owns the arrays behind the public struct's pointers. */
+struct FileAnalysisHandle : anomp_file_analysis
+{
+    anomp::FileAnalysis owned;
 };
 
 /** Owns the bytes behind the public struct's pointer. */
@@ -161,8 +174,12 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
         else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
             message = "Path is not absolute: " + text;
         else
-            message =
-                anomp::readTags (juce::File (text), (flags & ANOMP_TAGS_PICTURE) != 0, registry().manager(), tags);
+        {
+            static_assert (ANOMP_TAGS_PICTURE == anomp::TagParts::picture
+                           && ANOMP_TAGS_LYRICS == anomp::TagParts::lyrics
+                           && ANOMP_TAGS_CHAPTERS == anomp::TagParts::chapters);
+            message = anomp::readTags (juce::File (text), flags, registry().manager(), tags);
+        }
 
         copyUtf8 (message, error, errorSize);
         if (message.isNotEmpty())
@@ -182,6 +199,17 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
         handle->owned.albumArtistId = tags.musicBrainzAlbumArtistId.toStdString();
         handle->owned.picture = std::move (tags.picture);
         handle->owned.pictureMimeType = tags.pictureMimeType.toStdString();
+        handle->owned.work = tags.work.toStdString();
+        handle->owned.movementName = tags.movementName.toStdString();
+        handle->owned.composer = tags.composer.toStdString();
+        handle->owned.conductor = tags.conductor.toStdString();
+        handle->owned.date = tags.date.toStdString();
+        handle->owned.originalDate = tags.originalDate.toStdString();
+        handle->owned.lyrics = tags.lyrics.toStdString();
+        handle->owned.syncedLyrics = tags.syncedLyrics.toStdString();
+        handle->owned.cueSheet = tags.cueSheet.toStdString();
+        for (const auto& chapter : tags.chapters)
+            handle->owned.chapterTitles.push_back (chapter.title.toStdString());
 
         // The strings are final now, so pointers into them stay valid until
         // anomp_tags_free.
@@ -214,6 +242,22 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
                               : static_cast<const unsigned char*> (handle->owned.picture.getData());
         handle->picture_size = handle->owned.picture.getSize();
         handle->picture_mime_type = handle->owned.pictureMimeType.c_str();
+        handle->work = handle->owned.work.c_str();
+        handle->movement_name = handle->owned.movementName.c_str();
+        handle->movement_number = tags.movementNumber;
+        handle->movement_total = tags.movementTotal;
+        handle->composer = handle->owned.composer.c_str();
+        handle->conductor = handle->owned.conductor.c_str();
+        handle->date = handle->owned.date.c_str();
+        handle->original_date = handle->owned.originalDate.c_str();
+        handle->lyrics = handle->owned.lyrics.c_str();
+        handle->synced_lyrics = handle->owned.syncedLyrics.c_str();
+        handle->cuesheet = handle->owned.cueSheet.c_str();
+        for (int i = 0; i < tags.chapters.size(); ++i)
+            handle->owned.chapters.push_back ({ tags.chapters[i].start, tags.chapters[i].end,
+                                                handle->owned.chapterTitles[static_cast<size_t> (i)].c_str() });
+        handle->chapter_count = static_cast<int> (handle->owned.chapters.size());
+        handle->chapters = handle->owned.chapters.empty() ? nullptr : handle->owned.chapters.data();
         return handle.release();
     }
     catch (...)
@@ -224,6 +268,68 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
 }
 
 extern "C" void anomp_tags_free (anomp_tags* tags) { delete static_cast<TagsHandle*> (tags); }
+
+extern "C" anomp_file_analysis* anomp_analyse_file (const char* path,
+                                                    double start,
+                                                    double end,
+                                                    anomp_analysis_progress progress,
+                                                    void* userData,
+                                                    char* error,
+                                                    size_t errorSize)
+{
+    try
+    {
+        juce::String message;
+        auto handle = std::make_unique<FileAnalysisHandle>();
+        auto& result = handle->owned;
+
+        if (path == nullptr)
+            message = "Null path";
+        else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
+            message = "Path is not absolute: " + text;
+        else
+            message = anomp::analyseFile (
+                juce::File (text), registry().manager(), start, end, [progress, userData] (double fraction)
+                { return progress == nullptr || progress (fraction, userData) != 0; }, result);
+
+        copyUtf8 (message, error, errorSize);
+        if (message.isNotEmpty())
+            return nullptr;
+
+        handle->duration =
+            result.sampleRate > 0.0 ? static_cast<double> (result.decodedSamples) / result.sampleRate : 0.0;
+        handle->sample_rate = result.sampleRate;
+        handle->channels = result.channels;
+        handle->integrated_lufs = result.integratedLufs;
+        handle->sample_peak = result.samplePeak;
+        handle->true_peak = result.truePeak;
+        handle->histogram_count = static_cast<int> (result.histogram.size());
+        handle->histogram = result.histogram.data();
+        handle->histogram_floor = anomp::FileAnalysis::histogramFloor;
+        handle->histogram_step = anomp::FileAnalysis::histogramStep;
+        handle->leading_silence = result.leadingSilence;
+        handle->trailing_silence = result.trailingSilence;
+        handle->gap_start = result.gapStart;
+        handle->gap_length = result.gapLength;
+        handle->start_level_db = result.startLevelDb;
+        handle->end_level_db = result.endLevelDb;
+        handle->cutoff_hz = result.cutoffHz;
+        handle->envelope_length = static_cast<int> (result.envelopeMin.size());
+        handle->envelope_min = result.envelopeMin.data();
+        handle->envelope_max = result.envelopeMax.data();
+        return handle.release();
+    }
+    catch (...)
+    {
+        copyUtf8 ("Cannot analyse the file", error, errorSize);
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_file_analysis_free (anomp_file_analysis* analysis)
+{
+    delete static_cast<FileAnalysisHandle*> (analysis);
+}
 
 extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error, size_t errorSize)
 {
@@ -439,6 +545,151 @@ extern "C" int anomp_engine_set_track_gain (anomp_engine* engine, const char* pa
         return 0;
 
     return engine->engine.player().setTrackGain (juce::File (text), static_cast<float> (gain));
+}
+
+extern "C" anomp_track_options anomp_track_options_default (double gain)
+{
+    return anomp_track_options { gain, 0.0, 0.0, -1.0, -1.0 };
+}
+
+namespace
+{
+anomp::PlayerEngine::TrackOptions toTrackOptions (const anomp_track_options* options)
+{
+    if (options == nullptr)
+        return {};
+    return { static_cast<float> (options->gain), options->start, options->end, options->skip_from, options->skip_to };
+}
+} // namespace
+
+extern "C" int anomp_engine_load_track (anomp_engine* engine,
+                                        const char* path,
+                                        const anomp_track_options* options,
+                                        char* error,
+                                        size_t errorSize)
+{
+    const auto trackOptions = toTrackOptions (options);
+    return withPath (engine, path, error, errorSize,
+                     [&trackOptions] (anomp::PlayerEngine& player, const juce::File& file)
+                     { return player.load (file, trackOptions); });
+}
+
+extern "C" int anomp_engine_set_next_track (anomp_engine* engine,
+                                            const char* path,
+                                            const anomp_track_options* options,
+                                            char* error,
+                                            size_t errorSize)
+{
+    if (engine != nullptr && path == nullptr)
+    {
+        engine->engine.player().clearNext();
+        copyUtf8 ({}, error, errorSize);
+        return 1;
+    }
+
+    const auto trackOptions = toTrackOptions (options);
+    return withPath (engine, path, error, errorSize,
+                     [&trackOptions] (anomp::PlayerEngine& player, const juce::File& file)
+                     { return player.setNext (file, trackOptions); });
+}
+
+extern "C" int anomp_engine_set_track_gain_at (anomp_engine* engine, const char* path, double start, double gain)
+{
+    if (engine == nullptr || path == nullptr)
+        return 0;
+
+    const auto text = juce::String::fromUTF8 (path);
+    if (! juce::File::isAbsolutePath (text))
+        return 0;
+
+    return engine->engine.player().setTrackGainAt (juce::File (text), start, static_cast<float> (gain));
+}
+
+extern "C" int anomp_engine_set_loop (anomp_engine* engine, double start, double end, char* error, size_t errorSize)
+{
+    juce::String message;
+    if (engine == nullptr)
+        message = "Null engine";
+    else if (start < 0.0)
+        engine->engine.player().clearLoop();
+    else
+        message = engine->engine.player().setLoop (start, end);
+    copyUtf8 (message, error, errorSize);
+    return message.isEmpty() ? 1 : 0;
+}
+
+extern "C" int anomp_engine_loop (anomp_engine* engine, double* start, double* end)
+{
+    double a = 0.0, b = 0.0;
+    if (engine == nullptr || ! engine->engine.player().getLoop (a, b))
+        return 0;
+    if (start != nullptr)
+        *start = a;
+    if (end != nullptr)
+        *end = b;
+    return 1;
+}
+
+extern "C" int anomp_engine_set_tempo (anomp_engine* engine, double rate, double semitones)
+{
+    return engine != nullptr && engine->engine.player().setTempo (rate, semitones) ? 1 : 0;
+}
+
+extern "C" int anomp_engine_set_crossfeed (anomp_engine* engine, int level)
+{
+    if (engine == nullptr || level < ANOMP_CROSSFEED_OFF || level > ANOMP_CROSSFEED_STRONG)
+        return 0;
+    engine->engine.player().setCrossfeed (level);
+    return 1;
+}
+
+extern "C" int anomp_engine_output_is_headphones (anomp_engine* engine)
+{
+    if (engine == nullptr)
+        return -1;
+    switch (engine->engine.outputIsHeadphones())
+    {
+        case anomp::OutputRoute::Headphones::yes:     return 1;
+        case anomp::OutputRoute::Headphones::no:      return 0;
+        case anomp::OutputRoute::Headphones::unknown: return -1;
+    }
+    return -1;
+}
+
+extern "C" int anomp_engine_signal_path (anomp_engine* engine, anomp_signal_path* path)
+{
+    if (engine == nullptr || path == nullptr)
+        return 0;
+
+    const auto info = engine->engine.player().getSignalInfo();
+    anomp::AudioEngine::DeviceInfo device;
+    const auto hasDevice = engine->engine.getDeviceInfo (device);
+
+    *path = {};
+    path->loaded = info.loaded ? 1 : 0;
+    copyUtf8 (info.codec, path->codec, sizeof (path->codec));
+    path->lossless = info.lossless ? 1 : 0;
+    path->bits_per_sample = info.bitsPerSample;
+    path->bitrate_kbps = info.bitrateKbps;
+    path->file_sample_rate = info.fileSampleRate;
+    path->file_channels = info.channels;
+    path->track_gain = info.gain;
+    path->tempo = info.tempo;
+    path->semitones = info.semitones;
+    path->resampling = info.loaded && info.deviceSampleRate > 0.0
+                               && ! juce::approximatelyEqual (info.fileSampleRate, info.deviceSampleRate)
+                           ? 1
+                           : 0;
+    path->crossfeed = info.crossfeed;
+    path->volume = engine->engine.player().getVolume();
+    path->device_sample_rate = hasDevice ? device.sampleRate : 0.0;
+    path->device_buffer_size = hasDevice ? device.bufferSize : 0;
+    return 1;
+}
+
+extern "C" int anomp_engine_set_device_sample_rate (anomp_engine* engine, double sampleRate)
+{
+    return engine != nullptr && engine->engine.setSampleRate (sampleRate) ? 1 : 0;
 }
 
 extern "C" int anomp_engine_play (anomp_engine* engine)

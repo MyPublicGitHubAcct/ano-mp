@@ -1,12 +1,40 @@
 <script lang="ts">
   // Along the bottom: the current track (click it for the now-playing view),
   // the transport, the seek bar, volume, shuffle, repeat and the queue toggle.
+  import { untrack } from "svelte";
+  import { player as playerApi } from "$lib/api";
+  import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
+  import PracticePanel from "./PracticePanel.svelte";
   import SeekBar from "./SeekBar.svelte";
+  import SignalPathPanel from "./SignalPathPanel.svelte";
+
+  /** The panel open above the bar, if any. */
+  let panel = $state<"signal" | "practice" | null>(null);
+  /** "FLAC 16/44.1", for the signal path's button. */
+  let format = $state("");
+
+  $effect(() => {
+    void [player.currentItem?.uid, player.loaded, features.on.signalPath];
+    untrack(async () => {
+      if (!features.on.signalPath || !player.loaded) {
+        format = "";
+        return;
+      }
+      const path = await playerApi.signalPath().catch(() => null);
+      const p = path?.path;
+      format =
+        p && p.loaded
+          ? `${p.codec.toUpperCase()} ${p.bitsPerSample ? `${p.bitsPerSample}/` : ""}${(p.fileSampleRate / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}`
+          : "";
+    });
+  });
+
+  const togglePanel = (which: "signal" | "practice") => (panel = panel === which ? null : which);
 
   const item = $derived(player.currentItem);
   const repeatLabel = $derived({ off: "Repeat off", all: "Repeat all", one: "Repeat one" }[player.repeat]);
@@ -98,6 +126,31 @@
   </div>
 
   <div class="extra">
+    {#if features.on.signalPath && format}
+      <button
+        class="format"
+        data-popover-toggle
+        title="Signal path"
+        aria-expanded={panel === "signal"}
+        onclick={() => togglePanel("signal")}>{format}</button
+      >
+    {/if}
+    {#if features.on.practiceMode}
+      <button
+        class="icon toggle"
+        class:on={panel === "practice"}
+        data-popover-toggle
+        title="Practice: loop, speed and pitch"
+        aria-label="Practice"
+        aria-expanded={panel === "practice"}
+        onclick={() => togglePanel("practice")}><Icon name="sliders" /></button
+      >
+    {/if}
+    {#if panel === "signal"}
+      <SignalPathPanel onclose={() => (panel = null)} />
+    {:else if panel === "practice"}
+      <PracticePanel onclose={() => (panel = null)} />
+    {/if}
     <button class="icon" title={player.volume > 0 ? "Mute" : "Unmute"} aria-label="Mute" onclick={toggleMute}>
       <Icon name={player.volume > 0 ? "volume" : "mute"} />
     </button>
@@ -236,7 +289,17 @@
     font-weight: 700;
   }
 
+  .format {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.4rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
   .extra {
+    position: relative;
     grid-area: extra;
     display: flex;
     align-items: center;

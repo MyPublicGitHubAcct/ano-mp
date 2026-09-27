@@ -40,6 +40,135 @@ pub struct AppSettings {
     pub playback: PlaybackSettings,
     pub output: OutputSettings,
     pub visualizer: VisualizerSettings,
+    pub features: FeatureSettings,
+}
+
+/// The optional features (PLAN.md §4.6, O1–O19), each of which the user
+/// can turn on or off. Local, cheap features are on by default; ones that
+/// cost hours of CPU time (the loudness analysis), change what is heard
+/// (crossfeed, sample-rate switching), go online (ListenBrainz) or listen
+/// on the network (the remote) are off until the user turns them on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureSettings {
+    /// O1: measures each track's loudness in the background, so tracks
+    /// without ReplayGain tags are evened out too.
+    pub loudness_analysis: bool,
+    /// O2: the seek bar draws the track's waveform (once analysed).
+    pub waveform_seek_bar: bool,
+    /// O3: shuffle keeps tracks that run into each other together, in order.
+    pub segue_shuffle: bool,
+    /// O3: jumps over long silences, e.g. before a hidden track, after
+    /// `skip_silence_after` seconds of them.
+    pub skip_silence: bool,
+    /// Seconds of silence played before the jump, 1 to 60.
+    pub skip_silence_after: u32,
+    /// O4: the library health report.
+    pub health_report: bool,
+    /// O5: single-file albums with a cue sheet, and chaptered files, become
+    /// a track per cue or chapter.
+    pub cue_sheets: bool,
+    /// O6: works, movements and composers from the tags.
+    pub classical: bool,
+    /// O7: the user's own rules for a track or album (skip, never shuffle,
+    /// gain, trims).
+    pub playback_preferences: bool,
+    /// O8: keeps a history of what was played, on this computer only.
+    pub listening_history: bool,
+    /// O8: also sends each listen to ListenBrainz with the user's token.
+    pub listenbrainz: bool,
+    /// O9: "Start radio" plays tracks like one, and keeps adding more.
+    pub library_radio: bool,
+    /// O9: any queue carries on as radio when it runs out.
+    pub radio_after_queue: bool,
+    /// O10: clicking the format in the now-playing bar shows every step to
+    /// the speakers.
+    pub signal_path: bool,
+    /// O10: switches the device to each track's sample rate when it can.
+    pub match_sample_rate: bool,
+    /// O11: headphone crossfeed.
+    pub crossfeed: CrossfeedLevel,
+    /// O11: crossfeed only while the OS says headphones are plugged in.
+    pub crossfeed_headphones_only: bool,
+    /// O12: A–B loops and playing slower or faster.
+    pub practice_mode: bool,
+    /// O13: lyrics from the tags and `.lrc` files next to the tracks.
+    pub lyrics: bool,
+    /// O14: a remote control page for phones on the same network.
+    pub remote_control: bool,
+    /// Its TCP port, 1024 to 65535.
+    pub remote_port: u16,
+    /// O15: the albums added most recently.
+    pub recently_added: bool,
+    /// O16: what was played most recently (needs the history).
+    pub recently_played: bool,
+    /// O17: albums released on this day in earlier years.
+    pub on_this_day: bool,
+    /// O18: five random albums in the same genre on album pages.
+    pub more_in_genre: bool,
+    /// O19: the most played tracks, albums and artists of a year or month
+    /// (needs the history).
+    pub top_played: bool,
+}
+
+impl Default for FeatureSettings {
+    fn default() -> Self {
+        FeatureSettings {
+            loudness_analysis: false,
+            waveform_seek_bar: true,
+            segue_shuffle: true,
+            skip_silence: false,
+            skip_silence_after: 5,
+            health_report: true,
+            cue_sheets: true,
+            classical: true,
+            playback_preferences: true,
+            listening_history: true,
+            listenbrainz: false,
+            library_radio: true,
+            radio_after_queue: false,
+            signal_path: true,
+            match_sample_rate: false,
+            crossfeed: CrossfeedLevel::Off,
+            crossfeed_headphones_only: true,
+            practice_mode: false,
+            lyrics: true,
+            remote_control: false,
+            remote_port: 8765,
+            recently_added: true,
+            recently_played: true,
+            on_this_day: true,
+            more_in_genre: true,
+            top_played: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum CrossfeedLevel {
+    #[default]
+    Off,
+    /// 700 Hz, 4.5 dB.
+    Light,
+    /// 700 Hz, 6 dB.
+    Medium,
+    /// 650 Hz, 9.5 dB.
+    Strong,
+}
+
+impl CrossfeedLevel {
+    /// The engine's level, 0 to 3.
+    pub fn level(self) -> u8 {
+        match self {
+            CrossfeedLevel::Off => 0,
+            CrossfeedLevel::Light => 1,
+            CrossfeedLevel::Medium => 2,
+            CrossfeedLevel::Strong => 3,
+        }
+    }
 }
 
 /// What the library's lists and pages show.
@@ -82,6 +211,14 @@ pub enum TrackColumn {
     Format,
     Bitrate,
     SampleRate,
+    /// Plays in the listening history (O8).
+    PlayCount,
+    /// When it was last played (O8).
+    LastPlayed,
+    /// When it came into the library (O15).
+    DateAdded,
+    /// The composer (O6).
+    Composer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -262,6 +399,13 @@ impl AppSettings {
         if visualizer.cycle_seconds > 3600 {
             return invalid("Visualizations can change at most once an hour".into());
         }
+        let features = &self.features;
+        if !(1..=60).contains(&features.skip_silence_after) {
+            return invalid("Silence can be skipped after 1 to 60 seconds".into());
+        }
+        if features.remote_port < 1024 {
+            return invalid("The remote's port must be 1024 to 65535".into());
+        }
         Ok(())
     }
 
@@ -437,6 +581,26 @@ pub async fn settings_save<R: Runtime>(
         crate::visualizer::restart(&app);
     }
     let _ = app.emit(SETTINGS_CHANGED_EVENT, &settings);
+    let (features, old) = (&settings.features, &before.features);
+    if features != old {
+        crate::library::analysis::configure(&app, features);
+        crate::remote::configure(&app, features);
+        crate::history::wake(&app);
+        crate::audio::apply_features(&app, features);
+        // Skips, shuffle units and gains may follow different rules now.
+        crate::queue::features_changed(&app).await;
+        if features.loudness_analysis != old.loudness_analysis
+            || features.skip_silence != old.skip_silence
+            || features.skip_silence_after != old.skip_silence_after
+            || features.playback_preferences != old.playback_preferences
+        {
+            crate::queue::refresh_gains(&app);
+        }
+        // Cue sheets on or off: every file is read again, split or whole.
+        if features.cue_sheets != old.cue_sheets {
+            crate::library::commands::reread_all(&app);
+        }
+    }
     Ok(settings)
 }
 
@@ -469,6 +633,9 @@ mod tests {
         settings.visualizer.visualization = "scope".into();
         settings.visualizer.cover_basis = CoverBasis::Artist;
         settings.visualizer.cycle_seconds = 60;
+        settings.features.loudness_analysis = true;
+        settings.features.crossfeed = CrossfeedLevel::Medium;
+        settings.features.remote_port = 9000;
         store(&conn, &settings).unwrap();
         assert_eq!(load(&conn).unwrap(), settings);
 
@@ -506,6 +673,8 @@ mod tests {
         assert!(error(|s| s.visualizer.frame_rate = 0).contains("frame rate"));
         assert!(error(|s| s.visualizer.sensitivity = 5.0).contains("sensitivity"));
         assert!(error(|s| s.visualizer.cycle_seconds = 7200).contains("hour"));
+        assert!(error(|s| s.features.skip_silence_after = 0).contains("Silence"));
+        assert!(error(|s| s.features.remote_port = 80).contains("port"));
         assert_eq!(
             load(&conn).unwrap(),
             AppSettings::default(),
@@ -529,7 +698,7 @@ mod tests {
             &conn,
             r#"{
                 "display": {
-                    "trackColumns": ["year", "composer", "genre", "year", 7, "bitrate"],
+                    "trackColumns": ["year", "mood", "genre", "year", 7, "bitrate"],
                     "albumFacts": "date",
                     "showDescriptions": false,
                     "density": "compact"
@@ -663,6 +832,8 @@ mod bindings {
         declare::<OutputSettings>(&cfg, out);
         declare::<VisualizerSettings>(&cfg, out);
         declare::<CoverBasis>(&cfg, out);
+        declare::<FeatureSettings>(&cfg, out);
+        declare::<CrossfeedLevel>(&cfg, out);
         declare::<crate::audio::OutputStatus>(&cfg, out);
         declare::<crate::anomp::DeviceInfo>(&cfg, out);
         declare::<rules::SortSettings>(&cfg, out);

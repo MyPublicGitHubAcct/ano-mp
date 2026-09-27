@@ -30,6 +30,10 @@ pub enum Level {
     /// The folder tree, starting from the library folders. Only valid as a
     /// rule's only level.
     Folder,
+    /// The composer (O6).
+    Composer,
+    /// The work a track is a movement of (O6).
+    Work,
 }
 
 /// What tracks are sorted by within a group, in order of precedence. Ties
@@ -48,6 +52,10 @@ pub enum TrackKey {
     Title,
     /// The library folder, then the path within it.
     Path,
+    /// Newest first: when the file came into the library (O15).
+    DateAdded,
+    /// The movement's number within its work (O6).
+    Movement,
 }
 
 /// How albums are ordered where a rule lists them.
@@ -61,6 +69,8 @@ pub enum AlbumOrder {
     /// By the album's year (the earliest among its tracks), oldest first;
     /// albums without one last. Ties by title.
     Year,
+    /// The album whose newest track came into the library last first (O15).
+    DateAdded,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -154,6 +164,19 @@ pub fn default_rules() -> Vec<SortRule> {
         SortRule::new("genre", "Genre", &[Genre, AlbumArtist, Album], &album_order),
         SortRule::new("year", "Year", &[Year, Album], &album_order),
         SortRule::new("folder", "Folder", &[Folder], &[Path]),
+        SortRule::new(
+            "composer",
+            "Composer",
+            &[Composer, Work],
+            &[
+                TrackKey::Album,
+                DiscNumber,
+                TrackKey::Movement,
+                TrackNumber,
+                Title,
+                Path,
+            ],
+        ),
     ]
 }
 
@@ -327,7 +350,10 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let settings = sort_settings(&conn).unwrap();
         assert_eq!(settings, SortSettings::default());
-        assert_eq!(ids(&settings), ["album-artist", "genre", "year", "folder"]);
+        assert_eq!(
+            ids(&settings),
+            ["album-artist", "genre", "year", "folder", "composer"]
+        );
         assert_eq!(settings.ignored_articles, ["The", "A"]);
         for rule in &settings.rules {
             rule.validate().unwrap();
@@ -341,9 +367,16 @@ mod tests {
         let settings = save_sort_rule(&conn, songs).unwrap();
         assert_eq!(
             ids(&settings),
-            ["album-artist", "genre", "year", "folder", "songs"]
+            [
+                "album-artist",
+                "genre",
+                "year",
+                "folder",
+                "composer",
+                "songs"
+            ]
         );
-        assert_eq!(settings.rules[4].name, "Songs");
+        assert_eq!(settings.rules[5].name, "Songs");
         assert_eq!(sort_settings(&conn).unwrap(), settings);
 
         // The same id replaces the rule in place.
@@ -355,12 +388,15 @@ mod tests {
         );
         let settings = save_sort_rule(&conn, by_artist.clone()).unwrap();
         assert_eq!(settings.rules[1], by_artist);
-        assert_eq!(settings.rules.len(), 5);
+        assert_eq!(settings.rules.len(), 6);
 
         let settings = set_ignored_articles(&conn, vec![" Die ".into(), "Les".into()]).unwrap();
         assert_eq!(settings.ignored_articles, ["Die", "Les"]);
         let settings = remove_sort_rule(&conn, "year").unwrap();
-        assert_eq!(ids(&settings), ["album-artist", "genre", "folder", "songs"]);
+        assert_eq!(
+            ids(&settings),
+            ["album-artist", "genre", "folder", "composer", "songs"]
+        );
         assert_eq!(sort_settings(&conn).unwrap(), settings);
         assert!(remove_sort_rule(&conn, "year").is_err());
 
@@ -371,7 +407,7 @@ mod tests {
     #[test]
     fn keeps_at_least_one_rule() {
         let conn = db::open_in_memory().unwrap();
-        for id in ["album-artist", "genre", "year"] {
+        for id in ["album-artist", "genre", "year", "composer"] {
             remove_sort_rule(&conn, id).unwrap();
         }
         let error = remove_sort_rule(&conn, "folder").unwrap_err().to_string();
@@ -437,7 +473,7 @@ mod tests {
             &conn,
             r#"{
                 "rules": [
-                    {"id": "composer", "name": "Composer", "levels": ["composer"], "trackOrder": []},
+                    {"id": "mood", "name": "Mood", "levels": ["mood"], "trackOrder": []},
                     {"id": "songs", "name": "Songs", "levels": [], "trackOrder": ["title"], "newField": 1},
                     {"id": "bad", "name": "Bad", "levels": ["folder", "album"], "trackOrder": []},
                     {"id": "songs", "name": "Songs again", "levels": [], "trackOrder": []},

@@ -18,6 +18,8 @@
     { id: "genre", name: "Genre" },
     { id: "year", name: "Year" },
     { id: "folder", name: "Folder (on its own)" },
+    { id: "composer", name: "Composer" },
+    { id: "work", name: "Work" },
   ];
 
   const TRACK_KEYS: { id: TrackKey; name: string }[] = [
@@ -29,6 +31,8 @@
     { id: "trackNumber", name: "Track number" },
     { id: "title", name: "Title" },
     { id: "path", name: "File path" },
+    { id: "dateAdded", name: "Date added, newest first" },
+    { id: "movement", name: "Movement number" },
   ];
 
   let data = $state.raw<SortSettings | null>(null);
@@ -204,7 +208,7 @@
         <label class="field">
           <span class="label">Albums sorted by</span>
           <select bind:value={draft.albumOrder}>
-            {#each [["title", "Title"], ["year", "Year, oldest first"]] as [value, name] (value)}
+            {#each [["title", "Title"], ["year", "Year, oldest first"], ["dateAdded", "Date added, newest first"]] as [value, name] (value)}
               <option value={value as AlbumOrder}>{name}</option>
             {/each}
           </select>

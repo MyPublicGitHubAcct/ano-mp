@@ -12,7 +12,7 @@ fn build_core() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let repo_root = manifest_dir.join("../..").canonicalize().unwrap();
 
-    for path in ["CMakeLists.txt", "core"] {
+    for path in ["CMakeLists.txt", "cmake", "core"] {
         println!("cargo:rerun-if-changed={}", repo_root.join(path).display());
     }
 

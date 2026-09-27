@@ -4,6 +4,7 @@
 
 pub mod access;
 pub mod albums;
+pub mod analysis;
 pub mod art;
 pub mod artists;
 #[cfg(test)]
@@ -11,8 +12,14 @@ mod bench;
 pub mod browse;
 pub mod commands;
 pub mod covers;
+pub mod cue;
 pub mod db;
+pub mod discover;
 pub mod genres;
+pub mod health;
+pub mod lyrics;
+pub mod playback;
+pub mod prefs;
 pub mod rules;
 pub mod scanner;
 pub mod search;
@@ -164,6 +171,7 @@ fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
          DELETE FROM artists WHERE id NOT IN
              (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL
               UNION SELECT album_artist_id FROM tracks WHERE album_artist_id IS NOT NULL
+              UNION SELECT composer_id FROM tracks WHERE composer_id IS NOT NULL
               UNION SELECT artist_id FROM albums WHERE artist_id IS NOT NULL);",
     )
 }
@@ -189,13 +197,36 @@ pub struct TrackSummary {
     pub bitrate_kbps: Option<u32>,
     /// Hz.
     pub sample_rate: u32,
+    /// When the file came into the library (O15), Unix seconds.
+    pub added_at: i64,
+    /// Plays in the listening history (O8), and when the last started.
+    pub play_count: u32,
+    pub last_played: Option<i64>,
+    /// Whether the user set playback preferences for it or its album (O7).
+    pub has_prefs: bool,
+    /// Classical works (O6).
+    pub composer: Option<String>,
+    pub work: Option<String>,
+    pub movement_name: Option<String>,
+    pub movement_number: Option<u32>,
+    /// Part of a file (a cue sheet's track or a chapter, O5): where it
+    /// starts, in seconds.
+    pub range_start: f64,
 }
 
-/// The columns `track_from_row` reads, from `TRACKS_FROM`.
+/// The columns `track_from_row` reads, from `TRACKS_FROM`. The features'
+/// columns are subqueries, so every query over `TRACKS_FROM` (or with the
+/// same aliases) can list them.
 pub(super) const TRACK_COLUMNS: &str =
     "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
      album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id,
-     t.artist_id, t.bitrate_kbps, t.sample_rate";
+     t.artist_id, t.bitrate_kbps, t.sample_rate, t.added_at,
+     (SELECT count(*) FROM plays WHERE plays.track_id = t.id),
+     (SELECT max(played_at) FROM plays WHERE plays.track_id = t.id),
+     EXISTS (SELECT 1 FROM track_prefs WHERE track_prefs.track_id = t.id)
+         OR EXISTS (SELECT 1 FROM album_prefs WHERE album_prefs.album_id = t.album_id),
+     (SELECT name FROM artists WHERE artists.id = t.composer_id),
+     t.work, t.movement_name, t.movement_number, t.range_start";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
 pub(super) const TRACKS_FROM: &str = "FROM tracks t
@@ -225,6 +256,15 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         artist_id: row.get(13)?,
         bitrate_kbps: row.get(14)?,
         sample_rate: row.get(15)?,
+        added_at: row.get(16)?,
+        play_count: row.get(17)?,
+        last_played: row.get(18)?,
+        has_prefs: row.get(19)?,
+        composer: row.get(20)?,
+        work: row.get(21)?,
+        movement_name: row.get(22)?,
+        movement_number: row.get(23)?,
+        range_start: row.get(24)?,
     })
 }
 
@@ -246,7 +286,7 @@ pub fn track_path(folder: &Path, relative: &str) -> PathBuf {
     path
 }
 
-fn unix_now() -> i64 {
+pub fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs() as i64)
