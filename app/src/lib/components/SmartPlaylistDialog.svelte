@@ -6,7 +6,7 @@
   // takes the new rules.
   import { untrack } from "svelte";
   import type { Playlist, SmartCondition, SmartOrder, SmartRules } from "$lib/api";
-  import { playlists as api } from "$lib/api";
+  import { PLAYLIST_NAME_MAX, playlists as api } from "$lib/api";
   import { t, type MessageKey } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -85,6 +85,11 @@
 
   const finished = $derived<SmartRules>({ ...rules, limit: limited ? (rules.limit ?? 100) : null });
 
+  const blankValue = (condition: SmartCondition) =>
+    (condition.field === "genre" || condition.field === "artist") && condition.value.trim() === "";
+  /** A genre or artist condition still empty: Save waits for it. */
+  const incomplete = $derived(rules.conditions.some(blankValue));
+
   async function save() {
     saving = true;
     try {
@@ -114,7 +119,7 @@
 <Dialog title={playlist ? t("smart.editTitle") : t("smart.newTitle")} {onclose}>
   <label class="row">
     <span>{t("smart.name")}</span>
-    <input type="text" bind:value={name} />
+    <input type="text" bind:value={name} maxlength={PLAYLIST_NAME_MAX} />
   </label>
 
   <div class="row">
@@ -143,7 +148,12 @@
         </select>
         {#if condition.field === "genre" || condition.field === "artist"}
           <span class="muted">{t("smart.is")}</span>
-          <input type="text" bind:value={condition.value} aria-label={t("smart.value")} />
+          <input
+            type="text"
+            bind:value={condition.value}
+            aria-label={t("smart.value")}
+            aria-invalid={blankValue(condition)}
+          />
         {:else if condition.field === "format"}
           <span class="muted">{t("smart.is")}</span>
           <select bind:value={condition.value} aria-label={t("smart.value")}>
@@ -199,9 +209,17 @@
             type="number"
             min="0"
             value={condition.atMost ?? ""}
+            placeholder="∞"
             aria-label={t("smart.atMost")}
             oninput={(event) => condition.field === "playCount" && (condition.atMost = number(event.currentTarget.value))}
           />
+          <button
+            class="infinity"
+            aria-pressed={condition.atMost === null}
+            aria-label={t("smart.noUpperLimit")}
+            title={t("smart.noUpperLimit")}
+            onclick={() => condition.field === "playCount" && (condition.atMost = null)}>∞</button
+          >
         {/if}
         <button
           class="icon"
@@ -233,12 +251,12 @@
     {/if}
   </div>
   <p class="muted" role="status">
-    {matching === null ? "" : t("smart.matching", { count: matching })}
+    {incomplete ? t("smart.needsValue") : matching === null ? "" : t("smart.matching", { count: matching })}
   </p>
 
   {#snippet actions()}
     <button onclick={onclose}>{t("dialog.cancel")}</button>
-    <button class="primary" disabled={saving || name.trim() === ""} onclick={save}>{t("dialog.save")}</button>
+    <button class="primary" disabled={saving || name.trim() === "" || incomplete} onclick={save}>{t("dialog.save")}</button>
   {/snippet}
 </Dialog>
 
@@ -281,5 +299,14 @@
   .conditions input[type="text"] {
     flex: 1;
     min-width: 8rem;
+  }
+
+  .conditions .infinity {
+    min-width: 2rem;
+  }
+
+  .conditions .infinity[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-text);
   }
 </style>

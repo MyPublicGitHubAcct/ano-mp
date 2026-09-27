@@ -1,7 +1,7 @@
 //! The albums the visualizer's cover wall shows around the current track:
-//! those from the same year (widening to nearby years when the library has
-//! few from it) or by the same artist. Only ids and names: the wall loads
-//! each cover from the `anomp-art` scheme and leaves out albums without one.
+//! those from the same year or by the same artist. Only ids and names: the
+//! wall loads each cover from the `anomp-art` scheme and leaves out albums
+//! without one.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -10,12 +10,6 @@ use super::{rules, Error};
 
 /// At most this many albums on a wall.
 pub const MAX_ALBUMS: usize = 200;
-
-/// A year wall widens to nearby years until it has this many albums.
-const ENOUGH_ALBUMS: usize = 16;
-
-/// Years either side a year wall may widen to, in the order tried.
-const YEAR_SPANS: [u32; 5] = [0, 1, 2, 3, 5];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -29,14 +23,14 @@ pub enum CoverBasis {
 #[serde(rename_all = "camelCase")]
 pub struct CoverWall {
     pub basis: CoverBasis,
-    /// "1997", "1995–1999", or the artist's name.
+    /// "1997", or the artist's name.
     pub label: String,
-    /// A year wall's first and last year.
-    pub years: Option<(u32, u32)>,
+    /// A year wall's year.
+    pub year: Option<u32>,
     /// An artist wall's artist.
     pub artist_id: Option<i64>,
     /// The current track's album first, if it has one; then a year wall's
-    /// albums nearest the year first, or an artist's oldest first.
+    /// albums by title, or an artist's oldest first.
     pub albums: Vec<CoverAlbum>,
 }
 
@@ -100,39 +94,16 @@ pub fn cover_wall(
 }
 
 fn year_wall(conn: &Connection, year: u32, articles: &str) -> Result<CoverWall, Error> {
-    let dated = albums(
+    let albums = albums(
         conn,
-        "y.year IS NOT NULL",
+        "y.year = ?2",
         "anomp_sort_key(al.title, ?1), al.title, al.id",
-        params![articles],
+        params![articles, year],
     )?;
-    let within = |span: u32| {
-        dated
-            .iter()
-            .filter(|album| album.year.is_some_and(|y| y.abs_diff(year) <= span))
-            .count()
-    };
-    let span = YEAR_SPANS
-        .into_iter()
-        .find(|&span| within(span) >= ENOUGH_ALBUMS)
-        .unwrap_or(YEAR_SPANS[YEAR_SPANS.len() - 1]);
-
-    let mut albums: Vec<CoverAlbum> = dated
-        .into_iter()
-        .filter(|album| album.year.is_some_and(|y| y.abs_diff(year) <= span))
-        .collect();
-    // Nearest the year first, by title within a year (the stable sort
-    // keeps the query's order).
-    albums.sort_by_key(|album| album.year.map(|y| y.abs_diff(year)));
-    let (first, last) = (year.saturating_sub(span), year + span);
     Ok(CoverWall {
         basis: CoverBasis::Year,
-        label: if span == 0 {
-            year.to_string()
-        } else {
-            format!("{first}–{last}")
-        },
-        years: Some((first, last)),
+        label: year.to_string(),
+        year: Some(year),
         artist_id: None,
         albums,
     })
@@ -163,7 +134,7 @@ fn artist_wall(
     Ok(Some(CoverWall {
         basis: CoverBasis::Artist,
         label: name,
-        years: None,
+        year: None,
         artist_id: Some(artist_id),
         albums,
     }))
@@ -260,7 +231,7 @@ mod tests {
         .unwrap();
         assert_eq!(wall.basis, CoverBasis::Year);
         assert_eq!(wall.label, "1997");
-        assert_eq!(wall.years, Some((1997, 1997)));
+        assert_eq!(wall.year, Some(1997));
         assert_eq!(wall.albums.len(), 21);
         assert_eq!(wall.albums[0].title, "The Current");
         assert_eq!(wall.albums[0].artist.as_deref(), Some("X"));
@@ -269,45 +240,21 @@ mod tests {
     }
 
     #[test]
-    fn a_sparse_year_widens_to_nearby_years_nearest_first() {
-        let mut tracks = albums_of(1990, 2);
-        tracks.extend(albums_of(1991, 6));
-        tracks.extend(albums_of(1988, 10));
-        tracks.extend(albums_of(1970, 30));
+    fn a_sparse_year_keeps_to_that_year() {
+        let mut tracks = albums_of(2000, 2);
+        tracks.extend(albums_of(2001, 6));
+        tracks.extend(albums_of(1999, 10));
         let library = Library::new(tracks);
-
         let wall = cover_wall(
             &library.conn,
-            track_id(&library, "1990/0/01.flac"),
+            track_id(&library, "2000/1/01.flac"),
             CoverBasis::Year,
         )
         .unwrap()
         .unwrap();
-        // ±1 has 8 and ±2 has 18.
-        assert_eq!(wall.label, "1988–1992");
-        assert_eq!(wall.years, Some((1988, 1992)));
-        let years: Vec<Option<u32>> = wall.albums.iter().map(|album| album.year).collect();
-        let mut expected = vec![Some(1990); 2];
-        expected.extend([Some(1991); 6]);
-        expected.extend([Some(1988); 10]);
-        assert_eq!(years, expected);
-    }
-
-    #[test]
-    fn a_lonely_year_widens_as_far_as_it_may() {
-        let mut tracks = albums_of(2000, 1);
-        tracks.extend(albums_of(2006, 1));
-        tracks.extend(albums_of(2005, 1));
-        let library = Library::new(tracks);
-        let wall = cover_wall(
-            &library.conn,
-            track_id(&library, "2000/0/01.flac"),
-            CoverBasis::Year,
-        )
-        .unwrap()
-        .unwrap();
-        assert_eq!(wall.label, "1995–2005");
-        assert_eq!(titles(&wall), ["Album 2000 00", "Album 2005 00"]);
+        assert_eq!(wall.label, "2000");
+        assert_eq!(wall.year, Some(2000));
+        assert_eq!(titles(&wall), ["Album 2000 01", "Album 2000 00"]);
     }
 
     #[test]
@@ -385,7 +332,7 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(wall.label, "1975–1985");
+        assert_eq!(wall.label, "1980");
         assert_eq!(titles(&wall), ["Album 1980 00", "Album 1980 01"]);
     }
 }

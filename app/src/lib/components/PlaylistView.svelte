@@ -6,7 +6,7 @@
   // (F2) lists whatever matches its rules now; its rules are edited in a
   // dialog, and its tracks can't be moved or removed by hand.
   import { untrack } from "svelte";
-  import { playlists as api, queue, type PlaylistEntry } from "$lib/api";
+  import { PLAYLIST_NAME_MAX, playlists as api, queue, type PlaylistEntry } from "$lib/api";
   import { count, t } from "$lib/i18n";
   import { fileName, formatTime } from "$lib/format";
   import { dropIndex, emptySelection, rowsFor, type Selection } from "$lib/selection";
@@ -247,6 +247,7 @@
             class="name"
             bind:this={nameInput}
             bind:value={name}
+            maxlength={PLAYLIST_NAME_MAX}
             aria-label={t("playlist.name")}
             onblur={commitName}
             onkeydown={(event) => {

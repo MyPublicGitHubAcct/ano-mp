@@ -2417,8 +2417,9 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     Tauri's fetch path (over 1 KB). A page load drops all subscribers,
     since a reloaded page's channels accept frames that nobody reads.
   - **The cover wall** asks `library_cover_wall` for albums from the
-    track's album year, widening by up to ±5 years until there are 16,
-    or by the track's performer (their albums and those they appear on).
+    track's album year (only that year: widening to nearby years mixed
+    them in, since tiles pick at random), or by the track's performer
+    (their albums and those they appear on).
     The UI loads each cover as a 256 px thumbnail, leaves out albums
     without one, maps tiles to bands by distance from the centre (bass in
     the middle) and flips tiles on beats.

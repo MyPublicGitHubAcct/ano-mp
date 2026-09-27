@@ -11,9 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use super::marks::FAVOURITE_FILTER;
 use super::{track_from_row, unix_now, Error, TrackSummary, TRACKS_FROM, TRACK_COLUMNS};
+use crate::coded::coded;
 
 /// Most conditions a smart playlist can have.
 pub const MAX_CONDITIONS: usize = 20;
+
+/// Longest genre or artist name in a condition, in characters.
+const MAX_VALUE: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,9 +95,16 @@ impl SmartRules {
         for condition in &self.conditions {
             match condition {
                 Condition::Genre { value } | Condition::Artist { value }
-                    if value.trim().is_empty() || value.len() > 200 =>
+                    if value.trim().is_empty() || value.chars().count() > MAX_VALUE =>
                 {
-                    return invalid("a name must be 1 to 200 bytes");
+                    return Err(Error::Invalid(coded(
+                        "smartConditionValue",
+                        &[("max", MAX_VALUE.into())],
+                        format!(
+                            "Smart playlist: a genre or artist condition needs a name \
+                             of 1 to {MAX_VALUE} characters"
+                        ),
+                    )));
                 }
                 Condition::Format { value }
                     if value.is_empty()

@@ -1,6 +1,5 @@
 // The cover wall: the current album's cover large in the middle, and
-// around it the covers of albums from the same year (widening to nearby
-// years when the library has few) or by the same artist
+// around it the covers of albums from the same year or by the same artist
 // (`library_cover_wall`). Each tile brightens and swells with one band of
 // the spectrum, bass at the centre and treble at the edges, and on beats
 // a few tiles flip over to another album.

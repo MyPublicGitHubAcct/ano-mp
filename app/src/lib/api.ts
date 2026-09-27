@@ -197,9 +197,9 @@ export type ArtistPage = {
 export type CoverAlbum = { id: number; title: string; artist: string | null; year: number | null };
 export type CoverWall = {
   basis: CoverBasis;
-  /** "1997", "1995–1999", or the artist's name. */
+  /** "1997", or the artist's name. */
   label: string;
-  years: [number, number] | null;
+  year: number | null;
   artistId: number | null;
   /** The current track's album first, if it has one. */
   albums: CoverAlbum[];
@@ -323,6 +323,9 @@ export type Favourites = {
 
 /** What changed in the user's collection, from `collection-changed`. */
 export type CollectionChanged = "playlists" | "favourites" | "ratings" | "all";
+
+/** Longest playlist name, in characters (`MAX_NAME` in `library/playlists.rs`). */
+export const PLAYLIST_NAME_MAX = 30;
 
 export const playlists = {
   list: () => invoke<Playlist[]>("playlists_list"),

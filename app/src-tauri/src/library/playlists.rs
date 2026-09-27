@@ -19,8 +19,8 @@ use super::{
 };
 use crate::coded::{coded, gone, Gone};
 
-/// Longest playlist name, in characters.
-const MAX_NAME: usize = 200;
+/// Longest playlist name, in characters (`PLAYLIST_NAME_MAX` in `api.ts`).
+const MAX_NAME: usize = 30;
 
 /// Largest playlist file read.
 const MAX_M3U: u64 = 16 << 20;
@@ -396,12 +396,17 @@ pub fn import_m3u(conn: &mut Connection, file: &Path) -> Result<ImportReport, Er
             None => missing.push(entry),
         }
     }
-    let name = file
+    // Named after the file, cut to fit.
+    let name: String = file
         .file_stem()
         .and_then(|stem| stem.to_str())
-        .filter(|stem| !stem.trim().is_empty())
-        .unwrap_or("Imported playlist");
-    let playlist = create(conn, name, None, &track_ids)?;
+        .map(str::trim)
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("Imported playlist")
+        .chars()
+        .take(MAX_NAME)
+        .collect();
+    let playlist = create(conn, &name, None, &track_ids)?;
     Ok(ImportReport {
         added: playlist.track_count as usize,
         playlist,
@@ -665,6 +670,10 @@ mod tests {
 
         rename(&library.conn, list.id, "Road trip").unwrap();
         assert!(rename(&library.conn, list.id, "  ").is_err());
+        // Names are 1 to 30 characters, not bytes.
+        assert!(rename(&library.conn, list.id, &"é".repeat(30)).is_ok());
+        assert!(rename(&library.conn, list.id, &"é".repeat(31)).is_err());
+        rename(&library.conn, list.id, "Road trip").unwrap();
         assert_eq!(playlists(&library.conn).unwrap()[0].name, "Road trip");
 
         // A track that leaves the library leaves the playlist.
@@ -721,6 +730,18 @@ mod tests {
         let report = import_m3u(&mut library.conn, &file).unwrap();
         assert_eq!(report.playlist.name, "Road trip");
         assert_eq!(report.added, 3);
+
+        // A long file name is cut to fit.
+        let long = dir
+            .path()
+            .join("A playlist with a very long file name.m3u8");
+        std::fs::write(&long, "/Music/Band/Record/01 One.flac\n").unwrap();
+        let cut = import_m3u(&mut library.conn, &long).unwrap();
+        assert_eq!(cut.playlist.name, "A playlist with a very long fi");
+        library
+            .conn
+            .execute("DELETE FROM playlists WHERE id = ?1", [cut.playlist.id])
+            .unwrap();
         assert_eq!(
             report.missing,
             [
