@@ -11,9 +11,10 @@ use super::artists::{self, ArtistCandidate};
 use super::coverartarchive::{self, Fetched};
 use super::discography::{self, Discography};
 use super::jobs::{self, Job, MetadataChanged, Progress};
+use super::musicbrainz::Release;
 use super::settings::{self, Kind, ServiceSettings, SourceId, SourceInfo};
 use super::worker;
-use super::Error;
+use super::{keys, Error};
 use crate::library::albums::{self as library_albums, AlbumDetails};
 use crate::library::art::{self, CoverCandidate};
 use crate::library::commands::{on_library, LibraryState};
@@ -55,6 +56,31 @@ pub fn metadata_save_settings<R: Runtime>(
     state.art.clear();
     worker::enrich_library(&app);
     Ok(with_sources(saved))
+}
+
+/// Saves `key` for `source` in the keychain, or removes it with `None`,
+/// and returns the settings, which now say whether it has one. Saving a key
+/// turns the source on.
+#[tauri::command]
+pub async fn metadata_set_key<R: Runtime>(
+    app: AppHandle<R>,
+    source: SourceId,
+    key: Option<String>,
+) -> Result<MetadataSettings, String> {
+    blocking(app, move |app| {
+        if !source.info().needs_key {
+            return Err(Error::Invalid(format!(
+                "{} doesn't take a key",
+                source.info().name
+            )));
+        }
+        let key = key.as_deref().map(str::trim).filter(|key| !key.is_empty());
+        keys::set(source, key)?;
+        let saved = settings::set_has_key(&library(app)?.conn(), source, key.is_some())?;
+        worker::enrich_library(app);
+        Ok(with_sources(saved))
+    })
+    .await
 }
 
 /// Back to the default sources and order.
@@ -120,6 +146,10 @@ pub struct SourceCandidates<T> {
     /// Why there are none, when that isn't just "nothing found": offline,
     /// turned off, not matched yet.
     pub note: Option<String>,
+    /// What the source's terms want shown next to its data, and the page
+    /// on its site with the data listed (the search there).
+    pub credit: Option<&'static str>,
+    pub credit_url: Option<String>,
 }
 
 impl<T> SourceCandidates<T> {
@@ -133,6 +163,8 @@ impl<T> SourceCandidates<T> {
             source_name: source.info().name,
             candidates,
             note,
+            credit: None,
+            credit_url: None,
         }
     }
 }
@@ -210,21 +242,37 @@ pub async fn metadata_release_candidates<R: Runtime>(
         let settings = current_settings(app)?;
         let title = title.filter(|title| !title.trim().is_empty());
         let artist = artist.filter(|artist| !artist.trim().is_empty());
+        let (album_title, album_artist) = {
+            let library = library(app)?;
+            let conn = library.conn();
+            let (facts, _) = albums::album_facts(&conn, album_id)?
+                .ok_or_else(|| Error::Invalid("The album is no longer in the library".into()))?;
+            (facts.title, facts.artist)
+        };
+        let query = match &title {
+            Some(title) => format!(
+                "{} {}",
+                title.trim(),
+                artist.as_deref().unwrap_or("").trim()
+            ),
+            None => format!("{album_title} {}", album_artist.as_deref().unwrap_or("")),
+        };
         let mut sources = Vec::new();
         for source in settings.sources_for(Kind::Release) {
-            let found = match source {
-                SourceId::MusicBrainz => {
-                    let (title, artist) = (title.clone(), artist.clone());
-                    worker::call(app, move |context| {
-                        let search = title
-                            .as_deref()
-                            .map(|title| (title.trim(), artist.as_deref().map(str::trim)));
-                        albums::release_candidates(context.client, context.conn, album_id, search)
-                    })
-                }
-                _ => Ok(Vec::new()),
-            };
-            sources.push(SourceCandidates::new(source, found));
+            let (title, artist) = (title.clone(), artist.clone());
+            let found = worker::call(app, move |context| {
+                let search = title
+                    .as_deref()
+                    .map(|title| (title.trim(), artist.as_deref().map(str::trim)));
+                let releases = albums::release_source(source, context.client, context.conn)?;
+                albums::release_candidates_at(&*releases, context.conn, album_id, search)
+            });
+            let mut candidates = SourceCandidates::new(source, found);
+            candidates.credit = source.info().credit;
+            candidates.credit_url = candidates
+                .credit
+                .and_then(|_| albums::search_page(source, query.trim()));
+            sources.push(candidates);
         }
         Ok(sources)
     })
@@ -232,7 +280,8 @@ pub async fn metadata_release_candidates<R: Runtime>(
 }
 
 /// Links album `album_id` to `release_id` at `source`, as the user's choice,
-/// then fetches its cover (arriving in `metadata-changed`).
+/// then fetches its cover for a MusicBrainz release (arriving in
+/// `metadata-changed`).
 #[tauri::command]
 pub async fn metadata_choose_release<R: Runtime>(
     app: AppHandle<R>,
@@ -241,25 +290,50 @@ pub async fn metadata_choose_release<R: Runtime>(
     release_id: String,
 ) -> Result<(), String> {
     blocking(app, move |app| {
-        if source != SourceId::MusicBrainz {
-            library_albums::check_details_source(source)?;
-            return Err(Error::Invalid(format!(
-                "Choosing from {} is not supported yet",
-                source.info().name
-            )));
-        }
+        library_albums::check_details_source(source)?;
         worker::call(app, move |context| {
             check_usable(context.conn, source)?;
             let covers = coverartarchive::cover_urls(context.conn, album_id)?;
-            albums::choose_release(context.client, context.conn, album_id, &release_id)?;
+            let releases = albums::release_source(source, context.client, context.conn)?;
+            albums::choose_release_at(&*releases, context.conn, album_id, &release_id)?;
             match coverartarchive::cover_urls(context.conn, album_id)? == covers {
                 true => context.album_changed(album_id),
                 false => context.art_changed(album_id),
             }
             Ok(())
         })?;
-        worker::request(app, Job::Cover(album_id));
+        if source == SourceId::MusicBrainz {
+            worker::request(app, Job::Cover(album_id));
+        }
         Ok(())
+    })
+    .await
+}
+
+/// The release album `album_id` is linked to at `source` (matched, or the
+/// candidate awaiting review), or `None` if it has no link there. For a
+/// source that doesn't keep its releases (Discogs) it's fetched through the
+/// worker, so it fails while the source may not be contacted or can't be
+/// reached: those sources' data isn't kept for offline use.
+#[tauri::command]
+pub async fn metadata_release_details<R: Runtime>(
+    app: AppHandle<R>,
+    album_id: i64,
+    source: SourceId,
+) -> Result<Option<Release>, String> {
+    blocking(app, move |app| {
+        library_albums::check_details_source(source)?;
+        worker::call(app, move |context| {
+            let Some(link) = albums::album_link(context.conn, album_id, source)? else {
+                return Ok(None);
+            };
+            if link.release.is_some() || link.external_id.is_none() {
+                return Ok(link.release);
+            }
+            check_usable(context.conn, source)?;
+            let releases = albums::release_source(source, context.client, context.conn)?;
+            albums::linked_release(&*releases, &link)
+        })
     })
     .await
 }
@@ -274,7 +348,7 @@ pub async fn metadata_reject_release<R: Runtime>(
 ) -> Result<(), String> {
     on_library(&app, move |library| {
         library_albums::check_details_source(source)?;
-        Ok(albums::reject_releases(&library.conn(), album_id)?)
+        Ok(albums::reject_releases(&library.conn(), album_id, source)?)
     })
     .await?;
     worker::report_changes(&app, &[album_id], album_changed(album_id));

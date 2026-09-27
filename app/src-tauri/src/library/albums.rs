@@ -57,6 +57,14 @@ pub struct AlbumTrack {
 #[serde(rename_all = "camelCase")]
 pub struct SourcedLink {
     pub source_name: &'static str,
+    /// Whether the release is kept with the link (`link.release`); if not
+    /// (Discogs), fetch it with `metadata_release_details` when shown.
+    pub stores_details: bool,
+    /// The linked release's page at the source.
+    pub page_url: Option<String>,
+    /// What the source's terms want shown next to its data, linked to
+    /// `page_url`.
+    pub credit: Option<&'static str>,
     #[serde(flatten)]
     pub link: AlbumLink,
 }
@@ -132,8 +140,15 @@ pub fn album_details(library: &LibraryState, album_id: i64) -> Result<Option<Alb
         let mut links = Vec::new();
         for source in settings.sources_shown(Kind::Release) {
             if let Some(link) = albums::album_link(&conn, album_id, source)? {
+                let info = source.info();
                 links.push(SourcedLink {
-                    source_name: source.info().name,
+                    source_name: info.name,
+                    stores_details: info.stores_details,
+                    page_url: link
+                        .external_id
+                        .as_deref()
+                        .and_then(|id| albums::release_page(source, id)),
+                    credit: info.credit,
                     link,
                 });
             }
@@ -231,11 +246,42 @@ mod tests {
         assert_eq!(details.links.len(), 1);
         assert_eq!(details.links[0].source_name, "MusicBrainz");
         assert_eq!(details.links[0].link.external_id.as_deref(), Some("x"));
+        assert_eq!(
+            details.links[0].page_url.as_deref(),
+            Some("https://musicbrainz.org/release/x")
+        );
+        assert!(details.links[0].stores_details);
+        assert_eq!(details.links[0].credit, None);
         // The files don't exist, so there is no cover.
         assert_eq!(details.cover, None);
         assert_eq!(details.description, None);
         assert!(details.can_look_up);
         assert!(album_details(&state, 9).unwrap().is_none());
+
+        // A Discogs link, once Discogs is on: its release is fetched when
+        // shown, and credited.
+        state
+            .conn()
+            .execute(
+                "INSERT INTO album_links
+                     (album_id, source, status, external_id, score, chosen_by, details,
+                      checked_at)
+                 VALUES (1, 'discogs', 'matched', '1187003', 1.0, 'user', NULL, 5)",
+                [],
+            )
+            .unwrap();
+        assert_eq!(album_details(&state, 1).unwrap().unwrap().links.len(), 1);
+        settings::set_has_key(&state.conn(), SourceId::Discogs, true).unwrap();
+        let details = album_details(&state, 1).unwrap().unwrap();
+        let discogs = &details.links[1];
+        assert_eq!(discogs.source_name, "Discogs");
+        assert!(!discogs.stores_details);
+        assert_eq!(discogs.credit, Some("Data provided by Discogs"));
+        assert_eq!(
+            discogs.page_url.as_deref(),
+            Some("https://www.discogs.com/release/1187003")
+        );
+        settings::set_has_key(&state.conn(), SourceId::Discogs, false).unwrap();
 
         // MusicBrainz turned off: its link isn't shown, and nothing can be
         // looked up.

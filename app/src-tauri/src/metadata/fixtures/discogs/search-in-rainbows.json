@@ -1,0 +1,113 @@
+{
+  "pagination": {
+    "page": 1,
+    "pages": 1,
+    "per_page": 10,
+    "items": 3,
+    "urls": {}
+  },
+  "results": [
+    {
+      "id": 1376757,
+      "type": "release",
+      "master_id": 21520,
+      "title": "Radiohead = レディオヘッド - In Rainbows = イン・レインボウズ",
+      "year": "2007",
+      "country": "Japan",
+      "format": [
+        "CD",
+        "Album"
+      ],
+      "format_quantity": 1,
+      "label": [
+        "Hostess Entertainment Unlimited",
+        "Hostess Entertainment Unlimited"
+      ],
+      "catno": "CD_X_X001J",
+      "barcode": [
+        "4 582214 502663",
+        "4582214502663"
+      ],
+      "genre": [
+        "Electronic",
+        "Rock"
+      ],
+      "style": [
+        "Indie Rock",
+        "Experimental",
+        "Art Rock",
+        "Alternative Rock"
+      ],
+      "uri": "/release/1376757-Radiohead-レディオヘッド-In-Rainbows-インレインボウズ",
+      "resource_url": "https://api.discogs.com/releases/1376757"
+    },
+    {
+      "id": 1187003,
+      "type": "release",
+      "master_id": 21520,
+      "title": "Radiohead - In Rainbows",
+      "year": "2008",
+      "country": "US",
+      "format": [
+        "Vinyl",
+        "LP",
+        "Album"
+      ],
+      "format_quantity": 1,
+      "label": [
+        "TBD Records",
+        "RED Distribution"
+      ],
+      "catno": "TBD0001",
+      "barcode": [
+        "8 80882 16231 3"
+      ],
+      "genre": [
+        "Electronic",
+        "Rock"
+      ],
+      "style": [
+        "Indie Rock",
+        "Experimental",
+        "Alternative Rock",
+        "Art Rock"
+      ],
+      "uri": "/release/1187003-Radiohead-In-Rainbows",
+      "resource_url": "https://api.discogs.com/releases/1187003"
+    },
+    {
+      "id": 1186009,
+      "type": "release",
+      "master_id": 21520,
+      "title": "Radiohead - In Rainbows",
+      "year": "2008",
+      "country": "Canada",
+      "format": [
+        "CD",
+        "Album"
+      ],
+      "format_quantity": 1,
+      "label": [
+        "TBD Records",
+        "TBD Records"
+      ],
+      "catno": "TBD0001",
+      "barcode": [
+        "8 80882 16222 1",
+        "880882162221"
+      ],
+      "genre": [
+        "Electronic",
+        "Rock"
+      ],
+      "style": [
+        "Experimental",
+        "Indie Rock",
+        "Alternative Rock",
+        "Art Rock"
+      ],
+      "uri": "/release/1186009-Radiohead-In-Rainbows",
+      "resource_url": "https://api.discogs.com/releases/1186009"
+    }
+  ]
+}

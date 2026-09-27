@@ -3,10 +3,11 @@
 //! transport and clock.
 //!
 //! A job is an album to match on MusicBrainz (`Job::Match`, followed by its
-//! cover and then its description when they're wanted), whose cover to
-//! fetch from the Cover Art Archive (`Job::Cover`, followed by its
-//! description), or whose description to fetch from Wikipedia
-//! (`Job::Description`); or an artist to match on MusicBrainz
+//! cover, its description and its Discogs match when they're wanted), whose
+//! cover to fetch from the Cover Art Archive (`Job::Cover`, followed by its
+//! description), whose description to fetch from Wikipedia
+//! (`Job::Description`), or to match on Discogs (`Job::Discogs`, last, since
+//! the MusicBrainz match can name its Discogs release); or an artist to match on MusicBrainz
 //! (`Job::Artist`, followed by its biography) or whose biography to fetch
 //! from Wikipedia (`Job::Biography`). Jobs wait in `Jobs` by priority: what
 //! the user asked for, then the artist page being looked at, then the album
@@ -18,8 +19,9 @@
 //! decided when it runs, from the settings and the database as they are
 //! then. Automatic jobs (all but the user's requests) run only while "match
 //! automatically" is on, and follow the skip rules in
-//! `needs_match`, `needs_cover`, `needs_description`, `needs_artist_match`
-//! and `needs_biography`; a user's request skips the waits in those rules.
+//! `needs_match` (and `needs_release_match` for Discogs), `needs_cover`,
+//! `needs_description`, `needs_artist_match` and `needs_biography`; a
+//! user's request skips the waits in those rules.
 //!
 //! Offline: `http::Client` backs off from a host it couldn't reach.
 //! Automatic jobs for that host stay queued meanwhile, and `Worker::step`
@@ -48,6 +50,7 @@ use super::albums::{self, LinkStatus};
 use super::artists;
 use super::cache::unix_now;
 use super::coverartarchive::{self, Fetched};
+use super::discogs;
 use super::http::{Client, Clock};
 use super::images::ImageCache;
 use super::musicbrainz;
@@ -74,8 +77,11 @@ pub enum Job {
     /// Fetch the album's cover from the Cover Art Archive if it needs it,
     /// then its description if that's wanted.
     Cover(i64),
-    /// Fetch the album's description from Wikipedia if it needs it.
+    /// Fetch the album's description from Wikipedia if it needs it, then
+    /// match it on Discogs if that's wanted.
     Description(i64),
+    /// Match the album on Discogs if it needs it.
+    Discogs(i64),
     /// Match the artist on MusicBrainz if it needs it, then fetch its
     /// biography if that's wanted.
     Artist(i64),
@@ -93,7 +99,9 @@ pub enum Subject {
 impl Job {
     pub fn subject(self) -> Subject {
         match self {
-            Job::Match(id) | Job::Cover(id) | Job::Description(id) => Subject::Album(id),
+            Job::Match(id) | Job::Cover(id) | Job::Description(id) | Job::Discogs(id) => {
+                Subject::Album(id)
+            }
             Job::Artist(id) | Job::Biography(id) => Subject::Artist(id),
         }
     }
@@ -106,6 +114,8 @@ impl Job {
             // The release group's links come from MusicBrainz.
             Job::Description(_) => &[musicbrainz::HOST, wikipedia::WIKIDATA_HOST, wikipedia::HOST],
             Job::Biography(_) => &[wikipedia::WIKIDATA_HOST, wikipedia::HOST],
+            // The MusicBrainz release's link to Discogs comes first.
+            Job::Discogs(_) => &[musicbrainz::HOST, discogs::HOST],
         }
     }
 }
@@ -551,7 +561,7 @@ impl<H: Host> Worker<H> {
     fn queue_enrichment(&mut self) -> Result<(), Error> {
         let settings = settings::service_settings(&self.conn)?;
         let usable = Usable::new(&settings);
-        if !settings.auto_match || !usable.musicbrainz {
+        if !settings.auto_match || !(usable.musicbrainz || usable.discogs) {
             return Ok(());
         }
         let now = unix_now();
@@ -562,7 +572,7 @@ impl<H: Host> Worker<H> {
             .collect::<Result<_, _>>()?;
         let mut jobs = Vec::new();
         for album_id in album_ids {
-            if needs_match(&self.conn, album_id, now, false)? {
+            if usable.musicbrainz && needs_match(&self.conn, album_id, now, false)? {
                 jobs.push(Job::Match(album_id));
             } else if usable.cover_art
                 && needs_cover(&self.conn, &self.images, album_id, now, false)?
@@ -570,6 +580,10 @@ impl<H: Host> Worker<H> {
                 jobs.push(Job::Cover(album_id));
             } else if usable.description && needs_description(&self.conn, album_id, now, false)? {
                 jobs.push(Job::Description(album_id));
+            } else if usable.discogs
+                && needs_release_match(&self.conn, SourceId::Discogs, album_id, now, false)?
+            {
+                jobs.push(Job::Discogs(album_id));
             }
         }
         if usable.biography {
@@ -702,9 +716,11 @@ impl<H: Host> Worker<H> {
         match job {
             Job::Match(album_id) => {
                 if !usable.musicbrainz {
-                    return match user {
-                        true => Err(turned_off(&settings, SourceId::MusicBrainz)),
-                        false => Ok(None),
+                    // Discogs may be the only album-details source on.
+                    return match (usable.discogs, user) {
+                        (true, _) => self.discogs_next(&usable, album_id, now, user),
+                        (false, true) => Err(turned_off(&settings, SourceId::MusicBrainz)),
+                        (false, false) => Ok(None),
                     };
                 }
                 if needs_match(&self.conn, album_id, now, user)? {
@@ -748,6 +764,18 @@ impl<H: Host> Worker<H> {
                         self.albums_changed.insert(album_id);
                     }
                 }
+                self.discogs_next(&usable, album_id, now, user)
+            }
+            Job::Discogs(album_id) => {
+                if !usable.discogs {
+                    return match user {
+                        true => Err(turned_off(&settings, SourceId::Discogs)),
+                        false => Ok(None),
+                    };
+                }
+                if needs_release_match(&self.conn, SourceId::Discogs, album_id, now, user)? {
+                    self.match_discogs(album_id)?;
+                }
                 Ok(None)
             }
             Job::Artist(artist_id) => {
@@ -783,8 +811,8 @@ impl<H: Host> Worker<H> {
         }
     }
 
-    /// The description job that follows album `album_id`'s match or cover,
-    /// if its description is wanted.
+    /// The job that follows album `album_id`'s match or cover: its
+    /// description if that's wanted, else its Discogs match.
     fn description_next(
         &self,
         usable: &Usable,
@@ -792,8 +820,39 @@ impl<H: Host> Worker<H> {
         now: i64,
         user: bool,
     ) -> Result<Option<Job>, Error> {
-        let wanted = usable.description && needs_description(&self.conn, album_id, now, user)?;
-        Ok(wanted.then_some(Job::Description(album_id)))
+        if usable.description && needs_description(&self.conn, album_id, now, user)? {
+            return Ok(Some(Job::Description(album_id)));
+        }
+        self.discogs_next(usable, album_id, now, user)
+    }
+
+    /// The Discogs match that follows album `album_id`'s other jobs, if
+    /// it's wanted.
+    fn discogs_next(
+        &self,
+        usable: &Usable,
+        album_id: i64,
+        now: i64,
+        user: bool,
+    ) -> Result<Option<Job>, Error> {
+        let wanted = usable.discogs
+            && needs_release_match(&self.conn, SourceId::Discogs, album_id, now, user)?;
+        Ok(wanted.then_some(Job::Discogs(album_id)))
+    }
+
+    /// Matches the album on Discogs and notes whether the match changed.
+    fn match_discogs(&mut self, album_id: i64) -> Result<(), Error> {
+        let link = |conn: &Connection| -> Result<_, Error> {
+            Ok(albums::album_link(conn, album_id, SourceId::Discogs)?
+                .map(|link| (link.status, link.external_id)))
+        };
+        let before = link(&self.conn)?;
+        let source = albums::release_source(SourceId::Discogs, &self.client, &self.conn)?;
+        albums::match_album_at(&*source, &self.conn, album_id)?;
+        if link(&self.conn)? != before {
+            self.albums_changed.insert(album_id);
+        }
+        Ok(())
     }
 
     /// Matches the artist and notes whether the match changed.
@@ -821,14 +880,19 @@ impl<H: Host> Worker<H> {
             Ok(albums::album_link(conn, album_id, SourceId::MusicBrainz)?
                 .map(|link| (link.status, link.external_id)))
         };
+        // A new match drops an automatic Discogs match that came from it.
+        let discogs_before = albums::album_link(&self.conn, album_id, SourceId::Discogs)?
+            .map(|link| (link.status, link.external_id));
         let (before, covers_before) = (
             link(&self.conn)?,
             coverartarchive::cover_urls(&self.conn, album_id)?,
         );
         albums::match_album(&self.client, &self.conn, album_id)?;
+        let discogs_after = albums::album_link(&self.conn, album_id, SourceId::Discogs)?
+            .map(|link| (link.status, link.external_id));
         if coverartarchive::cover_urls(&self.conn, album_id)? != covers_before {
             self.art_changed(album_id);
-        } else if link(&self.conn)? != before {
+        } else if link(&self.conn)? != before || discogs_after != discogs_before {
             self.albums_changed.insert(album_id);
         }
         Ok(())
@@ -903,6 +967,7 @@ struct Usable {
     cover_art: bool,
     description: bool,
     biography: bool,
+    discogs: bool,
 }
 
 impl Usable {
@@ -920,16 +985,29 @@ impl Usable {
             biography: settings
                 .sources_for(Kind::ArtistInfo)
                 .contains(&SourceId::Wikipedia),
+            discogs: settings
+                .sources_for(Kind::Release)
+                .contains(&SourceId::Discogs),
         }
     }
 }
 
-/// The error for a request to `source` while the settings turn it off.
+/// The error for a request to `source` while the settings turn it off, or
+/// it lacks the key it needs.
 pub fn turned_off(settings: &ServiceSettings, source: SourceId) -> Error {
-    Error::Invalid(if settings.online {
-        format!("{} is turned off", source.info().name)
-    } else {
+    let info = source.info();
+    let enabled = settings.source(source).is_some_and(|s| s.enabled);
+    let has_key = settings.source(source).is_some_and(|s| s.has_key);
+    Error::Invalid(if !settings.online && info.online {
         "Online services are turned off".into()
+    } else if enabled && info.needs_key && !has_key {
+        format!(
+            "{} needs a {}: add it in Online sources",
+            info.name,
+            info.key_name.unwrap_or("key").to_lowercase()
+        )
+    } else {
+        format!("{} is turned off", info.name)
     })
 }
 
@@ -986,18 +1064,26 @@ fn current(conn: &Connection, subject: Subject) -> Result<Option<Current>, Error
 /// release may be there later; meanwhile the candidate waits for the user
 /// (the "Find details" dialog) and gets no cover.
 pub fn needs_match(conn: &Connection, album_id: i64, now: i64, force: bool) -> Result<bool, Error> {
-    Ok(
-        match albums::album_link(conn, album_id, SourceId::MusicBrainz)? {
-            None => true,
-            Some(link) if link.chosen_by_user => false,
-            Some(link) => match link.status {
-                LinkStatus::Matched => false,
-                LinkStatus::Review | LinkStatus::None => {
-                    force || now - link.checked_at >= RETRY_AFTER
-                }
-            },
+    needs_release_match(conn, SourceId::MusicBrainz, album_id, now, force)
+}
+
+/// Whether album `album_id` should be matched at album-details source
+/// `source`, by the rules of `needs_match`.
+pub fn needs_release_match(
+    conn: &Connection,
+    source: SourceId,
+    album_id: i64,
+    now: i64,
+    force: bool,
+) -> Result<bool, Error> {
+    Ok(match albums::album_link(conn, album_id, source)? {
+        None => true,
+        Some(link) if link.chosen_by_user => false,
+        Some(link) => match link.status {
+            LinkStatus::Matched => false,
+            LinkStatus::Review | LinkStatus::None => force || now - link.checked_at >= RETRY_AFTER,
         },
-    )
+    })
 }
 
 /// Whether album `album_id`'s cover should be fetched from the Cover Art
@@ -1585,6 +1671,93 @@ mod tests {
         assert_eq!(test.transport.urls().len(), requests);
         let recorded = test.host.take();
         assert!(recorded.changed.is_empty() && recorded.art.is_empty());
+    }
+
+    #[test]
+    fn matches_on_discogs_after_musicbrainz_or_alone() {
+        use crate::metadata::discogs::{self, fixtures as discogs_fixtures};
+        use crate::metadata::keys;
+        use crate::metadata::musicbrainz::release_links_url;
+
+        let mut test = Test::new(library(&[]));
+        test.set_settings(|settings| settings.sources[3].enabled = false); // The archive.
+                                                                           // Turned on without a token: not used, and a request says why.
+        test.set_settings(|settings| {
+            settings.source_mut(SourceId::Discogs).unwrap().enabled = true
+        });
+        let error = test.request(Job::Discogs(1));
+        assert_eq!(test.run(), Step::Idle);
+        let error = error.recv().unwrap().unwrap_err().to_string();
+        assert!(error.contains("needs a personal access token"), "{error}");
+
+        keys::set(SourceId::Discogs, Some("token")).unwrap();
+        settings::set_has_key(test.conn(), SourceId::Discogs, true).unwrap();
+        serve_search(&test.transport);
+        // None of these releases links to Discogs.
+        for (id, _) in RELEASES {
+            test.transport
+                .push_status(&release_links_url(id), 200, r#"{"relations": []}"#);
+        }
+        let serve_discogs = |transport: &FakeTransport| {
+            transport.push_status(
+                &discogs::search_url("In Rainbows", Some("Radiohead")),
+                200,
+                discogs_fixtures::SEARCH,
+            );
+            for (id, json) in discogs_fixtures::RELEASES {
+                transport.push_status(&discogs::release_url(id), 200, json);
+            }
+        };
+        serve_discogs(&test.transport);
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert_eq!(test.link(1).unwrap().status, LinkStatus::Matched);
+        let discogs_link =
+            |conn: &Connection| albums::album_link(conn, 1, SourceId::Discogs).unwrap();
+        let link = discogs_link(test.conn()).unwrap();
+        assert_eq!(link.status, LinkStatus::Matched);
+        assert_eq!(link.details, None);
+        let urls = test.transport.urls();
+        let searched = urls
+            .iter()
+            .position(|url| url.starts_with("https://api.discogs.com/database/search"));
+        let matched = urls
+            .iter()
+            .position(|url| url.starts_with("https://musicbrainz.org/ws/2/release/?"));
+        assert!(
+            matched.is_some() && matched < searched,
+            "MusicBrainz first: {urls:?}"
+        );
+        assert!(test
+            .host
+            .take()
+            .changed
+            .iter()
+            .any(|changed| changed.albums.contains(&1)));
+
+        // Nothing more to do.
+        let requests = test.transport.urls().len();
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert_eq!(test.transport.urls().len(), requests);
+
+        // Discogs alone: matched by search, without MusicBrainz.
+        test.set_settings(|settings| settings.sources[2].enabled = false); // MusicBrainz.
+        albums::clear_link(test.conn(), 1, SourceId::Discogs).unwrap();
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert_eq!(
+            discogs_link(test.conn()).unwrap().status,
+            LinkStatus::Matched
+        );
+        assert_eq!(
+            test.transport.urls().len(),
+            requests,
+            "the responses were fresh in memory"
+        );
+        let answer = test.request(Job::Match(1));
+        assert_eq!(test.run(), Step::Idle);
+        answer.recv().unwrap().unwrap();
     }
 
     #[test]

@@ -19,9 +19,12 @@ art, MusicBrainz matching, Cover Art Archive and the image cache, the
 metadata worker that enriches the library in the background, and the album
 details, "Find details", "Choose cover" and "Find artist" dialogs and the
 Online sources panel) are done, and 4.7: artist pages with Wikipedia
-biographies, and Wikipedia descriptions of albums. Discogs, planned for 4.7,
-moved to 4.8 when its API terms turned out not to fit (see the sources
-table).
+biographies, and Wikipedia descriptions of albums. 4.8 done (2026-09-26):
+every candidate source's terms were read and each decision recorded in the
+sources table; Discogs ships, off by default, as a second album-details
+source that keeps only its matches (details fetched when shown, the
+user's token in the keychain), and the rest are excluded or wait for
+written consent. What remains of Phase 4 is checking its exit in the app.
 
 ## 1. Architecture
 
@@ -87,8 +90,8 @@ Why this split:
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
 | Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
 | OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions | `app/src-tauri/src/metadata/` |
-| 210 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies), plus 3 ignored 50,000-track benchmarks and 5 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies) | `app/src-tauri/src` |
+| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions, Discogs as an opt-in second album-details source (only matches stored, the token in the keychain) | `app/src-tauri/src/metadata/` |
+| 222 passing `cargo test` tests (C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -913,9 +916,10 @@ sources per kind (the first with a result wins), and a per-album choice
 that pins a specific source's match or picture. Every service can be turned
 off, and the app works offline on what it has already fetched.
 
-**Sources considered** (checked 2026-09-26; "terms" is about a
-closed-source commercial app, §4.1, and every online source is re-checked
-before release, §8.1):
+**Sources considered** (checked 2026-09-26, and settled in 4.8 from the
+terms read first-hand that day unless the row says otherwise; "terms" is
+about a closed-source commercial app, §4.1, and every online source is
+re-checked before release, §8.1):
 
 | Source | Provides | Access and limits | Terms | Plan |
 |---|---|---|---|---|
@@ -924,12 +928,12 @@ before release, §8.1):
 | MusicBrainz | Release, recording and artist metadata (dates, label, catalogue number, country, release type, genres), and links to Wikidata, Discogs etc. | No key; a `User-Agent` with contact details; **~1 request/s per IP**, 503 when exceeded | Core data CC0; MetaBrainz asks commercial users to become supporters | On, the primary source |
 | Cover Art Archive | Album art by release or release-group MBID; 250/500/1200 px thumbnails | No key; no limits today; images redirect (307) to archive.org | Images belong to their owners; showing them in a player is the norm | On |
 | Wikidata + Wikipedia | Artist and album descriptions, reached through MusicBrainz URL relationships | No key; `User-Agent` | Text CC BY-SA: show attribution and a link with it | On |
-| Discogs | Release metadata (credits, labels, catalogue numbers, styles) and images | 60 requests/min authenticated, 25 unauthenticated; images need authentication. A personal access token supplied by the user, since a secret shipped in a desktop app isn't secret | As reported second-hand on 2026-09-26 (the terms page answered 403 to a script; read it in a browser before deciding): images are "Restricted Data", not for commercial use; data may not be shown more than 6 hours behind discogs.com nor cached longer than necessary; "Data provided by Discogs" next to the data, linked to its page, plus a non-affiliation notice | Deferred to 4.8: covers are out for a commercial app, and details would have to be fetched when shown (no offline copy) |
-| fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | Project API key, optional personal key | Check | Off (later) |
-| TheAudioDB | Artist bios and images, album descriptions | Free key "123" limited to 30 requests/min and one result per search; $8/month premium | Not stated; check | Off (later), user-supplied key |
-| iTunes Search API | Large album art, release dates | No key; low rate limit | Tied to Apple's affiliate/promotion terms | Off; only after a terms check |
-| Deezer | Album art up to 1000 px, search | No key | Check | Off; only after a terms check |
-| AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan | Deferred (after Phase 4) |
+| Discogs | Release metadata (credits, labels, catalogue numbers, formats, styles) and images | 60 requests/min with a token, 25 without; searching needs a token. The user's own personal access token, since a secret shipped in a desktop app isn't secret | API Terms of Use, last updated 2025-05-27 (read through the Help Center's article API, as the page answers 403 to scripts): release data (titles, dates, formats, track lists, identifiers, credits, artist and label names) is CC0; images, user and marketplace data are "Restricted Data", **not for any commercial purpose**. Commercial use is "generally permitted", but "charging a fee to use or access any part of Your application that integrates with Our API" needs their written permission when Discogs gives that access free. Nothing may be shown more than 6 hours behind discogs.com, nor cached or stored longer than needed. "Data provided by Discogs" directly next to its data, linked to the discogs.com page with it; a non-affiliation notice shown prominently (may be in the terms or documentation) | **Ships (4.8), off by default.** Details only: the match (release id) is stored, details are fetched when shown and kept in memory for at most 5 hours, no offline copy, no pictures anywhere; credit and notice shown. Token in the OS keychain. If the app is sold, Discogs' written permission is a release gate (§8.1) |
+| fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | A project key (ours) required, a personal key per user optional (fresher images) | Its terms page answers a bot check; the archived copy (2025-01-26) says images stay their owners' and rests its fair-use case partly on being "a completely free service". The API docs say nothing on commercial use; a third-party API listing quotes "Do not use the API for commercial use without written consent" (not found first-hand) | **Not shipped.** Ask fanart.tv for written consent before any work; it would add artist images (a new `ArtistImage` kind) |
+| TheAudioDB | Artist bios and images, album descriptions | Free test key "123", 30 requests/min; premium $8/month (Patreon), 100/min | Terms of use: with the free key "you cannot publish apps to an appstore unless you are a paid subscriber"; paid users may build apps within their rate limit and must name TheAudioDB as the source; images are mostly fan uploads, Creative Commons only where marked | **Not shipped.** A project key would put every user under one paid 100/min limit; a user-supplied key asks each user to pay for biographies Wikipedia already gives; image rights unclear |
+| iTunes Search API | Large album art, release dates | No key; about 20 calls/min | Apple Services Performance Partners terms: album art and other promotional content only "for the purposes of promoting" the item, next to an Apple store badge linking to it, and not for "independent entertainment value apart from its promotional purpose" | **Excluded**: a player's covers are the non-promotional use the terms rule out |
+| Deezer | Album art up to 1000 px, search | No key | API terms: use "strictly limited for a non-commercial purpose", with no money made "in connection with the use of" the services or their content | **Excluded** |
+| AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan (not re-read in 4.8) | Deferred (after Phase 4): needs a paid plan and a new native dependency |
 | Last.fm | Artist bios, tags, similar artists | API key | **Non-commercial only** without written permission, 100 MB storage cap, mandatory branding | Excluded |
 | Bandcamp | Details and art for albums bought there | No API for fans (only label and merch-partner APIs); the Acceptable Use Policy forbids scraping | Personal, non-commercial use only | Only under the Phase 11 agreement |
 | Spotify | — | OAuth; endpoints cut back in 2024 | Terms don't fit enriching a local library | Excluded |
@@ -946,7 +950,9 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 - **Providers behind traits.** Each source is a provider declaring what it
   can supply: `Release` (album match and details), `AlbumArt`,
   `ArtistInfo`, `ArtistImage`. Matching, art and the UI see only the traits,
-  so adding a source is one module.
+  so adding a source is one module. Album details went behind
+  `albums::ReleaseSource` with Discogs (4.8); the other kinds still have one
+  online source each and get their trait with a second.
 - **Choosing a source.** The settings (`metadata.services` in `settings`,
   read with the same keep-what's-usable fallback as `library.sort`) hold a
   master "online services" switch, per-service enabled flags and API keys,
@@ -1500,7 +1506,7 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
       a single both called "Creep"); an unmatched album filed under
       another artist isn't counted; a match changing while the page is
       open shows when it's opened again.
-- [ ] 4.8 Select and configure the alternative sources. Go through the
+- [x] 4.8 Select and configure the alternative sources. Go through the
   sources table above and decide which ones ship, recording each decision
   and its reason in the table. Start with Discogs (moved from 4.7): read
   its API terms first-hand, and decide whether a details-only source that
@@ -1520,9 +1526,97 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     published limits.
   - Show its attribution wherever its data appears, if its terms require
     one.
-  - Add recorded-response fixtures and an ignored live test.
+  - Add recorded-response fixtures (with `record-fixtures.py`, §9.2 M3)
+    and an ignored live test.
   - Make sure the Services panel (4.6) lists it, with a key field if it
     needs one.
+
+  Done 2026-09-26. Decisions (the sources table has each one's terms and
+  reason): Discogs ships, off by default; fanart.tv waits for its written
+  consent; TheAudioDB isn't shipped; the iTunes Search API and Deezer are
+  excluded; AcoustID stays deferred. Discogs (`metadata/discogs.rs`):
+  - **Terms, first-hand**: the API Terms of Use (updated 2025-05-27) were
+    read in full through the Help Center's article API. Its release data is
+    CC0, but the terms still forbid showing it more than 6 hours behind
+    discogs.com or keeping it longer than needed; images are Restricted
+    Data, not for commercial use. The fee clause (charging for the part of
+    an app that uses the API needs their permission) became a release gate
+    (§8.1), since the owner chose to ship it opt-in now.
+  - **Settings**: `SourceId::Discogs` (`discogs`), supplying `release`,
+    needing a key, off by default (`enabled_by_default`), second in the
+    album-details order. Settings stored before get it off, at the end.
+    `SourceInfo` gained `keyName`/`keyUrl`, `storesDetails`, `credit` and
+    `notice` for the UI.
+  - **Keys** (`metadata/keys.rs`): in the OS keychain, not the settings
+    JSON, since a personal access token can act on the user's Discogs
+    account and the database is a plain file. The settings keep only
+    `hasKey`, which saving the settings can't change; `metadata_set_key`
+    writes the keychain (and turns the source on), and a reset keeps keys.
+    macOS uses `keyring-core` with `apple-native-keyring-store`'s
+    `keychain` store (security-framework was already linked in);
+    elsewhere saving a key fails until that platform's phase (iOS needs
+    the `protected` store and a provisioning profile). Reads are cached
+    for the process; tests use a map in memory.
+  - **Only the match is stored.** `album_links` gets the Discogs release
+    id, status, score and `chosen_by`, with `details` NULL. Responses go
+    through `Client::get_json_fresh`: in memory only, at most 5 hours
+    (`discogs::MAX_AGE`, under the 6 the terms allow), no stale copy
+    offline, the token in an `Authorization` header so it's never in a
+    URL, an error or a cache key. `metadata_release_details` fetches a
+    linked release through the worker when the album is shown.
+  - **Matching** (`albums::ReleaseSource`, now also MusicBrainz's): the
+    matcher, "Find details" and the user's picks run the same for both
+    sources. Discogs' known release is the one the album's accepted
+    MusicBrainz match links to (`release?inc=url-rels`, cached 30 days,
+    a separate lookup so matched albums aren't fetched again), else a
+    search (`/database/search`) whose best three are looked up and scored
+    with durations; a search hit has no track count, which the matcher now
+    leaves out rather than scoring 0. Masters play the part of release
+    groups in `decide`. A changed MusicBrainz match drops an automatic
+    Discogs match (it may have come from it), never the user's.
+  - **Worker**: `Job::Discogs`, after an album's match, cover and
+    description (so the MusicBrainz match can name the release), pausing
+    while MusicBrainz or Discogs is backing off; background enrichment
+    queues it, and runs with MusicBrainz off if Discogs is on. Discogs is
+    1 request/s (`request_interval`), its limit being 60 a minute.
+  - **Attribution**: "Data provided by Discogs", linked to the release's
+    page, next to its data in the album header's summary and every row of
+    the details table, and in "Find details" (linked to the Discogs search
+    for the section, to the release for the one selected). The
+    non-affiliation notice is under Discogs in Online sources. No Discogs
+    image is fetched or shown anywhere, not even thumbnails.
+  - **UI**: the Online sources panel has a token field (a password field,
+    "Get one" linking to discogs.com's developer settings, "Remove"), notes
+    that Discogs data is "fetched when shown, never stored", and says
+    "Needs a personal access token" until there is one. The album header
+    shows Discogs' summary, genres and styles when it's the first matched
+    source, and "Styles" and "Credits" rows; without a connection it says
+    the details aren't available. "Find details" lists each source with
+    its own "Use automatic" and "None of these", and takes MusicBrainz or
+    Discogs release links.
+  - **Tests** (12 new, 222 in all): the memory cache, key checks, Discogs
+    parsing (release, search, dates, positions, durations, formats,
+    names), ids in links, the token header and a refused token, matching
+    through MusicBrainz's link and by search, the user's pick surviving a
+    new MusicBrainz match, the worker's chain with and without MusicBrainz,
+    the "needs a token" message, and album details' credit and page. The
+    three Discogs releases are recorded (fetched without a token) and
+    trimmed to CC0 fields; the search response couldn't be recorded
+    without a token, so it was put together in the documented format from
+    them. `live_discogs` (ignored) needs `DISCOGS_TOKEN` and hasn't been
+    run. `npm run check` passes. The keychain calls were checked in a
+    scratch program (write, replace, read, delete) outside the sandbox.
+  - **Not done or not checked**: nothing checked by eye in the app, with or
+    without a real token; the keychain inside the sandboxed bundle;
+    `record-fixtures.py` (§9.2 M3), which waits for M1's test harness, so
+    the new fixtures were trimmed by hand.
+  - **Known limits**: Discogs details need a connection each time an album
+    is shown after 5 hours; a Discogs release id in the tags (as Picard
+    plugins and beets write) isn't read, since the core reads MusicBrainz
+    ids only; Discogs artist profiles (CC0) could be a biography source
+    later; matching a large library on Discogs takes 1 to 4 requests an
+    album at 1 a second; `live_discogs` and Discogs' own paging aren't
+    exercised (10 results are asked for).
 - **Exit:** a library of tagged and untagged albums gets details and covers
   from MusicBrainz and the Cover Art Archive; the user can reorder or turn
   off sources, pick another source's cover or match for an album, and the
@@ -1545,7 +1639,8 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 
 ### Phase 7 — Hardening (macOS)
 - CI (GitHub Actions, macOS runner): CMake build + ctest, `cargo test`,
-  frontend lint/type-check/tests.
+  frontend lint/type-check/tests, all through `scripts/check-all.py`
+  (§9.2 M4), plus a weekly job for outdated pins and advisories (M5).
 - Performance: library of 50k+ tracks; scan time; memory use.
 - Robustness: corrupt/truncated files, missing files on disk, unplugged
   output devices, offline services.
@@ -1564,6 +1659,9 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   interruption and route-change handling.
 - File access: import via document picker / Files app with security-scoped
   bookmarks.
+- Metadata keys (`metadata/keys.rs`, 4.8): `apple-native-keyring-store`'s
+  `protected` store, which iOS requires and which needs the provisioning
+  profile's keychain entitlement.
 - Layouts: iPhone (compact) and iPad (split view); touch targets and gestures.
 - Lock screen and Control Center via the Phase 3 Now Playing code.
 - Add an iOS simulator build to CI. Release steps (TestFlight, App Store) are
@@ -1586,6 +1684,9 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   `souvlaki` crate on the Rust side, or `sdbus` in the core).
 - File access: plain paths; the library scanner must handle symlinks and
   case-sensitive names.
+- Metadata keys (`metadata/keys.rs`, 4.8): the Secret Service over D-Bus
+  (a `keyring-core` store), with a clear message when no keyring daemon
+  runs.
 - WebKitGTK rendering check: the visualizer (Phase 5) may need a canvas
   fallback if WebGL is slow or disabled.
 - **Exit:** a release build plays a library on Ubuntu and Fedora, with media
@@ -1607,6 +1708,8 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
   via `souvlaki` or the `windows` crate.
 - Paths: long paths (`\\?\` prefix), UTF-16 ↔ UTF-8 at the OS boundary,
   case-insensitive de-duplication in the library DB.
+- Metadata keys (`metadata/keys.rs`, 4.8): the Windows Credential Manager
+  (a `keyring-core` store).
 - **Exit:** a release build plays a library on Windows 11, with media
   keys working. Installer and signing are in §8.6.
 
@@ -1746,7 +1849,7 @@ Revisit it against whatever the agreement actually provides.
 | Licensing (JUCE commercial tier, FFmpeg LGPL, TagLib MPL) | JUCE license in place before any distribution (release gate, §8.1); FFmpeg always shipped as shared libs; App Store LGPL opinion before Phase 8 ships (§4.1) |
 | AAC patent exposure from shipping FFmpeg's AAC decoder | Licensing opinion before release; CoreAudio fallback on Apple (§4.3) |
 | FFmpeg build complexity across 4 OSes and several architectures | One script, pinned version, CI-cached artifacts; done per platform in its phase |
-| FFmpeg parser vulnerabilities (large attack surface) | Minimal configure (only needed demuxers/decoders); track FFmpeg security releases and bump the pin |
+| FFmpeg parser vulnerabilities (large attack surface) | Minimal configure (only needed demuxers/decoders); a weekly CI job checks the pin against FFmpeg's security releases, and `bump-pin.py` makes the bump quick (§9) |
 | MusicBrainz rate limits and bans | Strict limiter, caching, User-Agent with contact info |
 | Decoder behaviour differing across platforms | Same FFmpeg version and flags everywhere; the Phase 1 format tests run on every CI OS |
 | WebKitGTK (Linux) and WebView2 (Windows) behave differently from WKWebView | Keep the frontend to standard web APIs; run frontend smoke tests on each OS in CI |
@@ -1763,7 +1866,8 @@ ano-mp/
     src/
     tests/         Catch2
     tests/fixtures/ small audio files for tests
-  scripts/         build-ffmpeg.sh and other tooling
+  scripts/         build-ffmpeg.sh and the Python tooling (§9)
+    tests/         pytest for the scripts
   third_party/     built FFmpeg per platform (git-ignored, CI-cached)
   app/             Tauri 2 app
     src/           frontend (TS)
@@ -1812,6 +1916,13 @@ These need answers first; most need the owner rather than engineering.
       source that is on by default or selectable, for commercial use,
       attribution, caching and image display. Decide on a MetaBrainz
       supporter plan. Set the `User-Agent` contact to a real address.
+  - [ ] **Discogs** (4.8): if the app is sold, get Discogs' written
+        permission (their terms need it for "charging a fee to use or
+        access any part of Your application that integrates with Our
+        API"), or leave Discogs out of that build. Put the non-affiliation
+        notice (`discogs::NOTICE`) in the About screen or the app's terms
+        too, and name Discogs in the privacy policy: album titles and
+        artists are searched there with the user's own token.
 - [ ] **Bandcamp agreement** (Phase 11, if it ships): written permission
       covering every platform it ships on, including the App Store (Review
       Guideline 5.2.3), with its caching and attribution rules followed. The
@@ -1824,8 +1935,8 @@ Build once (after Phase 7), reused for every platform.
 
 - **Single version number:** CMake `project(VERSION)` is the source of truth;
   generate `anomp_version()` from it instead of the hard-coded string, and
-  keep `Cargo.toml`, `tauri.conf.json` and `package.json` in sync with a
-  script checked in CI. MusicBrainz `User-Agent` includes this version and a
+  keep `Cargo.toml`, `tauri.conf.json` and `package.json` in sync with
+  `scripts/version.py`, checked in CI (§9.2 M6). MusicBrainz `User-Agent` includes this version and a
   contact address.
 - **Release workflow** (GitHub Actions, triggered by a version tag): build and
   test on every platform, sign, package, attach the artifacts plus SHA-256
@@ -1840,8 +1951,9 @@ Build once (after Phase 7), reused for every platform.
 - **Third-party notices:** a generated `THIRD_PARTY_NOTICES` file shipped in
   every package and shown in the app's About screen. It covers JUCE; FFmpeg
   (LGPL text, exact version and configure flags, link to the matching
-  source tarball); TagLib; Rust crates (`cargo-about`); and npm packages. CI
-  fails if a dependency's license is unknown.
+  source tarball); TagLib; Rust crates (`cargo-about`); and npm packages,
+  generated by `scripts/make-notices.py` (§9.2 M6). CI fails if a
+  dependency's license is unknown.
 - **App icon and metadata:** icon set for every platform (`cargo tauri icon`),
   app description, screenshots.
 
@@ -1902,10 +2014,11 @@ Build once (after Phase 7), reused for every platform.
 
 ### 8.7 Checklist for every release
 1. All §8.1 gates still hold (new dependencies? new data sent anywhere?).
-2. Bump the version; update `CHANGELOG.md`.
+2. Bump the version (`scripts/version.py`); update `CHANGELOG.md`.
 3. CI green on every platform, including the format decode tests.
-4. Regenerate third-party notices; check FFmpeg source link matches the
-   pinned version.
+4. Regenerate third-party notices (`scripts/make-notices.py`); check the
+   FFmpeg source link matches the pinned version. Run `scripts/bench.py`
+   and `scripts/check-signing.py`, and do the §9.1 rows due "each release".
 5. Tag; the release workflow builds, signs, notarizes and packages.
 6. Smoke test each artifact on a clean machine: install/upgrade, play MP3,
    FLAC and AAC, seek, gapless album, media keys, MusicBrainz lookup.
@@ -1913,3 +2026,134 @@ Build once (after Phase 7), reused for every platform.
    (TestFlight → App Store review).
 8. After release: watch crash reports (if enabled) and issue tracker; keep
    the previous version's artifacts available for rollback.
+
+## 9. Maintenance
+
+Work that recurs for as long as the app is developed, and the scripts that
+keep it cheap and hard to get wrong. Scripts are Python, like the format
+scripts, so they run the same on every OS (`py` on Windows) and in CI.
+`build-ffmpeg.sh` stays in bash, since FFmpeg's `configure` needs a POSIX
+shell everywhere (MSYS2 on Windows).
+
+### 9.1 Recurring work
+
+| Item | When | What it involves | Script (§9.2) |
+|---|---|---|---|
+| Native dependency pins: JUCE and Catch2 (`CMakeLists.txt`), TagLib (tarball + SHA-256, `cmake/TagLib.cmake`), FFmpeg (version + SHA-256, checked against its GPG signature, in `build-ffmpeg.sh`) | Monthly check; at once for a security release | Find the new release, download it, hash it, rewrite the pin, rebuild, run every test suite. For FFmpeg, also re-check the configure output and `BUILD_INFO` | `check-pins.py`, `bump-pin.py` |
+| FFmpeg dylib names in `tauri.conf.json` (`bundle.macOS.frameworks`, later the Linux and Windows lists) | Each FFmpeg bump that changes a major version | The names must match what the build produced, or the bundle step fails | `sync-ffmpeg-frameworks.py` |
+| Formatter pins: clang-format (`format-cpp.py`), ruff (`format-python.py`) | A few times a year | Bump, reformat the tree in one separate commit | `check-pins.py`, `bump-pin.py` |
+| Rust crates and npm packages | Monthly | `cargo update` / `npm update`; read the changelogs of Tauri, Svelte, rusqlite (its bundled SQLite version), ureq/rustls; run all tests | `check-pins.py` (reports; updating stays manual) |
+| Security advisories | Weekly (scheduled CI job); FFmpeg security releases as announced | `cargo audit` (RustSec), `npm audit`, the pinned FFmpeg against ffmpeg.org's security page, TagLib and JUCE release notes | `audit-deps.py` |
+| Toolchains: Rust, Node (Node 26 becomes LTS in October 2026, §3), CMake, Ninja, nasm, uv; Xcode and SDKs from Phase 8 | Each stable/LTS release; Xcode each year | Update §3's versions, check the build still passes, raise documented minimums | `doctor.py` |
+| Recorded service responses (`app/src-tauri/src/metadata/fixtures/`) | Quarterly, whenever a live test fails, and for each new source (4.8) | Re-fetch the same URLs with the app's `User-Agent` at the services' rate limits, trim them the same way, and diff with the committed copies: a changed field means a parser needs work | `record-fixtures.py` |
+| Audio fixtures (`core/tests/fixtures/`) | When a format is added or the test signal changes | Regenerate, update the lengths and lags in the tests' fixture table | `make-test-fixtures.py` (extend) |
+| Library DB migrations | Every schema change | Numbered with no gaps, listed in `MIGRATIONS`, shipped ones unchanged, FTS triggers updated when an indexed column changes | `check-migrations.py` |
+| C API surface | Every change to `anomp.h` | Each function has an FFI declaration and a safe wrapper in `anomp.rs` | `check-c-api.py` |
+| Core source lists | Every new core file | Listed in `core/CMakeLists.txt` or `core/tests/CMakeLists.txt` (no globbing) | `check-sources.py` |
+| Docs drift: `PLAN.md` status and §2, `CLAUDE.md`, `README.md` | Each finished step | Test counts match the suites; every repo path the docs mention exists | `check-docs.py` |
+| Performance baselines (the ignored 50,000-track benchmarks) | Each release; after scanner, browse or DB changes | Run them in release mode, compare with committed numbers, flag regressions | `bench.py` |
+| Version number | Each release | One version everywhere (§8.2) | `version.py` |
+| Third-party notices | Each release and each dependency change | Regenerate and check every licence is known (§8.2) | `make-notices.py` |
+| Release artifacts | Each release | SHA-256 checksums, updater manifest, release notes from `CHANGELOG.md` (§8.2) | `release.py` |
+| Signing material: Apple certificates (distribution and provisioning profiles yearly, Developer ID every five years), notarization key, Windows certificate, updater key | Monthly check once §8.3 is set up | Renew before expiry; keep the offline backups current | `check-signing.py` |
+| Service terms and limits (MusicBrainz, Cover Art Archive, Wikimedia, later sources), the `User-Agent` contact, the MetaBrainz supporter plan | Yearly and before each release (§8.1) | Read the terms; update the sources table in Phase 4 | none (manual) |
+| JUCE licence tier against revenue; App Store rules (SDK minimums, privacy manifests); minimum OS targets (§4.5) | Yearly (after WWDC for Apple) | Owner decisions; record them in §4 | none (manual) |
+
+### 9.2 Scripts to develop and test
+
+Conventions, following the existing scripts:
+- One file per task in `scripts/`, named with hyphens, standard library
+  only at run time (no virtualenv needed), a module docstring with usage,
+  and `argparse`. A script that rewrites files has a `--check` mode that
+  changes nothing and exits non-zero on a difference, for CI and a
+  pre-commit hook.
+- Logic in plain functions (parse a pin, rewrite a file, compare lists);
+  network, subprocess and git calls in thin functions the tests replace.
+  Tests never touch the network, as in the Rust tests.
+- Tests with pytest in `scripts/tests/test_<script>.py`, with small input
+  files in `scripts/tests/fixtures/` (excerpts of `CMakeLists.txt`,
+  `anomp.h`, `tauri.conf.json` and so on, including broken ones).
+  Scripts that check the repo also get one test against the real tree,
+  which must pass.
+
+Steps:
+- [ ] M1 Test harness. `scripts/test-python.py` runs a pinned pytest
+  through uvx (`uvx --from pytest==<version> pytest scripts/tests`), and
+  `format-python.py` gains `ruff check` (lint) next to `ruff format`. Add
+  tests for the existing scripts' pure logic (`format-cpp.py`'s file
+  selection and batching; `make-test-fixtures.py`'s signal matching
+  `TestSignal.h`'s constants).
+- [ ] M2 Repo checks, each a read-only script that lists every problem it
+  finds:
+  - `check-c-api.py`: parses the functions declared in `anomp.h` and the
+    `extern "C"` block in `anomp.rs`; fails on any function missing from
+    either side, and on declarations whose parameter counts differ.
+  - `check-sources.py`: every `.cpp`/`.mm` under `core/src` and
+    `core/tests` is listed in its `CMakeLists.txt`, and every listed file
+    exists.
+  - `check-migrations.py`: files in `library/migrations/` numbered from
+    001 with no gaps, each listed in `MIGRATIONS` in order, and none that
+    existed at the latest release tag changed since (`git diff` against
+    the tag; before the first release there are no tags and this part is
+    skipped). Warns when a migration alters `tracks`, `artists` or
+    `albums` without touching the FTS triggers.
+  - `sync-ffmpeg-frameworks.py`: rewrites `bundle.macOS.frameworks` from
+    the dylibs in `third_party/ffmpeg/macos-universal/lib`; `--check`
+    compares only.
+  - `check-docs.py`: every backquoted repo path in `PLAN.md`, `CLAUDE.md`
+    and `README.md` exists; with `--counts`, compares §2's test counts
+    with `ctest --preset debug -N` and `cargo test -- --list` (needs
+    builds, so not in the quick check).
+- [ ] M3 Fixture tools (with 4.8, which adds sources and their fixtures):
+  - `record-fixtures.py`: a manifest next to the metadata fixtures lists
+    each file's URL and trim rule (which JSON fields to keep, how many
+    list items). It fetches at one request a second with the app's
+    `User-Agent`, trims, writes, and with `--check` shows the diff
+    instead. Re-record the existing fixtures with it once and confirm
+    `cargo test` still passes. Tests: trimming over saved raw responses,
+    the rate limiting with a fake clock, and the manifest covering every
+    committed file.
+  - `make-test-fixtures.py`: pass fixed stream serials to `oggenc`
+    (`--serial`), so regenerating changes no file unless the signal or
+    encoders changed (the Vorbis fixtures change once when this lands);
+    add `--only NAME`; print each fixture's length for the tests' table.
+- [ ] M4 CI entry point (with Phase 7's CI):
+  - `check-all.py`: runs every formatter in `--check` mode, the M2
+    checks and the Python tests, then (unless `--quick`) the C++, Rust
+    and frontend builds and tests. CI calls this and nothing else, so a
+    local run matches CI; `--quick` is the pre-commit hook.
+  - `doctor.py`: checks the tools in §3 are installed at the minimum
+    versions, that `third_party/ffmpeg/<platform>/BUILD_INFO` matches
+    `build-ffmpeg.sh`, and on macOS that the Command Line Tools are
+    selected. Prints what to install. Written for every OS from the
+    start, since Phases 8–10 need it most.
+  - `bench.py`: runs the ignored benchmarks in release mode, parses their
+    timings and compares them with a committed baseline, failing past a
+    set margin; `--update` rewrites the baseline.
+- [ ] M5 Dependency tools (with Phase 7):
+  - `check-pins.py`: reads every pin (JUCE, Catch2, TagLib, FFmpeg,
+    clang-format, ruff) from its file and asks upstream for the latest
+    release (GitHub releases, ffmpeg.org, PyPI); also summarizes
+    `cargo update --dry-run` and `npm outdated`. Report only.
+  - `bump-pin.py NAME VERSION`: downloads the release, computes its
+    SHA-256 (and for FFmpeg verifies the GPG signature against the key
+    recorded in `build-ffmpeg.sh`), rewrites the pin in place and prints
+    the rebuild and test commands. Tests rewrite copies of the real files.
+  - `audit-deps.py`: runs `cargo audit` and `npm audit`, and checks the
+    FFmpeg pin against ffmpeg.org's security page; a scheduled weekly CI
+    job runs it with `check-pins.py`.
+- [ ] M6 Release tools (with §8.2):
+  - `version.py`: `--check` fails unless `CMakeLists.txt`, `Cargo.toml`,
+    `tauri.conf.json` and `package.json` agree (`anomp_version()` is
+    generated from CMake by then); `version.py 0.2.0` sets them all.
+  - `make-notices.py`: builds `THIRD_PARTY_NOTICES` from JUCE, FFmpeg
+    (licence, version and configure flags from `BUILD_INFO`, source
+    link), TagLib, `cargo-about` output and the npm licences; fails on an
+    unknown licence.
+  - `release.py`: checksums for the built artifacts, the Tauri updater
+    manifest, and release notes cut from `CHANGELOG.md`.
+  - `check-signing.py` (with §8.3): lists the signing certificates'
+    expiry dates from the keychain and warns within 60 days.
+- **Exit:** `check-all.py` runs in CI on every push, the scheduled job
+  reports outdated pins and advisories, and each §9.1 row either has its
+  script or is marked manual.

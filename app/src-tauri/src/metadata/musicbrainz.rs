@@ -2,7 +2,8 @@
 //! release search and lookup, parsed into `Release`, artist search and
 //! lookup, parsed into `Artist`, release group lookup, parsed into
 //! `ReleaseGroup` for its links, and an artist's release groups, parsed
-//! into `ReleaseGroupEntry` for their discography. Requests go through
+//! into `ReleaseGroupEntry` for their discography, and a release's links to
+//! Discogs. Requests go through
 //! `http::Client`, which keeps to MusicBrainz's one request a second, and
 //! responses are cached (`cache`).
 
@@ -28,6 +29,10 @@ const ARTIST_INC: &str = "url-rels+genres";
 /// What a release group lookup includes: links to other sites (Wikidata).
 const RELEASE_GROUP_INC: &str = "url-rels";
 
+/// What a release's links are looked up with. Separate from the release
+/// lookup (`RELEASE_INC`), so releases matched before are not fetched again.
+const RELEASE_LINKS_INC: &str = "url-rels";
+
 /// What an artist's release groups are browsed with: their artist credits,
 /// which show collaborations.
 const RELEASE_GROUPS_INC: &str = "artist-credits";
@@ -47,7 +52,10 @@ const SEARCH_MAX_AGE: Duration = Duration::from_secs(7 * 86400);
 const SEARCH_LIMIT: u32 = 10;
 
 /// A release (one issue of an album) as the app keeps it: the fields shown
-/// or used for matching. Stored as JSON in `album_links.details`.
+/// or used for matching. Stored as JSON in `album_links.details`. Other
+/// album-details sources (Discogs) convert their releases to it too, so the
+/// matcher and the UI handle every source alike; `release_group_id` is then
+/// their grouping of a release's issues (a Discogs master).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Release {
@@ -86,6 +94,20 @@ pub struct Release {
     /// Tells releases of the same album apart, e.g. "deluxe edition".
     #[serde(default)]
     pub disambiguation: Option<String>,
+    /// Finer genres ("Art Rock"); Discogs only.
+    #[serde(default)]
+    pub styles: Vec<String>,
+    /// Who did what on the whole release; Discogs only.
+    #[serde(default)]
+    pub credits: Vec<Credit>,
+}
+
+/// A credit on a release, e.g. "Producer" by "Nigel Godrich".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Credit {
+    pub role: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,6 +284,11 @@ pub fn artist_url(id: &str) -> String {
     format!("{BASE}/artist/{id}?inc={ARTIST_INC}&fmt=json")
 }
 
+/// A release with its links to other sites.
+pub fn release_links_url(id: &str) -> String {
+    format!("{BASE}/release/{id}?inc={RELEASE_LINKS_INC}&fmt=json")
+}
+
 pub fn release_group_url(id: &str) -> String {
     format!("{BASE}/release-group/{id}?inc={RELEASE_GROUP_INC}&fmt=json")
 }
@@ -337,6 +364,40 @@ pub fn search_artists(
 ) -> Result<Vec<ArtistHit>, Error> {
     let body = client.get_json(conn, &artist_search_url(name), SEARCH_MAX_AGE)?;
     parse_artist_search(&body)
+}
+
+/// The Discogs releases that MusicBrainz release `id` links to, as their
+/// Discogs ids (usually one).
+pub fn discogs_release_ids(
+    client: &Client,
+    conn: &Connection,
+    id: &str,
+) -> Result<Vec<String>, Error> {
+    if !is_mbid(id) {
+        return Err(Error::Invalid(format!("Not a MusicBrainz id: {id}")));
+    }
+    let body = client.get_json(conn, &release_links_url(id), LOOKUP_MAX_AGE)?;
+    parse_discogs_links(&body)
+}
+
+pub fn parse_discogs_links(json: &str) -> Result<Vec<String>, Error> {
+    #[derive(Deserialize)]
+    struct RawLinks {
+        #[serde(default)]
+        relations: Vec<RawRelation>,
+    }
+    let raw: RawLinks = serde_json::from_str(json)
+        .map_err(|error| Error::Invalid(format!("Unexpected MusicBrainz release: {error}")))?;
+    let mut ids: Vec<String> = Vec::new();
+    for id in Links(&raw.relations)
+        .of("discogs")
+        .filter_map(super::discogs::release_id_in)
+    {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
 }
 
 pub fn lookup_release_group(
@@ -788,6 +849,8 @@ impl RawRelease {
                 .map(|medium| non_empty(medium.format))
                 .collect(),
             disambiguation: non_empty(self.disambiguation),
+            styles: Vec::new(),
+            credits: Vec::new(),
         }
     }
 }
@@ -820,6 +883,16 @@ pub mod fixtures {
     ];
 
     pub const RELEASE_GROUP: &str = "6e335887-60ba-38f0-95af-fae7774336bf";
+
+    /// `RELEASES[3]`'s links (trimmed to a few fields): one, to Discogs.
+    pub const RELEASE_LINKS: (&str, &str) = (
+        "219e7d7c-806c-44b3-9972-cdb3614b3411",
+        include_str!(
+            "fixtures/musicbrainz/release-links-219e7d7c-806c-44b3-9972-cdb3614b3411.json"
+        ),
+    );
+    /// The Discogs release it links to.
+    pub const RELEASE_LINKS_DISCOGS: &str = "1187003";
 
     /// Radiohead: a search for the name, and the artist with a few of its
     /// links (to Wikidata, the homepage, and others the app ignores).

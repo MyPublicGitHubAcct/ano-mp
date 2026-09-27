@@ -315,7 +315,7 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
             })
         }
         // Not album-art sources.
-        SourceId::MusicBrainz | SourceId::Wikipedia => None,
+        SourceId::MusicBrainz | SourceId::Wikipedia | SourceId::Discogs => None,
     }
 }
 
@@ -368,7 +368,10 @@ pub fn local_candidates(
                 .collect())
         }
         SourceId::Folder => folder_candidates(library, album_id),
-        SourceId::MusicBrainz | SourceId::CoverArtArchive | SourceId::Wikipedia => Ok(Vec::new()),
+        SourceId::MusicBrainz
+        | SourceId::CoverArtArchive
+        | SourceId::Wikipedia
+        | SourceId::Discogs => Ok(Vec::new()),
     }
 }
 
@@ -475,7 +478,7 @@ pub fn choose(
                 (SourceId::Embedded | SourceId::Folder | SourceId::CoverArtArchive, _) => {
                     return invalid("Not a picture that source has");
                 }
-                (SourceId::MusicBrainz | SourceId::Wikipedia, _) => {
+                (SourceId::MusicBrainz | SourceId::Wikipedia | SourceId::Discogs, _) => {
                     return Err(Error::Invalid(format!(
                         "{} doesn't supply album art",
                         source.info().name

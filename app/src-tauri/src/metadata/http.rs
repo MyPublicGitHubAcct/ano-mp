@@ -3,8 +3,13 @@
 //! and stops calling a host for a while after it couldn't be reached, so the
 //! app degrades quietly when offline. It fetches through a `Transport`: ureq
 //! in the app, a fake in tests, which never touch the network.
+//!
+//! JSON goes through one of two caches: `get_json` keeps responses in the
+//! database (`cache`) and falls back to a stale copy offline; `get_json_fresh`
+//! keeps them in memory for a short while only, for services whose terms
+//! forbid keeping their data (Discogs).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -30,13 +35,17 @@ pub const JSON_LIMIT: u64 = 8 << 20;
 pub const IMAGE_LIMIT: u64 = 32 << 20;
 
 /// Minimum time between requests to a host. MusicBrainz allows about one a
-/// second per IP address and answers 503 beyond it.
+/// second per IP address and answers 503 beyond it; Discogs 60 a minute
+/// with a token (a moving window), answering 429 beyond it.
 fn request_interval(host: &str) -> Duration {
     match host {
-        "musicbrainz.org" => Duration::from_secs(1),
+        "musicbrainz.org" | "api.discogs.com" => Duration::from_secs(1),
         _ => Duration::from_millis(250),
     }
 }
+
+/// Responses `get_json_fresh` keeps in memory at most; the oldest go first.
+const FRESH_CACHE_SIZE: usize = 256;
 
 /// Tries of a request that a busy service turns away (503/429).
 const BUSY_TRIES: u32 = 3;
@@ -69,10 +78,16 @@ pub enum TransportError {
     Failed(String),
 }
 
-/// Fetches a URL, following redirects. A response with an error status is
-/// still a response.
+/// Fetches a URL, following redirects, with `auth` as the `Authorization`
+/// header if given. A response with an error status is still a response.
 pub trait Transport: Send + Sync {
-    fn get(&self, url: &str, accept: &str, limit: u64) -> Result<Response, TransportError>;
+    fn get(
+        &self,
+        url: &str,
+        accept: &str,
+        auth: Option<&str>,
+        limit: u64,
+    ) -> Result<Response, TransportError>;
 }
 
 /// The real transport.
@@ -95,19 +110,24 @@ impl UreqTransport {
 }
 
 impl Transport for UreqTransport {
-    fn get(&self, url: &str, accept: &str, limit: u64) -> Result<Response, TransportError> {
-        let mut response = self
-            .0
-            .get(url)
-            .header("Accept", accept)
-            .call()
-            .map_err(|error| match error {
-                ureq::Error::Io(_)
-                | ureq::Error::Timeout(_)
-                | ureq::Error::HostNotFound
-                | ureq::Error::ConnectionFailed => TransportError::Unreachable(error.to_string()),
-                other => TransportError::Failed(other.to_string()),
-            })?;
+    fn get(
+        &self,
+        url: &str,
+        accept: &str,
+        auth: Option<&str>,
+        limit: u64,
+    ) -> Result<Response, TransportError> {
+        let mut request = self.0.get(url).header("Accept", accept);
+        if let Some(auth) = auth {
+            request = request.header("Authorization", auth);
+        }
+        let mut response = request.call().map_err(|error| match error {
+            ureq::Error::Io(_)
+            | ureq::Error::Timeout(_)
+            | ureq::Error::HostNotFound
+            | ureq::Error::ConnectionFailed => TransportError::Unreachable(error.to_string()),
+            other => TransportError::Failed(other.to_string()),
+        })?;
         let header = |name: &str| {
             response
                 .headers()
@@ -172,6 +192,9 @@ pub struct Client {
     transport: Box<dyn Transport>,
     clock: Box<dyn Clock>,
     hosts: Mutex<HashMap<String, HostState>>,
+    /// `get_json_fresh`'s copies: URL, body and when it was fetched, oldest
+    /// first.
+    fresh: Mutex<VecDeque<(String, String, Instant)>>,
 }
 
 impl Client {
@@ -180,6 +203,7 @@ impl Client {
             transport,
             clock,
             hosts: Mutex::new(HashMap::new()),
+            fresh: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -190,10 +214,22 @@ impl Client {
     /// Fetches `url` with a 2xx status, waiting for its host's rate limit.
     /// Fails at once with `Error::Offline` while the host is unreachable.
     pub fn get(&self, url: &str, accept: &str, limit: u64) -> Result<Response, Error> {
+        self.get_with_auth(url, accept, None, limit)
+    }
+
+    /// As `get`, sending `auth` as the `Authorization` header. It's kept out
+    /// of the URL, so it never shows in errors or cache keys.
+    pub fn get_with_auth(
+        &self,
+        url: &str,
+        accept: &str,
+        auth: Option<&str>,
+        limit: u64,
+    ) -> Result<Response, Error> {
         let host = host_of(url).ok_or_else(|| Error::Invalid(format!("Not a URL: {url}")))?;
         for attempt in 1..=BUSY_TRIES {
             self.wait_turn(host)?;
-            let response = match self.transport.get(url, accept, limit) {
+            let response = match self.transport.get(url, accept, auth, limit) {
                 Ok(response) => response,
                 Err(TransportError::Unreachable(message)) => {
                     self.mark_unreachable(host);
@@ -255,6 +291,36 @@ impl Client {
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// The body of the JSON document at `url`, fetched with `auth` unless a
+    /// copy younger than `max_age` is in memory. Nothing is written to disk
+    /// and there is no stale fallback: offline, it fails. For services
+    /// whose terms forbid showing old data or keeping it (Discogs).
+    pub fn get_json_fresh(
+        &self,
+        url: &str,
+        auth: Option<&str>,
+        max_age: Duration,
+    ) -> Result<String, Error> {
+        let now = self.clock.now();
+        {
+            let mut fresh = self.fresh.lock().unwrap_or_else(|e| e.into_inner());
+            fresh.retain(|(_, _, fetched)| now.saturating_duration_since(*fetched) < max_age);
+            if let Some((_, body, _)) = fresh.iter().find(|(cached, _, _)| cached == url) {
+                return Ok(body.clone());
+            }
+        }
+        let response = self.get_with_auth(url, "application/json", auth, JSON_LIMIT)?;
+        let body = String::from_utf8(response.body)
+            .map_err(|_| Error::Invalid(format!("{url}: the response is not UTF-8")))?;
+        let mut fresh = self.fresh.lock().unwrap_or_else(|e| e.into_inner());
+        fresh.retain(|(cached, _, _)| cached != url);
+        if fresh.len() >= FRESH_CACHE_SIZE {
+            fresh.pop_front();
+        }
+        fresh.push_back((url.to_owned(), body.clone(), self.clock.now()));
+        Ok(body)
     }
 
     /// Waits until a request to `host` may be sent, and reserves that slot.
@@ -373,6 +439,8 @@ pub mod testing {
     pub struct FakeTransport {
         script: Arc<Mutex<HashMap<String, VecDeque<Result<Response, TransportError>>>>>,
         pub requests: Arc<Mutex<Vec<(String, Duration)>>>,
+        /// The `Authorization` header sent with each request.
+        pub auths: Arc<Mutex<Vec<Option<String>>>>,
         clock: Option<FakeClock>,
     }
 
@@ -417,7 +485,14 @@ pub mod testing {
     }
 
     impl Transport for FakeTransport {
-        fn get(&self, url: &str, _accept: &str, _limit: u64) -> Result<Response, TransportError> {
+        fn get(
+            &self,
+            url: &str,
+            _accept: &str,
+            auth: Option<&str>,
+            _limit: u64,
+        ) -> Result<Response, TransportError> {
+            self.auths.lock().unwrap().push(auth.map(str::to_owned));
             let elapsed = self
                 .clock
                 .as_ref()
@@ -623,6 +698,32 @@ mod tests {
         client.retry_now();
         transport.push_status(MB, 200, "{}");
         client.get(MB, "application/json", JSON_LIMIT).unwrap();
+    }
+
+    #[test]
+    fn keeps_fresh_copies_in_memory_only_and_briefly() {
+        let conn = db::open_in_memory().unwrap();
+        let (client, transport, clock) = fake_client();
+        const DISCOGS: &str = "https://api.discogs.com/releases/1";
+        let hour = Duration::from_secs(3600);
+        transport.push_status(DISCOGS, 200, r#"{"v":1}"#);
+        let get = || client.get_json_fresh(DISCOGS, Some("Discogs token=t"), hour);
+        assert_eq!(get().unwrap(), r#"{"v":1}"#);
+        assert_eq!(get().unwrap(), r#"{"v":1}"#);
+        assert_eq!(transport.urls(), [DISCOGS], "the second came from memory");
+        assert_eq!(
+            transport.auths.lock().unwrap()[0].as_deref(),
+            Some("Discogs token=t")
+        );
+        assert!(cache::lookup(&conn, DISCOGS).unwrap().is_none());
+
+        // Too old: fetched again, and offline there's no stale copy.
+        clock.advance(hour);
+        transport.push(DISCOGS, Err(TransportError::Unreachable("down".into())));
+        assert!(matches!(get().unwrap_err(), Error::Offline(_)));
+        client.retry_now();
+        transport.push_status(DISCOGS, 200, r#"{"v":2}"#);
+        assert_eq!(get().unwrap(), r#"{"v":2}"#);
     }
 
     #[test]

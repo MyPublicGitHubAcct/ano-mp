@@ -1,9 +1,10 @@
 <script lang="ts">
   // Online sources: the switch for every online service, automatic lookups,
   // each source (on or off, what it supplies and relies on, a key if it
-  // takes one, whether it can be reached now), and for each kind of data
-  // the order the sources are tried in. Every change is saved at once.
-  // Phase 6 folds this into the admin screen.
+  // takes one, whether it can be reached now, and any notice its terms
+  // require), and for each kind of data the order the sources are tried in.
+  // Every change is saved at once; keys go to the keychain, never into the
+  // settings. Phase 6 folds this into the admin screen.
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -30,13 +31,12 @@
 
   let data = $state.raw<MetadataSettings | null>(null);
   let saving = $state(false);
-  /** Keys as typed, saved when the field is left. */
+  /** Keys as typed, until saved. */
   let keys = $state<Partial<Record<SourceId, string>>>({});
 
   onMount(() => {
     attempt(async () => {
       data = await metadata.settings();
-      keys = Object.fromEntries(data.settings.sources.map((s) => [s.id, s.apiKey ?? ""]));
     });
   });
 
@@ -70,11 +70,28 @@
       if (source) source.enabled = enabled;
     });
 
-  const saveKey = (id: SourceId) =>
-    change((next) => {
-      const source = next.sources.find((s) => s.id === id);
-      if (source) source.apiKey = keys[id]?.trim() || null;
+  /** Saves the key typed for `id` (null removes it) in the keychain. */
+  async function setKey(id: SourceId, key: string | null) {
+    saving = true;
+    try {
+      await attempt(async () => {
+        data = await metadata.setKey(id, key);
+        keys[id] = "";
+        library.version++;
+      });
+    } finally {
+      saving = false;
+    }
+  }
+
+  async function removeKey(info: SourceInfo) {
+    const confirmed = await ask(`Remove the ${info.keyName?.toLowerCase() ?? "key"} for ${info.name}? ${info.name} won’t be used until you add one again.`, {
+      title: `Remove ${info.name} key`,
+      kind: "warning",
+      okLabel: "Remove",
     });
+    if (confirmed) setKey(info.id, null);
+  }
 
   const move = (kind: MetadataKind, index: number, by: number) =>
     change((next) => {
@@ -84,7 +101,7 @@
     });
 
   async function reset() {
-    const confirmed = await ask("Turn every source back on and restore the default order?", {
+    const confirmed = await ask("Restore the default sources and order? Saved keys are kept.", {
       title: "Reset online sources",
       kind: "warning",
       okLabel: "Reset",
@@ -92,7 +109,6 @@
     if (!confirmed) return;
     await attempt(async () => {
       data = await metadata.resetSettings();
-      keys = Object.fromEntries(data.settings.sources.map((s) => [s.id, s.apiKey ?? ""]));
       library.version++;
     });
   }
@@ -104,7 +120,7 @@
     if (!info || !source || !settings) return false;
     return (
       source.enabled &&
-      (!info.needsKey || source.apiKey !== null) &&
+      (!info.needsKey || source.hasKey) &&
       (!info.online || settings.online) &&
       (info.requires === null || usable(info.requires))
     );
@@ -117,7 +133,8 @@
     if (info.online && !settings?.online) return { text: "Online services off", tone: "off" };
     if (info.requires !== null && !usable(info.requires))
       return { text: `Needs ${infoOf(info.requires)?.name ?? info.requires}`, tone: "problem" };
-    if (info.needsKey && source.apiKey === null) return { text: "Needs a key", tone: "problem" };
+    if (info.needsKey && !source.hasKey)
+      return { text: `Needs a ${info.keyName?.toLowerCase() ?? "key"}`, tone: "problem" };
     if (info.hosts.some((host) => metadataStatus.progress.unreachable.includes(host)))
       return { text: "Can’t be reached", tone: "problem" };
     return { text: "In use", tone: "on" };
@@ -207,22 +224,40 @@
                 <span class="muted small">
                   {kindNames(info)}{info.requires ? ` · uses ${infoOf(info.requires)?.name} matches` : ""}{info.online
                     ? ""
-                    : " · on this computer"}
+                    : " · on this computer"}{info.storesDetails ? "" : " · fetched when shown, never stored"}
                 </span>
               </span>
             </label>
             <span class="pill {state.tone}">{state.text}</span>
             {#if info.needsKey}
-              <label class="key">
-                <span class="muted small">API key</span>
-                <input
-                  type="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  bind:value={keys[info.id]}
-                  onchange={() => saveKey(info.id)}
-                />
-              </label>
+              {@const keyName = info.keyName ?? "API key"}
+              {#if source?.hasKey}
+                <div class="key">
+                  <span class="muted small">{keyName} saved in the keychain</span>
+                  <button class="link small" disabled={saving} onclick={() => removeKey(info)}>Remove</button>
+                </div>
+              {:else}
+                <form
+                  class="key"
+                  onsubmit={(event) => {
+                    event.preventDefault();
+                    const key = keys[info.id]?.trim();
+                    if (key) setKey(info.id, key);
+                  }}
+                >
+                  <label>
+                    <span class="muted small">{keyName}</span>
+                    <input type="password" autocomplete="off" spellcheck="false" bind:value={keys[info.id]} />
+                  </label>
+                  <button type="submit" disabled={saving || !keys[info.id]?.trim()}>Save</button>
+                  {#if info.keyUrl}
+                    <a class="small" href={info.keyUrl} onclick={openLink}>Get one</a>
+                  {/if}
+                </form>
+              {/if}
+            {/if}
+            {#if info.notice}
+              <p class="notice muted small">{info.notice}</p>
             {/if}
           </li>
         {/each}
@@ -411,16 +446,32 @@
 
   .key {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
     flex-basis: 100%;
     padding-left: 1.6rem;
   }
 
+  .key label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 16rem;
+    max-width: 30rem;
+    min-width: 0;
+  }
+
   .key input {
     flex: 1;
-    max-width: 24rem;
+    min-width: 0;
     font-family: ui-monospace, monospace;
+  }
+
+  .notice {
+    flex-basis: 100%;
+    padding-left: 1.6rem;
+    margin-bottom: 0.2rem;
   }
 
   .orders {

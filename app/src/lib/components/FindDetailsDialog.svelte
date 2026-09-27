@@ -1,9 +1,11 @@
 <script lang="ts">
   // "Find details": the releases each album-details source offers for an
   // album, best first, to pick the right one, reject them all, or go back to
-  // automatic matching. The search starts with the album's own title and
-  // artist (the automatic match's search, usually cached); either can be
-  // edited, and a MusicBrainz release link or id is looked up directly.
+  // automatic matching, each per source. The search starts with the album's
+  // own title and artist (the automatic match's search, usually cached);
+  // either can be edited, and a MusicBrainz or Discogs release link is
+  // looked up directly. A source's credit (Discogs') is shown with its
+  // results, linked to its search and to the release selected.
   import { onMount } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
@@ -131,8 +133,6 @@
   const alreadyChosen = $derived(
     !!selected && current?.chosenByUser === true && current.status === "matched" && current.externalId === selected.id,
   );
-  /** The first source with a link, for "None of these" and "Use automatic". */
-  const primary = $derived(sources?.[0]?.source ?? null);
 
   async function act(action: () => Promise<unknown>, done: string) {
     busy = true;
@@ -151,8 +151,8 @@
     const pick = selected;
     if (pick) act(() => metadata.chooseRelease(album.id, pick.source, pick.id), `Details for ${album.title} updated`);
   };
-  const reject = (source: SourceId) =>
-    act(() => metadata.rejectRelease(album.id, source), `${album.title} won’t be matched automatically`);
+  const reject = (source: SourceId, name: string) =>
+    act(() => metadata.rejectRelease(album.id, source), `${album.title} won’t be matched on ${name} automatically`);
   const automatic = (source: SourceId) =>
     act(() => metadata.useAutomaticRelease(album.id, source), `${album.title} was matched again`);
 
@@ -172,7 +172,7 @@
     }}
   >
     <label>
-      <span class="muted small">Album, or a MusicBrainz release link</span>
+      <span class="muted small">Album, or a release link</span>
       <input type="text" bind:value={title} placeholder="Title" />
     </label>
     <label>
@@ -190,9 +190,31 @@
     <p class="muted" aria-live="polite">Searching…</p>
   {:else}
     {#each sources as source (source.source)}
+      {@const sourceLink = linkOf(source.source)}
       <section aria-label={source.sourceName}>
-        <h3>{source.sourceName}</h3>
-        <p class="muted small">{describeLink(linkOf(source.source), source.sourceName)}</p>
+        <div class="heading">
+          <h3>{source.sourceName}</h3>
+          {#if source.credit && source.creditUrl}
+            <a class="small" href={source.creditUrl} onclick={openLink}>{source.credit}</a>
+          {/if}
+          <span class="spacer"></span>
+          {#if sourceLink}
+            <button
+              class="link small"
+              onclick={() => automatic(source.source)}
+              disabled={busy}
+              title="Forget this album’s {source.sourceName} match and match it again now"
+            >
+              Use automatic
+            </button>
+          {/if}
+          {#if !(sourceLink?.status === "none" && sourceLink.chosenByUser)}
+            <button class="link small" onclick={() => reject(source.source, source.sourceName)} disabled={busy}>
+              None of these
+            </button>
+          {/if}
+        </div>
+        <p class="muted small">{describeLink(sourceLink, source.sourceName)}</p>
         {#if source.note}
           <p class="note">{source.note}</p>
         {:else if source.candidates.length === 0}
@@ -258,9 +280,9 @@
                   {:else}
                     <p class="muted small">This search result has no track list; its score leaves out track lengths.</p>
                   {/if}
-                  {#if source.source === "musicbrainz"}
-                    <a class="small" href="https://musicbrainz.org/release/{release.id}" onclick={openLink}>
-                      Open on MusicBrainz
+                  {#if candidate.pageUrl}
+                    <a class="small" href={candidate.pageUrl} onclick={openLink}>
+                      {source.credit ?? `Open on ${source.sourceName}`}
                     </a>
                   {/if}
                 </div>
@@ -273,17 +295,6 @@
   {/if}
 
   {#snippet actions()}
-    {#if primary}
-      {@const link = linkOf(primary)}
-      {#if link}
-        <button onclick={() => automatic(primary)} disabled={busy} title="Forget this album’s match and match it again now">
-          Use automatic
-        </button>
-      {/if}
-      {#if !(link?.status === "none" && link.chosenByUser)}
-        <button onclick={() => reject(primary)} disabled={busy}>None of these</button>
-      {/if}
-    {/if}
     <span class="spacer"></span>
     <button onclick={onclose} disabled={busy}>Cancel</button>
     <button class="primary" onclick={choose} disabled={busy || !selected || alreadyChosen}>Use this release</button>
@@ -321,8 +332,16 @@
     background: var(--surface-2);
   }
 
+  .heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin-top: 0.75rem;
+  }
+
   h3 {
-    margin: 0.75rem 0 0;
+    margin: 0;
     font-size: 0.95rem;
   }
 

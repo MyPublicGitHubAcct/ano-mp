@@ -44,9 +44,11 @@ MusicBrainz's release-group browse). The album details
 (`library/albums.rs`), the "Find details", "Choose cover" and "Find artist"
 dialogs (commands in `metadata/commands.rs`) and the Online sources panel
 (`ServicesPanel.svelte`) are done; anything a command needs from a service
-runs on the worker through `worker::call`. Discogs is not used: its API
-terms (images not for commercial use, data at most 6 hours old) are for
-4.8 to settle. See `PLAN.md` Phase 4 for the remaining steps.
+runs on the worker through `worker::call`. 4.8 settled which sources ship
+(the sources table in `PLAN.md` Phase 4 has each decision): Discogs is an
+opt-in second album-details source (`metadata/discogs.rs`) behind
+`albums::ReleaseSource`, which MusicBrainz implements too. What remains of
+Phase 4 is checking its exit in the app.
 `docs/` is empty.
 
 ## Build & test
@@ -161,6 +163,15 @@ live checks are `#[ignore]`d (`cargo test live_ -- --ignored`). A link row
 with `chosen_by = 'user'` or an `album_art` row is the user's pick, and
 automatic matching must never replace it. The `anomp-art` handler serves
 only local and already-downloaded pictures; it never goes online.
+
+Discogs' terms shape its code: store only the match (`album_links` with
+`details` NULL; `SourceInfo::stores_details` is false), fetch its data
+through `Client::get_json_fresh` (memory only, at most `discogs::MAX_AGE`,
+no offline copy), never fetch or show its images, and show
+`discogs::CREDIT` linked to the release page next to its data. Keys
+(the Discogs token) live in the OS keychain through `metadata::keys`,
+never in the settings JSON, which records only `hasKey`; tests use its
+in-memory store.
 
 ## Architecture
 

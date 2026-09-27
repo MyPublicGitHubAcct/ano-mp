@@ -43,13 +43,14 @@ const YEAR_WEIGHT: f64 = 0.05;
 pub fn score(album: &AlbumFacts, release: &Release) -> f64 {
     let title = title_similarity(&album.title, &release.title);
     let artist = artist_similarity(album.artist.as_deref(), &release.artist);
-    let mut parts: Vec<(f64, f64)> = vec![
-        (TITLE_WEIGHT, title),
-        (
+    let mut parts: Vec<(f64, f64)> = vec![(TITLE_WEIGHT, title)];
+    // A Discogs search hit doesn't say how many tracks it has.
+    if release.track_count > 0 || !release.tracks.is_empty() {
+        parts.push((
             TRACK_COUNT_WEIGHT,
             count_similarity(album.track_count, release.track_count),
-        ),
-    ];
+        ));
+    }
     if let Some(artist) = artist {
         parts.push((ARTIST_WEIGHT, artist));
     }
@@ -312,6 +313,8 @@ mod tests {
             tracks: vec![],
             formats: vec![],
             disambiguation: None,
+            styles: vec![],
+            credits: vec![],
         }
     }
 

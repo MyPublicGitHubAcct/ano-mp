@@ -4,10 +4,12 @@
   // and "Find details…" and "Choose cover…"; then its description (from
   // Wikipedia, credited under its licence). "Details" opens a table of
   // every field with where it comes from: the tags, or a source. Reloads
-  // after a scan and when `metadata-changed` names the album.
+  // after a scan and when `metadata-changed` names the album. A source that
+  // doesn't keep its releases (Discogs) is asked for the release each time
+  // the album is shown, and its data carries the credit its terms require.
   import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { metadata, type AlbumDetails, type AlbumLink } from "$lib/api";
+  import { metadata, type AlbumDetails, type AlbumLink, type Release, type SourceId } from "$lib/api";
   import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent, plural } from "$lib/format";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -22,6 +24,8 @@
   const SHORT_DESCRIPTION = 1;
 
   let details = $state.raw<AlbumDetails | null>(null);
+  /** Releases fetched for links whose source doesn't keep them, by source and release id, or why they couldn't be. */
+  let fetched = $state.raw<Partial<Record<SourceId, { id: string; release: Release | null; error: string | null }>>>({});
   let open = $state(loadPreference("albumDetailsOpen", false));
   let expanded = $state(false);
   let request = 0;
@@ -45,16 +49,46 @@
     const current = ++request;
     try {
       const loaded = await metadata.album(id);
-      if (current === request) details = loaded;
+      if (current !== request) return;
+      details = loaded;
+      fetchReleases(id, loaded, current);
     } catch {
       // Gone in a rescan; the browser shows that.
       if (current === request) details = null;
     }
   }
 
+  /** Fetches the releases of links whose source doesn't keep them. */
+  async function fetchReleases(id: number, loaded: AlbumDetails, current: number) {
+    for (const link of loaded.links) {
+      if (link.storesDetails || link.externalId === null) continue;
+      const releaseId = link.externalId;
+      let result: { id: string; release: Release | null; error: string | null };
+      try {
+        result = { id: releaseId, release: await metadata.releaseDetails(id, link.source), error: null };
+      } catch (error) {
+        result = { id: releaseId, release: null, error: String(error) };
+      }
+      if (current !== request) return;
+      fetched = { ...fetched, [link.source]: result };
+    }
+  }
+
+  /** What was fetched for `link`, if it's still for the release linked. */
+  const fetchedFor = (link: AlbumLink) => {
+    const result = fetched[link.source];
+    return result && result.id === link.externalId ? result : null;
+  };
+
+  /** The album's links, with the releases fetched for those that need it. */
+  const links = $derived(
+    (details?.links ?? []).map((link) =>
+      link.storesDetails ? link : { ...link, release: fetchedFor(link)?.release ?? null },
+    ),
+  );
   /** The first link with a release that's matched, for the summary. */
-  const matched = $derived(details?.links.find((link) => link.status === "matched" && link.release) ?? null);
-  const first = $derived(details?.links[0] ?? null);
+  const matched = $derived(links.find((link) => link.status === "matched" && link.release) ?? null);
+  const first = $derived(links[0] ?? null);
   const description = $derived(details?.description ?? null);
   const paragraphs = $derived(
     description === null
@@ -63,9 +97,11 @@
         ? description.paragraphs
         : description.paragraphs.slice(0, SHORT_DESCRIPTION),
   );
-  const genres = $derived(
-    matched?.release?.genres.length ? matched.release.genres : (details?.genres ?? []),
-  );
+  const genres = $derived.by(() => {
+    const release = matched?.release;
+    const online = release ? [...new Set([...release.genres, ...release.styles])] : [];
+    return online.length > 0 ? online : (details?.genres ?? []);
+  });
 
   const summary = $derived.by(() => {
     const release = matched?.release;
@@ -108,7 +144,8 @@
     }
   }
 
-  type Row = { field: string; value: string; source: string };
+  /** `href` links the source to the page the value came from, for a source whose terms want that. */
+  type Row = { field: string; value: string; source: string; href?: string };
 
   const rows = $derived.by((): Row[] => {
     if (!details) return [];
@@ -125,19 +162,24 @@
       },
     ];
     if (details.taggedReleaseId) rows.push({ field: "Release id", value: details.taggedReleaseId, source: tags });
-    for (const link of details.links) {
-      const source = link.sourceName;
-      rows.push({ field: "Match", value: describeLink(link), source });
+    for (const link of links) {
+      const source = link.credit ?? link.sourceName;
+      const href = link.credit && link.pageUrl ? link.pageUrl : undefined;
+      rows.push({ field: "Match", value: describeLink(link), source: link.sourceName });
       const release = link.release;
+      const error = fetchedFor(link)?.error;
+      if (!release && error && link.status !== "none") {
+        rows.push({ field: "Details", value: `Not available now: ${error}`, source: link.sourceName });
+      }
       if (!release) continue;
       if (link.status === "review") {
         const when = release.date ? `, ${formatDate(release.date)}` : "";
-        rows.push({ field: "Candidate", value: `${release.title} by ${release.artist}${when}`, source });
+        rows.push({ field: "Candidate", value: `${release.title} by ${release.artist}${when}`, source, href });
         continue;
       }
       if (link.status !== "matched") continue;
       const add = (field: string, value: string | null | undefined) => {
-        if (value) rows.push({ field, value, source });
+        if (value) rows.push({ field, value, source, href });
       };
       add("Release", `${release.title} by ${release.artist}`);
       add(
@@ -158,6 +200,8 @@
       add("Status", release.status);
       add("Barcode", release.barcode);
       add("Genres", release.genres.join(", "));
+      add("Styles", release.styles.join(", "));
+      add("Credits", release.credits.map((credit) => `${credit.role}: ${credit.name}`).join("; "));
     }
     if (details.description) {
       rows.push({
@@ -201,7 +245,11 @@
         {#if summary && matched}
           <p class="summary">
             {summary}
-            <span class="source" title="From {matched.sourceName}">{matched.sourceName}</span>
+            {#if matched.credit && matched.pageUrl}
+              <a class="source" href={matched.pageUrl} onclick={openLink}>{matched.credit}</a>
+            {:else}
+              <span class="source" title="From {matched.sourceName}">{matched.sourceName}</span>
+            {/if}
           </p>
         {/if}
         {#if status(first)}
@@ -248,7 +296,13 @@
             <tr>
               <th scope="row">{row.field}</th>
               <td>{row.value}</td>
-              <td><span class="source">{row.source}</span></td>
+              <td>
+                {#if row.href}
+                  <a class="source" href={row.href} onclick={openLink}>{row.source}</a>
+                {:else}
+                  <span class="source">{row.source}</span>
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -307,6 +361,10 @@
   .status {
     font-size: 0.9rem;
     color: var(--text-muted);
+  }
+
+  a.source {
+    color: var(--accent);
   }
 
   .source {

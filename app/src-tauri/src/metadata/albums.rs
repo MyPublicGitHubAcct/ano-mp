@@ -1,17 +1,25 @@
-//! Matching library albums to MusicBrainz releases and keeping the result
-//! in `album_links` (migration 003). An automatic match never replaces one
-//! the user chose.
+//! Matching library albums to releases at the album-details sources
+//! (MusicBrainz, Discogs) and keeping the result in `album_links` (migration
+//! 003). An automatic match never replaces one the user chose.
+//!
+//! Each source is a `ReleaseSource`: search, lookup, and a release known
+//! without searching. Matching, the "Find details" dialog's candidates and
+//! the user's picks work the same for every source through it. A source
+//! that `stores_details` keeps the release with its link; another (Discogs,
+//! whose terms forbid keeping its data) keeps only the id, and its release
+//! is looked up when shown (`linked_release`).
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::cache::unix_now;
+use super::discogs::{self, DiscogsReleases};
 use super::http::Client;
 use super::matcher::{self, AlbumFacts, Candidate, Decision};
 use super::musicbrainz::{self, Release};
-use super::settings::SourceId;
-use super::Error;
+use super::settings::{self, Kind, SourceId};
+use super::{keys, Error};
 
 /// Releases looked up (for their track lists) per automatic match: the best
 /// search hits by a first score without durations. Each costs a request, a
@@ -42,6 +50,149 @@ impl LinkStatus {
     }
 }
 
+/// A source of album details (`Kind::Release`): a catalogue of releases
+/// that albums are matched against.
+pub trait ReleaseSource {
+    fn id(&self) -> SourceId;
+
+    /// Releases called `title` by `artist`, in the source's own order,
+    /// without their track lists (`track_count` is 0 when unknown).
+    /// `track_count` is the album's, a hint for the source's ranking.
+    fn search(
+        &self,
+        title: &str,
+        artist: Option<&str>,
+        track_count: u32,
+    ) -> Result<Vec<Release>, Error>;
+
+    /// Release `id` with its track list; `Error::Status` 404 if it's gone.
+    fn lookup(&self, id: &str) -> Result<Release, Error>;
+
+    /// The release `text` names, if it's one of this source's release links
+    /// or ids, pasted into the dialog's search.
+    fn id_in(&self, text: &str) -> Option<String>;
+
+    /// A release known to be album `album_id` without searching, and how
+    /// sure that is (0 to 1): a release MBID in the tags, or the Discogs
+    /// release that the album's MusicBrainz release links to.
+    fn known_release(&self, album_id: i64) -> Result<Option<(String, f64)>, Error>;
+}
+
+/// MusicBrainz, whose release is kept with the link.
+pub struct MusicBrainzReleases<'a> {
+    pub client: &'a Client,
+    pub conn: &'a Connection,
+}
+
+impl ReleaseSource for MusicBrainzReleases<'_> {
+    fn id(&self) -> SourceId {
+        SourceId::MusicBrainz
+    }
+
+    fn search(
+        &self,
+        title: &str,
+        artist: Option<&str>,
+        track_count: u32,
+    ) -> Result<Vec<Release>, Error> {
+        let hits =
+            musicbrainz::search_releases(self.client, self.conn, title, artist, Some(track_count))?;
+        Ok(hits.into_iter().map(|hit| hit.release).collect())
+    }
+
+    fn lookup(&self, id: &str) -> Result<Release, Error> {
+        musicbrainz::lookup_release(self.client, self.conn, id)
+    }
+
+    fn id_in(&self, text: &str) -> Option<String> {
+        musicbrainz::mbid_in(text, "release").map(str::to_owned)
+    }
+
+    fn known_release(&self, album_id: i64) -> Result<Option<(String, f64)>, Error> {
+        let tagged: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT musicbrainz_release_id FROM albums WHERE id = ?1",
+                [album_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(tagged
+            .flatten()
+            .filter(|id| musicbrainz::is_mbid(id))
+            .map(|id| (id, 1.0)))
+    }
+}
+
+/// The album-details source `source`, over `client` and `conn`. Discogs
+/// needs its token from the keychain.
+pub fn release_source<'a>(
+    source: SourceId,
+    client: &'a Client,
+    conn: &'a Connection,
+) -> Result<Box<dyn ReleaseSource + 'a>, Error> {
+    match source {
+        SourceId::MusicBrainz => Ok(Box::new(MusicBrainzReleases { client, conn })),
+        SourceId::Discogs => {
+            let token = keys::get(source)?.ok_or_else(|| {
+                Error::Invalid(
+                    "Discogs needs a personal access token: add it in Online sources".into(),
+                )
+            })?;
+            let musicbrainz = settings::service_settings(conn)?
+                .sources_for(Kind::Release)
+                .contains(&SourceId::MusicBrainz);
+            Ok(Box::new(DiscogsReleases {
+                client,
+                conn,
+                token,
+                musicbrainz,
+            }))
+        }
+        other => Err(Error::Invalid(format!(
+            "{} doesn't supply album details",
+            other.info().name
+        ))),
+    }
+}
+
+/// The page on the source's site that shows release `id`, for links and
+/// credits.
+pub fn release_page(source: SourceId, id: &str) -> Option<String> {
+    match source {
+        SourceId::MusicBrainz => Some(format!("https://musicbrainz.org/release/{id}")),
+        SourceId::Discogs => Some(discogs::page_url(id)),
+        _ => None,
+    }
+}
+
+/// The page on the source's site listing its releases found for `query`.
+pub fn search_page(source: SourceId, query: &str) -> Option<String> {
+    let query = super::http::percent_encode(query);
+    match source {
+        SourceId::MusicBrainz => Some(format!(
+            "https://musicbrainz.org/search?type=release&query={query}"
+        )),
+        SourceId::Discogs => Some(format!(
+            "https://www.discogs.com/search/?type=release&q={query}"
+        )),
+        _ => None,
+    }
+}
+
+/// Whether `text` is a release link or id of a source other than `source`,
+/// which `source` then doesn't search for.
+fn names_another_release(source: SourceId, text: &str) -> bool {
+    let named = if musicbrainz::mbid_in(text, "release").is_some() {
+        Some(SourceId::MusicBrainz)
+    } else if discogs::release_id_in(text).is_some() {
+        Some(SourceId::Discogs)
+    } else {
+        None
+    };
+    named.is_some_and(|named| named != source)
+}
+
 /// A release offered for an album in the "Find details" dialog, scored as
 /// automatic matching scores it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -52,6 +203,8 @@ pub struct ReleaseCandidate {
     /// Scored on its track lengths too; otherwise on the search result
     /// alone, which has no track list.
     pub full: bool,
+    /// The release's page at its source.
+    pub page_url: Option<String>,
 }
 
 /// An album's row in `album_links` for one source.
@@ -149,34 +302,27 @@ pub fn album_facts(
     )))
 }
 
-/// MusicBrainz releases that could be `album`, best first: the search hits,
+/// Releases at `source` that could be `album`, best first: the search hits,
 /// of which the best `lookups` by a first score are looked up for their
 /// track lists and scored again with durations. Only those are returned.
 pub fn candidates(
-    client: &Client,
-    conn: &Connection,
+    source: &dyn ReleaseSource,
     album: &AlbumFacts,
     lookups: usize,
 ) -> Result<Vec<Candidate>, Error> {
-    let hits = musicbrainz::search_releases(
-        client,
-        conn,
-        &album.title,
-        album.artist.as_deref(),
-        Some(album.track_count),
-    )?;
+    let hits = source.search(&album.title, album.artist.as_deref(), album.track_count)?;
     let mut first: Vec<Candidate> = hits
         .into_iter()
-        .map(|hit| Candidate {
-            score: matcher::score(album, &hit.release),
-            release: hit.release,
+        .map(|release| Candidate {
+            score: matcher::score(album, &release),
+            release,
         })
         .collect();
-    // Stable, so MusicBrainz's own order breaks ties.
+    // Stable, so the source's own order breaks ties.
     first.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut scored = Vec::new();
     for hit in first.into_iter().take(lookups) {
-        match musicbrainz::lookup_release(client, conn, &hit.release.id) {
+        match source.lookup(&hit.release.id) {
             Ok(release) => scored.push(Candidate {
                 score: matcher::score(album, &release),
                 release,
@@ -190,26 +336,50 @@ pub fn candidates(
     Ok(scored)
 }
 
-/// Matches album `album_id` to a MusicBrainz release, unless the user chose
-/// one, and stores the result. A release MBID in the tags is trusted as
-/// is; otherwise releases are searched for and scored.
+/// Matches album `album_id` to a MusicBrainz release; see `match_album_at`.
 pub fn match_album(client: &Client, conn: &Connection, album_id: i64) -> Result<LinkStatus, Error> {
-    if let Some(link) = album_link(conn, album_id, SourceId::MusicBrainz)? {
+    match_album_at(&MusicBrainzReleases { client, conn }, conn, album_id)
+}
+
+/// Matches album `album_id` to a release at `source`, unless the user chose
+/// one, and stores the result. A known release (a tagged MBID) is trusted
+/// as is; otherwise releases are searched for and scored.
+pub fn match_album_at(
+    source: &dyn ReleaseSource,
+    conn: &Connection,
+    album_id: i64,
+) -> Result<LinkStatus, Error> {
+    if let Some(link) = album_link(conn, album_id, source.id())? {
         if link.chosen_by_user {
             return Ok(link.status);
         }
     }
-    let (album, tagged) = album_facts(conn, album_id)?
+    let (album, _) = album_facts(conn, album_id)?
         .ok_or_else(|| Error::Invalid(format!("No album with id {album_id}")))?;
-    if let Some(id) = tagged.filter(|id| musicbrainz::is_mbid(id)) {
-        match musicbrainz::lookup_release(client, conn, &id) {
+    if let Some((id, score)) = source.known_release(album_id)? {
+        // Only the id is kept, so there is nothing to look up.
+        if !source.id().info().stores_details {
+            store(
+                conn,
+                album_id,
+                source.id(),
+                LinkStatus::Matched,
+                Some(&id),
+                score,
+                None,
+                false,
+            )?;
+            return Ok(LinkStatus::Matched);
+        }
+        match source.lookup(&id) {
             Ok(release) => {
-                store_link(
+                store_release(
                     conn,
+                    source.id(),
                     album_id,
                     LinkStatus::Matched,
                     Some(&release),
-                    1.0,
+                    score,
                     false,
                 )?;
                 return Ok(LinkStatus::Matched);
@@ -220,14 +390,15 @@ pub fn match_album(client: &Client, conn: &Connection, album_id: i64) -> Result<
             Err(error) => return Err(error),
         }
     }
-    let (status, candidate) =
-        match matcher::decide(&mut candidates(client, conn, &album, AUTO_LOOKUPS)?) {
-            Decision::Matched(candidate) => (LinkStatus::Matched, Some(candidate)),
-            Decision::Review(candidate) => (LinkStatus::Review, Some(candidate)),
-            Decision::NoMatch => (LinkStatus::None, None),
-        };
-    store_link(
+    let (status, candidate) = match matcher::decide(&mut candidates(source, &album, AUTO_LOOKUPS)?)
+    {
+        Decision::Matched(candidate) => (LinkStatus::Matched, Some(candidate)),
+        Decision::Review(candidate) => (LinkStatus::Review, Some(candidate)),
+        Decision::NoMatch => (LinkStatus::None, None),
+    };
+    store_release(
         conn,
+        source.id(),
         album_id,
         status,
         candidate.as_ref().map(|c| &c.release),
@@ -237,95 +408,147 @@ pub fn match_album(client: &Client, conn: &Connection, album_id: i64) -> Result<
     Ok(status)
 }
 
-/// The MusicBrainz releases the user can pick for album `album_id`, best
-/// first: the hits of a search for `search` (title, artist; the album's
-/// own when `None`, which is the automatic match's search and so usually
-/// cached), of which the best `AUTO_LOOKUPS` are looked up and scored with
-/// their track lengths; and the album's current match or review candidate.
-/// A release MBID or MusicBrainz release URL as the title is looked up
-/// instead of searched for.
+/// The MusicBrainz releases the user can pick; see `release_candidates_at`.
+#[cfg(test)]
 pub fn release_candidates(
     client: &Client,
     conn: &Connection,
     album_id: i64,
     search: Option<(&str, Option<&str>)>,
 ) -> Result<Vec<ReleaseCandidate>, Error> {
+    release_candidates_at(
+        &MusicBrainzReleases { client, conn },
+        conn,
+        album_id,
+        search,
+    )
+}
+
+/// The releases at `source` the user can pick for album `album_id`, best
+/// first: the hits of a search for `search` (title, artist; the album's
+/// own when `None`, which is the automatic match's search and so usually
+/// cached), of which the best `AUTO_LOOKUPS` are looked up and scored with
+/// their track lengths; and the album's current match or review candidate.
+/// A release link or id of the source as the title is looked up instead of
+/// searched for; another source's finds nothing.
+pub fn release_candidates_at(
+    source: &dyn ReleaseSource,
+    conn: &Connection,
+    album_id: i64,
+    search: Option<(&str, Option<&str>)>,
+) -> Result<Vec<ReleaseCandidate>, Error> {
     let (album, _) = album_facts(conn, album_id)?
         .ok_or_else(|| Error::Invalid(format!("No album with id {album_id}")))?;
-    let full = |release: Release| ReleaseCandidate {
+    let candidate = |release: Release, full: bool| ReleaseCandidate {
         score: matcher::score(&album, &release),
-        full: !release.tracks.is_empty(),
+        full,
+        page_url: release_page(source.id(), &release.id),
         release,
     };
     let (title, artist) = search.unwrap_or((&album.title, album.artist.as_deref()));
     let mut candidates = Vec::new();
-    if let Some(id) = musicbrainz::mbid_in(title, "release") {
-        match musicbrainz::lookup_release(client, conn, id) {
-            Ok(release) => candidates.push(full(release)),
+    if let Some(id) = source.id_in(title) {
+        match source.lookup(&id) {
+            Ok(release) => candidates.push(candidate(release, true)),
             Err(Error::Status { status: 404, .. }) => {
-                return Err(Error::Invalid(format!("MusicBrainz has no release {id}")))
+                return Err(Error::Invalid(format!(
+                    "{} has no release {id}",
+                    source.id().info().name
+                )))
             }
             Err(error) => return Err(error),
         }
-    } else {
-        let mut hits: Vec<ReleaseCandidate> =
-            musicbrainz::search_releases(client, conn, title, artist, Some(album.track_count))?
-                .into_iter()
-                .map(|hit| ReleaseCandidate {
-                    score: matcher::score(&album, &hit.release),
-                    full: false,
-                    release: hit.release,
-                })
-                .collect();
-        // Stable, so MusicBrainz's own order breaks ties.
+    } else if !names_another_release(source.id(), title) {
+        let mut hits: Vec<ReleaseCandidate> = source
+            .search(title, artist, album.track_count)?
+            .into_iter()
+            .map(|release| candidate(release, false))
+            .collect();
+        // Stable, so the source's own order breaks ties.
         hits.sort_by(|a, b| b.score.total_cmp(&a.score));
         for (index, hit) in hits.into_iter().enumerate() {
             if index >= AUTO_LOOKUPS {
                 candidates.push(hit);
                 continue;
             }
-            match musicbrainz::lookup_release(client, conn, &hit.release.id) {
-                Ok(release) => candidates.push(full(release)),
+            match source.lookup(&hit.release.id) {
+                Ok(release) => candidates.push(candidate(release, true)),
                 // Gone since the search index was built.
                 Err(Error::Status { status: 404, .. }) => {}
                 Err(error) => return Err(error),
             }
         }
     }
-    let current = album_link(conn, album_id, SourceId::MusicBrainz)?.and_then(|link| link.release);
-    if let Some(release) = current {
-        if !candidates.iter().any(|c| c.release.id == release.id) {
-            candidates.push(full(release));
+    if let Some(link) = album_link(conn, album_id, source.id())? {
+        let offered = |id: &str| candidates.iter().any(|c| c.release.id == id);
+        if link.external_id.as_deref().is_some_and(|id| !offered(id)) {
+            // Gone or offline: the dialog still says what the link is.
+            if let Ok(Some(release)) = linked_release(source, &link) {
+                candidates.push(candidate(release, true));
+            }
         }
     }
     candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
     Ok(candidates)
 }
 
-/// Links album `album_id` to the release the user picked, which automatic
-/// matching then leaves alone.
+/// The release album link `link` is to: stored with it, or looked up at
+/// `source` if the source doesn't keep its releases.
+pub fn linked_release(
+    source: &dyn ReleaseSource,
+    link: &AlbumLink,
+) -> Result<Option<Release>, Error> {
+    if link.release.is_some() || source.id().info().stores_details {
+        return Ok(link.release.clone());
+    }
+    match &link.external_id {
+        Some(id) => source.lookup(id).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// Links album `album_id` to the MusicBrainz release the user picked; see
+/// `choose_release_at`.
+#[cfg(test)]
 pub fn choose_release(
     client: &Client,
     conn: &Connection,
     album_id: i64,
     release_id: &str,
 ) -> Result<AlbumLink, Error> {
-    let release = musicbrainz::lookup_release(client, conn, release_id)?;
-    store_link(
+    choose_release_at(
+        &MusicBrainzReleases { client, conn },
         conn,
+        album_id,
+        release_id,
+    )
+}
+
+/// Links album `album_id` to the release at `source` the user picked,
+/// which automatic matching then leaves alone.
+pub fn choose_release_at(
+    source: &dyn ReleaseSource,
+    conn: &Connection,
+    album_id: i64,
+    release_id: &str,
+) -> Result<AlbumLink, Error> {
+    let release = source.lookup(release_id)?;
+    store_release(
+        conn,
+        source.id(),
         album_id,
         LinkStatus::Matched,
         Some(&release),
         1.0,
         true,
     )?;
-    Ok(album_link(conn, album_id, SourceId::MusicBrainz)?.expect("just stored"))
+    Ok(album_link(conn, album_id, source.id())?.expect("just stored"))
 }
 
-/// Records that none of MusicBrainz's releases is album `album_id` ("None
-/// of these"), which automatic matching then leaves alone.
-pub fn reject_releases(conn: &Connection, album_id: i64) -> Result<(), Error> {
-    store_link(conn, album_id, LinkStatus::None, None, 0.0, true)
+/// Records that none of `source`'s releases is album `album_id` ("None of
+/// these"), which automatic matching then leaves alone.
+pub fn reject_releases(conn: &Connection, album_id: i64, source: SourceId) -> Result<(), Error> {
+    store_release(conn, source, album_id, LinkStatus::None, None, 0.0, true)
 }
 
 /// Forgets album `album_id`'s link to `source`, chosen or not, so the next
@@ -338,22 +561,28 @@ pub fn clear_link(conn: &Connection, album_id: i64, source: SourceId) -> Result<
     Ok(())
 }
 
-fn store_link(
+/// Stores album `album_id`'s link to `release` at `source`: with the
+/// release if the source keeps its details, else the id alone.
+fn store_release(
     conn: &Connection,
+    source: SourceId,
     album_id: i64,
     status: LinkStatus,
     release: Option<&Release>,
     score: f64,
     by_user: bool,
 ) -> Result<(), Error> {
+    let details = release
+        .filter(|_| source.info().stores_details)
+        .map(|release| serde_json::to_string(release).expect("details serialize"));
     store(
         conn,
         album_id,
-        SourceId::MusicBrainz,
+        source,
         status,
         release.map(|release| release.id.as_str()),
         score,
-        release,
+        details,
         by_user,
     )
 }
@@ -369,6 +598,7 @@ pub fn store_source_link(
     score: f64,
     details: Option<&impl Serialize>,
 ) -> Result<(), Error> {
+    let details = details.map(|details| serde_json::to_string(details).expect("details serialize"));
     store(
         conn,
         album_id,
@@ -389,13 +619,14 @@ fn store(
     status: LinkStatus,
     external_id: Option<&str>,
     score: f64,
-    details: Option<&impl Serialize>,
+    details: Option<String>,
     by_user: bool,
 ) -> Result<(), Error> {
-    let details = details.map(|details| serde_json::to_string(details).expect("details serialize"));
+    let before = album_link(conn, album_id, source)?.map(|link| (link.status, link.external_id));
     // An automatic result never replaces the user's.
-    conn.prepare_cached(
-        "INSERT INTO album_links
+    let changed = conn
+        .prepare_cached(
+            "INSERT INTO album_links
              (album_id, source, status, external_id, score, chosen_by, details, checked_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (album_id, source) DO UPDATE SET
@@ -403,17 +634,27 @@ fn store(
              score = excluded.score, chosen_by = excluded.chosen_by,
              details = excluded.details, checked_at = excluded.checked_at
          WHERE album_links.chosen_by = 'auto' OR excluded.chosen_by = 'user'",
-    )?
-    .execute(params![
-        album_id,
-        source.as_str(),
-        status.as_str(),
-        external_id,
-        score,
-        if by_user { "user" } else { "auto" },
-        details,
-        unix_now()
-    ])?;
+        )?
+        .execute(params![
+            album_id,
+            source.as_str(),
+            status.as_str(),
+            external_id,
+            score,
+            if by_user { "user" } else { "auto" },
+            details,
+            unix_now()
+        ])?;
+    // The Discogs release an automatic match took from the MusicBrainz
+    // release's links belongs to that release: another match means matching
+    // on Discogs again.
+    let after = Some((status, external_id.map(str::to_owned)));
+    if source == SourceId::MusicBrainz && changed > 0 && before != after {
+        conn.execute(
+            "DELETE FROM album_links WHERE album_id = ?1 AND source = ?2 AND chosen_by = 'auto'",
+            params![album_id, SourceId::Discogs.as_str()],
+        )?;
+    }
     Ok(())
 }
 
@@ -660,7 +901,16 @@ mod tests {
             LinkStatus::Matched
         );
         assert_eq!(transport.urls().len(), requests, "nothing was looked up");
-        store_link(&library.conn, album, LinkStatus::None, None, 0.0, false).unwrap();
+        store_release(
+            &library.conn,
+            SourceId::MusicBrainz,
+            album,
+            LinkStatus::None,
+            None,
+            0.0,
+            false,
+        )
+        .unwrap();
         let link = album_link(&library.conn, album, SourceId::MusicBrainz)
             .unwrap()
             .unwrap();
@@ -745,7 +995,7 @@ mod tests {
     fn none_of_these_is_kept_like_a_choice() {
         let (library, album) = library(None);
         let (client, transport, _clock) = fake_client();
-        reject_releases(&library.conn, album).unwrap();
+        reject_releases(&library.conn, album, SourceId::MusicBrainz).unwrap();
         let link = album_link(&library.conn, album, SourceId::MusicBrainz)
             .unwrap()
             .unwrap();
@@ -763,7 +1013,7 @@ mod tests {
         let (id, json) = fixtures::RELEASES[0];
         transport.push_status(&release_url(id), 200, json);
         choose_release(&client, &library.conn, album, id).unwrap();
-        reject_releases(&library.conn, album).unwrap();
+        reject_releases(&library.conn, album, SourceId::MusicBrainz).unwrap();
         let link = album_link(&library.conn, album, SourceId::MusicBrainz)
             .unwrap()
             .unwrap();

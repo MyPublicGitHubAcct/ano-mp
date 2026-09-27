@@ -1,0 +1,191 @@
+{
+  "id": 1187003,
+  "status": "Accepted",
+  "year": 2008,
+  "uri": "https://www.discogs.com/release/1187003-Radiohead-In-Rainbows",
+  "artists": [
+    {
+      "name": "Radiohead",
+      "anv": "",
+      "join": "",
+      "role": "",
+      "tracks": "",
+      "id": 3840
+    }
+  ],
+  "artists_sort": "Radiohead",
+  "labels": [
+    {
+      "name": "TBD Records",
+      "catno": "TBD0001",
+      "entity_type_name": "Label",
+      "id": 103056
+    },
+    {
+      "name": "RED Distribution",
+      "catno": "88088-21623-1",
+      "entity_type_name": "Label",
+      "id": 145493
+    }
+  ],
+  "formats": [
+    {
+      "name": "Vinyl",
+      "qty": "1",
+      "descriptions": [
+        "LP",
+        "Album"
+      ]
+    }
+  ],
+  "format_quantity": 1,
+  "master_id": 21520,
+  "title": "In Rainbows",
+  "country": "US",
+  "released": "2008-01-01",
+  "released_formatted": "01 Jan 2008",
+  "identifiers": [
+    {
+      "type": "Barcode",
+      "value": "8 80882 16231 3"
+    }
+  ],
+  "genres": [
+    "Electronic",
+    "Rock"
+  ],
+  "styles": [
+    "Indie Rock",
+    "Experimental",
+    "Alternative Rock",
+    "Art Rock"
+  ],
+  "tracklist": [
+    {
+      "position": "A1",
+      "type_": "track",
+      "title": "15 Step",
+      "duration": "3:57"
+    },
+    {
+      "position": "A2",
+      "type_": "track",
+      "title": "Bodysnatchers",
+      "duration": "4:02"
+    },
+    {
+      "position": "A3",
+      "type_": "track",
+      "title": "Nude",
+      "duration": "4:15"
+    },
+    {
+      "position": "A4",
+      "type_": "track",
+      "title": "Weird Fishes/Arpeggi",
+      "duration": "5:18"
+    },
+    {
+      "position": "A5",
+      "type_": "track",
+      "title": "All I Need",
+      "duration": "3:49"
+    },
+    {
+      "position": "B1",
+      "type_": "track",
+      "title": "Faust Arp",
+      "duration": "2:10"
+    },
+    {
+      "position": "B2",
+      "type_": "track",
+      "title": "Reckoner",
+      "duration": "4:50"
+    },
+    {
+      "position": "B3",
+      "type_": "track",
+      "title": "House Of Cards",
+      "duration": "5:28"
+    },
+    {
+      "position": "B4",
+      "type_": "track",
+      "title": "Jigsaw Falling Into Place",
+      "duration": "4:09"
+    },
+    {
+      "position": "B5",
+      "type_": "track",
+      "title": "Videotape",
+      "duration": "4:40"
+    }
+  ],
+  "extraartists": [
+    {
+      "name": "Dr Tchock",
+      "anv": "",
+      "join": "",
+      "role": "Artwork",
+      "tracks": "",
+      "id": 1857783
+    },
+    {
+      "name": "Stanley Donwood",
+      "anv": "",
+      "join": "",
+      "role": "Artwork",
+      "tracks": "",
+      "id": 718181
+    },
+    {
+      "name": "Everton Nelson",
+      "anv": "",
+      "join": "",
+      "role": "Concertmaster [Strings Led By]",
+      "tracks": "",
+      "id": 136888
+    },
+    {
+      "name": "Dan Grech-Marguerat",
+      "anv": "",
+      "join": "",
+      "role": "Engineer",
+      "tracks": "",
+      "id": 298410
+    },
+    {
+      "name": "Hugo Nicolson",
+      "anv": "",
+      "join": "",
+      "role": "Engineer",
+      "tracks": "",
+      "id": 232396
+    },
+    {
+      "name": "Nigel Godrich",
+      "anv": "",
+      "join": "",
+      "role": "Engineer",
+      "tracks": "",
+      "id": 169094
+    },
+    {
+      "name": "Richard Woodcraft",
+      "anv": "",
+      "join": "",
+      "role": "Engineer",
+      "tracks": "",
+      "id": 436972
+    },
+    {
+      "name": "Nigel Godrich",
+      "anv": "",
+      "join": "",
+      "role": "Mixed By",
+      "tracks": "",
+      "id": 169094
+    }
+  ]
+}

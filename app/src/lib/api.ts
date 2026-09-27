@@ -194,7 +194,7 @@ export function artUrl(key: { albumId: number } | { trackId: number }, generatio
 // ---- Metadata sources ---------------------------------------------------------
 
 export type MetadataKind = "release" | "albumArt" | "artistInfo" | "albumInfo";
-export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive" | "wikipedia";
+export type SourceId = "embedded" | "folder" | "musicbrainz" | "cover-art-archive" | "wikipedia" | "discogs";
 
 export type SourceInfo = {
   id: SourceId;
@@ -203,6 +203,16 @@ export type SourceInfo = {
   /** Contacts a service, so it obeys the online switch. */
   online: boolean;
   needsKey: boolean;
+  /** What its key is called ("Personal access token"), and where to get one. */
+  keyName: string | null;
+  keyUrl: string | null;
+  enabledByDefault: boolean;
+  /** Whether its details are kept; if not (Discogs), they're fetched when shown and need a connection. */
+  storesDetails: boolean;
+  /** Shown next to its data, linked to the page it's from, as its terms require. */
+  credit: string | null;
+  /** Shown with the source in the settings, as its terms require. */
+  notice: string | null;
   /** A source it relies on (the Cover Art Archive and Wikipedia need MusicBrainz). */
   requires: SourceId | null;
   homepage: string | null;
@@ -210,7 +220,8 @@ export type SourceInfo = {
   hosts: string[];
 };
 
-export type SourceSettings = { id: SourceId; enabled: boolean; apiKey: string | null };
+/** `hasKey`: its key is in the keychain; change it with `metadata.setKey`, never through the settings. */
+export type SourceSettings = { id: SourceId; enabled: boolean; hasKey: boolean };
 
 export type ServiceSettings = {
   online: boolean;
@@ -240,7 +251,8 @@ export type MetadataProgress = {
   unreachable: string[];
 };
 
-/** A MusicBrainz release: one issue of an album. Dates are "2007", "2007-12" or "2007-12-26". */
+/** A release (one issue of an album) at an album-details source. Dates are "2007", "2007-12" or "2007-12-26".
+    Discogs releases have `styles` and `credits`, and their `releaseGroupId` is a Discogs master. */
 export type Release = {
   id: string;
   title: string;
@@ -268,6 +280,10 @@ export type Release = {
   /** Each medium's format ("CD", "12\" Vinyl", "Digital Media"). */
   formats: (string | null)[];
   disambiguation: string | null;
+  /** Finer genres ("Art Rock"); Discogs only. */
+  styles: string[];
+  /** Who did what on the whole release; Discogs only. */
+  credits: { role: string; name: string }[];
 };
 
 /** An album's link to a details source. */
@@ -279,9 +295,15 @@ export type AlbumLink = {
   /** 0 to 1. */
   score: number;
   chosenByUser: boolean;
-  /** The matched release, or the candidate awaiting review. */
+  /** The matched release, or the candidate awaiting review; null when not kept (see `storesDetails`). */
   release: Release | null;
   checkedAt: number;
+  /** When false, `release` is null: fetch it with `metadata.releaseDetails` when shown. */
+  storesDetails: boolean;
+  /** The release's page at the source. */
+  pageUrl: string | null;
+  /** Shown next to the source's data, linked to `pageUrl`. */
+  credit: string | null;
 };
 
 export type AlbumTrack = { id: number; disc: number | null; number: number | null; title: string; duration: number };
@@ -307,14 +329,24 @@ export type AlbumDetails = {
   canLookUp: boolean;
 };
 
-/** What one source offers in a dialog; `note` says why there's nothing (offline, turned off…). */
-export type SourceCandidates<T> = { source: SourceId; sourceName: string; candidates: T[]; note: string | null };
+/** What one source offers in a dialog; `note` says why there's nothing (offline, turned off…). `credit` is shown
+    next to the source's data as its terms require, linked to `creditUrl` (its site's search for the album). */
+export type SourceCandidates<T> = {
+  source: SourceId;
+  sourceName: string;
+  candidates: T[];
+  note: string | null;
+  credit: string | null;
+  creditUrl: string | null;
+};
 
 export type ReleaseCandidate = {
   release: Release;
   score: number;
   /** Scored with its track lengths; otherwise from the search result alone. */
   full: boolean;
+  /** The release's page at its source. */
+  pageUrl: string | null;
 };
 
 export type CoverCandidate = {
@@ -366,7 +398,10 @@ export const metadata = {
   /** Art may come from other sources afterwards; reload it. */
   saveSettings: (settings: ServiceSettings) =>
     invoke<MetadataSettings>("metadata_save_settings", { settings }),
+  /** Keys keep through a reset. */
   resetSettings: () => invoke<MetadataSettings>("metadata_reset_settings"),
+  /** Saves a source's key in the keychain (turning the source on), or removes it with null. */
+  setKey: (source: SourceId, key: string | null) => invoke<MetadataSettings>("metadata_set_key", { source, key }),
   status: () => invoke<MetadataProgress>("metadata_status"),
   /** Tries unreachable services again now. */
   retryNow: () => invoke<void>("metadata_retry_now"),
@@ -379,7 +414,10 @@ export const metadata = {
   /** Searches for `title` and `artist`, or the album's own; a release MBID or URL as `title` is looked up. */
   releaseCandidates: (albumId: number, title: string | null = null, artist: string | null = null) =>
     invoke<SourceCandidates<ReleaseCandidate>[]>("metadata_release_candidates", { albumId, title, artist }),
-  /** Its cover follows in `metadata-changed`. */
+  /** The release an album is linked to at `source`, fetched now if the source doesn't keep it; fails offline for those. */
+  releaseDetails: (albumId: number, source: SourceId) =>
+    invoke<Release | null>("metadata_release_details", { albumId, source }),
+  /** A MusicBrainz release's cover follows in `metadata-changed`. */
   chooseRelease: (albumId: number, source: SourceId, releaseId: string) =>
     invoke<void>("metadata_choose_release", { albumId, source, releaseId }),
   rejectRelease: (albumId: number, source: SourceId) => invoke<void>("metadata_reject_release", { albumId, source }),

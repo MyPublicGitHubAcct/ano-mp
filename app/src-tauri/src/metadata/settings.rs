@@ -3,6 +3,8 @@
 //! an ordered list of the sources that can supply it, and the first with a result wins. Stored as one JSON value
 //! under `metadata.services` in `settings`, read like `library.sort`:
 //! whatever is usable is kept and the rest falls back to the defaults.
+//! Keys are not stored here but in the OS keychain (`keys`); the settings
+//! only say whether a source has one.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -54,6 +56,11 @@ pub enum SourceId {
     /// Wikipedia article that the artist's or album's MusicBrainz entry
     /// links to through Wikidata.
     Wikipedia,
+    /// Album details (credits, styles, labels, formats) with the user's own
+    /// token. Its terms allow keeping only the match: details are fetched
+    /// when shown and never stored, and its pictures aren't used at all
+    /// (PLAN.md 4.8).
+    Discogs,
 }
 
 /// What the UI shows about a source.
@@ -67,6 +74,19 @@ pub struct SourceInfo {
     pub online: bool,
     /// Needs an API key or token from the user before it can be used.
     pub needs_key: bool,
+    /// What the key is called, and where the user gets one.
+    pub key_name: Option<&'static str>,
+    pub key_url: Option<&'static str>,
+    /// On until the user turns it off.
+    pub enabled_by_default: bool,
+    /// Its details are kept in the library; otherwise only the match is,
+    /// and the details are fetched when shown (`metadata_release_details`).
+    pub stores_details: bool,
+    /// Shown next to its data, linked to the page it came from, as its
+    /// terms require.
+    pub credit: Option<&'static str>,
+    /// Shown with the source in the settings, as its terms require.
+    pub notice: Option<&'static str>,
     /// Another source it relies on (the Cover Art Archive needs a
     /// MusicBrainz match, and Wikipedia a MusicBrainz artist or album).
     pub requires: Option<SourceId>,
@@ -78,12 +98,13 @@ pub struct SourceInfo {
 
 impl SourceId {
     /// Every source, in the order the UI lists them.
-    pub const ALL: [SourceId; 5] = [
+    pub const ALL: [SourceId; 6] = [
         SourceId::Embedded,
         SourceId::Folder,
         SourceId::MusicBrainz,
         SourceId::CoverArtArchive,
         SourceId::Wikipedia,
+        SourceId::Discogs,
     ];
 
     pub fn info(self) -> SourceInfo {
@@ -117,19 +138,34 @@ impl SourceId {
                 Some(SourceId::MusicBrainz),
                 Some("https://en.wikipedia.org"),
             ),
+            SourceId::Discogs => (
+                "Discogs",
+                &[Kind::Release],
+                true,
+                None,
+                Some("https://www.discogs.com"),
+            ),
         };
         let hosts: &'static [&'static str] = match self {
             SourceId::Embedded | SourceId::Folder => &[],
             SourceId::MusicBrainz => &[super::musicbrainz::HOST],
             SourceId::CoverArtArchive => &[super::coverartarchive::HOST],
             SourceId::Wikipedia => &[super::wikipedia::WIKIDATA_HOST, super::wikipedia::HOST],
+            SourceId::Discogs => &[super::discogs::HOST],
         };
+        let discogs = self == SourceId::Discogs;
         SourceInfo {
             id: self,
             name,
             kinds,
             online,
-            needs_key: false,
+            needs_key: discogs,
+            key_name: discogs.then_some("Personal access token"),
+            key_url: discogs.then_some("https://www.discogs.com/settings/developers"),
+            enabled_by_default: !discogs,
+            stores_details: !discogs,
+            credit: discogs.then_some(super::discogs::CREDIT),
+            notice: discogs.then_some(super::discogs::NOTICE),
             requires,
             homepage,
             hosts,
@@ -148,6 +184,7 @@ impl SourceId {
             SourceId::MusicBrainz => "musicbrainz",
             SourceId::CoverArtArchive => "cover-art-archive",
             SourceId::Wikipedia => "wikipedia",
+            SourceId::Discogs => "discogs",
         }
     }
 
@@ -163,9 +200,20 @@ impl SourceId {
 pub struct SourceSettings {
     pub id: SourceId,
     pub enabled: bool,
-    /// For sources that need one; trimmed, and `None` rather than empty.
+    /// Whether its key is in the keychain (`keys`). Only `keys::set_key`
+    /// changes it: saving the settings keeps what was stored.
     #[serde(default)]
-    pub api_key: Option<String>,
+    pub has_key: bool,
+}
+
+impl SourceSettings {
+    fn default_for(id: SourceId) -> SourceSettings {
+        SourceSettings {
+            id,
+            enabled: id.info().enabled_by_default,
+            has_key: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -188,11 +236,7 @@ impl Default for ServiceSettings {
             auto_match: true,
             sources: SourceId::ALL
                 .into_iter()
-                .map(|id| SourceSettings {
-                    id,
-                    enabled: true,
-                    api_key: None,
-                })
+                .map(SourceSettings::default_for)
                 .collect(),
             order: Kind::ALL
                 .into_iter()
@@ -212,8 +256,12 @@ fn default_order(kind: Kind) -> Vec<SourceId> {
 }
 
 impl ServiceSettings {
-    fn source(&self, id: SourceId) -> Option<&SourceSettings> {
+    pub fn source(&self, id: SourceId) -> Option<&SourceSettings> {
         self.sources.iter().find(|source| source.id == id)
+    }
+
+    pub fn source_mut(&mut self, id: SourceId) -> Option<&mut SourceSettings> {
+        self.sources.iter_mut().find(|source| source.id == id)
     }
 
     /// Whether `id` may be used now: enabled, online sources only while the
@@ -234,7 +282,7 @@ impl ServiceSettings {
     fn is_enabled(&self, id: SourceId, online: bool) -> bool {
         let info = id.info();
         self.source(id)
-            .is_some_and(|source| source.enabled && (!info.needs_key || source.api_key.is_some()))
+            .is_some_and(|source| source.enabled && (!info.needs_key || source.has_key))
             && (!info.online || online)
             && info
                 .requires
@@ -267,20 +315,12 @@ impl ServiceSettings {
     fn normalized(mut self) -> ServiceSettings {
         let mut sources = Vec::new();
         for id in SourceId::ALL {
-            let mut source = self
+            let source = self
                 .sources
                 .iter()
                 .find(|source| source.id == id)
                 .cloned()
-                .unwrap_or(SourceSettings {
-                    id,
-                    enabled: true,
-                    api_key: None,
-                });
-            source.api_key = source
-                .api_key
-                .map(|key| key.trim().to_owned())
-                .filter(|key| !key.is_empty());
+                .unwrap_or_else(|| SourceSettings::default_for(id));
             sources.push(source);
         }
         self.sources = sources;
@@ -299,20 +339,6 @@ impl ServiceSettings {
         }
         self.order = order;
         self
-    }
-
-    fn validate(&self) -> Result<(), Error> {
-        for source in &self.sources {
-            if let Some(key) = &source.api_key {
-                if key.len() > 256 || key.chars().any(|c| c.is_whitespace() || c.is_control()) {
-                    return Err(Error::Invalid(format!(
-                        "The key for {} is not valid",
-                        source.id.info().name
-                    )));
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Reads stored settings, keeping what is usable: entries this version
@@ -348,18 +374,21 @@ impl ServiceSettings {
                 order.insert(kind, sources);
             }
         }
-        let settings = ServiceSettings {
+        ServiceSettings {
             online: flag("online", defaults.online),
             auto_match: flag("autoMatch", defaults.auto_match),
             sources,
             order,
         }
-        .normalized();
-        if settings.validate().is_ok() {
-            settings
-        } else {
-            defaults
+        .normalized()
+    }
+
+    /// These settings with each source's `has_key` taken from `stored`.
+    fn with_keys_of(mut self, stored: &ServiceSettings) -> ServiceSettings {
+        for source in &mut self.sources {
+            source.has_key = stored.source(source.id).is_some_and(|s| s.has_key);
         }
+        self
     }
 }
 
@@ -377,25 +406,51 @@ pub fn service_settings(conn: &Connection) -> Result<ServiceSettings, Error> {
 }
 
 /// Stores `settings`, completed as `normalized` describes, and returns what
-/// was stored.
+/// was stored. Which sources have a key is kept as it was.
 pub fn save_service_settings(
     conn: &Connection,
     settings: ServiceSettings,
 ) -> Result<ServiceSettings, Error> {
-    let settings = settings.normalized();
-    settings.validate()?;
-    let json = serde_json::to_string(&settings).expect("service settings serialize to JSON");
+    let settings = settings.normalized().with_keys_of(&service_settings(conn)?);
+    store(conn, &settings)?;
+    Ok(settings)
+}
+
+/// Records whether `source` has a key in the keychain; saving a key turns
+/// the source on.
+pub fn set_has_key(
+    conn: &Connection,
+    source: SourceId,
+    has_key: bool,
+) -> Result<ServiceSettings, Error> {
+    let mut settings = service_settings(conn)?;
+    if let Some(entry) = settings.source_mut(source) {
+        entry.has_key = has_key;
+        entry.enabled |= has_key;
+    }
+    store(conn, &settings)?;
+    Ok(settings)
+}
+
+fn store(conn: &Connection, settings: &ServiceSettings) -> Result<(), Error> {
+    let json = serde_json::to_string(settings).expect("service settings serialize to JSON");
     conn.execute(
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         [SETTINGS_KEY, &json],
     )?;
-    Ok(settings)
+    Ok(())
 }
 
+/// Back to the default sources and order. Keys stay in the keychain, so
+/// which sources have one is kept.
 pub fn reset_service_settings(conn: &Connection) -> Result<ServiceSettings, Error> {
+    let settings = ServiceSettings::default().with_keys_of(&service_settings(conn)?);
     conn.execute("DELETE FROM settings WHERE key = ?1", [SETTINGS_KEY])?;
-    Ok(ServiceSettings::default())
+    if settings != ServiceSettings::default() {
+        store(conn, &settings)?;
+    }
+    Ok(settings)
 }
 
 #[cfg(test)]
@@ -425,12 +480,51 @@ mod tests {
                 SourceId::CoverArtArchive
             ]
         );
+        // Discogs is off, and needs a key besides.
         assert_eq!(settings.sources_for(Kind::Release), [SourceId::MusicBrainz]);
+        assert_eq!(
+            settings.order[&Kind::Release],
+            [SourceId::MusicBrainz, SourceId::Discogs]
+        );
         assert_eq!(
             settings.sources_for(Kind::ArtistInfo),
             [SourceId::Wikipedia]
         );
         assert_eq!(settings.sources_for(Kind::AlbumInfo), [SourceId::Wikipedia]);
+    }
+
+    #[test]
+    fn a_source_needing_a_key_is_used_once_it_has_one() {
+        let conn = db::open_in_memory().unwrap();
+        let mut settings = ServiceSettings::default();
+        settings.source_mut(SourceId::Discogs).unwrap().enabled = true;
+        // The UI can't claim a key the keychain doesn't have.
+        settings.source_mut(SourceId::Discogs).unwrap().has_key = true;
+        let saved = save_service_settings(&conn, settings).unwrap();
+        assert!(!saved.source(SourceId::Discogs).unwrap().has_key);
+        assert!(!saved.is_usable(SourceId::Discogs));
+
+        let saved = set_has_key(&conn, SourceId::Discogs, true).unwrap();
+        assert!(saved.is_usable(SourceId::Discogs));
+        assert_eq!(
+            saved.sources_for(Kind::Release),
+            [SourceId::MusicBrainz, SourceId::Discogs]
+        );
+        assert_eq!(service_settings(&conn).unwrap(), saved);
+
+        // Saving keeps the key; so does a reset, which turns Discogs off.
+        let saved = save_service_settings(&conn, ServiceSettings::default()).unwrap();
+        assert!(saved.source(SourceId::Discogs).unwrap().has_key);
+        let reset = reset_service_settings(&conn).unwrap();
+        assert!(reset.source(SourceId::Discogs).unwrap().has_key);
+        assert!(!reset.is_usable(SourceId::Discogs));
+        assert_eq!(service_settings(&conn).unwrap(), reset);
+
+        // A key removed: off until another is saved, which turns it on.
+        let saved = set_has_key(&conn, SourceId::Discogs, false).unwrap();
+        assert!(!saved.source(SourceId::Discogs).unwrap().has_key);
+        let saved = set_has_key(&conn, SourceId::Discogs, true).unwrap();
+        assert!(saved.is_usable(SourceId::Discogs));
     }
 
     #[test]
@@ -519,7 +613,7 @@ mod tests {
                     {"id": "folder", "enabled": false},
                     {"id": "lastfm", "enabled": true, "apiKey": "abc"},
                     {"id": "folder", "enabled": true},
-                    {"id": "musicbrainz", "enabled": true, "apiKey": "  "}
+                    {"id": "musicbrainz", "enabled": true, "hasKey": "yes"}
                 ],
                 "order": {
                     "albumArt": ["lastfm", "cover-art-archive", "musicbrainz", "folder", "folder"],
@@ -534,7 +628,10 @@ mod tests {
         let folder = &settings.sources[1];
         assert_eq!(folder.id, SourceId::Folder);
         assert!(!folder.enabled, "the first entry for a source wins");
-        assert_eq!(settings.sources[2].api_key, None, "blank keys are none");
+        assert!(
+            settings.sources[2].enabled,
+            "an entry that doesn't parse falls back"
+        );
         assert_eq!(
             settings.order[&Kind::AlbumArt],
             [
@@ -543,7 +640,12 @@ mod tests {
                 SourceId::Embedded
             ]
         );
-        assert_eq!(settings.order[&Kind::Release], [SourceId::MusicBrainz]);
+        // Settings stored before Discogs existed get it, off, at the end.
+        assert_eq!(
+            settings.order[&Kind::Release],
+            [SourceId::MusicBrainz, SourceId::Discogs]
+        );
+        assert!(!settings.source(SourceId::Discogs).unwrap().enabled);
         // Settings stored before a kind existed get its default order.
         assert_eq!(settings.order[&Kind::ArtistInfo], [SourceId::Wikipedia]);
         assert_eq!(settings.order[&Kind::AlbumInfo], [SourceId::Wikipedia]);
@@ -556,14 +658,5 @@ mod tests {
                 "{garbage}"
             );
         }
-    }
-
-    #[test]
-    fn refuses_bad_keys() {
-        let conn = db::open_in_memory().unwrap();
-        let mut settings = ServiceSettings::default();
-        settings.sources[2].api_key = Some("two words".into());
-        let error = save_service_settings(&conn, settings).unwrap_err();
-        assert!(error.to_string().contains("not valid"), "{error}");
     }
 }
