@@ -35,7 +35,12 @@ folders, the sort rules, what lists and album pages show, playback (the
 output device, its buffer size, ReplayGain) and the visualizer, plus the
 online sources; the settings have a typed schema in Rust with generated
 TypeScript types. What remains is checking device switching and
-ReplayGain by ear.
+ReplayGain by ear. Nineteen optional features (O1–O19, §4.6) were
+proposed on 2026-09-27; none has been decided yet. A review of the repo
+on 2026-09-27 added a prioritised backlog: features users expect of any
+library player that the app lacks (F1–F21, §4.7), and hardening for
+security, robustness and maintenance (H1–H21, Phase 7). Their P1 items
+are part of Phase 7's exit.
 
 ## 1. Architecture
 
@@ -159,7 +164,9 @@ so each OS needs a native machine, VM or CI runner:
 ## 4. Decisions
 
 All decided 2026-09-25 except the two legal checks flagged below, which are
-release gates (§8.1) rather than engineering blockers.
+release gates (§8.1) rather than engineering blockers, and the optional
+features in #6 (proposed 2026-09-27), each of which is still open. #7
+(2026-09-27) sets priorities rather than open questions.
 
 1. **Licenses: JUCE commercial, closed source (decided).** JUCE 8+ is AGPLv3
    or commercial. We use the commercial license, starting on the free
@@ -204,8 +211,477 @@ release gates (§8.1) rather than engineering blockers.
    | iOS / iPadOS | 17 |
    | Linux | Ubuntu 24.04 / Fedora 40 (WebKitGTK 4.1) |
    | Windows | 11 (Windows 10 support ended October 2025) |
+6. **Optional features: proposed 2026-09-27, each open.** O1–O19 below
+   are features few players have that fit this one's design. None of them
+   is needed for a release or blocks a phase. Each is decided separately:
+   record the decision and its date on the item's **Decision** line. Once
+   one is accepted, give it steps in the phase that builds it, or in a new
+   phase after Phase 7. They follow the rules that already apply:
+   - The app never writes the user's files. Results go in the library DB,
+     in tables keyed by track, album or artist id, as `album_links` is.
+     Those ids survive rescans because the scanner upserts them.
+   - Anything online goes through `http::Client`, is off by default, and
+     is named in the privacy policy (§8.1).
+   - Anything that decodes library files outside playback runs off the
+     main thread with its own reader, never through the engine, and opens
+     files through `access::open_folder` first.
+   - Platform code (headphone detection, sample-rate switching) goes
+     behind a small core interface with one implementation per OS.
+7. **Expected features and hardening: prioritised 2026-09-27.** F1–F21
+   (§4.7) are what users expect of any library player and this one lacks
+   (playlists, favourites, multi-select, menus, accessibility and so on),
+   unlike O1–O19, which few players have. H1–H21 (Phase 7) make the app
+   and its development more secure, robust and efficient. Both use one
+   scale:
+   - **P1**: before the first public release. Part of Phase 7's exit.
+   - **P2**: in the first updates after it, or when a later item needs it.
+   - **P3**: later, as time allows.
+
+   The rules in #6 apply to F1–F21 too: the user's files are never
+   written, and the user's data lives in the library DB. Change a
+   priority here with its date and reason.
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
+
+#### Optional features (§4.6)
+
+| # | Feature | Touches | Size | Proposal |
+|---|---|---|---|---|
+| O1 | Loudness analysis for files without ReplayGain tags | core, Rust, migration | M | Yes, first: O2–O4 build on its analysis pass |
+| O2 | Waveform seek bar | Rust, UI | S (after O1) | Yes, with O1 |
+| O3 | Segue-aware shuffle and silence handling | Rust (queue), core for trimming | S–M (after O1) | Yes, segue shuffle first |
+| O4 | Library health report | Rust, UI (analysis checks after O1) | M | Yes; the tag checks can come before O1 |
+| O5 | Cue sheets and chapters as tracks | every layer, migration | L | Open: depends on how common single-file rips are among users |
+| O6 | Classical works and movements | core (tags), migration, browse, UI | M | Yes, from tags; MusicBrainz works later |
+| O7 | Per-track and per-album playback preferences | Rust, migration, UI | S | Yes |
+| O8 | Local listening history, opt-in ListenBrainz | Rust, migration, UI | M | Local history yes; ListenBrainz off by default |
+| O9 | Library radio (endless queue from the library) | Rust (queue) | M (after O8) | Open |
+| O10 | Signal path panel and sample-rate matching | core, Rust, UI | S (panel), M (matching) | Panel yes; matching opt-in |
+| O11 | Headphone crossfeed | core DSP, settings | S | Yes |
+| O12 | Practice mode: A–B loop, tempo without pitch change | core (new dependency), UI | M | Open |
+| O13 | Local synced lyrics (tags and `.lrc` files) | core (tags), Rust, UI | S–M | Yes, local only |
+| O14 | LAN remote control from a phone's browser | Rust (server), entitlements, UI | M | Open, and only after a security review |
+| O15 | Recently added | Rust, migration, UI | S | Yes |
+| O16 | Recently played | Rust, UI | S (after O8) | Yes, with O8 |
+| O17 | Albums released on this day | core (tags), Rust, migration, UI | S–M | Yes |
+| O18 | Five more albums in this genre, at random | Rust, UI | S | Yes |
+| O19 | Top 20 played by year or month | Rust, UI | S (after O8) | Yes, with O8 |
+
+- **O1 Loudness analysis for files without ReplayGain tags.** ReplayGain
+  applies only to tagged files today. None of the dev library's files are
+  tagged, and most players either ignore untagged files or rewrite their
+  tags, which this app never does. A background pass decodes each track
+  once and measures its integrated loudness and true peak (EBU R128 /
+  ITU-R BS.1770), per track and per album. It stores them as computed
+  gains. `PlaybackSettings::gain` uses the tag values first, then the
+  computed ones, then the preamp for untagged files.
+  - Core: a thread-safe `anomp_analyse_file` with its own
+    `FFmpegAudioFormat` reader, separate from the engine, with progress
+    and cancel callbacks. It returns everything O2–O4 need, so each file
+    is decoded once.
+  - Rust: an `analysis` worker thread shaped like the metadata worker,
+    running at low priority a few files at a time. It can resume where it
+    stopped and has a switch in Settings. It writes a `track_analysis`
+    table (new migration) invalidated by the track's size and mtime.
+  - Tests: EBU Tech 3341 test signals, or synthetic tones of known
+    loudness, rendered like the chirp fixtures.
+  - Cost: decoding a 50,000-track library takes hours of CPU time once.
+  - **Decision:** open.
+- **O2 Waveform seek bar.** The analysis also keeps a coarse min/max
+  envelope of about 1,000 points a track (about 2 KB as bytes).
+  `SeekBar.svelte` draws it, with the played part in the accent colour.
+  This shows quiet intros, drops and hidden tracks at a glance, and
+  helps O12 set loop points. Until a track is analysed, the seek bar is
+  the plain bar it is today. **Decision:** open.
+- **O3 Segue-aware shuffle and silence handling.** The analysis records
+  each track's leading and trailing silence (below −60 dBFS). It marks a
+  segue where one track's last 50 ms and the next track's first 50 ms on
+  the same album both have sound. Shuffle keeps each run of segued tracks
+  together, in order, as a single unit in `queue/model.rs`. Concept
+  albums, live albums and DJ mixes then stop cutting mid-phrase, which
+  plain shuffle does in almost every player. An optional "skip long
+  silence" setting ends a track after N seconds of trailing silence (the
+  gap before a hidden track). That needs the engine to accept an end
+  position, which O5 adds too. **Decision:** open.
+- **O4 Library health report.** A read-only view of problems the app can
+  detect but otherwise hides. Each row can reveal the file in Finder.
+  - Files that fail to decode, or whose decoded length falls short of
+    the header's (truncated), found by the O1 pass.
+  - Suspected lossy transcodes: "lossless" files (FLAC, ALAC, WAV) whose
+    spectrum stops at 16–19 kHz for the whole track, as MP3 or AAC encoders
+    leave it. This is a heuristic and is labelled "suspected".
+  - Inconsistent albums: tracks of one album with different album
+    artists, years or disc totals, and missing or repeated track numbers.
+    These checks read only the DB and don't need O1.
+  - Likely duplicates: the same recording MBID, or the same normalized
+    title and artist with a length within 2 s. Audio fingerprinting stays
+    deferred with AcoustID (Phase 4).
+  - **Decision:** open.
+- **O5 Cue sheets and chapters as tracks.** Shows single-file albums
+  (FLAC or APE with a `.cue` sheet, or a FLAC with an embedded cue sheet)
+  and chaptered files (MP4 chapters, ID3 `CHAP`) as separate tracks.
+  - Scanner: reads the `.cue` next to the file through the folder's
+    bookmark (UTF-8, or a legacy code page detected) and makes a track
+    for each `INDEX 01`, with its start and end in samples. The cue's
+    `TITLE` and `PERFORMER` override the file's tags.
+  - DB: a track becomes (folder, path, start), not (folder, path). That
+    changes the unique key, so the migration rebuilds `tracks` and has to
+    keep the FTS triggers (migration 002) in step.
+  - Engine: `load` and `set_next` take an optional start and end. The
+    engine treats the end as the track's end, so a hand-off to the next
+    range of the same file is gapless and sample-exact (the reader's
+    seeks are exact).
+  - **Decision:** open. The largest item here: it changes every layer.
+- **O6 Classical works and movements.** Most players show "Symphony No. 5
+  in C minor, Op. 67: I. Allegro con brio" as one flat title. Tags
+  already carry the structure: work, movement name and movement number
+  (ID3 `TIT1`/`MVNM`/`MVIN`, MP4 `©wrk`/`©mvn`/`©mvi`, Vorbis
+  `WORK`/`MOVEMENTNAME`/`MOVEMENT`), plus composer and conductor.
+  - `TagReader` reads them from TagLib's property map. Check TagLib
+    2.3's key names when building this.
+  - A migration adds the columns, and triggers for any that search
+    indexes.
+  - Composer and work become browse grouping keys (`library/rules.rs`).
+  - Album pages group movements under their work, with the composer and
+    performers.
+  - "Play work" queues a whole work, and shuffle treats a work as one
+    unit, as O3 does segues.
+  - Later, MusicBrainz work relationships can fill works for untagged
+    files through the metadata worker.
+  - **Decision:** open.
+- **O7 Per-track and per-album playback preferences.** The user's own
+  rules, set from the context menu, shown as a badge in lists, and stored
+  in the DB, never in the files. They cascade from their track or album.
+  - Skip a track in album and shuffle play (intros, skits, bonus
+    tracks). It still plays when chosen directly.
+  - Never shuffle an album: shuffle plays it whole, in order.
+  - A gain offset in dB added to ReplayGain, passed with the track's
+    gain as now.
+  - A start or end trim, using O5's ranges.
+  - **Decision:** open.
+- **O8 Local listening history, with opt-in ListenBrainz.** The queue
+  adds a row to a `plays` table (track, start time, seconds played) once
+  a track passes half its length or 4 minutes, the usual scrobbling
+  rule. By default this history stays on the machine.
+  - Views few local players offer: albums once played often but not for a
+    year, "a year ago today" and never played. O16 and O19 are views on
+    this table too. Play count and last played become `TrackColumn`
+    options.
+  - Opt-in ListenBrainz submission. It is MetaBrainz's service, like
+    MusicBrainz, and the MBIDs from tags make its matches exact. The
+    user's token lives in the keychain through `metadata::keys`. Listens
+    are queued while offline and sent through `http::Client`. Its terms
+    are checked before release like every other source (§8.1).
+  - **Decision:** open.
+- **O9 Library radio.** When the queue runs out, or on "Start radio from
+  this", the app keeps adding tracks from the local library that fit the
+  seed track. It scores tracks by shared or related genres, nearby
+  years, the same label, and artists linked by MusicBrainz relationships
+  (members, collaborations). Tracks played recently in O8's history are
+  weighted down. Each pick shows why it was chosen ("same label, 1994").
+  Everything is local and no service is called. The logic lives in
+  `queue/` as a source of next items, tested against the fake engine.
+  **Decision:** open.
+- **O10 Signal path panel and sample-rate matching.** Clicking the format
+  in the now-playing bar shows the signal path as it actually is:
+  1. The file's codec, bit depth, rate and bitrate.
+  2. The ReplayGain gain applied.
+  3. Resampling from the file's rate to the device's, or none.
+  4. The volume.
+  5. The device's name, rate and buffer size.
+
+  The engine knows every step, so the panel is small. An opt-in setting
+  switches the device to the file's rate when the device supports it, to
+  avoid resampling (the known limit in Phase 6). Constraints:
+  - Changing the rate interrupts output. It happens only at a track
+    start that isn't a gapless hand-off; when the next track's rate
+    matches the current one, nothing changes.
+  - On macOS the rate is the device's, so it also changes for other apps
+    using that device.
+  - `AudioEngine` needs to reopen the device with a given rate.
+
+  **Decision:** open.
+- **O11 Headphone crossfeed.** Hard-panned stereo (much of the 1960s)
+  tires the ears on headphones. Crossfeed blends a delayed, low-passed
+  part of each channel into the other (Bauer's stereo-to-binaural
+  method, as in bs2b).
+  - A few biquads and a short delay in `PlayerEngine`, after the tap so
+    the visualizer still shows the mix. Written in-house, with no new
+    dependency.
+  - Off and three strengths in the playback settings.
+  - Optionally on by itself when the output is headphones, as the OS
+    reports: the data source of Core Audio's built-in output, or the
+    `AVAudioSession` route on iOS. This goes behind a small platform
+    interface.
+  - Tested offline through `getNextAudioBlock`, as the other engine tests
+    are.
+  - **Decision:** open.
+- **O12 Practice mode.** For musicians learning a part or transcribing
+  one, which few library players support.
+  - An A–B loop set on the seek bar (easier with O2's waveform). The
+    engine jumps back at B on the exact sample, as the gapless hand-off
+    does, not on a UI timer.
+  - Tempo from 50% to 150% without changing pitch, and optionally a pitch
+    shift in semitones. This needs a time-stretcher before the
+    resampler, and its licence decides which one:
+    - Signalsmith Stretch (MIT, header-only C++) fits the closed-source
+      and iOS static-link rules.
+    - Rubber Band is GPL or paid.
+    - SoundTouch is LGPL, so it would have to ship as a shared library
+      like FFmpeg.
+  - **Decision:** open. Check Signalsmith's quality at 50% first.
+- **O13 Local synced lyrics.** Shows lyrics already on disk.
+  - Unsynced lyrics: ID3 `USLT`, Vorbis `LYRICS`/`UNSYNCEDLYRICS`, MP4
+    `©lyr`.
+  - Synced lyrics: ID3 `SYLT`, LRC text in a lyrics tag, or a `.lrc` file
+    next to the track, read through the folder's bookmark as folder
+    images are.
+  - Synced lines highlight with the position (already sent every 50 ms),
+    and clicking a line seeks there.
+  - Lyrics are read from the file when shown (a flag on
+    `anomp_read_tags`) and never stored in the DB.
+  - Online lyrics (LRCLIB and others) stay out of scope. Adding one would
+    be a sources-table decision, as in Phase 4.
+  - **Decision:** open.
+- **O14 LAN remote control.** Controls the desktop app from a phone's
+  browser on the same network, with nothing to install.
+  - An opt-in HTTP and WebSocket server in Rust serves a compact remote
+    page: now playing, cover, play/pause, next, seek, volume, queue and
+    search. Its commands go through the same queue functions as the UI
+    and the media keys.
+  - Pairing uses a code or QR code shown in Settings and a random token
+    for each pairing. The server listens on LAN addresses only, and is
+    off by default.
+  - Costs: the sandbox's `network.server` entitlement, macOS's
+    local-network prompt, and an entry in the privacy policy.
+  - A listening socket is attack surface, so it needs a security review:
+    token checks, rate limits, and no file access beyond cover art and
+    the page itself.
+  - The Phase 8 iOS build could later act as a richer remote.
+  - **Decision:** open.
+- **O15 Recently added.** A sidebar view of albums ordered by when their
+  newest track arrived, grouped into this week, this month and earlier.
+  - `scanned_at` can't serve: every rescan rewrites it. A migration adds
+    `tracks.added_at`, which the scanner sets on insert only (the upsert
+    leaves it alone). Existing rows take the file's mtime, the nearest
+    thing to an arrival date, because their `scanned_at` values are all
+    the same first scan.
+  - "Date added" also becomes a sort key for the browse rules.
+  - Limit: a track's identity is its path, so moving or renaming a file
+    makes it look newly added.
+  - **Decision:** open.
+- **O16 Recently played.** Needs O8's `plays` table. Lists what was
+  played, newest first. Consecutive plays from one album collapse into a
+  single album row ("11 tracks of …"), so an album doesn't fill the list,
+  and one click plays it again. It differs from the queue, which holds
+  only what is queued now. **Decision:** open.
+- **O17 Albums released on this day.** Albums whose original release
+  date falls on today's month and day, labelled with the anniversary
+  ("30 years ago today"). It is shown as a card in a home or sidebar
+  view, not as a notification.
+  - The date comes first from the MusicBrainz release group's first
+    release date, which the stored album details already hold, so a
+    reissue counts on the original's date.
+  - Otherwise it comes from a full `DATE` tag. `TagReader` keeps only the
+    year today, so the full date needs a new column, re-read at the next
+    scan as migration 004 did.
+  - Albums dated only to a year or month never match. A 29 February
+    release shows on 28 February in other years.
+  - **Decision:** open.
+- **O18 Five more albums in this genre, at random.** A "More in <genre>"
+  row on album pages: five random albums that share a genre with the
+  current one, excluding the current album, with a button to draw again.
+  - The genres come from the tags through `anomp_has_genre`. An album
+    with several genres gets a chip for each, and the chips switch the
+    row.
+  - The five stay the same while the page is open. Drawing again picks a
+    new five.
+  - With O8, albums played recently are drawn less often.
+  - A random order over the matching albums is cheap at 50,000 tracks
+    (a few thousand albums). Check it with the ignored benchmarks.
+  - **Decision:** open.
+- **O19 Top 20 played by year or month.** Needs O8. The 20 most played
+  tracks, albums and artists for a chosen year or month (a "year in
+  review"), counted as plays that passed O8's rule. "Play these 20" puts
+  them in the queue, and the period can step back and forward.
+  **Decision:** open.
+
+#### Expected features (§4.7)
+
+Found by a review of the repo on 2026-09-27. Priorities follow §4.7's
+scale (P1 before the first release). Several close known limits recorded
+in Phases 2–6, as noted.
+
+| # | Feature | Touches | Size | Priority |
+|---|---|---|---|---|
+| F1 | Playlists, with M3U8 import and export | Rust, migration, UI | M | P1 |
+| F2 | Smart playlists (saved rules) | Rust, UI | M (after F1) | P2 |
+| F3 | Favourites, then ratings | Rust, migration, UI, core (tags) | S | P1 favourites, P2 ratings |
+| F4 | Multi-select, drag and drop | UI, Rust | M | P1 |
+| F5 | Open files from Finder ("Open with", file associations) | Rust, bundle config, queue | S–M | P2 |
+| F6 | Menu bar with a Controls menu, shortcuts sheet, Dock menu | Rust, UI | S | P1 |
+| F7 | Mini player and menu-bar controls | Rust (second window), UI | S–M | P2 |
+| F8 | First run and empty states | UI | S | P1 |
+| F9 | Rescan at launch, then file watching | Rust | M | P1 at launch, P2 watching |
+| F10 | Keep the user's data when files move or are renamed | Rust (scanner), migration | M | P1, with F1 and F3 |
+| F11 | Compilations and multiple artists | core (tags), Rust, migration | M | P2 |
+| F12 | Substring and field search | Rust (FTS), migration | S–M | P2 |
+| F13 | Sleep timer, stop after this track | Rust (queue), UI | S | P2 |
+| F14 | Crossfade | core, Rust, settings | M–L | P3 |
+| F15 | Equaliser | core DSP, settings, UI | M | P3 |
+| F16 | Track info panel | Rust, UI | S | P2 |
+| F17 | Resume where the user left off | Rust (queue, media) | S | P2 |
+| F18 | Accessibility, and a safe visualizer | UI | S–M | P1 |
+| F19 | Localisation groundwork | UI, Rust errors | M | P2 |
+| F20 | Export and import the user's data | Rust, UI | M | P2 |
+| F21 | Track-change notifications | Rust | S | P3 |
+
+- **F1 Playlists.** No playlists exist; the queue is the only list.
+  - A migration adds `playlists` (name, created, updated) and
+    `playlist_items` (playlist, position, track id).
+  - Create from a selection (F4) or with "Save queue as playlist".
+    Rename, reorder, remove items, delete. Playlists appear in a sidebar
+    section, and play or add to the queue like albums.
+  - Import M3U/M3U8 (UTF-8, or a legacy code page detected, as O5's cue
+    sheets): resolve each entry against the library folders, and list
+    the ones not found. Export M3U8 to a place the user picks, with paths
+    relative to it where possible. Export needs the
+    `files.user-selected.read-write` entitlement. It writes only the file
+    the user names, never a library file.
+  - F10 lands with it, or a moved file drops out of every playlist.
+- **F2 Smart playlists.** Saved rules over the DB: genre, year range,
+  format, date added (O15), favourite or rating (F3), play count (O8).
+  Built from fixed SQL fragments with every value bound, as
+  `library/browse.rs` is. Results refresh after each scan.
+- **F3 Favourites, then ratings.** A heart on tracks, albums and artists,
+  shown in lists, with a Favourites view and a filter. Stored in the DB by
+  id, never in the files. Ratings (0–5) follow in P2. They are seeded
+  once from rating tags already in the files (ID3 `POPM`, Vorbis
+  `RATING`/`FMPS_RATING`, MP4 `rate`), which `TagReader` reads, and
+  never written back.
+- **F4 Multi-select, drag and drop.** Closes Phase 3's "no
+  multi-select".
+  - Shift- and ⌘-click and keyboard selection in `VirtualList.svelte`.
+  - Bulk actions: play, play next, add to the queue, add to a playlist,
+    remove from the queue.
+  - Drag to reorder the queue, and to drop tracks on a playlist.
+  - Dropping from Finder: a folder offers to become a library folder,
+    and files play. Check that a bookmark can be made from a dropped URL
+    in the sandbox.
+- **F5 Open files from Finder.** `bundle.fileAssociations` for the
+  supported types, handled through `RunEvent::Opened`.
+  - A file outside every library folder plays without being added. The
+    queue needs an "external file" item kind for it, since queue items
+    are library tracks today.
+  - The sandbox grants the opened file for the session only, so an
+    external item is dropped from the saved queue.
+- **F6 Menu bar, shortcuts and Dock menu.** The app has only Tauri's
+  default menu. Shortcuts exist only as page `keydown` handlers, which a
+  focused text field swallows and nothing lists.
+  - Add a Controls menu: play/pause, next (⌘→), previous (⌘←), volume
+    (⌘↑/⌘↓), shuffle, repeat, and "Go to current track" (⌘L). Add a View
+    menu (visualizer, queue, full screen) and a Help menu (shortcuts
+    sheet, logs from H9).
+  - A Dock menu with transport and the current track.
+  - Menu items call the same queue functions as the media keys.
+- **F7 Mini player and menu-bar controls.** A compact, optionally
+  always-on-top second window reusing `NowPlayingBar.svelte`. An
+  optional menu-bar (tray) item with transport and the current track.
+  Needs H3's per-window permissions first.
+- **F8 First run and empty states.** A first launch shows how to add a
+  folder (suggesting `~/Music`), says which online sources are on and
+  what they send (the privacy policy's content, §8.1), and shows scan
+  progress. Every empty view says what to do next. A folder whose
+  bookmark doesn't resolve (drive unplugged, folder moved) shows as such
+  in the sidebar with "Locate…", not only as a failed scan.
+- **F9 Keep the library in step with the disk.** Phase 2 records "no
+  rescan at launch and no file watching yet".
+  - P1: an incremental rescan of each folder at launch, in the
+    background at low priority. The scanner already skips unchanged files
+    by mtime and size.
+  - P2: FSEvents watching through the `notify` crate while the app runs.
+    It is debounced and per folder, only while the folder's bookmark is
+    open, and behind a setting.
+  - Mind H12: a watcher or scan must not download cloud placeholders.
+- **F10 Keep the user's data when files move or are renamed.** A track's
+  identity is its folder and path. A move or rename deletes the row, and
+  with it anything keyed by the track (O15 notes this). This matters
+  once playlists, favourites and plays (F1, F3, O8) exist.
+  - Before a scan deletes a missing track, match it against the new files
+    by recording MBID, or by size, length and tags. Move the existing id
+    to the new path instead of deleting and inserting.
+  - Keep an album's user picks (`album_links` with `chosen_by = 'user'`,
+    `album_art`) when the album is re-created with the same MBID, or the
+    same album artist and title.
+  - Check which foreign keys cascade today, and test moves across folders.
+- **F11 Compilations and multiple artists.** Two known limits from Phase
+  2.
+  - Compilations tagged without an album artist split into one album per
+    track artist. Group them by the compilation flag (ID3 `TCMP`, MP4
+    `cpil`, Vorbis `COMPILATION`), or by one album title in one folder
+    with three or more track artists, under "Various Artists".
+  - Several artists in one tag count as one. Read multi-valued artist
+    tags (TagLib's `ARTISTS` and property-map lists), split "A; B", and
+    store credited artists in a new table for browse, artist pages and
+    MusicBrainz matching. Keep the tag's text for display.
+  - The migration updates the FTS triggers (migration 002's rule).
+- **F12 Substring and field search.** Phase 3's known limit: words match
+  only from their start. Add an FTS5 `trigram` index for substrings of
+  three or more characters, sized against the 50,000-track benchmarks.
+  Add field filters: `artist:`, `album:`, `genre:`, `year:1994`,
+  `year:1990-1999`.
+- **F13 Sleep timer and stop after this track.** "Stop after this track"
+  in the queue, and a timer (15, 30, 60 minutes, end of album) that
+  fades out over the last 10 s through the engine volume. Tested against
+  the fake engine in `queue/model.rs`.
+- **F14 Crossfade.** Off by default, and never between consecutive tracks
+  of one album, which stay gapless. The engine mixes two readers during
+  the fade, which touches the gapless hand-off, so design it with Phase
+  1's hand-off design first. Tested offline through
+  `getNextAudioBlock`.
+- **F15 Equaliser.** A 10-band graphic EQ, or a few parametric bands,
+  with presets and a preamp. It sits in `PlayerEngine` next to O11's
+  crossfeed, after the per-track gain and before the volume. Written with
+  JUCE's IIR filters, or in-house, with no GUI module. Presets can
+  follow the output device (headphones or speakers).
+- **F16 Track info panel.** A read-only "Get Info": every tag TagLib
+  reports, the format, bitrate, sample rate and channels, the embedded
+  pictures, the path with "Reveal in Finder" (the queue has it), and the
+  MusicBrainz links. It shares the format facts with O10's signal path
+  panel.
+- **F17 Resume where the user left off.** Phase 3's known limit: nothing
+  is published to Now Playing after a relaunch until playback starts, so
+  the media keys can't resume. Publish the restored queue, paused at its
+  saved position. Also remember the position of long tracks (over 20
+  minutes: audiobooks, DJ mixes, lectures) and resume there.
+- **F18 Accessibility, and a safe visualizer.**
+  - A VoiceOver pass over the main views: list roles and labels, and a
+    live region announcing track changes.
+  - Full keyboard use, including the context menu's arrow keys (Phase
+    3's known limit). A visible focus ring, contrast checked in both
+    themes, and layouts that survive larger text.
+  - `prefers-reduced-motion` is not read anywhere. Beat-driven
+    visualizations can flash, and WCAG 2.3.1 allows no more than three
+    flashes a second. Limit flash rate and contrast in the renderers
+    (`app/src/lib/visualizer/renderers/`). Under reduced motion, calm
+    them further or default to a still one. Show a photosensitivity note
+    the first time the visualizer opens.
+- **F19 Localisation groundwork.** Every UI string is an English literal
+  in a component, and Rust returns English error text. Move strings into
+  a typed message catalogue (one JSON file per locale), and format
+  numbers, dates and durations with `Intl` everywhere (`format.ts` does
+  some already). Rust errors the UI shows become codes with parameters.
+  This is cheap now and costly later. Translations can wait until after
+  the first release.
+- **F20 Export and import the user's data.** One JSON file with what the
+  user made: settings, sort rules, online source settings, the user's
+  picks (`album_links` chosen by the user, `album_art`), the queue, and
+  later playlists, favourites and history. Keyed by folder-relative
+  paths and MBIDs, so it imports into a fresh library after a scan. It
+  covers a lost or corrupt DB (H10) and moving to another Mac, and later
+  carries data to iOS (Phase 8).
+- **F21 Track-change notifications.** Opt-in, only while the window isn't
+  focused, through `tauri-plugin-notification`, with the cover.
 
 ## 5. Phased plan
 
@@ -1796,7 +2272,226 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
 - Performance: library of 50k+ tracks; scan time; memory use.
 - Robustness: corrupt/truncated files, missing files on disk, unplugged
   output devices, offline services.
-- **Exit:** the macOS app is ready for the first release in §8.3.
+- Hardening items H1–H21 below, and the P1 features of §4.7.
+
+**Hardening items** (from the 2026-09-27 review; priorities as in
+§4.7). CI runs each check through `check-all.py` (M4), so a local run
+matches it.
+
+| # | Item | Area | Size | Priority |
+|---|---|---|---|---|
+| H1 | Content Security Policy | security | S | P1 |
+| H2 | Keep developer commands and `/dev` out of release builds | security | S | P1 |
+| H3 | Narrow the URL opener and per-window command permissions | security | S | P1 |
+| H4 | Contain folder pictures on unsandboxed platforms | security | S | P2, before Phase 9 |
+| H5 | Fuzz the tag reader and decoder | security, robustness | M | P1 targets and CI run, P2 long runs |
+| H6 | Sanitizer presets for the core | robustness | S | P1 |
+| H7 | Supply chain: exact pins, `cargo deny`, update bot, secret scanning | security, maintenance | S | P1 |
+| H8 | Rust and C++ lint gates, pinned toolchains | maintenance | S | P1 |
+| H9 | Logs, panic capture and "Copy diagnostics" | robustness, support | M | P1 |
+| H10 | Library DB safety: backups before migrations, checks, pruning | robustness | S–M | P1 |
+| H11 | Open files off the main thread | robustness | M | P1 |
+| H12 | Cloud, network and removable folders | robustness | M | P1 |
+| H13 | Frontend lint, format and tests | maintenance | M | P1 lint, P2 tests |
+| H14 | A self-test of the sandboxed bundle in CI | robustness | M | P2 |
+| H15 | Typed IPC end to end | maintenance | S–M | P2 |
+| H16 | Queue storage and updates that scale | efficiency | M | P2 |
+| H17 | Cover thumbnails and an on-disk art cache | efficiency | M | P2 |
+| H18 | Performance budgets | efficiency | S | P2 |
+| H19 | Split the largest modules | maintenance | S each | P3, as touched |
+| H20 | Move design records out of `PLAN.md` | maintenance | S | P2 |
+| H21 | C++ static analysis | maintenance | S | P3 |
+
+- **H1 Content Security Policy.** `tauri.conf.json` has `"csp": null`.
+  Set a strict policy:
+  - `default-src 'self'`
+  - `img-src 'self' anomp-art: data: blob:`
+  - `connect-src ipc: http://ipc.localhost`
+  - `style-src 'self' 'unsafe-inline'`
+  - `object-src 'none'` and `frame-src 'none'`
+
+  Add a `devCsp` for Vite's HMR. Check that covers still load, that the
+  visualizer can still read a cover's pixels (CORS on `anomp-art`), and
+  that the visualizer `Channel` still works. Nothing renders remote HTML
+  today (no `{@html}`; biographies are text), so this is defence in
+  depth. It is needed before any richer remote content, Bandcamp (Phase
+  11) or O14.
+- **H2 Developer surface out of release builds.** Release builds
+  register `player_load` and `player_set_next` (any typed path), the
+  test-tone commands, and the `/dev` route.
+  - Register those commands only under `cfg(debug_assertions)`, or a
+    `dev-tools` Cargo feature. Leave `/dev` out of the release frontend.
+  - On Linux and Windows (Phases 9–10) there is no sandbox. There,
+    `player_load` would hand any readable file to FFmpeg.
+- **H3 URL opener and command permissions.**
+  - `opener:allow-open-url` allows every `http://` and `https://` URL.
+    The links come from MusicBrainz URL relations and Wikipedia, which
+    anyone can edit. Allow `https` only, and upgrade or show as plain
+    text any `http` link.
+  - Use Tauri 2's app-command permissions
+    (`tauri_build::Attributes::app_manifest`), so a window gets only the
+    commands it needs. This is required before a second window (F7), and
+    before any remote-facing surface (O14).
+- **H4 Folder pictures on unsandboxed platforms.**
+  `folder_art::is_relative_path` rejects `..` lexically, but a symlink
+  inside a library folder can still point outside it. The macOS sandbox
+  blocks that, but Linux and Windows have no sandbox. Canonicalise the
+  picture's path and require it under the folder's root, with a test
+  using a symlink.
+- **H5 Fuzzing.** Users' libraries hold arbitrary files. FFmpeg's
+  demuxers and decoders and TagLib are the app's largest attack surface
+  (§6).
+  - libFuzzer targets in `core/fuzz/`:
+    - the tag reader, through an internal overload that takes a
+      `TagLib::IOStream` (a `ByteVectorStream`), not a path;
+    - `FFmpegAudioFormat`: open, read, and seek at random positions,
+      over a `juce::MemoryInputStream`.
+  - Seed the corpus from `core/tests/fixtures/`, and build with ASan and
+    UBSan (a `fuzz` preset).
+  - CI runs each target for 60 s on every push. A weekly job runs them
+    for longer and keeps the corpus as an artifact.
+  - Each crash found becomes a regression test with a committed fixture.
+- **H6 Sanitizer presets.** Add CMake presets `asan` (Address and
+  Undefined) and `tsan` that build and run the Catch2 suite. `tsan`
+  covers `SignalTap`, `AnalysisThread`, and the audio thread's hand-off
+  and events. Both run in `check-all.py` (not `--quick`) and in CI.
+- **H7 Supply chain.**
+  - Pin JUCE and Catch2 by commit SHA, not tag, since a tag can move
+    (TagLib and FFmpeg are already pinned by SHA-256).
+  - CI installs with `npm ci`, and GitHub Actions are pinned by commit
+    SHA.
+  - `cargo deny` (`deny.toml`) checks advisories, licences, bans and
+    allowed sources. M5's `audit-deps.py` runs it in place of
+    `cargo audit`, and its licence list feeds `make-notices.py` (M6).
+  - Dependabot or Renovate for Cargo, npm and Actions, grouped into the
+    monthly update in §9.1.
+  - GitHub secret scanning with push protection, and `gitleaks` in the
+    pre-commit hook. The app handles keys now (the Discogs token), and
+    signing secrets arrive with §8.2.
+- **H8 Lint gates and pinned toolchains.**
+  - `cargo clippy --all-targets -- -D warnings` runs in `check-all.py`.
+  - A `[lints]` table in `Cargo.toml`, including `unsafe_op_in_unsafe_fn`
+    and `clippy::undocumented_unsafe_blocks`, so each `unsafe` block in
+    `anomp.rs` says why it is sound.
+  - `rust-toolchain.toml` pins §3's Rust version, and `.nvmrc` with
+    `engines` pins Node, so local and CI builds match. `doctor.py` (M4)
+    reads them.
+  - Move to Rust edition 2024 in one separate commit.
+- **H9 Logs, panics and diagnostics.** The Rust code reports problems
+  with `eprintln!` (27 calls), which a bundled app sends nowhere. With
+  `panic = "abort"` in the release profile, a panic leaves no trace.
+  - Use the `log` facade with `tauri-plugin-log`, writing a rotating file
+    of a few MB in the app's log directory.
+  - A panic hook writes the message and a backtrace there before the
+    abort.
+  - The core logs through a C callback (`anomp_set_log_callback`),
+    including JUCE's `Logger` and failed assertions.
+  - Redact keys, `Authorization` headers and `token=` query parameters.
+    Library paths are logged at debug level only.
+  - Settings → About gets "Show logs" and "Copy diagnostics": versions,
+    OS, output device, and library counts, with no paths or titles.
+  - This is needed whatever the crash-reporting decision in §8.1 is, and
+    a crash reporter would build on it.
+- **H10 Library DB safety.** The DB now holds work users can't recreate
+  by rescanning: their picks, and soon playlists and history (F1, O8).
+  - Before applying migrations, write a copy with `VACUUM INTO`
+    (`library.db.pre-<n>`), keeping the last two.
+  - Run `PRAGMA quick_check` in the background at launch. On failure,
+    offer to restore the last copy, or to rebuild by rescanning after
+    exporting what F20 can save.
+  - Run `PRAGMA optimize` at exit.
+  - Prune `mb_cache` by age and size. 4.5 records that nothing prunes it.
+- **H11 Open files off the main thread.** Opens run synchronously on the
+  main thread (Phase 1's known limit: 7 ms for a local MP3). A sleeping
+  USB disk, a NAS, or a cloud placeholder (H12) can take seconds, which
+  freezes the UI, the media keys and the queue's hand-off arming.
+  - Open and prime the reader on a worker thread, holding the folder's
+    access (`open_folder`) while it opens. Hand the ready reader to the
+    engine on the main thread.
+  - The C API gets an asynchronous load with a completion event. The UI
+    shows the track as loading, and a timeout fails it with a reason
+    that the queue skips as it skips a missing file.
+- **H12 Cloud, network and removable folders.**
+  - With "Optimize Mac Storage", iCloud Drive keeps dataless placeholder
+    files. Reading their tags downloads them, so one scan could download
+    a whole library.
+    - The scanner checks for dataless files (`SF_DATALESS` in
+      `st_flags`), records them without reading them, and says so in
+      the scan report.
+    - Playing one downloads it first, through H11's asynchronous open.
+    - The check lives behind a small core interface next to
+      `FolderAccess`.
+  - Test SMB folders, and a drive unmounted in the middle of a scan. A
+    missing folder already keeps its tracks.
+- **H13 Frontend lint, format and tests.** The frontend has
+  `svelte-check` and 5 tests of pure modules. There is no linter or
+  formatter.
+  - P1: ESLint (`eslint-plugin-svelte`, `typescript-eslint`) and
+    Prettier (with its Svelte plugin), through a `format` script with a
+    `--check` mode like the others.
+  - P2: Vitest for the rune modules (`state/*.svelte.ts`), which plain
+    `node --test` can't compile. IPC is faked with
+    `@tauri-apps/api/mocks` (`mockIPC`), using payloads recorded from
+    the Rust tests.
+  - P2: Playwright smoke tests against `vite dev` with the same mocks,
+    run in WebKit: browse, search, queue edits, settings. This is §6's
+    mitigation for WebKitGTK and WebView2 differences, and they run on
+    each OS's CI job from Phases 9–10.
+- **H14 Self-test of the sandboxed bundle.** Sandbox mistakes show only
+  in a bundle (`CLAUDE.md`), and `tauri-driver` doesn't support macOS.
+  - A `--self-test <folder>` flag, compiled into test builds only, runs a
+    script inside the ad-hoc-signed sandboxed bundle and exits with a
+    status: use a temporary data directory, add the fixtures folder,
+    scan, play two tracks through a gapless hand-off, and read the
+    covers.
+  - CI runs it on the macOS runner after building the bundle.
+- **H15 Typed IPC end to end.** Phase 6 notes that payloads other than
+  the settings are still hand-written in `api.ts`. Derive their
+  TypeScript types with ts-rs as the settings do. Then generate the
+  command wrappers too (tauri-specta, or a small generator), so a
+  renamed command or argument fails `npm run check` instead of failing
+  at run time.
+- **H16 Queue storage and updates.** Phase 3's known limits: the saved
+  queue is one JSON value rewritten on every change (350 KB for 50,000
+  tracks), and every change sends the whole list (6.6 MB).
+  - Store the items as rows (a migration).
+  - Send changes as numbered edits (insert, remove, move ranges), which
+    the UI applies to its copy. It asks for the whole list only when it
+    misses a number.
+- **H17 Cover thumbnails.** Phase 3's known limit: art is served at full
+  size from a cache in memory only, so it is re-read after each launch,
+  and Now Playing artwork is sent at full size.
+  - Make thumbnails at two sizes, for lists and for the album header, in
+    the on-disk image cache (`metadata/images.rs`), keyed by the
+    source's hash.
+  - Serve full size only where it is shown full size, and cap Now
+    Playing's artwork.
+  - Pick a JPEG/PNG decoder and check what it adds to the binary.
+- **H18 Performance budgets.** Phase 7's performance bullet needs
+  numbers. Commit budgets and check them with `bench.py` (M4):
+  - launch to first paint;
+  - memory at rest with 50,000 tracks;
+  - scan time;
+  - browse and search latency;
+  - CPU while playing, with and without the visualizer.
+- **H19 Split the largest modules**, when they are next changed, with no
+  change in behaviour:
+  - `metadata/jobs.rs` (2,347 lines), by job kind;
+  - `library/browse.rs`;
+  - `queue/model.rs`;
+  - `anomp.rs`, one file per area of the C API.
+- **H20 Design records out of `PLAN.md`.** The plan is over 3,000 lines
+  and grows with every step. It mixes the roadmap with finished design
+  notes. Move each finished phase's design and known limits to
+  `docs/design/phase-<n>-<name>.md` (`docs/` is empty). Keep status,
+  decisions, open steps, the backlogs (§4.6–§4.7, H1–H21) and links
+  here. `check-docs.py` (M2) checks the links.
+- **H21 C++ static analysis.** `clang-tidy` with a small set of checks
+  (`bugprone-*`, `performance-*`, `concurrency-*`) over `core/src`, in
+  `check-all.py` but not `--quick`.
+
+- **Exit:** the macOS app is ready for the first release in §8.3, with
+  the P1 items of §4.7 and of H1–H21 done.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account
@@ -2001,12 +2696,16 @@ Revisit it against whatever the agreement actually provides.
 | Licensing (JUCE commercial tier, FFmpeg LGPL, TagLib MPL) | JUCE license in place before any distribution (release gate, §8.1); FFmpeg always shipped as shared libs; App Store LGPL opinion before Phase 8 ships (§4.1) |
 | AAC patent exposure from shipping FFmpeg's AAC decoder | Licensing opinion before release; CoreAudio fallback on Apple (§4.3) |
 | FFmpeg build complexity across 4 OSes and several architectures | One script, pinned version, CI-cached artifacts; done per platform in its phase |
-| FFmpeg parser vulnerabilities (large attack surface) | Minimal configure (only needed demuxers/decoders); a weekly CI job checks the pin against FFmpeg's security releases, and `bump-pin.py` makes the bump quick (§9) |
+| FFmpeg and TagLib parser vulnerabilities (large attack surface; users' folders hold arbitrary files) | Minimal configure (only needed demuxers/decoders); fuzzing of the tag reader and decoder with sanitizers (H5, H6); a weekly CI job checks the pin against FFmpeg's security releases, and `bump-pin.py` makes the bump quick (§9) |
 | MusicBrainz rate limits and bans | Strict limiter, caching, User-Agent with contact info |
 | Decoder behaviour differing across platforms | Same FFmpeg version and flags everywhere; the Phase 1 format tests run on every CI OS |
 | WebKitGTK (Linux) and WebView2 (Windows) behave differently from WKWebView | Keep the frontend to standard web APIs; run frontend smoke tests on each OS in CI |
 | Bandcamp refuses, limits or withdraws access (no API for fans; scraping forbidden) | Phase 11 starts only with written permission; the Bandcamp code is one Rust module behind the library-source kind, so it can be dropped without touching local playback; fallback 11.7 (purchases as local files) |
 | iOS sandbox limits on music files | Document picker import and bookmarks; the Apple Music library (DRM) is out of scope |
+| Losing the user's own data (picks, and later playlists, favourites and history) to a corrupt DB, a bad migration, or moved files | Copies before migrations and integrity checks (H10); ids kept across moves and renames (F10); export and import (F20) |
+| Library folders in iCloud Drive, on a NAS or on sleeping disks: whole-library downloads during a scan, UI freezes on open | Dataless files detected and not read (H12); files opened off the main thread (H11) |
+| Failures in users' hands leave no trace (`eprintln!` output is lost in a bundle, and release builds abort on panic) | Log file, panic hook and "Copy diagnostics" (H9) before the first release |
+| Visualizations triggering photosensitive reactions | Flash limits, `prefers-reduced-motion`, and a note on first use (F18) |
 
 ## 7. Proposed repo layout
 
@@ -2195,7 +2894,7 @@ shell everywhere (MSYS2 on Windows).
 | FFmpeg dylib names in `tauri.conf.json` (`bundle.macOS.frameworks`, later the Linux and Windows lists) | Each FFmpeg bump that changes a major version | The names must match what the build produced, or the bundle step fails | `sync-ffmpeg-frameworks.py` |
 | Formatter pins: clang-format (`format-cpp.py`), ruff (`format-python.py`) | A few times a year | Bump, reformat the tree in one separate commit | `check-pins.py`, `bump-pin.py` |
 | Rust crates and npm packages | Monthly | `cargo update` / `npm update`; read the changelogs of Tauri, Svelte, rusqlite (its bundled SQLite version), ureq/rustls; run all tests | `check-pins.py` (reports; updating stays manual) |
-| Security advisories | Weekly (scheduled CI job); FFmpeg security releases as announced | `cargo audit` (RustSec), `npm audit`, the pinned FFmpeg against ffmpeg.org's security page, TagLib and JUCE release notes | `audit-deps.py` |
+| Security advisories | Weekly (scheduled CI job); FFmpeg security releases as announced | `cargo deny check` (RustSec advisories, licences; H7), `npm audit`, the pinned FFmpeg against ffmpeg.org's security page, TagLib and JUCE release notes | `audit-deps.py` |
 | Toolchains: Rust, Node (Node 26 becomes LTS in October 2026, §3), CMake, Ninja, nasm, uv; Xcode and SDKs from Phase 8 | Each stable/LTS release; Xcode each year | Update §3's versions, check the build still passes, raise documented minimums | `doctor.py` |
 | Recorded service responses (`app/src-tauri/src/metadata/fixtures/`) | Quarterly, whenever a live test fails, and for each new source (4.8) | Re-fetch the same URLs with the app's `User-Agent` at the services' rate limits, trim them the same way, and diff with the committed copies: a changed field means a parser needs work | `record-fixtures.py` |
 | Audio fixtures (`core/tests/fixtures/`) | When a format is added or the test signal changes | Regenerate, update the lengths and lags in the tests' fixture table | `make-test-fixtures.py` (extend) |
@@ -2204,6 +2903,9 @@ shell everywhere (MSYS2 on Windows).
 | Core source lists | Every new core file | Listed in `core/CMakeLists.txt` or `core/tests/CMakeLists.txt` (no globbing) | `check-sources.py` |
 | Docs drift: `PLAN.md` status and §2, `CLAUDE.md`, `README.md` | Each finished step | Test counts match the suites; every repo path the docs mention exists | `check-docs.py` |
 | Performance baselines (the ignored 50,000-track benchmarks) | Each release; after scanner, browse or DB changes | Run them in release mode, compare with committed numbers, flag regressions | `bench.py` |
+| Fuzzing (H5) | Weekly (scheduled job) | Look at new crashes; fix them, add each crashing input as a regression fixture, and keep the corpus | none (CI job) |
+| Formatter and linter pins: ESLint, Prettier, clippy's lints (H8, H13) | With the monthly npm and Rust updates | Bump, fix or allow the new warnings, and reformat in one separate commit | `check-pins.py` |
+| Library DB copies (H10) | Each migration | Confirm the copy is written before the migration, and that old copies are pruned | none (tests) |
 | Version number | Each release | One version everywhere (§8.2) | `version.py` |
 | Third-party notices | Each release and each dependency change | Regenerate and check every licence is known (§8.2) | `make-notices.py` |
 | Release artifacts | Each release | SHA-256 checksums, updater manifest, release notes from `CHANGELOG.md` (§8.2) | `release.py` |
@@ -2291,9 +2993,9 @@ Steps:
     SHA-256 (and for FFmpeg verifies the GPG signature against the key
     recorded in `build-ffmpeg.sh`), rewrites the pin in place and prints
     the rebuild and test commands. Tests rewrite copies of the real files.
-  - `audit-deps.py`: runs `cargo audit` and `npm audit`, and checks the
-    FFmpeg pin against ffmpeg.org's security page; a scheduled weekly CI
-    job runs it with `check-pins.py`.
+  - `audit-deps.py`: runs `cargo deny check` (H7) and `npm audit`, and
+    checks the FFmpeg pin against ffmpeg.org's security page; a scheduled
+    weekly CI job runs it with `check-pins.py`.
 - [ ] M6 Release tools (with §8.2):
   - `version.py`: `--check` fails unless `CMakeLists.txt`, `Cargo.toml`,
     `tauri.conf.json` and `package.json` agree (`anomp_version()` is
