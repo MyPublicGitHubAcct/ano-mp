@@ -2,16 +2,17 @@
   // The visualizer: which visualization, the cover wall's albums, how often
   // it analyses and how strongly it reacts, whether it takes its colours
   // from the cover, and whether it moves on to the next one by itself.
+  import { t } from "$lib/i18n";
   import { appSettings } from "$lib/state/settings.svelte";
   import { VISUALIZATIONS, visualization } from "$lib/visualizer";
 
   const CYCLES: [number, string][] = [
-    [0, "Never"],
-    [30, "Every 30 seconds"],
-    [60, "Every minute"],
-    [120, "Every 2 minutes"],
-    [300, "Every 5 minutes"],
-    [600, "Every 10 minutes"],
+    [0, t("vizOptions.never")],
+    [30, t("vizOptions.everySeconds", { count: 30 })],
+    [60, t("vizOptions.everyMinute")],
+    [120, t("vizOptions.everyMinutes", { count: 2 })],
+    [300, t("vizOptions.everyMinutes", { count: 5 })],
+    [600, t("vizOptions.everyMinutes", { count: 10 })],
   ];
 
   const settings = $derived(appSettings.visualizer);
@@ -19,14 +20,14 @@
   const cycles = $derived(
     CYCLES.some(([seconds]) => seconds === settings.cycleSeconds)
       ? CYCLES
-      : [...CYCLES, [settings.cycleSeconds, `Every ${settings.cycleSeconds} seconds`] as [number, string]],
+      : [...CYCLES, [settings.cycleSeconds, t("vizOptions.everySeconds", { count: settings.cycleSeconds })] as [number, string]],
   );
 
   const save = appSettings.save.bind(appSettings);
 </script>
 
 <label class="field">
-  <span class="label">Visualization</span>
+  <span class="label">{t("vizOptions.visualization")}</span>
   <span class="control">
     <select
       value={chosen.id}
@@ -41,11 +42,11 @@
       {/each}
     </select>
   </span>
-  <span class="hint">{chosen.description} In the visualizer, V changes it.</span>
+  <span class="hint">{chosen.description} {t("vizOptions.visualizationHint")}</span>
 </label>
 
 <label class="field">
-  <span class="label">Change by itself</span>
+  <span class="label">{t("vizOptions.cycle")}</span>
   <span class="control">
     <select
       value={String(settings.cycleSeconds)}
@@ -60,13 +61,13 @@
       {/each}
     </select>
   </span>
-  <span class="hint">Moves on to the next visualization while the visualizer shows.</span>
+  <span class="hint">{t("vizOptions.cycleHint")}</span>
 </label>
 
 <div class="field">
-  <span class="label">Cover wall</span>
-  <span class="control" role="radiogroup" aria-label="Cover wall shows">
-    {#each [["year", "Albums from the same year"], ["artist", "Albums by the same artist"]] as const as [basis, name] (basis)}
+  <span class="label">{t("vizOptions.coverWall")}</span>
+  <span class="control" role="radiogroup" aria-label={t("vizOptions.coverWallShows")}>
+    {#each [["year", t("vizOptions.sameYear")], ["artist", t("vizOptions.sameArtist")]] as const as [basis, name] (basis)}
       <label class="switch">
         <input
           type="radio"
@@ -81,9 +82,9 @@
   </span>
 </div>
 
-<h3>Look and feel</h3>
+<h3>{t("vizOptions.look")}</h3>
 <label class="field">
-  <span class="label">Frame rate</span>
+  <span class="label">{t("vizOptions.frameRate")}</span>
   <span class="control">
     <select
       value={String(settings.frameRate)}
@@ -94,15 +95,15 @@
       }}
     >
       {#each [30, 60].includes(settings.frameRate) ? [30, 60] : [30, 60, settings.frameRate] as rate (rate)}
-        <option value={String(rate)}>{rate} a second{rate === 30 ? " (uses less power)" : ""}</option>
+        <option value={String(rate)}>{t(rate === 30 ? "vizOptions.rateLowPower" : "vizOptions.rate", { rate })}</option>
       {/each}
     </select>
   </span>
-  <span class="hint">How often the sound is analysed.</span>
+  <span class="hint">{t("vizOptions.frameRateHint")}</span>
 </label>
 
 <label class="field">
-  <span class="label">Sensitivity</span>
+  <span class="label">{t("vizOptions.sensitivity")}</span>
   <span class="control">
     <input
       type="range"
@@ -118,7 +119,7 @@
     />
     <span class="value">{Math.round(settings.sensitivity * 100)}%</span>
   </span>
-  <span class="hint">Scales the spectrum: higher for quiet music, lower if the bars sit at the top.</span>
+  <span class="hint">{t("vizOptions.sensitivityHint")}</span>
 </label>
 
 <label class="switch">
@@ -132,11 +133,27 @@
     }}
   />
   <span>
-    <span class="title">Colours from the album cover</span>
-    <span class="hint">Otherwise every album gets the same colours.</span>
+    <span class="title">{t("vizOptions.coverColours")}</span>
+    <span class="hint">{t("vizOptions.coverColoursHint")}</span>
+  </span>
+</label>
+
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={settings.calm}
+    disabled={appSettings.saving}
+    onchange={(event) => {
+      const on = event.currentTarget.checked;
+      save((next) => (next.visualizer.calm = on));
+    }}
+  />
+  <span>
+    <span class="title">{t("vizOptions.calm")}</span>
+    <span class="hint">{t("vizOptions.calmHint")}</span>
   </span>
 </label>
 
 <div class="actions">
-  <button onclick={() => appSettings.reset("visualizer")} disabled={appSettings.saving}>Reset to defaults</button>
+  <button onclick={() => appSettings.reset("visualizer")} disabled={appSettings.saving}>{t("settings.reset")}</button>
 </div>

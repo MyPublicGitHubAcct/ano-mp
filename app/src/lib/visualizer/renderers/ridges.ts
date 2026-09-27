@@ -2,6 +2,7 @@
 // newest at the front, each hiding the ones behind it, like the cover of
 // Unknown Pleasures. Bass rises in the middle and treble at the sides.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { approachAll, clearStage, mix, rgba, STAGE } from "../util";
 
@@ -84,7 +85,11 @@ function create(): Renderer {
 
 export const ridges: Visualization = {
   id: "ridges",
-  name: "Ridgelines",
-  description: "The last few seconds of the spectrum as stacked ridges, like the cover of Unknown Pleasures.",
+  get name() {
+    return t("viz.ridges.name");
+  },
+  get description() {
+    return t("viz.ridges.description");
+  },
   create,
 };

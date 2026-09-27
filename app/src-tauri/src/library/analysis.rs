@@ -343,7 +343,7 @@ pub fn analyse_track(
         )
         .optional()?;
     let Some((folder, relative, start, end)) = file else {
-        return Ok(Err("The track is no longer in the library".into()));
+        return Ok(Err(crate::coded::gone(crate::coded::Gone::Track)));
     };
     let path = track_path(Path::new(&folder), &relative);
     // Readable until analysed.

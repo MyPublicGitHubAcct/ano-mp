@@ -42,7 +42,9 @@ remains of them is checking them in the app. A review of the repo
 on 2026-09-27 added a prioritised backlog: features users expect of any
 library player that the app lacks (F1–F21, §4.7), and hardening for
 security, robustness and maintenance (H1–H21, Phase 7). Their P1 items
-are part of Phase 7's exit.
+are part of Phase 7's exit. All of F1–F21 were built the same day (Phase
+6c), with H3's command permissions; what remains of them is checking
+them in the app.
 
 ## 1. Architecture
 
@@ -103,7 +105,7 @@ Why this split:
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 89 passing Catch2 tests | `core/tests` |
+| 99 passing Catch2 tests | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -116,8 +118,12 @@ Why this split:
 | Settings: typed `AppSettings` (display, playback, output, visualizer) stored under `app`, lenient reading, applied on save; TypeScript types generated with ts-rs and checked by `cargo test` | `app/src-tauri/src/settings.rs`, `app/src/lib/generated/settings.ts` |
 | Settings screen: library folders, sort rule editor, displayed fields, output device and buffer size, ReplayGain, visualizer, online sources | `app/src/lib/components/SettingsPage.svelte`, `app/src/lib/components/settings/` |
 | Optional features O1–O19 (Phase 6b), each switched in Settings › Features: file analysis, parts of files, loops, tempo and pitch, crossfeed, signal path in the core; analysis, history, radio, discovery, health, lyrics, preferences and the LAN remote in Rust; their views in the UI | `core/src/FileAnalyser.*`, `core/src/Crossfeed.*`, `app/src-tauri/src/{library,history,queue,remote}/`, `app/src/lib/components/` |
-| 5 frontend tests (`npm test`: frame decoding, key estimation) | `app/tests/` |
-| 300 passing `cargo test` tests (settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| Expected features F1–F21 (Phase 6c): playlists and smart playlists, favourites and ratings, moves kept, credits and compilations, substring and field search, user-data export and import, folder watching and rescans at launch | `app/src-tauri/src/library/`, `app/src-tauri/src/collection.rs`, migrations 007–009 |
+| Menus, Dock menu, menu-bar controls, mini player, files opened from the Finder, track-change notifications | `app/src-tauri/src/shell/`, `core/src/DockMenu*` |
+| Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
+| UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
+| 18 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast) | `app/tests/` |
+| 343 passing `cargo test` tests (playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -246,6 +252,11 @@ sets priorities rather than open questions.
    The rules in #6 apply to F1–F21 too: the user's files are never
    written, and the user's data lives in the library DB. Change a
    priority here with its date and reason.
+
+   All twenty-one features were built on 2026-09-27, whatever their
+   priority (Phase 6c); each item's **Decision** line in §4.7 says how,
+   and where it differs from the proposal. What remains is checking them
+   in the app (Phase 6c's exit).
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
@@ -625,16 +636,46 @@ in Phases 2–6, as noted.
     `files.user-selected.read-write` entitlement. It writes only the file
     the user names, never a library file.
   - F10 lands with it, or a moved file drops out of every playlist.
+  - **Decision:** built 2026-09-27. Migration 007 adds `playlists` and
+    `playlist_items` (with the tables F2, F3 and F17 need);
+    `library/playlists.rs` holds them, `collection.rs` the `playlists_*`
+    commands. Playlists sit in a sidebar section (rename in place, drop
+    tracks on one), every track menu has "Add to Playlist ▸" (a new one
+    from the selection, or an existing one), and the queue has "Save
+    Queue as Playlist". Import (Open With, a drop, or the File menu)
+    resolves an entry by its path, then by the longest path tail that
+    matches one library track, and lists what it didn't find. Export
+    writes UTF-8 M3U8 with paths relative to the file where it can. The
+    entitlement is now `files.user-selected.read-write`. A track removed
+    from the library leaves its playlists; a moved one stays (F10).
 - **F2 Smart playlists.** Saved rules over the DB: genre, year range,
   format, date added (O15), favourite or rating (F3), play count (O8).
   Built from fixed SQL fragments with every value bound, as
   `library/browse.rs` is. Results refresh after each scan.
+  - **Decision:** built 2026-09-27 as a playlist with `rules` (JSON) and
+    no items (`library/smart.rs`): all or any of genre, year range, format,
+    added within, favourite, rating at least, play count, not played for,
+    and artist, ordered by random (a stored seed, so the order holds until
+    reshuffled), date added, most or last played, or rating, with an
+    optional limit. Each condition is a fixed SQL fragment with its value
+    bound. It's evaluated when shown or played, so it's always current
+    rather than refreshed after a scan. The editor previews the matches as
+    the rules change (`playlists_preview`).
 - **F3 Favourites, then ratings.** A heart on tracks, albums and artists,
   shown in lists, with a Favourites view and a filter. Stored in the DB by
   id, never in the files. Ratings (0–5) follow in P2. They are seeded
   once from rating tags already in the files (ID3 `POPM`, Vorbis
   `RATING`/`FMPS_RATING`, MP4 `rate`), which `TagReader` reads, and
   never written back.
+  - **Decision:** built 2026-09-27, ratings included. Hearts on tracks,
+    albums and artists (`library/marks.rs`), shown in lists, on album and
+    artist pages, in the playing bar and in Get Info; a Favourites view,
+    and a favourites filter in the browser. Ratings are whole stars (a
+    Rating column, a "Rate ▸" menu, the stars in Get Info). `TagReader`
+    reads POPM (Windows Media Player's scale), `FMPS_RATING`, `RATING` and
+    MP4 `rate` into 1–100; the scanner rounds to stars and follows the
+    tags until the user rates the track, and a rating the user clears
+    stays cleared. Nothing is written back.
 - **F4 Multi-select, drag and drop.** Closes Phase 3's "no
   multi-select".
   - Shift- and ⌘-click and keyboard selection in `VirtualList.svelte`.
@@ -644,6 +685,15 @@ in Phases 2–6, as noted.
   - Dropping from Finder: a folder offers to become a library folder,
     and files play. Check that a bookmark can be made from a dropped URL
     in the sandbox.
+  - **Decision:** built 2026-09-27. `lib/selection.ts` is a pure
+    selection model (click, ⌘-click, shift-click, arrows with shift,
+    ⌘A), tested in `tests/selection.test.mjs`; `VirtualList` uses it in
+    the browser, search, queue, playlists and favourites. Menus act on the
+    selection. Dragging is pointer-based (`state/drag.svelte.ts`), since
+    Tauri's window takes HTML drag-and-drop for Finder drops: rows drag to
+    reorder the queue or a playlist, and onto a playlist or the queue in
+    the sidebar. From the Finder, files play and a folder is offered as a
+    library folder (`add_folder` makes its bookmark).
 - **F5 Open files from Finder.** `bundle.fileAssociations` for the
   supported types, handled through `RunEvent::Opened`.
   - A file outside every library folder plays without being added. The
@@ -651,6 +701,14 @@ in Phases 2–6, as noted.
     are library tracks today.
   - The sandbox grants the opened file for the session only, so an
     external item is dropped from the saved queue.
+  - **Decision:** built 2026-09-27. `bundle.fileAssociations` lists the
+    audio types and M3U/M3U8 (role Viewer, rank Alternate, so the app
+    never claims the default). `RunEvent::Opened` goes to
+    `shell::opened`: playlists import (F1), audio files queue and play. A
+    file in a library folder plays as its library track; any other is an
+    external item (`library/external.rs`: a negative id, tags read at
+    once, never in the DB), left out of the saved queue and of the
+    history.
 - **F6 Menu bar, shortcuts and Dock menu.** The app has only Tauri's
   default menu. Shortcuts exist only as page `keydown` handlers, which a
   focused text field swallows and nothing lists.
@@ -660,16 +718,43 @@ in Phases 2–6, as noted.
     sheet, logs from H9).
   - A Dock menu with transport and the current track.
   - Menu items call the same queue functions as the media keys.
+  - **Decision:** built 2026-09-27 (`shell/menu.rs`): File, Edit,
+    Controls, View, Window and Help menus. Controls has play/pause,
+    next (⌘→), previous (⌘←), volume (⌘↑/⌘↓), shuffle, repeat,
+    stop after this track, the sleep timer and "Go to Current Track"
+    (⌘L); View has the views, the queue, the visualizer, the mini player
+    and full screen; Help has the shortcuts sheet. Items are enabled and
+    checked from the queue's state. The Dock menu is the core's
+    `DockMenu` (`anomp_dock_menu_*`, AppKit behind the core's platform
+    rule), since Tauri has none: the current track, then play/pause,
+    next and previous. H9's logs aren't in Help yet.
 - **F7 Mini player and menu-bar controls.** A compact, optionally
   always-on-top second window reusing `NowPlayingBar.svelte`. An
   optional menu-bar (tray) item with transport and the current track.
   Needs H3's per-window permissions first.
+  - **Decision:** built 2026-09-27. The mini player is a second window
+    (`shell/mini.rs`, route `/mini`) with the playing bar in a compact
+    layout, optionally always on top. Its capability
+    (`capabilities/mini.json`) allows only the commands it uses: `build.rs`
+    now declares the app's commands (Tauri's app manifest) and writes the
+    main window's permission set from `generate_handler!`, so every
+    command needs a permission (H3's second half). The menu-bar item
+    (`shell/tray.rs`, a setting, off by default) shows the current track
+    and the transport.
 - **F8 First run and empty states.** A first launch shows how to add a
   folder (suggesting `~/Music`), says which online sources are on and
   what they send (the privacy policy's content, §8.1), and shows scan
   progress. Every empty view says what to do next. A folder whose
   bookmark doesn't resolve (drive unplugged, folder moved) shows as such
   in the sidebar with "Locate…", not only as a failed scan.
+  - **Decision:** built 2026-09-27. With no folders the main view is a
+    welcome page: add `~/Music` (suggested) or another folder, what each
+    online source sends and how to turn it off, and scan progress. Empty
+    views say what to do next. `library_folders` reports each folder's
+    availability; an unavailable one shows a warning in the sidebar and
+    settings with "Locate…" (`library_locate_folder`: the picked folder
+    replaces the path and bookmark, and the rescan keeps the tracks'
+    ids, as F10 does).
 - **F9 Keep the library in step with the disk.** Phase 2 records "no
   rescan at launch and no file watching yet".
   - P1: an incremental rescan of each folder at launch, in the
@@ -679,6 +764,14 @@ in Phases 2–6, as noted.
     It is debounced and per folder, only while the folder's bookmark is
     open, and behind a setting.
   - Mind H12: a watcher or scan must not download cloud placeholders.
+  - **Decision:** built 2026-09-27 (`library/watch.rs`), both behind
+    Settings › Library, both on by default. At launch every folder is
+    rescanned in the background, on half the scan threads at utility QoS.
+    While the app runs, `notify` (FSEvents) watches each folder, and a
+    change rescans that folder after 3 s of quiet (at most 30 s after the
+    first change). A folder is watched only while it's available. H12's
+    cloud placeholders are not handled yet: a rescan reads only changed
+    files, but a changed placeholder would be downloaded.
 - **F10 Keep the user's data when files move or are renamed.** A track's
   identity is its folder and path. A move or rename deletes the row, and
   with it anything keyed by the track (O15 notes this). This matters
@@ -690,6 +783,17 @@ in Phases 2–6, as noted.
     `album_art`) when the album is re-created with the same MBID, or the
     same album artist and title.
   - Check which foreign keys cascade today, and test moves across folders.
+  - **Decision:** built 2026-09-27 in `scanner::scan_folders`. All
+    folders being scanned are walked first; a missing track is matched to
+    a new file of the same size by mtime, recording MBID, or length
+    (±1 s) with title, artist and album, and the row moves to the new path
+    with its id, so everything keyed by the track stays. The scan report
+    counts moves. When an album or artist is deleted, the user's picks
+    (chosen links, cover, preferences, heart) go to `kept_albums` and
+    `kept_artists` and return when it's re-created with the same MBID, or
+    the same title and artist, for a year. A move between folders is
+    caught only when both are scanned together, as a launch or "Rescan
+    all" does.
 - **F11 Compilations and multiple artists.** Two known limits from Phase
   2.
   - Compilations tagged without an album artist split into one album per
@@ -701,35 +805,86 @@ in Phases 2–6, as noted.
     store credited artists in a new table for browse, artist pages and
     MusicBrainz matching. Keep the tag's text for display.
   - The migration updates the FTS triggers (migration 002's rule).
+  - **Decision:** built 2026-09-27. `TagReader` reads the compilation
+    flag and every artist value; `split_artists` also splits "A; B". Migration 008 adds `track_artists` (credited artists, in
+    order), `tracks.artist_credit` (the tag's text, shown), `compilation`
+    and `album_artist_tagged`, and updates the search triggers. Artist
+    browsing and artist pages go through the credits, so a duet is under
+    both. Compilations without an album artist, or one album title in a
+    folder with three or more track artists, group under "Various
+    Artists" (MusicBrainz's special artist). MusicBrainz matching still
+    uses the first credited artist.
 - **F12 Substring and field search.** Phase 3's known limit: words match
   only from their start. Add an FTS5 `trigram` index for substrings of
   three or more characters, sized against the 50,000-track benchmarks.
   Add field filters: `artist:`, `album:`, `genre:`, `year:1994`,
   `year:1990-1999`.
+  - **Decision:** built 2026-09-27. Migration 009 adds contentless
+    FTS5 `trigram` indexes (diacritics removed) beside the word indexes.
+    Each term matches a word start or, from three characters, a
+    substring; word-start matches rank first. Filters: `artist:`,
+    `album:`, `title:`, `composer:`, `genre:`, `year:1994`,
+    `year:1990-1999`, quoted for spaces. At 50,000 tracks the trigram
+    indexes add 10 MB to the DB (14 → 24 MB) and 2.1 s to a full scan's
+    inserts; searches take 2–12 ms, and 50 ms for a one- or two-letter
+    prefix matching 28% of tracks (words alone were 4 and 31 ms). Ranking
+    materialises the word matches (a CTE), which took "love" from
+    520 ms to 12 ms.
 - **F13 Sleep timer and stop after this track.** "Stop after this track"
   in the queue, and a timer (15, 30, 60 minutes, end of album) that
   fades out over the last 10 s through the engine volume. Tested against
   the fake engine in `queue/model.rs`.
+  - **Decision:** built 2026-09-27 in `queue/model.rs`, tested against
+    the fake engine: stop after the current track or after any queue
+    item; a sleep timer of 15, 30, 45, 60 or 90 minutes (any 1–1,440),
+    the end of the track or the end of the album. A timed sleep fades the
+    engine volume over the last 10 s, stops, and restores the volume.
 - **F14 Crossfade.** Off by default, and never between consecutive tracks
   of one album, which stay gapless. The engine mixes two readers during
   the fade, which touches the gapless hand-off, so design it with Phase
   1's hand-off design first. Tested offline through
   `getNextAudioBlock`.
+  - **Decision:** built 2026-09-27, off by default (Settings ›
+    Playback, 1–12 s). `PlayerEngine` mixes the current reader's tail
+    with the pre-opened next track's head at equal power; the hand-off
+    stays sample-exact, and the queue arms each next track with its fade
+    length. The queue never fades between consecutive tracks of an album
+    or a shuffle unit, nor does the engine across a sample-rate change or
+    while looping, and each side gives at most half its length. Tested
+    offline through `getNextAudioBlock`.
 - **F15 Equaliser.** A 10-band graphic EQ, or a few parametric bands,
   with presets and a preamp. It sits in `PlayerEngine` next to O11's
   crossfeed, after the per-track gain and before the volume. Written with
   JUCE's IIR filters, or in-house, with no GUI module. Presets can
   follow the output device (headphones or speakers).
+  - **Decision:** built 2026-09-27 in-house (`core/src/Equaliser.*`,
+    RBJ peaking biquads, no JUCE DSP module): ten bands from 31 Hz to
+    16 kHz, ±12 dB, a preamp, ten presets and custom, and a second
+    profile for headphones when it follows the output (O11's
+    `OutputRoute`). It runs after the visualizer's tap and before
+    crossfeed, and gains glide, so moving a slider doesn't click. Off and
+    flat, it's bypassed.
 - **F16 Track info panel.** A read-only "Get Info": every tag TagLib
   reports, the format, bitrate, sample rate and channels, the embedded
   pictures, the path with "Reveal in Finder" (the queue has it), and the
   MusicBrainz links. It shares the format facts with O10's signal path
   panel.
+  - **Decision:** built 2026-09-27. `anomp_read_file_info` returns
+    every field TagLib's property map has (and frames it can't map,
+    marked), the pictures, the tag types, and the decoder's format facts;
+    `library_track_details` adds the path, MBIDs and the part of the file.
+    Get Info (⌘I, the track menu) shows them with the heart and stars,
+    and "Show in Finder".
 - **F17 Resume where the user left off.** Phase 3's known limit: nothing
   is published to Now Playing after a relaunch until playback starts, so
   the media keys can't resume. Publish the restored queue, paused at its
   saved position. Also remember the position of long tracks (over 20
   minutes: audiobooks, DJ mixes, lectures) and resume there.
+  - **Decision:** built 2026-09-27. `media.rs` publishes the restored
+    queue's current item paused at its saved position, so the media keys
+    resume. Tracks of 20 minutes or more remember where they were left
+    (`track_positions`, unless within 30 s of either end) and start
+    there.
 - **F18 Accessibility, and a safe visualizer.**
   - A VoiceOver pass over the main views: list roles and labels, and a
     live region announcing track changes.
@@ -742,6 +897,17 @@ in Phases 2–6, as noted.
     (`app/src/lib/visualizer/renderers/`). Under reduced motion, calm
     them further or default to a still one. Show a photosensitivity note
     the first time the visualizer opens.
+  - **Decision:** built 2026-09-27. Lists are ARIA listboxes with
+    `aria-activedescendant` and a visible keyboard row; menus and submenus
+    work from the keyboard; a live region announces track changes and
+    results; a skip link jumps past the sidebar. Theme colours meet WCAG
+    AA in both themes (`tests/contrast.test.mjs`; the light theme's faint
+    colour was darkened, and text no longer uses it). Reduced motion stops
+    transitions. The visualizer has a flash guard (`visualizer/safety.ts`:
+    past three flashes a second the picture dims), a calm mode (no beat
+    pulses, slower movement; always on under reduced motion), and a
+    photosensitivity note the first time it opens. Larger text is left
+    to check in the app.
 - **F19 Localisation groundwork.** Every UI string is an English literal
   in a component, and Rust returns English error text. Move strings into
   a typed message catalogue (one JSON file per locale), and format
@@ -749,6 +915,16 @@ in Phases 2–6, as noted.
   some already). Rust errors the UI shows become codes with parameters.
   This is cheap now and costly later. Translations can wait until after
   the first release.
+  - **Decision:** built 2026-09-27. `lib/i18n` has a typed catalogue
+    (`en.json`, about 990 messages), `t`, plural messages through
+    `Intl.PluralRules`, and `Intl` number and date formatting; `npm run
+    check` rejects an unknown key. Rust errors the UI shows are coded
+    (`coded.rs`: `{code, params, message}`), and `errorText` shows the
+    catalogue's `error.<code>`; `tests/i18n.test.mjs` checks every code
+    has a message. English text Rust still produces: the native menus,
+    the Dock and menu-bar menus, notifications, source notes and
+    candidate labels in the metadata dialogs, health-report details, and
+    database or I/O errors.
 - **F20 Export and import the user's data.** One JSON file with what the
   user made: settings, sort rules, online source settings, the user's
   picks (`album_links` chosen by the user, `album_art`), the queue, and
@@ -756,8 +932,19 @@ in Phases 2–6, as noted.
   paths and MBIDs, so it imports into a fresh library after a scan. It
   covers a lost or corrupt DB (H10) and moving to another Mac, and later
   carries data to iOS (Phase 8).
+  - **Decision:** built 2026-09-27 (`library/transfer.rs`, Settings ›
+    Library): one JSON file (`ano-mp.user-data`, version 1) with the
+    settings (optional on import), and, keyed by folder-relative path and
+    MBIDs, favourites, ratings, plays, resume positions, preferences, the
+    user's album and artist picks, playlists and the queue. Import
+    matches what the library has and reports what it couldn't place.
 - **F21 Track-change notifications.** Opt-in, only while the window isn't
   focused, through `tauri-plugin-notification`, with the cover.
+  - **Decision:** built 2026-09-27, off by default (Settings ›
+    General): while no window of the app is in front, a track change
+    shows a notification with the cover. It goes through `notify-rust`
+    directly, since `tauri-plugin-notification` leaves out the image on
+    desktop.
 
 ## 5. Phased plan
 
@@ -2404,6 +2591,69 @@ file).
   (O6) and online lyrics stay out; user data keyed by track (plays,
   preferences, analysis) is lost when a file moves (F10).
 
+### Phase 6c — Expected features (F1–F21)
+
+Built 2026-09-27: all twenty-one features of §4.7, whatever their
+priority; each item's **Decision** line there says how. They follow #6's
+rules: nothing is written to the user's files, and what the user makes
+lives in the library DB, keyed by ids that rescans and moves keep.
+
+- **Core**: `TagReader` reads ratings, the compilation flag and every
+  artist value, and `anomp_read_file_info` returns a file's every tag
+  field, picture and format fact (F3, F11, F16); `PlayerEngine`
+  crossfades into the pre-opened next track (F14) and runs the
+  `Equaliser` (F15); `DockMenu` gives the Dock icon a menu (F6).
+- **Library**: migration 007 (playlists, favourites, ratings, resume
+  positions, kept picks), 008 (credited artists, compilations, the
+  search triggers over the credit) and 009 (trigram indexes). The
+  scanner scans folders together, moves rows for moved files, groups
+  compilations, keeps the user's picks for deleted albums and artists,
+  and seeds ratings; `playlists`, `smart`, `marks`, `info`, `external`,
+  `transfer` and `watch` are the features' library code.
+- **Queue**: stop after, the sleep timer and its fade, crossfade arming,
+  resume positions, external items, moving several items at once.
+- **Shell** (`app/src-tauri/src/shell/`): the menu bar, the Dock menu,
+  the menu-bar controls, the mini player (with its own capability),
+  files opened from the Finder, notifications. On macOS closing the main
+  window hides it and playback goes on.
+- **UI**: multi-select and dragging, playlists and their views, the smart
+  playlist editor, Favourites, hearts and stars, Get Info, the welcome
+  page and empty states, the sleep timer panel, the mini player, the
+  equaliser and General settings, the visualizer's safety, the message
+  catalogue.
+- **Tests**: 99 Catch2 tests (ratings, credits, file info, crossfade,
+  the equaliser, the Dock menu's C API), 343 `cargo test` tests and 18
+  frontend tests (selection, equaliser presets, flash guard, catalogue,
+  contrast). Benchmarks (release, 50,000 tracks): search as in F12; the
+  ids under a top node 199 ms, a folder's tree 115 ms (as before); track
+  infos for a 50,000-track queue 181 ms, up from 60 ms with Phase 6b's
+  shuffle units (a query per album), not these features.
+- **Exit (to check in the app)**: M3U8 round trips with another player
+  (Music, VLC), including legacy code pages; dragging within and between
+  lists; a folder dropped from the Finder becoming a library folder in a
+  sandboxed bundle; Open With and double-clicking an `.m3u8` in the
+  bundle; every menu item and shortcut, the Dock menu, the menu-bar item,
+  and the mini player on top of a full-screen app; the welcome page on a
+  fresh library; unplugging a drive, then "Locate…"; watching while files
+  are copied in, renamed and moved; a compilation and a duet in the
+  browser; crossfade by ear, including skipping during a fade; the
+  equaliser by ear and switching profiles with headphones; resuming an
+  audiobook and the media keys after a relaunch; VoiceOver over the main
+  views, and the layouts at larger text sizes; the flash guard on a
+  strobing track; export on one Mac and import on another after a scan;
+  notifications with covers.
+- **Closes known limits** of earlier phases: no rescan at launch or
+  watching (Phase 2), compilations and multiple artists (Phase 2), words
+  matched only from their start (Phase 3), no multi-select and the
+  context menu's keyboard use (Phase 3), nothing in Now Playing after a
+  relaunch (Phase 3), and user data lost when a file moves (Phase 6b).
+- **Known limits**: a move between folders is caught only when both are
+  scanned together; the watcher can download changed cloud placeholders
+  (H12); smart playlists offer a fixed set of conditions; ratings are
+  whole stars; crossfade doesn't cross a sample-rate change; the
+  catalogue is English only, and some text Rust produces is English
+  (F19's decision lists it); H9's logs aren't in the Help menu yet.
+
 ### Phase 7 — Hardening (macOS)
 - CI (GitHub Actions, macOS runner): CMake build + ctest, `cargo test`,
   frontend lint/type-check/tests, all through `scripts/check-all.py`
@@ -2471,6 +2721,12 @@ matches it.
     (`tauri_build::Attributes::app_manifest`), so a window gets only the
     commands it needs. This is required before a second window (F7), and
     before any remote-facing surface (O14).
+  - **Done 2026-09-27 (the command permissions, with F7):** `build.rs`
+    declares every app command in Tauri's app manifest and writes the
+    main window's permission set (`permissions/main-window.toml`, from
+    `generate_handler!` in `lib.rs`); the mini player's
+    (`permissions/mini-window.toml`) lists the commands it uses. The URL
+    opener's `https`-only rule is still to do.
 - **H4 Folder pictures on unsandboxed platforms.**
   `folder_art::is_relative_path` rejects `..` lexically, but a symlink
   inside a library folder can still point outside it. The macOS sandbox

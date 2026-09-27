@@ -4,6 +4,11 @@
   // screen and close along the top, and the track along the bottom. The
   // controls fade out while the pointer rests. If the settings say so, it
   // moves on to the next visualization every so often.
+  //
+  // The first time it opens, a note about flashing light comes first
+  // (PLAN.md F18), and nothing moves until it's read; calm mode can be
+  // turned on from there or from the controls.
+  import { t } from "$lib/i18n";
   import { player } from "$lib/state/player.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
   import { ui } from "$lib/state/ui.svelte";
@@ -48,17 +53,36 @@
 <section
   class="visualizer"
   class:idle
-  aria-label="Visualizer"
+  aria-label={t("bar.visualizer")}
   onpointermove={wake}
   onpointerdown={wake}
   onfocusin={wake}
   ondblclick={() => visualizer.setFullscreen(!visualizer.fullscreen)}
 >
-  <Visualizer id={chosen.id} />
+  {#if appSettings.current.window.visualizerNoteSeen}
+    <Visualizer id={chosen.id} />
+  {:else}
+    <div class="note" role="alertdialog" aria-labelledby="visualizer-note-title" aria-describedby="visualizer-note-text">
+      <h2 id="visualizer-note-title">{t("visualizer.noteTitle")}</h2>
+      <p id="visualizer-note-text">{t("visualizer.noteText")}</p>
+      <div class="note-actions">
+        <button
+          onclick={() =>
+            appSettings.save((next) => {
+              next.window.visualizerNoteSeen = true;
+              next.visualizer.calm = true;
+            })}>{t("visualizer.noteCalm")}</button
+        >
+        <button class="primary" onclick={() => appSettings.save((next) => (next.window.visualizerNoteSeen = true))}>
+          {t("visualizer.noteContinue")}
+        </button>
+      </div>
+    </div>
+  {/if}
 
   <div class="controls top">
     <select
-      aria-label="Visualization"
+      aria-label={t("vizOptions.visualization")}
       title={chosen.description}
       value={chosen.id}
       onchange={(event) => visualizer.choose(event.currentTarget.value)}
@@ -68,28 +92,36 @@
         <option value={option.id}>{option.name}</option>
       {/each}
     </select>
+    <button
+      class="calm"
+      aria-pressed={appSettings.visualizer.calm}
+      title={t("visualizer.calmHint")}
+      onclick={() => appSettings.save((next) => (next.visualizer.calm = !next.visualizer.calm))}
+    >
+      {t("visualizer.calm")}
+    </button>
     {#if chosen.id === "covers"}
-      <div class="segmented" role="group" aria-label="Covers from">
+      <div class="segmented" role="group" aria-label={t("vizOptions.coverWallShows")}>
         <button aria-pressed={visualizer.coverBasis === "year"} onclick={() => visualizer.setCoverBasis("year")}>
-          Same year
+          {t("visualizer.sameYear")}
         </button>
         <button aria-pressed={visualizer.coverBasis === "artist"} onclick={() => visualizer.setCoverBasis("artist")}>
-          Same artist
+          {t("visualizer.sameArtist")}
         </button>
       </div>
     {/if}
     <span class="spacer"></span>
     <button
       class="icon"
-      title={visualizer.fullscreen ? "Leave full screen (F)" : "Full screen (F)"}
-      aria-label={visualizer.fullscreen ? "Leave full screen" : "Full screen"}
+      title={`${t(visualizer.fullscreen ? "visualizer.leaveFullscreen" : "visualizer.fullscreen")} (F)`}
+      aria-label={t(visualizer.fullscreen ? "visualizer.leaveFullscreen" : "visualizer.fullscreen")}
       aria-pressed={visualizer.fullscreen}
       onclick={() => visualizer.setFullscreen(!visualizer.fullscreen)}
     >
       <Icon name="expand" />
     </button>
     {#if !visualizer.fullscreen}
-      <button class="icon" title="Close" aria-label="Close the visualizer" onclick={() => ui.back()}>
+      <button class="icon" title={t("dialog.close")} aria-label={t("bar.closeVisualizer")} onclick={() => ui.back()}>
         <Icon name="close" />
       </button>
     {/if}
@@ -100,16 +132,48 @@
       <p class="title">{item.title}</p>
       <p class="small">{[item.artist, item.album].filter(Boolean).join(" · ")}</p>
     {:else}
-      <p class="title">Not playing</p>
+      <p class="title">{t("bar.notPlaying")}</p>
     {/if}
     {#if visualizer.caption}<p class="small caption">{visualizer.caption}</p>{/if}
     {#if visualizer.fullscreen}
-      <p class="small hint">Space plays or pauses · V changes the visualization · Esc leaves full screen</p>
+      <p class="small hint">{t("visualizer.keys")}</p>
     {/if}
   </div>
 </section>
 
 <style>
+  .note {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    max-width: 34rem;
+    margin: auto;
+    color: #ececef;
+  }
+
+  .note h2 {
+    margin: 0;
+  }
+
+  .note p {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .note-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .calm[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+
   .visualizer {
     position: relative;
     height: 100%;

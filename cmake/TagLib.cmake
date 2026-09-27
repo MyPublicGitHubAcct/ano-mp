@@ -24,8 +24,9 @@ endblock()
 
 # TagLib's own target only declares include directories for installed builds.
 # Installed headers are flat, and include each other by bare name, so the
-# format folders the core reads format-specific frames from (ID3v2 SYLT in
-# MPEG, AIFF and WAV files) are listed too.
+# format folders the core reads format-specific frames from (ID3v2 SYLT and
+# POPM in MPEG, AIFF, WAV and FLAC files, MP4's rate) and names the kinds of
+# tag of (TagReader's readFileInfo) are listed too.
 target_include_directories(tag SYSTEM INTERFACE
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib>
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/toolkit>
@@ -35,6 +36,13 @@ target_include_directories(tag SYSTEM INTERFACE
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff>
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff/aiff>
     $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/riff/wav>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/flac>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/mp4>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/ogg>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/ogg/xiph>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/ape>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/wavpack>
+    $<BUILD_INTERFACE:${taglib_SOURCE_DIR}/taglib/asf>
     $<BUILD_INTERFACE:${taglib_BINARY_DIR}>)
 
 add_library(TagLib::tag ALIAS tag)

@@ -2,6 +2,7 @@
   // What track lists show besides the title (as columns when wide, under
   // the title when narrow), what an album's summary line says, and whether
   // Wikipedia's descriptions and biographies show.
+  import { t } from "$lib/i18n";
   import { ALBUM_FACTS, TRACK_COLUMNS, columnAvailable, columnText, textColumns } from "$lib/columns";
   import type { Track } from "$lib/api";
   import { appSettings } from "$lib/state/settings.svelte";
@@ -35,6 +36,8 @@
     movementName: null,
     movementNumber: null,
     rangeStart: 0,
+    favourite: true,
+    rating: 4,
   };
 
   const preview = $derived(
@@ -47,39 +50,36 @@
   );
 </script>
 
-<h3>Track lists</h3>
+<h3>{t("display.trackLists")}</h3>
 <div class="field stacked">
   <OrderedChoices
     options={TRACK_COLUMNS.filter((column) => columnAvailable(column.id, appSettings.current.features))}
     value={display.trackColumns}
     onchange={(columns) => appSettings.save((next) => (next.display.trackColumns = columns))}
-    label="Track list columns"
-    addLabel="Add a column…"
-    empty="Only the title"
+    label={t("display.columns")}
+    addLabel={t("display.addColumn")}
+    empty={t("display.onlyTitle")}
     disabled={appSettings.saving}
   />
-  <p class="hint">
-    Beside the title, in this order, when the list is wide enough; under it when it isn’t. The track number
-    leads the row and the length ends it, wherever they are in the list.
-  </p>
-  <p class="preview card" aria-label="Preview">
+  <p class="hint">{t("display.columnsHint")}</p>
+  <p class="preview card" aria-label={t("display.preview")}>
     {#each preview as text, index (index)}<span class:title={text === SAMPLE.title}>{text}</span>{/each}
   </p>
 </div>
 
-<h3>Album pages</h3>
+<h3>{t("display.albumPages")}</h3>
 <div class="field stacked">
-  <span class="label">Release facts</span>
+  <span class="label">{t("display.releaseFacts")}</span>
   <OrderedChoices
     options={ALBUM_FACTS}
     value={display.albumFacts}
     onchange={(facts) => appSettings.save((next) => (next.display.albumFacts = facts))}
-    label="Album facts"
-    addLabel="Add a fact…"
-    empty="None"
+    label={t("display.albumFacts")}
+    addLabel={t("display.addFact")}
+    empty={t("display.none")}
     disabled={appSettings.saving}
   />
-  <p class="hint">The line under an album’s title, from the album details source it’s matched on.</p>
+  <p class="hint">{t("display.factsHint")}</p>
 </div>
 <label class="switch">
   <input
@@ -92,13 +92,13 @@
     }}
   />
   <span>
-    <span class="title">Show album descriptions and artist biographies</span>
-    <span class="hint">From Wikipedia, when the online sources find them.</span>
+    <span class="title">{t("display.descriptions")}</span>
+    <span class="hint">{t("display.descriptionsHint")}</span>
   </span>
 </label>
 
 <div class="actions">
-  <button onclick={() => appSettings.reset("display")} disabled={appSettings.saving}>Reset to defaults</button>
+  <button onclick={() => appSettings.reset("display")} disabled={appSettings.saving}>{t("settings.reset")}</button>
 </div>
 
 <style>

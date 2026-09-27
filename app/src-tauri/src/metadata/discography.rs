@@ -98,7 +98,7 @@ pub fn discography(
             |row| row.get(0),
         )
         .optional()?
-        .ok_or_else(|| Error::Invalid("The artist is no longer in the library".into()))?;
+        .ok_or_else(|| Error::Invalid(crate::coded::gone(crate::coded::Gone::Artist)))?;
     let link = artists::artist_link(conn, artist_id, SourceId::MusicBrainz)?;
     let Some(mbid) = link
         .as_ref()

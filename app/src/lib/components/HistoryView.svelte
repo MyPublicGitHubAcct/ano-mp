@@ -5,7 +5,8 @@
   // together, each playable again (O16).
   import { untrack } from "svelte";
   import { features as api, queue, type RecentEntry, type TopKind, type TopPlayed } from "$lib/api";
-  import { formatDay, plural } from "$lib/format";
+  import { formatDay } from "$lib/format";
+  import { count, t } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -14,9 +15,9 @@
 
   const f = $derived(features.on);
   const KINDS: { id: TopKind; name: string }[] = [
-    { id: "tracks", name: "Tracks" },
-    { id: "albums", name: "Albums" },
-    { id: "artists", name: "Artists" },
+    { id: "tracks", name: t("history.tracks") },
+    { id: "albums", name: t("history.albums") },
+    { id: "artists", name: t("history.artists") },
   ];
 
   const today = new Date();
@@ -75,20 +76,20 @@
 </script>
 
 <section class="history" aria-labelledby="history-heading">
-  <h1 id="history-heading">History</h1>
+  <h1 id="history-heading">{t("history.title")}</h1>
 
   {#if !f.listeningHistory}
     <p class="muted">
-      The listening history is off. Turn it on in
-      <button class="link" onclick={() => ui.showSettings("features")}>Settings › Features</button>.
+      {t("history.off")}
+      <button class="link" onclick={() => ui.showSettings("features")}>{t("health.settingsFeatures")}</button>.
     </p>
   {/if}
 
   {#if f.listeningHistory && f.topPlayed}
     <div class="top-head">
-      <h2>Top 20 of {periodName}</h2>
+      <h2>{t("history.top", { period: periodName })}</h2>
       <div class="controls">
-        <div class="segmented" role="radiogroup" aria-label="What to count">
+        <div class="segmented" role="radiogroup" aria-label={t("history.whatToCount")}>
           {#each KINDS as option (option.id)}
             <button role="radio" aria-checked={kind === option.id} class:on={kind === option.id} onclick={() => (kind = option.id)}>
               {option.name}
@@ -96,25 +97,25 @@
           {/each}
         </div>
         <select
-          aria-label="Period"
+          aria-label={t("history.period")}
           value={month === null ? "year" : "month"}
           onchange={(event) => (month = event.currentTarget.value === "year" ? null : today.getMonth() + 1)}
         >
-          <option value="year">Year</option>
-          <option value="month">Month</option>
+          <option value="year">{t("history.year")}</option>
+          <option value="month">{t("history.month")}</option>
         </select>
-        <button class="icon" aria-label="Earlier" title="Earlier" disabled={!canStep(-1)} onclick={() => step(-1)}>‹</button>
-        <button class="icon" aria-label="Later" title="Later" disabled={!canStep(1)} onclick={() => step(1)}>›</button>
+        <button class="icon" aria-label={t("history.earlier")} title={t("history.earlier")} disabled={!canStep(-1)} onclick={() => step(-1)}>‹</button>
+        <button class="icon" aria-label={t("history.later")} title={t("history.later")} disabled={!canStep(1)} onclick={() => step(1)}>›</button>
         <button class="primary" disabled={!top || top.entries.length === 0} onclick={playThese}>
-          <Icon name="play" /> Play these
+          <Icon name="play" /> {t("history.playThese")}
         </button>
       </div>
     </div>
     {#if top}
       {#if top.entries.length === 0}
-        <p class="muted">Nothing played in {periodName}.</p>
+        <p class="muted">{t("history.nothingIn", { period: periodName })}</p>
       {:else}
-        <p class="muted small">{plural(top.plays, "play")} in {periodName}.</p>
+        <p class="muted small">{t("history.playsIn", { plays: count("count.plays", top.plays), period: periodName })}</p>
         <ol class="top">
           {#each top.entries as entry, index (entry.id)}
             <li>
@@ -123,8 +124,8 @@
                 <span class="name">{entry.title}</span>
                 {#if entry.subtitle}<span class="muted small">{entry.subtitle}</span>{/if}
               </span>
-              <span class="muted small">{plural(entry.plays, "play")}</span>
-              <button class="icon" title="Play" aria-label="Play {entry.title}" onclick={() => attempt(() => queue.play(entry.trackIds, 0))}>
+              <span class="muted small">{count("count.plays", entry.plays)}</span>
+              <button class="icon" title={t("menu.play")} aria-label={t("library.playName", { name: entry.title })} onclick={() => attempt(() => queue.play(entry.trackIds, 0))}>
                 <Icon name="play" />
               </button>
             </li>
@@ -135,9 +136,9 @@
   {/if}
 
   {#if f.listeningHistory && f.recentlyPlayed && recent}
-    <h2>Recently played</h2>
+    <h2>{t("history.recent")}</h2>
     {#if recent.length === 0}
-      <p class="muted">Nothing yet: a track counts once half of it (or four minutes) has played.</p>
+      <p class="muted">{t("history.nothingYet")}</p>
     {:else}
       <ul class="recent">
         {#each recent as entry (entry.playedAt)}
@@ -147,16 +148,16 @@
               {#if entry.album}
                 <span class="name">{entry.album.title}</span>
                 <span class="muted small">
-                  {entry.album.artist ?? ""}{entry.tracks.length > 1
-                    ? ` · ${entry.tracks.length} tracks`
-                    : ` · ${entry.tracks[0].title}`}
+                  {entry.album.artist ?? ""} · {entry.tracks.length > 1
+                    ? count("count.tracks", entry.tracks.length)
+                    : entry.tracks[0].title}
                 </span>
               {:else}
                 <span class="name">{entry.tracks[0].title}</span>
                 <span class="muted small">{entry.tracks[0].artist ?? ""}</span>
               {/if}
             </span>
-            <button class="icon" title="Play again" aria-label="Play again" onclick={() => playEntry(entry)}>
+            <button class="icon" title={t("history.playAgain")} aria-label={t("history.playAgain")} onclick={() => playEntry(entry)}>
               <Icon name="play" />
             </button>
           </li>

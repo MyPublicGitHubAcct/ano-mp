@@ -2,7 +2,12 @@
   // Search results for `library.query`, fetched 150 ms after typing stops,
   // grouped into artists, albums and tracks. An artist opens their page; an
   // album opens in the browser (under a rule that fits), or plays; a track
-  // plays its album from that track.
+  // plays its album from that track. Words match anywhere in a field from
+  // three letters (PLAN.md F12), and filters narrow it: `artist:`, `album:`,
+  // `title:`, `genre:`, `year:1994` or `year:1990-1999`.
+  //
+  // ⌘-click (Ctrl elsewhere) and Shift-click select several tracks, which
+  // the menu then acts on, and tracks drag onto playlists (F4).
   import { untrack } from "svelte";
   import {
     library as api,
@@ -13,25 +18,31 @@
     type SearchResults,
     type Track,
   } from "$lib/api";
-  import { albumFeatureItems, trackFeatureItems } from "$lib/featureMenu";
-  import { fileName, plural } from "$lib/format";
+  import { albumFeatureItems } from "$lib/featureMenu";
+  import { fileName } from "$lib/format";
+  import { count, t } from "$lib/i18n";
+  import { click, emptySelection, rowsFor, type Selection } from "$lib/selection";
+  import { collection } from "$lib/state/collection.svelte";
+  import { drag } from "$lib/state/drag.svelte";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
+  import { dragLabel, playlistItems, trackMenu } from "$lib/trackMenu";
   import Art from "./Art.svelte";
-  import Icon from "./Icon.svelte";
+  import Heart from "./Heart.svelte";
   import TrackText from "./TrackText.svelte";
 
   const FIRST = { artists: 6, albums: 12, tracks: 50 };
   const MORE = 50;
 
   let results = $state.raw<SearchResults | null>(null);
+  let selection = $state<Selection>(emptySelection);
   let request = 0;
 
   $effect(() => {
     const query = library.query.trim();
-    void library.version;
+    void [library.version, collection.version];
     const current = ++request;
     const timer = setTimeout(
       () =>
@@ -52,6 +63,7 @@
             albums: albums.albums,
             albumTotal: albums.albumTotal,
           };
+          selection = emptySelection;
         }),
       150,
     );
@@ -103,65 +115,107 @@
         : queue.play([track.id], 0),
     );
 
-  function trackMenu(event: MouseEvent, track: Track) {
-    const items: MenuItem[] = [
-      { label: "Play", action: () => playTrack(track) },
-      { label: "Play next", action: () => attempt(() => queue.add([track.id], true)) },
-      { label: "Add to queue", action: () => attempt(() => queue.add([track.id], false)) },
-    ];
-    if (track.artistId !== null && track.artist !== null) {
-      const artist = { id: track.artistId, name: track.artist };
-      items.push({ label: "Go to artist", action: () => showArtist(artist) });
+  const selectedTracks = (index: number) =>
+    rowsFor(selection, index)
+      .map((row) => results?.tracks[row])
+      .filter((track) => track !== undefined);
+
+  function openTrackMenu(event: MouseEvent, index: number) {
+    if (!selection.rows.has(index)) selection = click(selection, index);
+    const tracks = selectedTracks(index);
+    const one = tracks.length === 1 ? tracks[0] : null;
+    ui.openMenu(event, trackMenu(tracks, one ? () => playTrack(one) : undefined));
+  }
+
+  function trackClick(event: MouseEvent, index: number, track: Track) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      selection = click(selection, index, { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey });
+    } else {
+      selection = click(selection, index);
+      playTrack(track);
     }
-    items.push(...trackFeatureItems({ id: track.id, title: track.title ?? fileName(track.path) }));
-    ui.openMenu(event, items);
   }
 
   function albumMenu(event: MouseEvent, album: AlbumHit) {
+    const ids = () => api.nodeTrackIds(albumRule, [album.id], true);
     const items: MenuItem[] = [
-      { label: "Play", action: () => playAlbum(album) },
-      { label: "Play next", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, true)) },
-      { label: "Add to queue", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, false)) },
+      { label: t("menu.play"), action: () => playAlbum(album) },
+      { label: t("menu.playNext"), action: () => attempt(() => queue.addNode(albumRule, [album.id], true, true)) },
+      { label: t("menu.addToQueue"), action: () => attempt(() => queue.addNode(albumRule, [album.id], true, false)) },
+      { label: t("menu.addToPlaylist"), items: playlistItems(ids) },
+      { label: t("heart.addShort"), action: () => collection.setFavourite("album", [album.id], true) },
     ];
     if (album.albumArtistId !== null && album.albumArtist !== null) {
       const artist = { id: album.albumArtistId, name: album.albumArtist };
-      items.push({ label: "Go to artist", action: () => showArtist(artist) });
+      items.push({ label: t("menu.goToArtist"), action: () => showArtist(artist) });
     }
     const ref = { id: album.id, title: album.title };
     items.push(
-      { label: "Find details…", action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
-      { label: "Choose cover…", action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
+      { separator: true },
+      { label: t("menu.findDetails"), action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
+      { label: t("menu.chooseCover"), action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
       ...albumFeatureItems(ref),
     );
     ui.openMenu(event, items);
   }
+
+  function artistMenu(event: MouseEvent, artist: ArtistHit) {
+    ui.openMenu(event, [
+      { label: t("menu.play"), action: () => playArtist(artist) },
+      { label: t("menu.goToArtist"), action: () => showArtist(artist) },
+      { label: t("heart.addShort"), action: () => collection.setFavourite("artist", [artist.id], true) },
+    ]);
+  }
+
+  function press(event: PointerEvent, index: number) {
+    drag.press(event, () => {
+      const tracks = selectedTracks(index);
+      if (tracks.length === 0) return null;
+      const ids = tracks.map((track) => track.id);
+      return {
+        payload: { kind: "tracks", trackIds: async () => ids },
+        label: tracks.length === 1 ? (tracks[0].title ?? fileName(tracks[0].path)) : dragLabel(tracks.length),
+      };
+    });
+  }
+
+  $effect(() => {
+    ui.selectedTracks = () => selectedTracks(selection.focus);
+    return () => (ui.selectedTracks = null);
+  });
 </script>
 
 <section class="results" aria-live="polite">
   {#if results === null}
-    <p class="muted status">Searching…</p>
+    <p class="muted status">{t("search.searching")}</p>
   {:else if results.artistTotal + results.albumTotal + results.trackTotal === 0}
-    <p class="muted status">No results for “{library.query.trim()}”.</p>
+    <p class="muted status">{t("search.none", { query: library.query.trim() })}</p>
+    <p class="muted hint">{t("search.hint")}</p>
   {:else}
     {#if results.artistTotal > 0}
-      <h3>Artists <span class="muted">{results.artistTotal}</span></h3>
+      <h3>{t("search.artists")} <span class="muted">{results.artistTotal}</span></h3>
       <ul class="chips">
         {#each results.artists as artist (artist.id)}
           <li>
-            <button class="chip" onclick={() => showArtist(artist)} ondblclick={() => playArtist(artist)}>
+            <button
+              class="chip"
+              onclick={() => showArtist(artist)}
+              ondblclick={() => playArtist(artist)}
+              oncontextmenu={(event) => artistMenu(event, artist)}
+            >
               <span class="name">{artist.name}</span>
-              <span class="muted small">{plural(artist.trackCount, "track")}</span>
+              <span class="muted small">{count("count.tracks", artist.trackCount)}</span>
             </button>
           </li>
         {/each}
       </ul>
       {#if results.artists.length < results.artistTotal}
-        <button class="link" onclick={() => more("artists")}>More artists</button>
+        <button class="link" onclick={() => more("artists")}>{t("search.moreArtists")}</button>
       {/if}
     {/if}
 
     {#if results.albumTotal > 0}
-      <h3>Albums <span class="muted">{results.albumTotal}</span></h3>
+      <h3>{t("search.albums")} <span class="muted">{results.albumTotal}</span></h3>
       <ul class="albums">
         {#each results.albums as album (album.id)}
           <li>
@@ -181,29 +235,33 @@
         {/each}
       </ul>
       {#if results.albums.length < results.albumTotal}
-        <button class="link" onclick={() => more("albums")}>More albums</button>
+        <button class="link" onclick={() => more("albums")}>{t("search.moreAlbums")}</button>
       {/if}
     {/if}
 
     {#if results.trackTotal > 0}
-      <h3>Tracks <span class="muted">{results.trackTotal}</span></h3>
-      <ul class="tracks">
-        {#each results.tracks as track (track.id)}
-          <li>
+      <h3>{t("search.tracks")} <span class="muted">{results.trackTotal}</span></h3>
+      <ul class="tracks" aria-label={t("search.tracks")}>
+        {#each results.tracks as track, index (track.id)}
+          {@const name = track.title ?? fileName(track.path)}
+          <li class="track-row" class:selected={selection.rows.has(index)}>
             <button
               class="track"
+              aria-pressed={selection.rows.size > 1 ? selection.rows.has(index) : undefined}
               class:playing={player.currentItem?.trackId === track.id}
-              onclick={() => playTrack(track)}
-              oncontextmenu={(event) => trackMenu(event, track)}
+              onclick={(event) => trackClick(event, index, track)}
+              oncontextmenu={(event) => openTrackMenu(event, index)}
+              onpointerdown={(event) => press(event, index)}
             >
               <Art albumId={track.albumId} trackId={track.id} size="2.25rem" />
               <TrackText {track} />
             </button>
+            <Heart on={track.favourite} label={name} onchange={(on) => collection.setFavourite("track", [track.id], on)} />
           </li>
         {/each}
       </ul>
       {#if results.tracks.length < results.trackTotal}
-        <button class="link" onclick={() => more("tracks")}>More tracks</button>
+        <button class="link" onclick={() => more("tracks")}>{t("search.moreTracks")}</button>
       {/if}
     {/if}
   {/if}
@@ -285,8 +343,23 @@
     border-radius: 6px;
   }
 
-  .track:hover {
+  .track-row {
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    padding-right: 0.25rem;
+  }
+
+  .track-row:hover {
     background: var(--hover);
+  }
+
+  .track-row.selected {
+    background: var(--selected);
+  }
+
+  .hint {
+    max-width: 40rem;
   }
 
   .name,

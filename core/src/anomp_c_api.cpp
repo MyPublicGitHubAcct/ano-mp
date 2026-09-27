@@ -1,11 +1,13 @@
 #include "anomp/anomp.h"
 #include "AudioEngine.h"
+#include "DockMenu.h"
 #include "FileAnalyser.h"
 #include "FolderAccess.h"
 #include "FormatRegistry.h"
 #include "MediaControls.h"
 #include "TagReader.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -32,7 +34,33 @@ struct TagsHandle : anomp_tags
         std::string lyrics, syncedLyrics, cueSheet;
         std::vector<std::string> chapterTitles;
         std::vector<anomp_chapter> chapters;
+        std::string artists;
     } owned;
+};
+
+/** Owns the storage behind anomp_file_info's pointers. */
+struct FileInfoHandle : anomp_file_info
+{
+    struct
+    {
+        std::vector<std::pair<std::string, std::string>> fieldText;
+        std::vector<anomp_tag_field> fields;
+        struct PictureText
+        {
+            std::string type, mimeType, description;
+            juce::MemoryBlock data;
+        };
+        std::vector<PictureText> pictureData;
+        std::vector<anomp_picture> pictures;
+        std::string tagTypes;
+    } owned;
+};
+
+struct anomp_dock_menu
+{
+    anomp_menu_callback callback = nullptr;
+    void* userData = nullptr;
+    std::unique_ptr<anomp::DockMenu> menu; // Declared last, so destroyed first.
 };
 
 /** Owns the arrays behind the public struct's pointers. */
@@ -208,6 +236,7 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
         handle->owned.lyrics = tags.lyrics.toStdString();
         handle->owned.syncedLyrics = tags.syncedLyrics.toStdString();
         handle->owned.cueSheet = tags.cueSheet.toStdString();
+        handle->owned.artists = tags.artists.toStdString();
         for (const auto& chapter : tags.chapters)
             handle->owned.chapterTitles.push_back (chapter.title.toStdString());
 
@@ -258,6 +287,9 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
                                                 handle->owned.chapterTitles[static_cast<size_t> (i)].c_str() });
         handle->chapter_count = static_cast<int> (handle->owned.chapters.size());
         handle->chapters = handle->owned.chapters.empty() ? nullptr : handle->owned.chapters.data();
+        handle->rating = juce::jlimit (0, 100, tags.rating);
+        handle->compilation = tags.compilation ? 1 : 0;
+        handle->artists = handle->owned.artists.c_str();
         return handle.release();
     }
     catch (...)
@@ -268,6 +300,67 @@ extern "C" anomp_tags* anomp_read_tags (const char* path, int flags, char* error
 }
 
 extern "C" void anomp_tags_free (anomp_tags* tags) { delete static_cast<TagsHandle*> (tags); }
+
+extern "C" anomp_file_info* anomp_read_file_info (const char* path, char* error, size_t errorSize)
+{
+    try
+    {
+        juce::String message;
+        anomp::FileInfo info;
+
+        if (path == nullptr)
+            message = "Null path";
+        else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
+            message = "Path is not absolute: " + text;
+        else
+            message = anomp::readFileInfo (juce::File (text), registry().manager(), info);
+
+        copyUtf8 (message, error, errorSize);
+        if (message.isNotEmpty())
+            return nullptr;
+
+        auto handle = std::make_unique<FileInfoHandle>();
+        auto& owned = handle->owned;
+        for (const auto& [key, value] : info.fields)
+            owned.fieldText.emplace_back (key.toStdString(), value.toStdString());
+        for (auto& picture : info.pictures)
+            owned.pictureData.push_back ({ picture.type.toStdString(), picture.mimeType.toStdString(),
+                                           picture.description.toStdString(), std::move (picture.data) });
+        owned.tagTypes = info.tagTypes.joinIntoString (", ").toStdString();
+
+        // Final now, so pointers into them stay valid until anomp_file_info_free.
+        for (const auto& [key, value] : owned.fieldText)
+            owned.fields.push_back ({ key.c_str(), value.c_str() });
+        for (const auto& picture : owned.pictureData)
+            owned.pictures.push_back (
+                { picture.type.c_str(), picture.mimeType.c_str(), picture.description.c_str(),
+                  picture.data.isEmpty() ? nullptr : static_cast<const unsigned char*> (picture.data.getData()),
+                  picture.data.getSize() });
+
+        handle->field_count = static_cast<int> (owned.fields.size());
+        handle->fields = owned.fields.empty() ? nullptr : owned.fields.data();
+        handle->picture_count = static_cast<int> (owned.pictures.size());
+        handle->pictures = owned.pictures.empty() ? nullptr : owned.pictures.data();
+        handle->tag_types = owned.tagTypes.c_str();
+        std::memset (handle->codec, 0, sizeof (handle->codec));
+        copyUtf8 (info.codec, handle->codec, sizeof (handle->codec));
+        handle->lossless = info.lossless ? 1 : 0;
+        handle->bits_per_sample = info.bitsPerSample;
+        handle->bitrate_kbps = info.bitrateKbps;
+        handle->sample_rate = info.sampleRate;
+        handle->channels = info.channels;
+        handle->duration = info.durationSeconds;
+        handle->file_size = info.fileSize;
+        return handle.release();
+    }
+    catch (...)
+    {
+        copyUtf8 ("Cannot read the file", error, errorSize);
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_file_info_free (anomp_file_info* info) { delete static_cast<FileInfoHandle*> (info); }
 
 extern "C" anomp_file_analysis* anomp_analyse_file (const char* path,
                                                     double start,
@@ -549,7 +642,7 @@ extern "C" int anomp_engine_set_track_gain (anomp_engine* engine, const char* pa
 
 extern "C" anomp_track_options anomp_track_options_default (double gain)
 {
-    return anomp_track_options { gain, 0.0, 0.0, -1.0, -1.0 };
+    return anomp_track_options { gain, 0.0, 0.0, -1.0, -1.0, 0.0 };
 }
 
 namespace
@@ -558,7 +651,12 @@ anomp::PlayerEngine::TrackOptions toTrackOptions (const anomp_track_options* opt
 {
     if (options == nullptr)
         return {};
-    return { static_cast<float> (options->gain), options->start, options->end, options->skip_from, options->skip_to };
+    return { static_cast<float> (options->gain),
+             options->start,
+             options->end,
+             options->skip_from,
+             options->skip_to,
+             std::isfinite (options->crossfade) ? juce::jlimit (0.0, ANOMP_MAX_CROSSFADE, options->crossfade) : 0.0 };
 }
 } // namespace
 
@@ -643,6 +741,32 @@ extern "C" int anomp_engine_set_crossfeed (anomp_engine* engine, int level)
     return 1;
 }
 
+extern "C" int anomp_engine_set_equaliser (anomp_engine* engine, const double* gainsDb, double preampDb)
+{
+    static_assert (ANOMP_EQ_BANDS == anomp::Equaliser::numBands);
+    if (engine == nullptr)
+        return 0;
+
+    anomp::Equaliser::Gains gains {};
+    if (gainsDb != nullptr)
+    {
+        const auto inRange = [] (double db)
+        {
+            return std::isfinite (db) && std::abs (db) <= ANOMP_EQ_MAX_GAIN;
+        };
+        if (! inRange (preampDb))
+            return 0;
+        for (size_t band = 0; band < gains.size(); ++band)
+        {
+            if (! inRange (gainsDb[band]))
+                return 0;
+            gains[band] = gainsDb[band];
+        }
+    }
+    engine->engine.player().setEqualiser (gainsDb != nullptr, gains, gainsDb != nullptr ? preampDb : 0.0);
+    return 1;
+}
+
 extern "C" int anomp_engine_output_is_headphones (anomp_engine* engine)
 {
     if (engine == nullptr)
@@ -684,6 +808,8 @@ extern "C" int anomp_engine_signal_path (anomp_engine* engine, anomp_signal_path
     path->volume = engine->engine.player().getVolume();
     path->device_sample_rate = hasDevice ? device.sampleRate : 0.0;
     path->device_buffer_size = hasDevice ? device.bufferSize : 0;
+    path->equaliser = info.equaliser ? 1 : 0;
+    path->crossfade = info.crossfade;
     return 1;
 }
 
@@ -800,6 +926,64 @@ extern "C" int anomp_engine_set_analysis_callback (anomp_engine* engine,
     {
         return 0;
     }
+}
+
+extern "C" int anomp_dock_menu_supported (void) { return anomp::DockMenu::isSupported() ? 1 : 0; }
+
+namespace
+{
+/** One Dock menu at a time: the OS has one per app. */
+std::atomic<bool> dockMenuExists { false };
+} // namespace
+
+extern "C" anomp_dock_menu* anomp_dock_menu_create (anomp_menu_callback callback, void* userData)
+{
+    if (dockMenuExists.exchange (true))
+        return nullptr;
+    try
+    {
+        auto handle = std::make_unique<anomp_dock_menu>();
+        handle->callback = callback;
+        handle->userData = userData;
+        auto* raw = handle.get();
+        handle->menu = std::make_unique<anomp::DockMenu> (
+            [raw] (int id)
+            {
+                if (raw->callback != nullptr)
+                    raw->callback (id, raw->userData);
+            });
+        return handle.release();
+    }
+    catch (...)
+    {
+        dockMenuExists = false;
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_dock_menu_destroy (anomp_dock_menu* menu)
+{
+    if (menu == nullptr)
+        return;
+    delete menu;
+    dockMenuExists = false;
+}
+
+extern "C" void anomp_dock_menu_set_items (anomp_dock_menu* menu, const anomp_menu_item* items, int count)
+{
+    if (menu == nullptr)
+        return;
+    std::vector<anomp::DockMenu::Item> copied;
+    for (int i = 0; items != nullptr && i < count; ++i)
+        copied.push_back ({ items[i].id,
+                            items[i].title != nullptr ? juce::String::fromUTF8 (items[i].title) : juce::String(),
+                            items[i].enabled != 0, items[i].checked != 0 });
+    menu->menu->setItems (std::move (copied));
+}
+
+extern "C" int anomp_dock_menu_perform (anomp_dock_menu* menu, int id)
+{
+    return menu != nullptr && menu->menu->choose (id) ? 1 : 0;
 }
 
 extern "C" int anomp_media_controls_supported (void) { return anomp::MediaControls::isSupported() ? 1 : 0; }

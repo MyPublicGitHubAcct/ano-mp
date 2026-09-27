@@ -8,8 +8,9 @@
   import { untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { metadata, type Discography, type ReleaseGroupEntry } from "$lib/api";
-  import { formatDate, plural } from "$lib/format";
-  import { bySection } from "$lib/releases";
+  import { formatDate } from "$lib/format";
+  import { count, errorText, t } from "$lib/i18n";
+  import { bySection, sectionName } from "$lib/releases";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
@@ -52,7 +53,7 @@
       if (current !== request) return;
       // Keep what was shown if checking again failed.
       if (!refresh) discography = null;
-      error = String(failure);
+      error = errorText(failure);
     } finally {
       if (current === request) loading = false;
     }
@@ -62,10 +63,9 @@
 
   function summary(found: Discography) {
     const missing = found.missing.length;
-    const listed = found.listed.toLocaleString();
-    if (missing === 0) return `Your library has all ${plural(found.listed, "release")} MusicBrainz lists.`;
-    const lacks = `${missing.toLocaleString()} of the ${listed} releases MusicBrainz lists aren’t in your library`;
-    return found.inLibrary > 0 ? `${lacks}; ${found.inLibrary.toLocaleString()} are.` : `${lacks}.`;
+    if (missing === 0) return count("discography.hasAll", found.listed);
+    const lacks = t("discography.lacks", { missing, listed: found.listed, count: missing });
+    return found.inLibrary > 0 ? t("discography.lacksSome", { lacks, count: found.inLibrary }) : `${lacks}.`;
   }
 
   function toggle(section: string) {
@@ -102,14 +102,14 @@
   }
 </script>
 
-<section class="discography-page" aria-label="{artist?.name ?? 'Artist'}: not in your library">
+<section class="discography-page" aria-label={t("discography.label", { name: artist?.name ?? t("column.artist") })}>
   <header class="hero">
     <div class="identity">
-      <p class="kicker muted small">Not in your library</p>
+      <p class="kicker muted small">{t("discography.kicker")}</p>
       <h1>{artist?.name ?? ""}</h1>
       <p class="muted small" aria-live="polite">
         {#if loading}
-          {discography ? "Checking MusicBrainz…" : "Fetching the discography from MusicBrainz…"}
+          {t(discography ? "discography.checking" : "discography.fetching")}
         {:else if discography}
           {summary(discography)}
         {/if}
@@ -117,9 +117,9 @@
     </div>
     <div class="actions">
       <button onclick={() => artist && load(artist.id, true)} disabled={loading || !artist}>
-        <Icon name="refresh" /> Check again
+        <Icon name="refresh" /> {t("discography.checkAgain")}
       </button>
-      <button class="icon" title="Back" aria-label="Back" onclick={() => ui.back()}><Icon name="close" /></button>
+      <button class="icon" title={t("header.back")} aria-label={t("header.back")} onclick={() => ui.back()}><Icon name="close" /></button>
     </div>
   </header>
 
@@ -134,14 +134,14 @@
         <h2 id="section-{section.name}">
           <button class="toggle" aria-expanded={open} onclick={() => toggle(section.name)}>
             <span class="chevron" class:open><Icon name="down" size="1.1em" /></span>
-            {section.name} <span class="muted">{section.releases.length}</span>
+            {sectionName(section.name)} <span class="muted">{section.releases.length}</span>
           </button>
         </h2>
         {#if open}
           <ul class="releases">
             {#each section.releases as entry (entry.id)}
               <li>
-                <span class="year muted" title={entry.firstReleaseDate ? formatDate(entry.firstReleaseDate) : "Undated"}>
+                <span class="year muted" title={entry.firstReleaseDate ? formatDate(entry.firstReleaseDate) : t("discography.undated")}>
                   {year(entry)}
                 </span>
                 <span class="what">
@@ -162,10 +162,12 @@
     {/each}
 
     <p class="source muted small">
-      From <a href="https://musicbrainz.org/artist/{discography.musicbrainzId}" onclick={openLink}>MusicBrainz</a>,
-      without bootlegs and other unofficial releases.
+      {t("discography.from")}
+      <a href="https://musicbrainz.org/artist/{discography.musicbrainzId}" onclick={openLink}>MusicBrainz</a>{t(
+        "discography.official",
+      )}
       {#if discography.listed < discography.total}
-        Only the first {discography.listed.toLocaleString()} of {discography.total.toLocaleString()} are listed.
+        {t("discography.firstOnly", { listed: discography.listed, total: discography.total })}
       {/if}
     </p>
   {/if}

@@ -16,7 +16,8 @@
         "width": 1100,
         "height": 720,
         "minWidth": 360,
-        "minHeight": 480
+        "minHeight": 480,
+        "label": "main"
       }
     ],
     "security": {
@@ -44,6 +45,42 @@
       ],
       "signingIdentity": "-",
       "hardenedRuntime": false
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp3",
+          "flac",
+          "m4a",
+          "m4b",
+          "aac",
+          "alac",
+          "ogg",
+          "oga",
+          "opus",
+          "wav",
+          "aif",
+          "aiff",
+          "aifc",
+          "wma",
+          "wv",
+          "ape"
+        ],
+        "name": "Audio file",
+        "description": "An audio file ano-mp can play",
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": [
+          "m3u",
+          "m3u8"
+        ],
+        "name": "Playlist",
+        "description": "An M3U playlist",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ]
   }
 }

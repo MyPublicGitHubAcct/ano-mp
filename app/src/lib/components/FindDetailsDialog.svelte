@@ -17,7 +17,8 @@
     type SourceCandidates,
     type SourceId,
   } from "$lib/api";
-  import { formatDate, formatLabels, formatMedia, formatTime, percent, plural } from "$lib/format";
+  import { formatDate, formatLabels, formatMedia, formatTime, percent } from "$lib/format";
+  import { count, errorText, t } from "$lib/i18n";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import type { AlbumRef } from "$lib/state/ui.svelte";
   import Dialog from "./Dialog.svelte";
@@ -64,7 +65,7 @@
     } catch (error) {
       if (current === request) {
         sources = [];
-        toasts.show(String(error));
+        toasts.show(errorText(error));
       }
     } finally {
       if (current === request) searching = false;
@@ -74,18 +75,15 @@
   const linkOf = (source: SourceId): AlbumLink | undefined => details?.links.find((link) => link.source === source);
 
   function describeLink(link: AlbumLink | undefined, sourceName: string) {
-    if (!link) return `Not looked up on ${sourceName} yet.`;
+    const params = { source: sourceName, score: link ? percent(link.score) : null };
+    if (!link) return t("findDetails.notLookedUp", params);
     switch (link.status) {
       case "none":
-        return link.chosenByUser
-          ? `You said none of ${sourceName}’s releases is this album.`
-          : `Nothing found on ${sourceName} when it was last searched.`;
+        return t(link.chosenByUser ? "findDetails.youSaidNone" : "findDetails.nothingFound", params);
       case "review":
-        return `${sourceName} has a possible match (${percent(link.score)}) that needs your review.`;
+        return t("findDetails.review", params);
       case "matched":
-        return link.chosenByUser
-          ? `Matched to the ${sourceName} release you chose.`
-          : `Matched automatically on ${sourceName} (${percent(link.score)}).`;
+        return t(link.chosenByUser ? "findDetails.matchedChosen" : "findDetails.matchedAuto", params);
     }
   }
 
@@ -96,7 +94,7 @@
       release.country,
       release.formats.length > 0 ? formatMedia(release.formats) : null,
       formatLabels(release.labels) || null,
-      plural(release.trackCount, "track"),
+      count("count.tracks", release.trackCount),
     ]
       .filter(Boolean)
       .join(" · ");
@@ -141,7 +139,7 @@
       toasts.show(done, "info", 3000);
       onclose();
     } catch (error) {
-      toasts.show(String(error));
+      toasts.show(errorText(error));
     } finally {
       busy = false;
     }
@@ -149,12 +147,12 @@
 
   const choose = () => {
     const pick = selected;
-    if (pick) act(() => metadata.chooseRelease(album.id, pick.source, pick.id), `Details for ${album.title} updated`);
+    if (pick) act(() => metadata.chooseRelease(album.id, pick.source, pick.id), t("findDetails.updated", { title: album.title }));
   };
   const reject = (source: SourceId, name: string) =>
-    act(() => metadata.rejectRelease(album.id, source), `${album.title} won’t be matched on ${name} automatically`);
+    act(() => metadata.rejectRelease(album.id, source), t("findDetails.rejected", { title: album.title, source: name }));
   const automatic = (source: SourceId) =>
-    act(() => metadata.useAutomaticRelease(album.id, source), `${album.title} was matched again`);
+    act(() => metadata.useAutomaticRelease(album.id, source), t("findDetails.again", { title: album.title }));
 
   function openLink(event: MouseEvent) {
     event.preventDefault();
@@ -163,7 +161,7 @@
   }
 </script>
 
-<Dialog title="Find details for {album.title}" {onclose}>
+<Dialog title={t("findDetails.title", { title: album.title })} {onclose}>
   <form
     class="search"
     onsubmit={(event) => {
@@ -172,22 +170,22 @@
     }}
   >
     <label>
-      <span class="muted small">Album, or a release link</span>
-      <input type="text" bind:value={title} placeholder="Title" />
+      <span class="muted small">{t("findDetails.query")}</span>
+      <input type="text" bind:value={title} placeholder={t("album.field.title")} />
     </label>
     <label>
-      <span class="muted small">Artist</span>
-      <input type="text" bind:value={artist} placeholder="Any artist" />
+      <span class="muted small">{t("column.artist")}</span>
+      <input type="text" bind:value={artist} placeholder={t("findDetails.anyArtist")} />
     </label>
-    <button type="submit" disabled={searching || title.trim() === ""}><Icon name="search" /> Search</button>
+    <button type="submit" disabled={searching || title.trim() === ""}><Icon name="search" /> {t("findArtist.search")}</button>
   </form>
 
   {#if details && !details.canLookUp}
-    <p class="note">Album details sources are turned off in Online sources.</p>
+    <p class="note">{t("findDetails.allOff")}</p>
   {/if}
 
   {#if sources === null}
-    <p class="muted" aria-live="polite">Searching…</p>
+    <p class="muted" aria-live="polite">{t("findArtist.searching")}</p>
   {:else}
     {#each sources as source (source.source)}
       {@const sourceLink = linkOf(source.source)}
@@ -203,14 +201,14 @@
               class="link small"
               onclick={() => automatic(source.source)}
               disabled={busy}
-              title="Forget this album’s {source.sourceName} match and match it again now"
+              title={t("findDetails.automaticHint", { source: source.sourceName })}
             >
-              Use automatic
+              {t("cover.useAutomatic")}
             </button>
           {/if}
           {#if !(sourceLink?.status === "none" && sourceLink.chosenByUser)}
             <button class="link small" onclick={() => reject(source.source, source.sourceName)} disabled={busy}>
-              None of these
+              {t("findArtist.noneOfThese")}
             </button>
           {/if}
         </div>
@@ -218,7 +216,7 @@
         {#if source.note}
           <p class="note">{source.note}</p>
         {:else if source.candidates.length === 0}
-          <p class="muted">{searching ? "Searching…" : "No releases found. Try another title or artist."}</p>
+          <p class="muted">{t(searching ? "findArtist.searching" : "findDetails.none")}</p>
         {/if}
         <ul class="candidates" aria-busy={searching}>
           {#each source.candidates as candidate (candidate.release.id)}
@@ -235,7 +233,7 @@
                   <span class="name">
                     {release.title}{#if release.disambiguation}{" "}<span class="muted">({release.disambiguation})</span>{/if}
                   </span>
-                  <span class="score" title={candidate.full ? "Including track lengths" : "From the search result alone"}>
+                  <span class="score" title={t(candidate.full ? "findDetails.scoreFull" : "findDetails.scorePartial")}>
                     {candidate.full ? "" : "~"}{percent(candidate.score)}
                   </span>
                 </span>
@@ -243,9 +241,9 @@
                 <span class="muted small">{describe(release)}</span>
                 <span class="badges">
                   {#if link?.externalId === release.id && link.status === "matched"}
-                    <span class="badge current">{link.chosenByUser ? "Your choice" : "Current match"}</span>
+                    <span class="badge current">{t(link.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span>
                   {:else if link?.externalId === release.id && link.status === "review"}
-                    <span class="badge">Possible match</span>
+                    <span class="badge">{t("findDetails.possible")}</span>
                   {/if}
                   {#if release.status && release.status !== "Official"}<span class="badge">{release.status}</span>{/if}
                   {#if release.releaseType}<span class="badge">{[release.releaseType, ...release.secondaryTypes].join(" · ")}</span>{/if}
@@ -259,8 +257,8 @@
                         <tr>
                           <th scope="col">#</th>
                           <th scope="col">{source.sourceName}</th>
-                          <th scope="col" class="time">Length</th>
-                          <th scope="col" class="time">Your file</th>
+                          <th scope="col" class="time">{t("info.length")}</th>
+                          <th scope="col" class="time">{t("findDetails.yourFile")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -271,18 +269,18 @@
                             <td class="time">{row.length === null ? "—" : formatTime(row.length)}</td>
                             <td class="time">
                               {#if row.ours === null}—{:else}{formatTime(row.ours)}{/if}
-                              {#if row.agrees}<span class="agrees" title="Lengths agree"><Icon name="check" size="0.9rem" /></span>{/if}
+                              {#if row.agrees}<span class="agrees" title={t("findDetails.agree")}><Icon name="check" size="0.9rem" /></span>{/if}
                             </td>
                           </tr>
                         {/each}
                       </tbody>
                     </table>
                   {:else}
-                    <p class="muted small">This search result has no track list; its score leaves out track lengths.</p>
+                    <p class="muted small">{t("findDetails.noTrackList")}</p>
                   {/if}
                   {#if candidate.pageUrl}
                     <a class="small" href={candidate.pageUrl} onclick={openLink}>
-                      {source.credit ?? `Open on ${source.sourceName}`}
+                      {source.credit ?? t("findDetails.openOn", { source: source.sourceName })}
                     </a>
                   {/if}
                 </div>
@@ -296,8 +294,8 @@
 
   {#snippet actions()}
     <span class="spacer"></span>
-    <button onclick={onclose} disabled={busy}>Cancel</button>
-    <button class="primary" onclick={choose} disabled={busy || !selected || alreadyChosen}>Use this release</button>
+    <button onclick={onclose} disabled={busy}>{t("dialog.cancel")}</button>
+    <button class="primary" onclick={choose} disabled={busy || !selected || alreadyChosen}>{t("findDetails.use")}</button>
   {/snippet}
 </Dialog>
 

@@ -12,8 +12,10 @@
 //! position is published again only when the state changes or the position
 //! departs from where the system has it (a seek, from anywhere).
 //!
-//! Nothing is published until the queue has a track loaded, so launching
-//! the app doesn't take the media keys from another player.
+//! A queue restored at launch is published paused where it will resume,
+//! before anything is loaded (PLAN.md F17), so the media keys and Now
+//! Playing can start it; until it loads, the engine's events (it has
+//! nothing open) are ignored. An empty queue publishes nothing.
 //!
 //! Commands go straight to the queue (`queue::play`, `next`, ...). The core
 //! calls the handler only from the OS's own handler, never inside a call
@@ -246,6 +248,8 @@ pub struct NowPlaying {
     navigation: Option<(bool, bool)>,
     art: Option<ArtKey>,
     playback: Option<Published>,
+    /// The queue's current track isn't open yet (after a relaunch).
+    restored: bool,
 }
 
 impl NowPlaying {
@@ -259,12 +263,20 @@ impl NowPlaying {
         now: f64,
     ) -> Option<ArtKey> {
         self.player = player;
-        // Not loaded: nothing is playing yet (after a relaunch), or the dev
-        // page loaded something else.
-        let Some(item) = state.current_item.as_ref().filter(|_| state.loaded) else {
+        let Some(item) = state.current_item.as_ref() else {
             self.clear(p);
             return None;
         };
+        // Not loaded: restored after a relaunch (or the dev page loaded
+        // something else), shown paused where it will start.
+        self.restored = !state.loaded;
+        if self.restored {
+            self.player = Player {
+                state: PlayerState::Paused,
+                position: state.resume_at,
+                duration: 0.0,
+            };
+        }
 
         let key = art_key(&item.track);
         let new_art = self.art != Some(key);
@@ -294,6 +306,9 @@ impl NowPlaying {
 
     /// The engine's state changed.
     pub fn player_state(&mut self, p: &mut impl Publisher, state: PlayerState, now: f64) {
+        if self.restored {
+            return;
+        }
         self.player.state = state;
         self.sync_playback(p, now, false);
     }
@@ -301,6 +316,9 @@ impl NowPlaying {
     /// The engine reported its position (every 50 ms while playing, and
     /// when it changes otherwise).
     pub fn position(&mut self, p: &mut impl Publisher, position: f64, duration: f64, now: f64) {
+        if self.restored {
+            return;
+        }
         self.player.position = position;
         self.player.duration = duration;
         self.sync_playback(p, now, false);
@@ -463,6 +481,8 @@ mod tests {
             loaded,
             resume_at: 0.0,
             radio: false,
+            stop_after: None,
+            sleep: None,
         }
     }
 
@@ -484,21 +504,13 @@ mod tests {
     }
 
     #[test]
-    fn publishes_nothing_until_a_track_is_loaded() {
+    fn publishes_the_restored_queue_paused_where_it_will_resume() {
         let (mut p, mut now_playing) = (Fake::default(), NowPlaying::default());
         // After a relaunch the queue is restored but not loaded.
-        let restored = queue(Some(item(1, "One", Some(7))), false, true, false);
+        let mut restored = queue(Some(item(1, "One", Some(7))), false, true, false);
+        restored.resume_at = 42.0;
         assert_eq!(
             now_playing.queue_changed(&mut p, &restored, Player::default(), 0.0),
-            None
-        );
-        now_playing.player_state(&mut p, PlayerState::Paused, 0.1);
-        now_playing.position(&mut p, 3.0, 181.5, 0.2);
-        assert_eq!(p.take(), []);
-
-        let started = queue(Some(item(1, "One", Some(7))), true, true, false);
-        assert_eq!(
-            now_playing.queue_changed(&mut p, &started, playing(3.0), 1.0),
             Some(ArtKey::Album(7))
         );
         assert_eq!(
@@ -506,13 +518,27 @@ mod tests {
             [
                 Call::Track("One".into()),
                 Call::Navigation(true, false),
-                Call::Playback(PlayerState::Playing, 3.0, 181.5),
+                Call::Playback(PlayerState::Paused, 42.0, 180.0),
             ]
+        );
+        // The engine has nothing open meanwhile: its events don't count.
+        now_playing.player_state(&mut p, PlayerState::Empty, 0.1);
+        now_playing.position(&mut p, 0.0, 0.0, 0.2);
+        assert_eq!(p.take(), []);
+
+        let started = queue(Some(item(1, "One", Some(7))), true, true, false);
+        assert_eq!(
+            now_playing.queue_changed(&mut p, &started, playing(42.0), 1.0),
+            None
+        );
+        assert_eq!(
+            p.take(),
+            [Call::Playback(PlayerState::Playing, 42.0, 181.5)]
         );
 
         // The same state again changes nothing.
         assert_eq!(
-            now_playing.queue_changed(&mut p, &started, playing(3.5), 1.5),
+            now_playing.queue_changed(&mut p, &started, playing(42.5), 1.5),
             None
         );
         assert_eq!(p.take(), []);
@@ -548,10 +574,11 @@ mod tests {
         );
         assert_eq!(p.take().len(), 3);
 
-        // The dev page loaded something else: the queue detached.
+        // The dev page loaded something else: the queue detached, and shows
+        // its track paused, as after a relaunch.
         let detached = queue(Some(item(1, "One", None)), false, false, false);
         now_playing.queue_changed(&mut p, &detached, playing(0.0), 4.0);
-        assert_eq!(p.take(), [Call::Clear]);
+        assert_eq!(p.take(), [Call::Playback(PlayerState::Paused, 0.0, 180.0)]);
     }
 
     #[test]

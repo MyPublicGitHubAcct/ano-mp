@@ -99,6 +99,17 @@ typedef struct anomp_tags
     const char* cuesheet;
     int chapter_count;
     const struct anomp_chapter* chapters; /**< `chapter_count` of them, null if none. */
+
+    /** A rating the tags give, 1..100 (20 a star), 0 if none: an ID3v2 POPM
+        frame's (as whole stars), else FMPS_RATING, else RATING, else MP4's
+        rate. Read only; the app never writes ratings back. */
+    int rating;
+    /** 1 if the file is marked as part of a compilation (ID3v2 TCMP, MP4
+        cpil, Vorbis COMPILATION), else 0. */
+    int compilation;
+    /** The credited artists of a multi-valued ARTISTS tag (MusicBrainz
+        Picard's), joined with "; " like other fields; "" if none. */
+    const char* artists;
 } anomp_tags;
 
 /** A chapter of a file, as anomp_tags lists them. */
@@ -126,6 +137,51 @@ anomp_tags* anomp_read_tags(const char* path, int flags, char* error, size_t err
 
 /** Frees tags returned by anomp_read_tags. Null is ignored. */
 void anomp_tags_free(anomp_tags* tags);
+
+/** One value of a tag field, as anomp_file_info lists them. */
+typedef struct anomp_tag_field
+{
+    const char* key; /**< TagLib's name for it, e.g. "TITLE", "MUSICBRAINZ_TRACKID". */
+    const char* value;
+} anomp_tag_field;
+
+/** An embedded picture, as anomp_file_info lists them. */
+typedef struct anomp_picture
+{
+    const char* type; /**< e.g. "Front Cover"; "" if unknown. */
+    const char* mime_type;
+    const char* description;
+    const unsigned char* data;
+    size_t size;
+} anomp_picture;
+
+/** Everything a file says about itself, for a "Get Info" view: every tag
+    field, every picture, the kinds of tag, and the format as the decoder
+    sees it (the same facts as anomp_signal_path's). */
+typedef struct anomp_file_info
+{
+    int field_count;
+    const anomp_tag_field* fields; /**< Each value of each field; null if none. */
+    int picture_count;
+    const anomp_picture* pictures; /**< Null if none. */
+    const char* tag_types;         /**< e.g. "ID3v2.4, ID3v1"; "" if untagged. */
+    char codec[32];                /**< FFmpeg's codec name; "" if it can't decode the file. */
+    int lossless;
+    int bits_per_sample; /**< The source's, for lossless codecs; 0 otherwise. */
+    int bitrate_kbps;    /**< 0 if unknown. */
+    double sample_rate;  /**< Hz. */
+    int channels;
+    double duration;   /**< Seconds. */
+    int64_t file_size; /**< Bytes. */
+} anomp_file_info;
+
+/** Reads the FileInfo of the file at `path` (absolute, UTF-8) without
+    modifying it; any thread. Returns null on failure and writes the error as
+    anomp_read_tags does. Free the result with anomp_file_info_free. */
+anomp_file_info* anomp_read_file_info(const char* path, char* error, size_t error_size);
+
+/** Frees a result of anomp_read_file_info. Null is ignored. */
+void anomp_file_info_free(anomp_file_info* info);
 
 /* ---- File analysis ------------------------------------------------------
    One pass over a file measuring what ReplayGain, a waveform seek bar and
@@ -390,9 +446,20 @@ typedef struct anomp_track_options
         `skip_from`, or `skip_to` not after it, skips nothing. */
     double skip_from;
     double skip_to;
+    /** Only for a next track (anomp_engine_set_next_track): seconds over which
+        it fades in while the current track fades out, ending as the current
+        track ends; 0 (and anything not positive) hands off gaplessly. At most
+        ANOMP_MAX_CROSSFADE, and shortened to fit either track. A next track at
+        another sample rate, or one set while an A–B loop is on, hands off
+        without a crossfade. */
+    double crossfade;
 } anomp_track_options;
 
-/** Options that play a whole file with `gain` and skip nothing. */
+/** Longest crossfade, in seconds. */
+#define ANOMP_MAX_CROSSFADE 12.0
+
+/** Options that play a whole file with `gain`, skip nothing and don't
+    crossfade. */
 anomp_track_options anomp_track_options_default(double gain);
 
 /** anomp_engine_load for part of a file. A hand-off from one part to the
@@ -487,6 +554,20 @@ int anomp_engine_set_crossfeed(anomp_engine* engine, int level);
     route on iOS), 0 if not, -1 if it can't tell. */
 int anomp_engine_output_is_headphones(anomp_engine* engine);
 
+/* ---- Equaliser -----------------------------------------------------------
+   A 10-band graphic equaliser with a preamp, after the analysis tap (next to
+   the crossfeed, before the volume), at ISO octave centres: 31, 62, 125,
+   250, 500 Hz, 1, 2, 4, 8 and 16 kHz. */
+
+#define ANOMP_EQ_BANDS 10
+#define ANOMP_EQ_MAX_GAIN 12.0
+
+/** Turns the equaliser on with `gains_db` (ANOMP_EQ_BANDS values, low band
+    first, each within ±ANOMP_EQ_MAX_GAIN) and `preamp_db` (within the same
+    range), or off with a null `gains_db`. Changes are smoothed over a few
+    milliseconds. Returns 0, changing nothing, for values out of range. */
+int anomp_engine_set_equaliser(anomp_engine* engine, const double* gains_db, double preamp_db);
+
 /* ---- Signal path ---------------------------------------------------------
    Every step between the file and the speakers, for showing the user. */
 
@@ -507,6 +588,8 @@ typedef struct anomp_signal_path
     double volume;  /**< Linear. */
     double device_sample_rate;
     int device_buffer_size;
+    int equaliser;    /**< 1 while the equaliser is on. */
+    double crossfade; /**< Seconds the next track is set to crossfade over; 0 if none. */
 } anomp_signal_path;
 
 /** Fills `path`; returns 0 for a null engine or `path`. */
@@ -682,6 +765,44 @@ void anomp_media_controls_clear(anomp_media_controls* controls);
     this returns (unlike the OS's, which never arrive inside a call). For
     tests; returns 1 if the callback was called. */
 int anomp_media_controls_perform(anomp_media_controls* controls, const anomp_media_command* command);
+
+/* ---- Dock menu ------------------------------------------------------------
+   The menu the OS shows for the app's Dock icon (macOS): items the host
+   lists, each reporting its id when chosen. On other platforms the
+   functions accept everything and show nothing. Main thread only, like the
+   media controls; choices are delivered on it, never inside one of these
+   calls. */
+
+typedef struct anomp_dock_menu anomp_dock_menu;
+
+/** One item of the Dock menu. */
+typedef struct anomp_menu_item
+{
+    int id;            /**< Reported when chosen. */
+    const char* title; /**< UTF-8; null or "" makes a separator. */
+    int enabled;       /**< 0 shows it greyed out (e.g. the current track's title). */
+    int checked;       /**< 1 shows a check mark. */
+} anomp_menu_item;
+
+typedef void (*anomp_menu_callback)(int id, void* user_data);
+
+/** Returns 1 if this platform has a Dock menu the core fills, 0 if not. */
+int anomp_dock_menu_supported(void);
+
+/** Starts showing a Dock menu (empty until items are set), whose choices go
+    to `callback`. Returns null on failure or if another one exists. Destroy
+    with anomp_dock_menu_destroy. */
+anomp_dock_menu* anomp_dock_menu_create(anomp_menu_callback callback, void* user_data);
+
+/** Removes the menu and frees `menu`. Null is ignored. */
+void anomp_dock_menu_destroy(anomp_dock_menu* menu);
+
+/** Replaces the menu's items with `count` items (copied). */
+void anomp_dock_menu_set_items(anomp_dock_menu* menu, const anomp_menu_item* items, int count);
+
+/** Chooses the item `id` as the OS would, for tests: returns 1 if it exists
+    and is enabled (and the callback ran), else 0. */
+int anomp_dock_menu_perform(anomp_dock_menu* menu, int id);
 
 /* ---- Test tone ---------------------------------------------------------- */
 

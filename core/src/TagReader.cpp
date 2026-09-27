@@ -2,13 +2,20 @@
 #include "FFmpegAudioFormat.h"
 
 #include <aifffile.h>
+#include <apefile.h>
+#include <asffile.h>
 #include <fileref.h>
+#include <flacfile.h>
 #include <id3v2tag.h>
+#include <mp4file.h>
 #include <mpegfile.h>
+#include <oggfile.h>
+#include <popularimeterframe.h>
 #include <synchronizedlyricsframe.h>
 #include <tfilestream.h>
 #include <tpropertymap.h>
 #include <wavfile.h>
+#include <wavpackfile.h>
 
 #include <cmath>
 #include <cstring>
@@ -92,16 +99,24 @@ juce::String lyricsOf (const TagLib::PropertyMap& properties)
     return first (properties, "UNSYNCEDLYRICS");
 }
 
+/** The file's ID3v2 tag, if it has one. */
+TagLib::ID3v2::Tag* id3v2TagOf (TagLib::File* file)
+{
+    if (auto* mpeg = dynamic_cast<TagLib::MPEG::File*> (file))
+        return mpeg->hasID3v2Tag() ? mpeg->ID3v2Tag() : nullptr;
+    if (auto* aiff = dynamic_cast<TagLib::RIFF::AIFF::File*> (file))
+        return aiff->hasID3v2Tag() ? aiff->tag() : nullptr;
+    if (auto* wav = dynamic_cast<TagLib::RIFF::WAV::File*> (file))
+        return wav->hasID3v2Tag() ? wav->ID3v2Tag() : nullptr;
+    if (auto* flac = dynamic_cast<TagLib::FLAC::File*> (file))
+        return flac->hasID3v2Tag() ? flac->ID3v2Tag() : nullptr;
+    return nullptr;
+}
+
 /** The first ID3v2 SYLT lyrics with millisecond times, as LRC text. */
 juce::String syncedLyricsOf (TagLib::File* file)
 {
-    TagLib::ID3v2::Tag* tag = nullptr;
-    if (auto* mpeg = dynamic_cast<TagLib::MPEG::File*> (file))
-        tag = mpeg->hasID3v2Tag() ? mpeg->ID3v2Tag() : nullptr;
-    else if (auto* aiff = dynamic_cast<TagLib::RIFF::AIFF::File*> (file))
-        tag = aiff->hasID3v2Tag() ? aiff->tag() : nullptr;
-    else if (auto* wav = dynamic_cast<TagLib::RIFF::WAV::File*> (file))
-        tag = wav->hasID3v2Tag() ? wav->ID3v2Tag() : nullptr;
+    auto* tag = id3v2TagOf (file);
     if (tag == nullptr)
         return {};
 
@@ -125,6 +140,78 @@ juce::String syncedLyricsOf (TagLib::File* file)
             return lrc;
     }
     return {};
+}
+
+/** Whole stars (1 to 5) as a rating out of 100. */
+int starsToRating (int stars) { return juce::jlimit (0, 5, stars) * 20; }
+
+/** An ID3v2 POPM rating (1 to 255; 0 is "unrated") as whole stars, by the
+    thresholds Windows Media Player and most taggers write (1, 64, 128, 196,
+    255). */
+int popmToRating (int popm)
+{
+    if (popm <= 0)
+        return 0;
+    const auto stars = popm < 32 ? 1 : popm < 96 ? 2 : popm < 160 ? 3 : popm < 224 ? 4 : 5;
+    return starsToRating (stars);
+}
+
+/** A RATING value: a fraction up to 1 ("0.8"), else 1 to 5 stars, else a
+    percentage (6 to 100), else POPM's scale (up to 255). 0 if unusable. */
+int ratingFromText (const juce::String& text)
+{
+    const auto trimmed = text.trim();
+    if (trimmed.isEmpty() || ! trimmed.containsOnly ("0123456789.") || ! trimmed.containsAnyOf ("0123456789"))
+        return 0;
+    const auto value = trimmed.getDoubleValue();
+    if (trimmed.containsChar ('.') && value <= 1.0)
+        return juce::jlimit (0, 100, juce::roundToInt (value * 100.0));
+    if (value <= 5.0)
+        return starsToRating (juce::roundToInt (value));
+    if (value <= 100.0)
+        return juce::roundToInt (value);
+    if (value <= 255.0)
+        return popmToRating (juce::roundToInt (value));
+    return 0;
+}
+
+/** The rating the tags give, 1 to 100, or 0 (see TrackTags::rating). */
+int ratingOf (TagLib::File* file, const TagLib::PropertyMap& properties)
+{
+    if (auto* tag = id3v2TagOf (file))
+        for (auto* frame : tag->frameList ("POPM"))
+            if (const auto* popm = dynamic_cast<const TagLib::ID3v2::PopularimeterFrame*> (frame))
+                if (const auto rating = popmToRating (popm->rating()); rating > 0)
+                    return rating;
+
+    if (const auto fmps = first (properties, "FMPS_RATING"); fmps.isNotEmpty())
+    {
+        const auto value = fmps.getDoubleValue();
+        if (fmps.containsOnly ("0123456789.") && value > 0.0 && value <= 1.0)
+            return juce::jlimit (1, 100, juce::roundToInt (value * 100.0));
+    }
+
+    if (const auto rating = ratingFromText (first (properties, "RATING")); rating > 0)
+        return rating;
+
+    if (auto* mp4 = dynamic_cast<TagLib::MP4::File*> (file); mp4 != nullptr && mp4->hasMP4Tag())
+    {
+        const auto item = mp4->tag()->item ("rate");
+        if (item.isValid())
+        {
+            const auto strings = item.toStringList();
+            const auto rating = strings.isEmpty() ? item.toInt() : ratingFromText (toJuce (strings.front()));
+            return juce::jlimit (0, 100, rating);
+        }
+    }
+    return 0;
+}
+
+/** Whether a flag tag says yes: "1", "true", "yes" or a positive number. */
+bool isSet (const juce::String& value)
+{
+    const auto text = value.trim().toLowerCase();
+    return text == "true" || text == "yes" || (text.containsOnly ("0123456789") && text.getIntValue() > 0);
 }
 
 void readWork (const TagLib::PropertyMap& properties, TrackTags& result)
@@ -265,6 +352,9 @@ juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManag
             result.musicBrainzReleaseTrackId = joined (properties, "MUSICBRAINZ_RELEASETRACKID");
             result.musicBrainzArtistId = joined (properties, "MUSICBRAINZ_ARTISTID");
             result.musicBrainzAlbumArtistId = joined (properties, "MUSICBRAINZ_ALBUMARTISTID");
+            result.rating = ratingOf (ref.file(), properties);
+            result.compilation = isSet (first (properties, "COMPILATION"));
+            result.artists = joined (properties, "ARTISTS");
 
             if ((parts & TagParts::picture) != 0)
                 readPicture (ref, result);
@@ -315,6 +405,173 @@ juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManag
         if (FFmpegAudioFormat::readChapters (file, chapters).isEmpty())
             for (const auto& chapter : chapters)
                 result.chapters.add ({ chapter.start, chapter.end, chapter.title });
+    }
+
+    return {};
+}
+namespace
+{
+/** The kinds of tag `file` carries, as the user would know them. */
+juce::StringArray tagTypesOf (TagLib::File* file)
+{
+    juce::StringArray types;
+    const auto id3v2 = [&types] (TagLib::ID3v2::Tag* tag)
+    {
+        if (tag != nullptr)
+            types.add ("ID3v2." + juce::String (tag->header()->majorVersion()));
+    };
+
+    if (auto* mpeg = dynamic_cast<TagLib::MPEG::File*> (file))
+    {
+        if (mpeg->hasID3v2Tag())
+            id3v2 (mpeg->ID3v2Tag());
+        if (mpeg->hasAPETag())
+            types.add ("APE");
+        if (mpeg->hasID3v1Tag())
+            types.add ("ID3v1");
+    }
+    else if (auto* flac = dynamic_cast<TagLib::FLAC::File*> (file))
+    {
+        if (flac->hasXiphComment())
+            types.add ("Vorbis comment");
+        if (flac->hasID3v2Tag())
+            id3v2 (flac->ID3v2Tag());
+        if (flac->hasID3v1Tag())
+            types.add ("ID3v1");
+    }
+    else if (auto* mp4 = dynamic_cast<TagLib::MP4::File*> (file))
+    {
+        if (mp4->hasMP4Tag())
+            types.add ("MP4");
+    }
+    else if (dynamic_cast<TagLib::Ogg::File*> (file) != nullptr)
+    {
+        types.add ("Vorbis comment");
+    }
+    else if (auto* wav = dynamic_cast<TagLib::RIFF::WAV::File*> (file))
+    {
+        if (wav->hasID3v2Tag())
+            id3v2 (wav->ID3v2Tag());
+        if (wav->hasInfoTag())
+            types.add ("RIFF INFO");
+    }
+    else if (auto* aiff = dynamic_cast<TagLib::RIFF::AIFF::File*> (file))
+    {
+        if (aiff->hasID3v2Tag())
+            id3v2 (aiff->tag());
+    }
+    else if (auto* ape = dynamic_cast<TagLib::APE::File*> (file))
+    {
+        if (ape->hasAPETag())
+            types.add ("APE");
+        if (ape->hasID3v1Tag())
+            types.add ("ID3v1");
+    }
+    else if (auto* wavPack = dynamic_cast<TagLib::WavPack::File*> (file))
+    {
+        if (wavPack->hasAPETag())
+            types.add ("APE");
+        if (wavPack->hasID3v1Tag())
+            types.add ("ID3v1");
+    }
+    else if (dynamic_cast<TagLib::ASF::File*> (file) != nullptr)
+    {
+        types.add ("ASF");
+    }
+    return types;
+}
+} // namespace
+
+juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& formats, FileInfo& result)
+{
+    if (! file.existsAsFile())
+        return "File not found: " + file.getFullPathName();
+
+    result = {};
+    result.fileSize = file.getSize();
+    const auto path = file.getFullPathName();
+    bool tagged = false;
+
+    try
+    {
+#if JUCE_WINDOWS
+        TagLib::FileStream stream (path.toWideCharPointer(), true);
+#else
+        TagLib::FileStream stream (path.toRawUTF8(), true);
+#endif
+        const TagLib::FileRef ref (&stream, true, TagLib::AudioProperties::Average);
+        if (! ref.isNull())
+        {
+            tagged = true;
+            const auto properties = ref.properties();
+            for (const auto& [key, values] : properties)
+                for (const auto& value : values)
+                    result.fields.emplace_back (toJuce (key), toJuce (value));
+
+            // What TagLib found but can't map to a field (e.g. POPM with its
+            // e-mail address, private frames), listed by name.
+            for (const auto& unsupported : properties.unsupportedData())
+                result.fields.emplace_back ("(unsupported)", toJuce (unsupported));
+
+            if (auto* tag = id3v2TagOf (ref.file()))
+                for (auto* frame : tag->frameList ("POPM"))
+                    if (const auto* popm = dynamic_cast<const TagLib::ID3v2::PopularimeterFrame*> (frame))
+                        result.fields.emplace_back ("POPM", juce::String (popm->rating()) + "/255 "
+                                                                + toJuce (popm->email()) + " (played "
+                                                                + juce::String (popm->counter()) + " times)");
+
+            for (const auto& picture : ref.complexProperties ("PICTURE"))
+            {
+                FileInfo::Picture info;
+                info.type = toJuce (picture.value ("pictureType").value<TagLib::String>());
+                info.mimeType = toJuce (picture.value ("mimeType").value<TagLib::String>()).trim().toLowerCase();
+                info.description = toJuce (picture.value ("description").value<TagLib::String>());
+                const auto data = picture.value ("data").value<TagLib::ByteVector>();
+                info.data.replaceAll (data.data(), data.size());
+                if (info.mimeType.isEmpty())
+                    info.mimeType = sniffMimeType (info.data);
+                result.pictures.push_back (std::move (info));
+            }
+
+            result.tagTypes = tagTypesOf (ref.file());
+
+            if (const auto* audio = ref.audioProperties())
+            {
+                result.durationSeconds = audio->lengthInMilliseconds() / 1000.0;
+                result.sampleRate = audio->sampleRate();
+                result.channels = audio->channels();
+                result.bitrateKbps = audio->bitrate();
+            }
+        }
+        else if (! stream.isOpen())
+        {
+            return "Cannot open file: " + path;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        return "Cannot read tags: " + juce::String (e.what());
+    }
+
+    // The decoder's view, which the player's signal path shows too.
+    if (const std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file)); reader != nullptr)
+    {
+        const auto& values = reader->metadataValues;
+        result.codec = values[FFmpegAudioFormat::codecKey];
+        result.lossless = values[FFmpegAudioFormat::losslessKey] == "1";
+        result.bitsPerSample = values[FFmpegAudioFormat::bitsKey].getIntValue();
+        if (const auto bitRate = values[FFmpegAudioFormat::bitRateKey].getLargeIntValue(); bitRate > 0)
+            result.bitrateKbps = static_cast<int> (bitRate / 1000);
+        if (reader->sampleRate > 0.0)
+        {
+            result.sampleRate = reader->sampleRate;
+            result.durationSeconds = static_cast<double> (reader->lengthInSamples) / reader->sampleRate;
+        }
+        result.channels = static_cast<int> (reader->numChannels);
+    }
+    else if (! tagged)
+    {
+        return "Unsupported or unreadable file: " + path;
     }
 
     return {};

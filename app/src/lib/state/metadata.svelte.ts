@@ -1,5 +1,6 @@
 // What the metadata worker is doing, for the sidebar and the Services view.
 
+import { t } from "$lib/i18n";
 import { metadata as api, on, onAll, type MetadataProgress } from "$lib/api";
 import { attempt } from "./toasts.svelte";
 
@@ -18,10 +19,12 @@ class MetadataStore {
   /** A line saying what the worker is doing. */
   get summary() {
     const { done, total, current, paused, unreachable } = this.progress;
-    if (paused) return `Paused: ${unreachable.join(", ")} can't be reached`;
-    if (total === 0) return unreachable.length > 0 ? `${unreachable.join(", ")} can't be reached` : "Up to date";
-    const what = current === null ? "" : current.kind === "album" ? `${current.title}: ` : `${current.name}: `;
-    return `${what}${Math.min(done + 1, total).toLocaleString()} of ${total.toLocaleString()}`;
+    const names = unreachable.join(", ");
+    if (paused) return t("metadataStatus.paused", { names });
+    if (total === 0) return unreachable.length > 0 ? t("metadataStatus.unreachable", { names }) : t("metadataStatus.upToDate");
+    const step = t("metadataStatus.step", { done: Math.min(done + 1, total), total });
+    if (current === null) return step;
+    return `${current.kind === "album" ? current.title : current.name}: ${step}`;
   }
 }
 

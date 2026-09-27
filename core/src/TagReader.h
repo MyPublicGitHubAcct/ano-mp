@@ -3,6 +3,8 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <limits>
+#include <utility>
+#include <vector>
 
 namespace anomp
 {
@@ -41,6 +43,17 @@ struct TrackTags
     // "2004-05" or "2004"), and the original release's where the file says.
     juce::String date, originalDate;
 
+    // A rating from the tags (PLAN.md F3), 1 to 100, 0 if none: the first
+    // ID3v2 POPM frame's (as whole stars), else FMPS_RATING (0 to 1), else
+    // RATING (0 to 100, or 1 to 5 stars), else MP4's rate.
+    int rating = 0;
+
+    // Marked as part of a compilation (ID3v2 TCMP, MP4 cpil, Vorbis
+    // COMPILATION), and the credited artists of a multi-valued ARTISTS tag
+    // (PLAN.md F11), joined with "; ".
+    bool compilation = false;
+    juce::String artists;
+
     // Only with TagParts::lyrics: unsynced lyrics, and synced ones as LRC
     // text ("[mm:ss.xx]line" per line) from an ID3v2 SYLT frame.
     juce::String lyrics, syncedLyrics;
@@ -71,4 +84,37 @@ struct TagParts
     Safe to call from any thread, concurrently. Returns an error message,
     or an empty string on success (then `result` is filled). */
 juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManager& formats, TrackTags& result);
+
+/** Everything a file says about itself, for a "Get Info" view (PLAN.md
+    F16): every tag field TagLib reads, every embedded picture, the kinds of
+    tag it carries, and the format as the decoder sees it. */
+struct FileInfo
+{
+    /** Each value of each field, in the tag's order; several values of one
+        field are separate entries. */
+    std::vector<std::pair<juce::String, juce::String>> fields;
+
+    struct Picture
+    {
+        juce::String type, mimeType, description;
+        juce::MemoryBlock data;
+    };
+    std::vector<Picture> pictures;
+
+    /** e.g. "ID3v2.4", "ID3v1", "Xiph comment", "MP4". */
+    juce::StringArray tagTypes;
+
+    // As FFmpegAudioFormat's reader reports them (the same facts as the
+    // player's signal path).
+    juce::String codec;
+    bool lossless = false;
+    int bitsPerSample = 0, bitrateKbps = 0, channels = 0;
+    double sampleRate = 0.0, durationSeconds = 0.0;
+    juce::int64 fileSize = 0;
+};
+
+/** Reads `file`'s FileInfo read-only; any thread. Returns an error message,
+    or an empty string on success. A file the decoder can't open still
+    reports its tags. */
+juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& formats, FileInfo& result);
 } // namespace anomp

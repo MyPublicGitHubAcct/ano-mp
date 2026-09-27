@@ -2,6 +2,7 @@
   // The current track alone: its title, artist and album on the left and its
   // cover, as large as the area allows, on the right. Narrow windows put the
   // cover on top.
+  import { t } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import { ui } from "$lib/state/ui.svelte";
@@ -12,39 +13,39 @@
   const item = $derived(player.currentItem);
 </script>
 
-<section class="now-playing" aria-label="Now playing">
+<section class="now-playing" aria-label={t("nowPlaying.label")}>
   <div class="details">
     {#if item}
-      <p class="state muted small">{player.playing ? "Now playing" : "Paused"}</p>
+      <p class="state muted small">{t(player.playing ? "nowPlaying.label" : "nowPlaying.paused")}</p>
       <h1 title={item.title}>{item.title}</h1>
       {#if item.artist && item.artistId !== null}
         {@const artist = { id: item.artistId, name: item.artist }}
         <p class="artist">
-          <button class="link" title="Show {artist.name}" onclick={() => ui.showArtist(artist)}>{artist.name}</button>
+          <button class="link" title={t("nowPlaying.showArtist", { name: artist.name })} onclick={() => ui.showArtist(artist)}>{artist.name}</button>
         </p>
       {:else if item.artist}
         <p class="artist">{item.artist}</p>
       {/if}
       {#if item.album}<p class="album muted">{item.album}</p>{/if}
-      {#if item.reason}<p class="reason small">Radio: {item.reason}</p>{/if}
+      {#if item.reason}<p class="reason small">{t("queue.radioReason", { reason: item.reason })}</p>{/if}
       {#if player.current !== null && player.items.length > 1}
         <p class="position muted small">
-          {(player.current + 1).toLocaleString()} of {player.items.length.toLocaleString()} in the queue
+          {t("nowPlaying.position", { position: player.current + 1, count: player.items.length })}
         </p>
       {/if}
     {:else}
-      <h1 class="muted">Not playing</h1>
-      <p class="muted">Double-click a track in the library to play it.</p>
+      <h1 class="muted">{t("bar.notPlaying")}</h1>
+      <p class="muted">{t("nowPlaying.hint")}</p>
     {/if}
     {#if item && features.on.lyrics}
       {#key item.trackId}<LyricsPanel trackId={item.trackId} />{/key}
     {/if}
     <div class="actions">
       <button class="link" onclick={() => ui.showVisualizer()}>
-        <Icon name="wave" size="1rem" /> Visualizer
+        <Icon name="wave" size="1rem" /> {t("bar.visualizer")}
       </button>
       <button class="link" onclick={() => ui.back()}>
-        <Icon name="close" size="1rem" /> Close
+        <Icon name="close" size="1rem" /> {t("dialog.close")}
       </button>
     </div>
   </div>

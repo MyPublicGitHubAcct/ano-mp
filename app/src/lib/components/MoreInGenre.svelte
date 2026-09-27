@@ -3,6 +3,7 @@
   // one, the same five while the page is open; a chip per genre switches
   // the row, and "Draw again" picks a new five. Albums played lately are
   // drawn less often.
+  import { t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { features as api, type AlbumCard } from "$lib/api";
   import AlbumCards from "./AlbumCards.svelte";
@@ -24,11 +25,11 @@
 </script>
 
 {#if genres.length > 0 && (albums.length > 0 || genres.length > 1)}
-  <section class="more" aria-label="More in {genre}">
+  <section class="more" aria-label={t("genreMore.title", { genre })}>
     <div class="head">
-      <h3>More in {genre}</h3>
+      <h3>{t("genreMore.title", { genre })}</h3>
       {#if genres.length > 1}
-        <div class="chips" role="radiogroup" aria-label="Genre">
+        <div class="chips" role="radiogroup" aria-label={t("column.genre")}>
           {#each genres as option (option)}
             <button role="radio" aria-checked={option === genre} class:on={option === genre} onclick={() => (genre = option)}>
               {option}
@@ -36,12 +37,12 @@
           {/each}
         </div>
       {/if}
-      <button class="link" onclick={() => (seed = Math.floor(Math.random() * 2 ** 31))}>Draw again</button>
+      <button class="link" onclick={() => (seed = Math.floor(Math.random() * 2 ** 31))}>{t("genreMore.again")}</button>
     </div>
     {#if albums.length > 0}
-      <AlbumCards {albums} label="More in {genre}" />
+      <AlbumCards {albums} label={t("genreMore.title", { genre })} />
     {:else}
-      <p class="muted">No other albums in {genre}.</p>
+      <p class="muted">{t("genreMore.none", { genre })}</p>
     {/if}
   </section>
 {/if}

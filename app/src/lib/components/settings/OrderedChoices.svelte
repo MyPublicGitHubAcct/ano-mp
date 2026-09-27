@@ -2,6 +2,7 @@
   // Some of `options`, in an order: the chosen ones listed with buttons to
   // move and remove each, and a menu to add one of the rest. Every change
   // goes to `onchange` at once.
+  import { t } from "$lib/i18n";
   import Icon from "../Icon.svelte";
 
   let {
@@ -11,8 +12,8 @@
     label,
     disabled = false,
     min = 0,
-    addLabel = "Add…",
-    empty = "None",
+    addLabel = t("choices.add"),
+    empty = t("display.none"),
   }: {
     options: { id: T; name: string }[];
     value: T[];
@@ -46,22 +47,22 @@
         <span class="name">{nameOf(id)}</span>
         <button
           class="icon"
-          title="Move up"
-          aria-label="Move {nameOf(id)} up"
+          title={t("choices.moveUp")}
+          aria-label={t("choices.moveUpName", { name: nameOf(id) })}
           disabled={disabled || index === 0}
           onclick={() => move(index, -1)}><Icon name="up" size="1rem" /></button
         >
         <button
           class="icon"
-          title="Move down"
-          aria-label="Move {nameOf(id)} down"
+          title={t("choices.moveDown")}
+          aria-label={t("choices.moveDownName", { name: nameOf(id) })}
           disabled={disabled || index === value.length - 1}
           onclick={() => move(index, 1)}><Icon name="down" size="1rem" /></button
         >
         <button
           class="icon"
-          title="Remove"
-          aria-label="Remove {nameOf(id)}"
+          title={t("queue.removeOne")}
+          aria-label={t("queue.removeName", { name: nameOf(id) })}
           disabled={disabled || value.length <= min}
           onclick={() => onchange(value.filter((other) => other !== id))}><Icon name="close" size="1rem" /></button
         >

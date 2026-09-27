@@ -5,6 +5,7 @@
 // the spectrum, bass at the centre and treble at the edges, and on beats
 // a few tiles flip over to another album.
 
+import { errorText, t } from "$lib/i18n";
 import { artUrl, library as api, type CoverWall } from "$lib/api";
 import { library } from "$lib/state/library.svelte";
 import { visualizer } from "$lib/state/visualizer.svelte";
@@ -54,7 +55,7 @@ function create(): Renderer {
   let flash = 0;
 
   async function fetchWall(key: string, trackId: number, basis: Scene["settings"]["coverBasis"]) {
-    message = "Finding albums…";
+    message = t("coverWall.finding");
     try {
       const result = await api.coverWall(trackId, basis);
       if (disposed || key !== wallKey) return;
@@ -62,10 +63,10 @@ function create(): Renderer {
       message = result
         ? null
         : basis === "year"
-          ? "This track has no year: try the artist's covers"
-          : "This track has no artist: try the year's covers";
+          ? t("coverWall.noYear")
+          : t("coverWall.noArtist");
     } catch (error) {
-      if (!disposed && key === wallKey) message = String(error);
+      if (!disposed && key === wallKey) message = errorText(error);
     }
   }
 
@@ -154,20 +155,24 @@ function create(): Renderer {
         if (track) void fetchWall(key!, track.trackId, scene.settings.coverBasis);
         else {
           setWall(null);
-          message = "Nothing is playing";
+          message = t("coverWall.nothing");
         }
       }
       visualizer.setCaption(
         message ??
           (wall &&
-            `${wall.basis === "year" ? `Albums from ${wall.label}` : `Albums by ${wall.label}`} · ${pool.length + (currentAlbum !== null ? 1 : 0)} with covers`),
+            t(wall.basis === "year" ? "coverWall.fromYear" : "coverWall.byArtist", {
+              label: wall.label,
+              count: pool.length + (currentAlbum !== null ? 1 : 0),
+            })),
       );
 
       layout(width, height);
       pulse = approach(pulse, Math.max(frame.rms[0], frame.rms[1]), dt, 0.04, 0.3);
       flash = approach(flash, scene.beat ? 1 : 0, dt, 0, 0.3);
       if (scene.beat) flip(time, Math.random() < 0.35 ? 2 : 1);
-      else if (!frame.silent && time - lastFlip > QUIET_FLIP_SECONDS) flip(time, 1);
+      // Calm: a tile changes every so often, whatever the music does.
+      else if (!frame.silent && time - lastFlip > QUIET_FLIP_SECONDS * (scene.calm ? 2 : 1)) flip(time, 1);
 
       clearStage(scene);
       const bands = frame.bands;
@@ -269,7 +274,11 @@ function thumbnail(image: HTMLImageElement) {
 
 export const covers: Visualization = {
   id: "covers",
-  name: "Cover wall",
-  description: "The covers of albums from the same year, or by the same artist, pulsing with the music.",
+  get name() {
+    return t("viz.covers.name");
+  },
+  get description() {
+    return t("viz.covers.description");
+  },
   create,
 };

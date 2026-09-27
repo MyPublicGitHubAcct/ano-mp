@@ -1,11 +1,68 @@
 // Builds anomp_core (the C++ JUCE engine) with CMake and links it statically.
 // The core is never a sidecar: iOS forbids helper processes (PLAN.md §1).
+//
+// It also declares the app's commands to Tauri's access control, so each
+// window gets only the commands its capability names (PLAN.md F7, H3): the
+// main window every one (permissions/main-window.toml, written here), the
+// mini player a few (permissions/mini-window.toml). The list comes from
+// lib.rs's `generate_handler!`, so it can't drift from the commands.
 
 use std::path::PathBuf;
 
 fn main() {
     build_core();
-    tauri_build::build()
+    let commands = app_commands();
+    write_main_window_permissions(&commands);
+    let commands: Vec<&'static str> = commands
+        .into_iter()
+        .map(|command| &*Box::leak(command.into_boxed_str()))
+        .collect();
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(Box::leak(commands.into_boxed_slice())),
+    ))
+    .expect("failed to run tauri-build");
+}
+
+/// The commands lib.rs registers: the last path segment of each entry of
+/// its `generate_handler![…]`.
+fn app_commands() -> Vec<String> {
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    let source = std::fs::read_to_string("src/lib.rs").expect("cannot read src/lib.rs");
+    let marker = "generate_handler![";
+    let start = source
+        .find(marker)
+        .expect("lib.rs has no generate_handler!")
+        + marker.len();
+    let end = start
+        + source[start..]
+            .find(']')
+            .expect("generate_handler! isn't closed");
+    source[start..end]
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| entry.rsplit("::").next().unwrap_or(entry).to_owned())
+        .collect()
+}
+
+/// A permission set of every command, for the main window.
+fn write_main_window_permissions(commands: &[String]) {
+    let permissions: Vec<String> = commands
+        .iter()
+        .map(|command| format!("\"allow-{}\"", command.replace('_', "-")))
+        .collect();
+    let toml = format!(
+        "# Written by build.rs from the commands lib.rs registers; don't edit.\n\n\
+         [[set]]\nidentifier = \"main-window\"\n\
+         description = \"Every app command, for the main window.\"\n\
+         permissions = [\n    {}\n]\n",
+        permissions.join(",\n    ")
+    );
+    let path = PathBuf::from("permissions/main-window.toml");
+    std::fs::create_dir_all("permissions").expect("cannot create permissions/");
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(toml.as_str()) {
+        std::fs::write(&path, toml).expect("cannot write permissions/main-window.toml");
+    }
 }
 
 fn build_core() {

@@ -53,7 +53,8 @@ pub fn listen(conn: &Connection, track_id: i64, listened_at: i64) -> Result<Opti
         Option<String>,
     )> = conn
         .query_row(
-            "SELECT t.title, artist.name, album.title, t.duration, t.musicbrainz_recording_id,
+            "SELECT t.title, IFNULL(t.artist_credit, artist.name), album.title, t.duration,
+                    t.musicbrainz_recording_id,
                     album.musicbrainz_release_id, artist.musicbrainz_id
              FROM tracks t
              LEFT JOIN artists artist ON artist.id = t.artist_id

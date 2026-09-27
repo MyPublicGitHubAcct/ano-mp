@@ -1,5 +1,8 @@
 // Short messages at the bottom of the window: errors from commands, and
-// tracks the queue had to skip.
+// tracks the queue had to skip. Coded errors from the backend show in the
+// user's language (`errorText`, PLAN.md F19).
+
+import { errorText } from "$lib/i18n";
 
 export type Toast = { id: number; text: string; kind: "error" | "info" };
 
@@ -26,7 +29,7 @@ export async function attempt<T>(action: () => Promise<T>): Promise<T | undefine
   try {
     return await action();
   } catch (error) {
-    toasts.show(String(error));
+    toasts.show(errorText(error));
     return undefined;
   }
 }

@@ -3,22 +3,24 @@
 
 import type { AlbumFact, FeatureSettings, Track, TrackColumn } from "$lib/api";
 import { fileName, formatDay, formatTime } from "$lib/format";
+import { t } from "$lib/i18n";
 
 export const TRACK_COLUMNS: { id: TrackColumn; name: string }[] = [
-  { id: "trackNumber", name: "Track number" },
-  { id: "artist", name: "Artist" },
-  { id: "album", name: "Album" },
-  { id: "albumArtist", name: "Album artist" },
-  { id: "year", name: "Year" },
-  { id: "genre", name: "Genre" },
-  { id: "duration", name: "Length" },
-  { id: "format", name: "Format" },
-  { id: "bitrate", name: "Bit rate" },
-  { id: "sampleRate", name: "Sample rate" },
-  { id: "playCount", name: "Plays" },
-  { id: "lastPlayed", name: "Last played" },
-  { id: "dateAdded", name: "Date added" },
-  { id: "composer", name: "Composer" },
+  { id: "trackNumber", name: t("column.trackNumber") },
+  { id: "artist", name: t("column.artist") },
+  { id: "album", name: t("column.album") },
+  { id: "albumArtist", name: t("column.albumArtist") },
+  { id: "year", name: t("column.year") },
+  { id: "genre", name: t("column.genre") },
+  { id: "duration", name: t("column.duration") },
+  { id: "format", name: t("column.format") },
+  { id: "bitrate", name: t("column.bitrate") },
+  { id: "sampleRate", name: t("column.sampleRate") },
+  { id: "playCount", name: t("column.playCount") },
+  { id: "lastPlayed", name: t("column.lastPlayed") },
+  { id: "dateAdded", name: t("column.dateAdded") },
+  { id: "composer", name: t("column.composer") },
+  { id: "rating", name: t("column.rating") },
 ];
 
 /** Whether a column's feature is on: plays need the listening history, the composer the classical tags. */
@@ -29,11 +31,11 @@ export function columnAvailable(column: TrackColumn, features: FeatureSettings) 
 }
 
 export const ALBUM_FACTS: { id: AlbumFact; name: string }[] = [
-  { id: "date", name: "Release date" },
-  { id: "label", name: "Label and catalogue number" },
-  { id: "country", name: "Country" },
-  { id: "format", name: "Format" },
-  { id: "type", name: "Type" },
+  { id: "date", name: t("column.date") },
+  { id: "label", name: t("column.label") },
+  { id: "country", name: t("column.country") },
+  { id: "format", name: t("column.format") },
+  { id: "type", name: t("column.type") },
 ];
 
 /** The columns shown as text beside the title (or under it, when narrow): all but the number, which leads
@@ -49,7 +51,8 @@ export const isShortColumn = (column: TrackColumn) =>
   column === "sampleRate" ||
   column === "playCount" ||
   column === "lastPlayed" ||
-  column === "dateAdded";
+  column === "dateAdded" ||
+  column === "rating";
 
 /** "FLAC", "MP3"…: the file's extension. */
 export function formatOf(path: string) {
@@ -78,9 +81,9 @@ export function columnText(column: TrackColumn, track: Track): string {
     case "format":
       return formatOf(track.path);
     case "bitrate":
-      return track.bitrateKbps === null ? "" : `${track.bitrateKbps} kbps`;
+      return track.bitrateKbps === null ? "" : t("info.kbps", { rate: track.bitrateKbps });
     case "sampleRate":
-      return track.sampleRate > 0 ? `${(track.sampleRate / 1000).toLocaleString()} kHz` : "";
+      return track.sampleRate > 0 ? t("info.kHz", { rate: (track.sampleRate / 1000).toLocaleString() }) : "";
     case "playCount":
       return track.playCount > 0 ? track.playCount.toLocaleString() : "";
     case "lastPlayed":
@@ -89,5 +92,7 @@ export function columnText(column: TrackColumn, track: Track): string {
       return track.addedAt > 0 ? formatDay(track.addedAt) : "";
     case "composer":
       return track.composer ?? "";
+    case "rating":
+      return track.rating ? "★".repeat(track.rating) : "";
   }
 }

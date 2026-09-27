@@ -14,7 +14,9 @@
   import { visualization } from "$lib/visualizer";
   import { decodeFrame, silentFrame } from "$lib/visualizer/frame";
   import { DEFAULT_PALETTE, paletteFrom } from "$lib/visualizer/palette";
+  import { FlashGuard, averageLuminance } from "$lib/visualizer/safety";
   import type { Palette, Renderer, Scene } from "$lib/visualizer/types";
+  import { errorText, t } from "$lib/i18n";
 
   let { id }: { id: string } = $props();
 
@@ -26,6 +28,15 @@
   /** The cover's colours, if it has been read. */
   let coverPalette: Palette | null = null;
   const colorsFromCover = $derived(appSettings.visualizer.colorsFromCover);
+  /** Calm mode (PLAN.md F18): the setting, or the OS's "reduce motion". */
+  let reducedMotion = $state(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  $effect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const changed = () => (reducedMotion = query.matches);
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  });
+  const calm = $derived(reducedMotion || appSettings.visualizer.calm);
   const sensitivity = $derived(appSettings.visualizer.sensitivity);
 
   // The analysis stream.
@@ -44,7 +55,7 @@
         if (cancelled) void unsubscribe();
         else stop = unsubscribe;
       })
-      .catch((error) => toasts.show(`The visualizer can't follow the audio: ${error}`));
+      .catch((error) => toasts.show(t("visualizer.cantFollow", { error: errorText(error) })));
     return () => {
       cancelled = true;
       void stop?.();
@@ -115,6 +126,13 @@
 
     const start = performance.now();
     let previous = start;
+    // The flash guard's view of the picture: the canvas shrunk to 16×16.
+    const guard = new FlashGuard();
+    const probe = document.createElement("canvas");
+    probe.width = probe.height = 16;
+    const probeCtx = probe.getContext("2d", { willReadFrequently: true });
+    let frames = 0;
+    let dim = 0;
     let request = requestAnimationFrame(function tick(now) {
       const dt = Math.min(0.1, (now - previous) / 1000);
       previous = now;
@@ -130,7 +148,8 @@
           dt,
           frame,
           fresh,
-          beat,
+          beat: beat && guard.beat(now / 1000, calm),
+          calm,
           track: current && { trackId: current.trackId, albumId: current.albumId },
           cover,
           palette: (colorsFromCover && coverPalette) || DEFAULT_PALETTE,
@@ -139,6 +158,24 @@
         renderer.draw(scene);
         fresh = false;
         beat = false;
+        // Every third frame, how bright the picture is; dimmed while it
+        // flickers faster than three times a second.
+        if (probeCtx && ++frames % 3 === 0) {
+          let level: number;
+          try {
+            probeCtx.drawImage(canvas, 0, 0, 16, 16);
+            level = averageLuminance(probeCtx.getImageData(0, 0, 16, 16).data);
+          } catch {
+            // A cover without CORS headers makes the canvas unreadable:
+            // the beat limit alone guards it then.
+            level = 0;
+          }
+          const next = guard.luminance(now / 1000, level, dt * 3);
+          if (Math.abs(next - dim) > 0.01) {
+            dim = next;
+            canvas.style.filter = dim > 0 ? `brightness(${1 - dim}) contrast(${1 - dim / 2})` : "";
+          }
+        }
       }
       request = requestAnimationFrame(tick);
     });

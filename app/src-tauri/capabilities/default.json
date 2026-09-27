@@ -2,16 +2,28 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
+    "main-window",
     "core:default",
     "core:window:allow-set-fullscreen",
     "dialog:allow-open",
     "dialog:allow-ask",
+    "core:window:allow-set-always-on-top",
+    "dialog:allow-save",
     "opener:allow-reveal-item-in-dir",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
     }
   ]
 }

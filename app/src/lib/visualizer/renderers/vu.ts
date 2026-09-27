@@ -4,6 +4,7 @@
 // RMS rather than the studio's -18: finished masters run at -8 to -12, and
 // would pin the needle.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Rgb, Scene, Visualization } from "../types";
 import { approach, clearStage, mix, rgba } from "../util";
 
@@ -164,7 +165,11 @@ function meter(
 
 export const vu: Visualization = {
   id: "vu",
-  name: "VU meters",
-  description: "Analog meters with VU ballistics and peak lamps.",
+  get name() {
+    return t("viz.vu.name");
+  },
+  get description() {
+    return t("viz.vu.description");
+  },
   create,
 };

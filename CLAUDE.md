@@ -78,6 +78,17 @@ sheets (`library/cue.rs`), discovery, health, lyrics and preferences
 ListenBrainz (`history/`), library radio (`queue/radio.rs`) and the LAN
 remote (`remote/`). The UI adds the Home, History and Library health
 views. What remains is checking them in the app (Phase 6b's exit).
+The expected features F1–F21 (`PLAN.md` §4.7, Phase 6c) are built:
+playlists and smart playlists (`library/playlists.rs`, `library/smart.rs`),
+favourites and ratings (`library/marks.rs`), moved files keeping their ids
+(the scanner), credited artists and compilations, substring search
+(migrations 007–009), folder watching and rescans at launch
+(`library/watch.rs`), Get Info (`library/info.rs`), files opened from outside
+the library (`library/external.rs`), data export and import
+(`library/transfer.rs`), crossfade and the `Equaliser` in the core, and the
+app outside its page in `app/src-tauri/src/shell/` (menus, the Dock menu,
+the menu-bar item, the mini player, opened files, notifications). What
+remains is checking them in the app (Phase 6c's exit).
 `docs/` is empty.
 
 ## Build & test
@@ -213,9 +224,23 @@ changes what is heard, goes online or listens on the network. The LAN
 remote answers local addresses only and keeps only hashes of tokens; any
 change to `remote/` needs the security review in `PLAN.md` §8.1.
 
-Search uses FTS5 tables kept in step by triggers (migration 005 recreated them); a schema change
-to `tracks`, `artists` or `albums` columns they index must update those triggers
-in a new migration.
+Search uses FTS5 tables kept in step by triggers: word indexes (recreated by
+migration 008 over `IFNULL(artist_credit, …)`) and trigram indexes (009). A
+schema change to `tracks`, `artists` or `albums` columns they index must update
+both sets of triggers in a new migration. Run the search benchmark
+(`library/bench.rs`) after changing the search SQL.
+
+Every string the UI shows comes from `app/src/lib/i18n/en.json` through `t`
+(typed keys; a plural message is an object of `Intl.PluralRules` forms), never
+a literal in a component. Rust errors the UI shows are made with
+`crate::coded` (`{code, params, message}`), each code with an `error.<code>`
+message in `en.json` (`tests/i18n.test.mjs` checks), and the UI shows a
+command's error through `errorText`, never `String(error)`.
+
+Each window gets only the commands it needs: `build.rs` reads the handlers in
+`lib.rs`'s `generate_handler!` and writes the main window's permission set, so
+a new command needs no step for the main window; add it to
+`permissions/mini-window.toml` if the mini player calls it.
 
 Metadata services (`app/src-tauri/src/metadata/`) go through `http::Client`,
 which rate-limits per host and backs off when offline; never call a service

@@ -4,6 +4,7 @@
 // related hues. The middle names the key the last ten seconds or so fit
 // best, and the note sounding most.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { estimateKey, KEY_NAMES, keyName } from "../key";
 import { approach, approachAll, clearStage, hsl, rgba } from "../util";
@@ -117,7 +118,11 @@ function create(): Renderer {
 
 export const fifths: Visualization = {
   id: "fifths",
-  name: "Circle of fifths",
-  description: "The notes sounding, around the circle of fifths, and the key the music seems to be in.",
+  get name() {
+    return t("viz.fifths.name");
+  },
+  get description() {
+    return t("viz.fifths.description");
+  },
   create,
 };

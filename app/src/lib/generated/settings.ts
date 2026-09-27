@@ -2,7 +2,7 @@
 // `bindings`); don't edit. After changing them, run
 // `ANOMP_WRITE_BINDINGS=1 cargo test bindings` in src-tauri.
 
-export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, };
+export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, equaliser: EqualiserSettings, library: LibrarySettings, window: WindowSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -26,7 +26,7 @@ albumFacts: Array<AlbumFact>,
  */
 showDescriptions: boolean, };
 
-export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate" | "playCount" | "lastPlayed" | "dateAdded" | "composer";
+export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate" | "playCount" | "lastPlayed" | "dateAdded" | "composer" | "rating";
 
 export type AlbumFact = "date" | "label" | "country" | "format" | "type";
 
@@ -42,7 +42,12 @@ untaggedGain: number,
 /**
  * Lowers a track's gain so its tagged peak doesn't clip.
  */
-preventClipping: boolean, };
+preventClipping: boolean, 
+/**
+ * Seconds to crossfade between tracks, 0 (off, gapless) to 12; never
+ * between tracks of one album (PLAN.md F14).
+ */
+crossfade: number, };
 
 export type ReplayGainMode = "off" | "track" | "album";
 
@@ -85,7 +90,12 @@ colorsFromCover: boolean,
 /**
  * Moves on to the next visualization this often; 0 never.
  */
-cycleSeconds: number, };
+cycleSeconds: number, 
+/**
+ * Calm mode: no beats, slow motion (PLAN.md F18); on by itself while
+ * the OS asks for reduced motion.
+ */
+calm: boolean, };
 
 export type CoverBasis = "year" | "artist";
 
@@ -209,6 +219,65 @@ moreInGenre: boolean,
 topPlayed: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
+
+/**
+ * The graphic equaliser (PLAN.md F15): ten bands and a preamp, with a
+ * profile for speakers and, if it follows the output, one for headphones.
+ */
+export type EqualiserSettings = { enabled: boolean, 
+/**
+ * Used unless `follow_output` is on and headphones are plugged in.
+ */
+speakers: EqualiserProfile, headphones: EqualiserProfile, 
+/**
+ * Switches to the headphones profile while the OS says headphones
+ * are plugged in.
+ */
+followOutput: boolean, };
+
+/**
+ * Gains for the ten bands (31 Hz to 16 kHz) and a preamp, in dB.
+ */
+export type EqualiserProfile = { 
+/**
+ * The preset these came from ("flat", "bassBoost"…), or "custom".
+ */
+preset: string, preamp: number, gains: Array<number>, };
+
+/**
+ * Keeping the library in step with the disk (PLAN.md F9).
+ */
+export type LibrarySettings = { 
+/**
+ * Rescans every folder in the background at launch.
+ */
+rescanAtLaunch: boolean, 
+/**
+ * Rescans a folder when its files change while the app runs.
+ */
+watchFolders: boolean, };
+
+/**
+ * The app's windows and what it shows outside them (PLAN.md F7, F21).
+ */
+export type WindowSettings = { 
+/**
+ * Transport and the current track in the menu bar.
+ */
+menuBarControls: boolean, 
+/**
+ * The mini player stays above other windows.
+ */
+miniPlayerOnTop: boolean, 
+/**
+ * A notification when the track changes while the window isn't in
+ * front, with the cover.
+ */
+trackNotifications: boolean, 
+/**
+ * The visualizer's note about flashing lights was read (F18).
+ */
+visualizerNoteSeen: boolean, };
 
 /**
  * The output devices, and which one plays.

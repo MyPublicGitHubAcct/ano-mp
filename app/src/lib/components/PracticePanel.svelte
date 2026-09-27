@@ -2,6 +2,7 @@
   // Practice mode (O12): an A–B loop set from the current position (the
   // engine jumps back on the exact sample), and the tempo (50–150%) and
   // pitch (±12 semitones), each independent of the other.
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { player as api } from "$lib/api";
   import { formatTime } from "$lib/format";
@@ -57,25 +58,25 @@
   }
 </script>
 
-<Popover title="Practice" {onclose}>
+<Popover title={t("bar.practice")} {onclose}>
   <div class="loop">
-    <span class="label">Loop</span>
-    <button onclick={setA} disabled={!player.loaded}>Set A</button>
-    <button onclick={setB} disabled={!player.loaded || (pendingStart === null && loop === null)}>Set B</button>
-    <button onclick={clearLoop} disabled={loop === null && pendingStart === null}>Clear</button>
+    <span class="label">{t("practice.loop")}</span>
+    <button onclick={setA} disabled={!player.loaded}>{t("practice.setA")}</button>
+    <button onclick={setB} disabled={!player.loaded || (pendingStart === null && loop === null)}>{t("practice.setB")}</button>
+    <button onclick={clearLoop} disabled={loop === null && pendingStart === null}>{t("practice.clear")}</button>
   </div>
   <p class="muted small" role="status">
     {#if loop}
-      Looping {formatTime(loop[0])} – {formatTime(loop[1])}
+      {t("practice.looping", { from: formatTime(loop[0]), to: formatTime(loop[1]) })}
     {:else if pendingStart !== null}
-      A at {formatTime(pendingStart)}; play on and set B.
+      {t("practice.aAt", { time: formatTime(pendingStart) })}
     {:else}
-      Set A where the loop starts and B where it ends, as it plays. Now {formatTime(playback.position)}.
+      {t("practice.hint", { time: formatTime(playback.position) })}
     {/if}
   </p>
 
   <label class="slider">
-    <span class="label">Speed</span>
+    <span class="label">{t("practice.speed")}</span>
     <input
       type="range"
       min="0.5"
@@ -88,7 +89,7 @@
     <span class="value">{Math.round(tempo * 100)}%</span>
   </label>
   <label class="slider">
-    <span class="label">Pitch</span>
+    <span class="label">{t("practice.pitch")}</span>
     <input
       type="range"
       min="-12"
@@ -98,10 +99,10 @@
       onchange={applyTempo}
       onkeydown={(event) => event.stopPropagation()}
     />
-    <span class="value">{semitones > 0 ? "+" : ""}{semitones} st</span>
+    <span class="value">{t("practice.semitones", { value: `${semitones > 0 ? "+" : ""}${semitones}` })}</span>
   </label>
   <p class="row">
-    <button onclick={reset} disabled={tempo === 1 && semitones === 0}>Normal speed and pitch</button>
+    <button onclick={reset} disabled={tempo === 1 && semitones === 0}>{t("practice.reset")}</button>
   </p>
 </Popover>
 

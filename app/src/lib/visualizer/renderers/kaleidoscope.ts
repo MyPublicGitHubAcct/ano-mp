@@ -2,6 +2,7 @@
 // with light blooming over it from the spectrum, mirrored into a ring of
 // wedges that turns with the music and punches in on beats.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { along, approach, rgba, STAGE } from "../util";
 
@@ -62,8 +63,8 @@ function create(): Renderer {
       energy = approach(energy, rms, dt, 0.1, 0.8);
       bass = approach(bass, frame.bands.slice(0, 8).reduce((a, b) => Math.max(a, b), 0), dt, 0.03, 0.25);
       // Turning faster when loud; punching in on a beat and easing back.
-      angle += dt * (0.04 + 0.35 * energy);
-      zoom = scene.beat ? 1.12 : approach(zoom, 1 + 0.05 * bass, dt, 0.05, 0.6);
+      angle += dt * (scene.calm ? 0.02 : 0.04 + 0.35 * energy);
+      zoom = scene.beat ? 1.12 : approach(zoom, 1 + (scene.calm ? 0 : 0.05 * bass), dt, 0.05, 0.6);
       paint(scene);
 
       ctx.save();
@@ -105,7 +106,11 @@ function create(): Renderer {
 
 export const kaleidoscope: Visualization = {
   id: "kaleidoscope",
-  name: "Kaleidoscope",
-  description: "The current cover, mirrored into a turning kaleidoscope that blooms with the music.",
+  get name() {
+    return t("viz.kaleidoscope.name");
+  },
+  get description() {
+    return t("viz.kaleidoscope.description");
+  },
   create,
 };

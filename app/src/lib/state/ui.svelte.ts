@@ -1,8 +1,13 @@
 // Layout and transient UI state.
 
-import type { ArtistInfo } from "$lib/api";
+import type { ArtistInfo, Playlist } from "$lib/api";
+import type { MenuTrack } from "$lib/trackMenu";
 
-export type MenuItem = { label: string; action: () => unknown; disabled?: boolean };
+/** An item of a context menu: an action, a submenu (`items`), or a separator. */
+export type MenuItem =
+  | { label: string; action: () => unknown; disabled?: boolean; checked?: boolean; items?: undefined }
+  | { label: string; items: MenuItem[]; disabled?: boolean; action?: undefined; checked?: undefined }
+  | { separator: true; label?: undefined; action?: undefined; items?: undefined };
 
 export type MainView =
   | "library"
@@ -14,9 +19,20 @@ export type MainView =
   | "settings"
   | "home"
   | "history"
-  | "health";
+  | "health"
+  | "favourites"
+  | "playlist";
 /** The parts of the settings view. */
-export type SettingsSection = "library" | "sorting" | "display" | "playback" | "visualizer" | "sources" | "features";
+export type SettingsSection =
+  | "library"
+  | "sorting"
+  | "display"
+  | "playback"
+  | "equaliser"
+  | "visualizer"
+  | "sources"
+  | "features"
+  | "general";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
 
@@ -25,10 +41,27 @@ export type Dialog =
   | { kind: "findDetails"; album: AlbumRef }
   | { kind: "chooseCover"; album: AlbumRef }
   | { kind: "findArtist"; artist: ArtistRef; info: ArtistInfo }
-  | { kind: "prefs"; track: { id: number; title: string } | null; album: AlbumRef | null };
+  | { kind: "prefs"; track: { id: number; title: string } | null; album: AlbumRef | null }
+  /** A smart playlist's rules: a new one (null), or one to edit (F2). */
+  | { kind: "smartPlaylist"; playlist: Playlist | null }
+  /** Get Info for a track (F16). */
+  | { kind: "trackInfo"; trackId: number }
+  /** The keyboard shortcuts (F6). */
+  | { kind: "shortcuts" };
 
 /** Views that `back` returns from. */
-const OPENED: MainView[] = ["nowPlaying", "visualizer", "artist", "discography", "settings", "home", "history", "health"];
+const OPENED: MainView[] = [
+  "nowPlaying",
+  "visualizer",
+  "artist",
+  "discography",
+  "settings",
+  "home",
+  "history",
+  "health",
+  "favourites",
+  "playlist",
+];
 
 class Ui {
   /** What the main area shows when not searching: the library browser, the
@@ -36,6 +69,10 @@ class Ui {
   mainView = $state<MainView>("library");
   /** The artist the artist and discography views show. */
   artist = $state.raw<ArtistRef | null>(null);
+  /** The playlist the playlist view shows. */
+  playlistId = $state<number | null>(null);
+  /** A playlist just made, whose name is being typed. */
+  renaming = $state<number | null>(null);
   /** The queue panel beside the main area (a column when wide, an overlay
       when narrow); hidden while the main area shows the queue or the
       current track. */
@@ -44,7 +81,7 @@ class Ui {
   /** The part of the settings view showing. */
   settingsSection = $state<SettingsSection>("library");
   /** The views the now-playing, visualizer, artist, discography and settings views were opened from, for `back`. */
-  #history: { view: MainView; artist: ArtistRef | null }[] = [];
+  #history: { view: MainView; artist: ArtistRef | null; playlistId: number | null }[] = [];
 
   get queueInMain() {
     return this.mainView === "queue";
@@ -109,9 +146,20 @@ class Ui {
     this.artist = artist;
   }
 
-  /** Shows a view of its own (Home, History, Health) in the main area. */
-  showView(view: "home" | "history" | "health") {
+  /** Shows a view of its own (Home, History, Health, Favourites) in the main area. */
+  showView(view: "home" | "history" | "health" | "favourites") {
     this.#open(view);
+  }
+
+  /** Shows a playlist in the main area. */
+  showPlaylist(playlistId: number) {
+    if (this.mainView === "playlist" && this.playlistId === playlistId) return;
+    this.#open("playlist");
+    this.playlistId = playlistId;
+  }
+
+  get playlistInMain() {
+    return this.mainView === "playlist" && this.playlistId !== null;
   }
 
   /** Shows the settings in the main area, at `section` (else where they were left). */
@@ -126,12 +174,16 @@ class Ui {
     const previous = this.#history.pop();
     this.mainView = previous?.view ?? "library";
     this.artist = previous?.artist ?? null;
+    this.playlistId = previous?.playlistId ?? null;
   }
 
   /** A view that `back` returns from. */
   #open(view: MainView) {
-    if (this.mainView !== view || view === "artist" || view === "discography") {
-      this.#history = [...this.#history, { view: this.mainView, artist: this.artist }].slice(-20);
+    if (this.mainView !== view || view === "artist" || view === "discography" || view === "playlist") {
+      this.#history = [
+        ...this.#history,
+        { view: this.mainView, artist: this.artist, playlistId: this.playlistId },
+      ].slice(-20);
     }
     this.mainView = view;
     this.sidebarOpen = false;
@@ -150,7 +202,24 @@ class Ui {
 
   openMenu(event: MouseEvent, items: MenuItem[]) {
     event.preventDefault();
+    // Opened from the keyboard, the menu gives the focus back when it closes.
+    this.menuReturn = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.menu = { x: event.clientX, y: event.clientY, items };
+  }
+
+  /** Where the focus was when the menu opened. */
+  menuReturn: HTMLElement | null = null;
+
+  /** The tracks selected in the list showing, for the menus' Get Info (⌘I). */
+  selectedTracks: (() => MenuTrack[]) | null = null;
+
+  /** Announced to screen readers through the page's live region (F18). */
+  announcement = $state("");
+
+  announce(text: string) {
+    // The same text twice is still announced.
+    this.announcement = "";
+    queueMicrotask(() => (this.announcement = text));
   }
 }
 

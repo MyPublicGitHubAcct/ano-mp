@@ -21,12 +21,12 @@ use crate::settings::{self, FeatureSettings};
 fn require<R: Runtime>(
     app: &AppHandle<R>,
     on: impl Fn(&FeatureSettings) -> bool,
-    name: &str,
+    (feature, name): (&str, &str),
 ) -> Result<(), String> {
     if on(&settings::current(app).features) {
         Ok(())
     } else {
-        Err(format!("{name} is turned off in Settings › Features"))
+        Err(crate::coded::feature_off(feature, name))
     }
 }
 
@@ -73,7 +73,7 @@ pub async fn history_recent<R: Runtime>(
     require(
         &app,
         |f| f.listening_history && f.recently_played,
-        "Recently played",
+        ("recentlyPlayed", "Recently played"),
     )?;
     on_library(&app, move |library| {
         views::recently_played(&library.conn(), limit.min(500) as usize)
@@ -88,7 +88,11 @@ pub async fn history_top<R: Runtime>(
     year: i32,
     month: Option<u32>,
 ) -> Result<TopPlayed, String> {
-    require(&app, |f| f.listening_history && f.top_played, "Top played")?;
+    require(
+        &app,
+        |f| f.listening_history && f.top_played,
+        ("topPlayed", "Top played"),
+    )?;
     on_library(&app, move |library| {
         views::top_played(&library.conn(), kind, year, month)
     })
@@ -97,7 +101,11 @@ pub async fn history_top<R: Runtime>(
 
 #[tauri::command]
 pub async fn history_highlights<R: Runtime>(app: AppHandle<R>) -> Result<Highlights, String> {
-    require(&app, |f| f.listening_history, "The listening history")?;
+    require(
+        &app,
+        |f| f.listening_history,
+        ("listeningHistory", "The listening history"),
+    )?;
     on_library(&app, |library| views::highlights(&library.conn())).await
 }
 
@@ -157,7 +165,11 @@ pub async fn library_recently_added<R: Runtime>(
     app: AppHandle<R>,
     limit: u32,
 ) -> Result<Vec<AlbumCard>, String> {
-    require(&app, |f| f.recently_added, "Recently added")?;
+    require(
+        &app,
+        |f| f.recently_added,
+        ("recentlyAdded", "Recently added"),
+    )?;
     on_library(&app, move |library| {
         discover::recently_added(&library.conn(), limit.min(1000))
     })
@@ -172,7 +184,11 @@ pub async fn library_on_this_day<R: Runtime>(
     month: u32,
     day: u32,
 ) -> Result<Vec<AlbumCard>, String> {
-    require(&app, |f| f.on_this_day, "On this day")?;
+    require(
+        &app,
+        |f| f.on_this_day,
+        ("onThisDay", "Released on this day"),
+    )?;
     on_library(&app, move |library| {
         discover::on_this_day(&library.conn(), year, month, day)
     })
@@ -186,7 +202,11 @@ pub async fn library_more_in_genre<R: Runtime>(
     genre: String,
     seed: u64,
 ) -> Result<Vec<AlbumCard>, String> {
-    require(&app, |f| f.more_in_genre, "More in this genre")?;
+    require(
+        &app,
+        |f| f.more_in_genre,
+        ("moreInGenre", "More in this genre"),
+    )?;
     on_library(&app, move |library| {
         discover::more_in_genre(&library.conn(), album_id, &genre, seed, 5)
     })
@@ -197,7 +217,11 @@ pub async fn library_more_in_genre<R: Runtime>(
 
 #[tauri::command]
 pub async fn library_health<R: Runtime>(app: AppHandle<R>) -> Result<HealthReport, String> {
-    require(&app, |f| f.health_report, "The health report")?;
+    require(
+        &app,
+        |f| f.health_report,
+        ("healthReport", "The health report"),
+    )?;
     on_library(&app, |library| health::report(&library.conn())).await
 }
 
@@ -206,7 +230,7 @@ pub async fn library_lyrics<R: Runtime>(
     app: AppHandle<R>,
     track_id: i64,
 ) -> Result<Option<Lyrics>, String> {
-    require(&app, |f| f.lyrics, "Lyrics")?;
+    require(&app, |f| f.lyrics, ("lyrics", "Lyrics"))?;
     on_library(&app, move |library| {
         lyrics::lyrics(&library.conn(), track_id)
     })
@@ -260,7 +284,11 @@ pub async fn prefs_set_track<R: Runtime>(
     track_id: i64,
     prefs: TrackPrefs,
 ) -> Result<(), String> {
-    require(&app, |f| f.playback_preferences, "Playback preferences")?;
+    require(
+        &app,
+        |f| f.playback_preferences,
+        ("playbackPreferences", "Playback preferences"),
+    )?;
     on_library(&app, move |library| {
         prefs::set_track_prefs(&library.conn(), track_id, &prefs)
     })
@@ -275,7 +303,11 @@ pub async fn prefs_set_album<R: Runtime>(
     album_id: i64,
     prefs: AlbumPrefs,
 ) -> Result<(), String> {
-    require(&app, |f| f.playback_preferences, "Playback preferences")?;
+    require(
+        &app,
+        |f| f.playback_preferences,
+        ("playbackPreferences", "Playback preferences"),
+    )?;
     on_library(&app, move |library| {
         prefs::set_album_prefs(&library.conn(), album_id, &prefs)
     })

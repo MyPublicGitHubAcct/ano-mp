@@ -219,9 +219,11 @@ pub fn queue_changed<R: Runtime>(app: &AppHandle<R>, state: &QueueState) {
         TRACKER.with_borrow_mut(|tracker| *tracker = Tracker::default());
         return;
     }
+    // Files outside the library (F5) aren't in the history.
     let item = state
         .current_item
         .as_ref()
+        .filter(|item| !item.track.external)
         .map(|item| (item.uid, item.track.track_id, item.track.duration));
     let messages =
         TRACKER.with_borrow_mut(|tracker| tracker.current(item, state.loaded, unix_now()));

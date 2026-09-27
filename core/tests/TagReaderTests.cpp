@@ -9,7 +9,9 @@
 #include <chapterframe.h>
 #include <fileref.h>
 #include <id3v2tag.h>
+#include <mp4file.h>
 #include <mpegfile.h>
+#include <popularimeterframe.h>
 #include <synchronizedlyricsframe.h>
 #include <textidentificationframe.h>
 #include <tpropertymap.h>
@@ -19,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -516,4 +519,152 @@ TEST_CASE ("Chapters and cue sheets are read only when asked", "[tags][chapters]
     CHECK (std::string_view (cued->cuesheet).starts_with ("FILE \"a.flac\" WAVE"));
     CHECK (cued->chapter_count == 0);
     CHECK (cued->chapters == nullptr);
+}
+
+TEST_CASE ("Ratings from POPM, FMPS_RATING, RATING and MP4's rate", "[tags][ratings]")
+{
+    SECTION ("ID3v2 POPM, as whole stars")
+    {
+        TempCopy copy ("mp3-44k.mp3");
+        const auto rate = [&] (int popm)
+        {
+            {
+                TagLib::MPEG::File file (copy.file().getFullPathName().toRawUTF8());
+                REQUIRE (file.isValid());
+                auto* tag = file.ID3v2Tag (true);
+                tag->removeFrames ("POPM");
+                auto* frame = new TagLib::ID3v2::PopularimeterFrame();
+                frame->setEmail ("someone@example.com");
+                frame->setRating (popm);
+                tag->addFrame (frame);
+                REQUIRE (file.save());
+            }
+            return readTags (copy.file(), 0)->rating;
+        };
+        CHECK (rate (1) == 20);
+        CHECK (rate (64) == 40);
+        CHECK (rate (128) == 60);
+        CHECK (rate (196) == 80);
+        CHECK (rate (255) == 100);
+        CHECK (rate (0) == 0);
+    }
+
+    SECTION ("Vorbis comments")
+    {
+        TempCopy copy ("flac-44k.flac");
+        const auto rate = [&] (const char* key, const char* value)
+        {
+            {
+                TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+                TagLib::PropertyMap properties;
+                properties[key] = TagLib::String (value);
+                ref.setProperties (properties);
+                REQUIRE (ref.save());
+            }
+            return readTags (copy.file(), 0)->rating;
+        };
+        CHECK (rate ("FMPS_RATING", "0.6") == 60);
+        CHECK (rate ("RATING", "4") == 80);
+        CHECK (rate ("RATING", "85") == 85);
+        CHECK (rate ("RATING", "0.5") == 50);
+        CHECK (rate ("RATING", "192") == 80);
+        CHECK (rate ("RATING", "lots") == 0);
+    }
+
+    SECTION ("MP4's rate atom")
+    {
+        TempCopy copy ("aac-44k.m4a");
+        {
+            TagLib::MP4::File file (copy.file().getFullPathName().toRawUTF8());
+            REQUIRE (file.isValid());
+            file.tag()->setItem ("rate", TagLib::MP4::Item (TagLib::StringList ("60")));
+            REQUIRE (file.save());
+        }
+        CHECK (readTags (copy.file(), 0)->rating == 60);
+    }
+
+    CHECK (readTags (fixtureFile ("wav-s16-44k.wav"), 0)->rating == 0);
+}
+
+TEST_CASE ("Compilation flags and credited artists", "[tags][artists]")
+{
+    const auto* fixture = GENERATE ("flac-44k.flac", "mp3-44k.mp3", "aac-44k.m4a", "vorbis-44k.ogg");
+    INFO (fixture);
+    TempCopy copy (fixture);
+    {
+        TagLib::FileRef ref (copy.file().getFullPathName().toRawUTF8());
+        REQUIRE (! ref.isNull());
+        auto properties = ref.properties();
+        properties["ARTIST"] = TagLib::String ("Singer feat. Rapper");
+        properties["ARTISTS"] = TagLib::StringList ({ "Singer", "Rapper" });
+        properties["COMPILATION"] = TagLib::String ("1");
+        CHECK (ref.setProperties (properties).isEmpty());
+        REQUIRE (ref.save());
+    }
+    const auto tags = readTags (copy.file(), 0);
+    CHECK (tags->compilation == 1);
+    CHECK (std::string_view (tags->artists) == "Singer; Rapper");
+    CHECK (std::string_view (tags->artist) == "Singer feat. Rapper");
+
+    const auto untagged = readTags (fixtureFile ("wav-s16-44k.wav"), 0);
+    CHECK (untagged->compilation == 0);
+    CHECK (std::string_view (untagged->artists).empty());
+}
+
+TEST_CASE ("File info lists every field, the pictures and the format", "[tags][info]")
+{
+    struct InfoDeleter
+    {
+        void operator() (anomp_file_info* info) const { anomp_file_info_free (info); }
+    };
+    using Info = std::unique_ptr<anomp_file_info, InfoDeleter>;
+    const auto read = [] (const juce::File& file)
+    {
+        char error[512] = "unchanged";
+        Info info (anomp_read_file_info (file.getFullPathName().toRawUTF8(), error, sizeof (error)));
+        INFO (error);
+        REQUIRE (info != nullptr);
+        CHECK (std::string_view (error).empty());
+        return info;
+    };
+    const auto field = [] (const anomp_file_info& info, std::string_view key)
+    {
+        std::vector<std::string> values;
+        for (int i = 0; i < info.field_count; ++i)
+            if (key == info.fields[i].key)
+                values.emplace_back (info.fields[i].value);
+        return values;
+    };
+
+    const auto mp3 = read (fixtureFile ("tagged-id3v23.mp3"));
+    CHECK (field (*mp3, "TITLE") == std::vector<std::string> { "Café Déjà Vu" });
+    CHECK (std::string_view (mp3->tag_types).find ("ID3v2.3") != std::string_view::npos);
+    REQUIRE (mp3->picture_count >= 1);
+    CHECK (mp3->pictures[0].size == coverSize);
+    CHECK (std::string_view (mp3->codec) == "mp3");
+    CHECK (mp3->lossless == 0);
+    CHECK (mp3->sample_rate == 44100.0);
+    CHECK (mp3->bitrate_kbps > 0);
+    CHECK (mp3->file_size == fixtureFile ("tagged-id3v23.mp3").getSize());
+
+    const auto flac = read (fixtureFile ("tagged-vorbis.flac"));
+    CHECK (std::string_view (flac->codec) == "flac");
+    CHECK (flac->lossless == 1);
+    CHECK (flac->bits_per_sample == 16);
+    CHECK (flac->duration == Catch::Approx (fixtureSeconds).margin (0.001));
+    CHECK (std::string_view (flac->tag_types).find ("Vorbis comment") != std::string_view::npos);
+    CHECK (field (*flac, "ARTIST") == std::vector<std::string> { "Ano Artist" });
+
+    // Untagged: the format alone.
+    const auto wav = read (fixtureFile ("wav-s16-44k.wav"));
+    CHECK (wav->field_count == 0);
+    CHECK (wav->fields == nullptr);
+    CHECK (wav->picture_count == 0);
+    CHECK (std::string_view (wav->codec).starts_with ("pcm"));
+
+    char error[256] = "";
+    CHECK (anomp_read_file_info ("/no/such/file.flac", error, sizeof (error)) == nullptr);
+    CHECK (std::string_view (error).starts_with ("File not found"));
+    CHECK (anomp_read_file_info ("relative.flac", error, sizeof (error)) == nullptr);
+    anomp_file_info_free (nullptr);
 }

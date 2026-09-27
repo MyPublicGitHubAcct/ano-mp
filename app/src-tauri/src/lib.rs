@@ -1,5 +1,7 @@
 mod anomp;
 mod audio;
+mod coded;
+mod collection;
 mod features;
 mod history;
 mod library;
@@ -8,6 +10,7 @@ mod metadata;
 mod queue;
 mod remote;
 mod settings;
+mod shell;
 mod visualizer;
 
 use tauri::webview::PageLoadEvent;
@@ -57,7 +60,26 @@ pub fn run() {
                 eprintln!("[history] {error}");
             }
             remote::init(app.handle());
+            // After the queue: the menus and the Dock follow it.
+            if let Err(error) = shell::init(app.handle()) {
+                eprintln!("[shell] {error}");
+            }
+            // Last: a rescan at launch runs in the background (F9).
+            library::watch::init(app.handle());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // On macOS, closing the main window hides it and the music plays
+            // on; the Dock icon or the menus bring it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
         })
         .register_asynchronous_uri_scheme_protocol(
             library::art::SCHEME,
@@ -93,9 +115,11 @@ pub fn run() {
             audio::player_status,
             library::commands::library_folders,
             library::commands::library_add_folder,
+            library::commands::library_locate_folder,
             library::commands::library_remove_folder,
             library::commands::library_scan,
             library::commands::library_browse,
+            library::commands::library_node_track_ids,
             library::commands::library_search,
             library::commands::library_artist,
             library::commands::library_cover_wall,
@@ -134,6 +158,7 @@ pub fn run() {
             queue::queue_add_node,
             queue::queue_remove,
             queue::queue_move,
+            queue::queue_move_items,
             queue::queue_clear,
             queue::queue_jump,
             queue::queue_next,
@@ -144,6 +169,9 @@ pub fn run() {
             queue::queue_set_repeat,
             queue::queue_start_radio,
             queue::queue_stop_radio,
+            queue::queue_set_stop_after,
+            queue::queue_set_sleep,
+            queue::queue_open_files,
             queue::player_set_loop,
             audio::player_set_tempo,
             audio::player_practice,
@@ -165,6 +193,31 @@ pub fn run() {
             features::prefs_get,
             features::prefs_set_track,
             features::prefs_set_album,
+            collection::playlists_list,
+            collection::playlists_page,
+            collection::playlists_create,
+            collection::playlists_preview,
+            collection::playlists_create_from_queue,
+            collection::playlists_rename,
+            collection::playlists_set_rules,
+            collection::playlists_delete,
+            collection::playlists_add,
+            collection::playlists_remove,
+            collection::playlists_move,
+            collection::playlists_track_ids,
+            collection::playlists_import,
+            collection::playlists_export,
+            collection::marks_set_favourite,
+            collection::marks_favourites_among,
+            collection::marks_set_rating,
+            collection::marks_favourites,
+            collection::library_track_details,
+            collection::data_export,
+            collection::data_import,
+            shell::shell_sort_dropped,
+            shell::shell_shortcuts,
+            shell::shell_show_main,
+            shell::shell_toggle_mini_player,
             remote::remote_status,
             remote::remote_new_code,
             remote::remote_forget,
@@ -173,14 +226,27 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
+        .run(|app, event| match event {
+            tauri::RunEvent::Exit => {
                 remote::shutdown(app);
                 library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
                 queue::shutdown(app);
+                shell::shutdown();
                 media::shutdown();
                 audio::shutdown();
             }
+            // Files opened from the Finder play (F5).
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            tauri::RunEvent::Opened { urls } => shell::opened(app, urls),
+            // The Dock icon clicked with the main window hidden.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } => {
+                let _ = shell::show_main(app);
+            }
+            _ => {}
         });
 }

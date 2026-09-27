@@ -5,24 +5,29 @@
   // (along the top when narrow); every change is saved as it's made. The
   // section components use the shared styles below (`.field`, `.switch`,
   // `.hint`…).
+  import { t, type MessageKey } from "$lib/i18n";
   import { ui, type SettingsSection } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
   import ServicesPanel from "./ServicesPanel.svelte";
   import DisplayOptions from "./settings/DisplayOptions.svelte";
+  import EqualiserOptions from "./settings/EqualiserOptions.svelte";
+  import GeneralOptions from "./settings/GeneralOptions.svelte";
   import FeaturesOptions from "./settings/FeaturesOptions.svelte";
   import LibraryFolders from "./settings/LibraryFolders.svelte";
   import PlaybackOptions from "./settings/PlaybackOptions.svelte";
   import SortRules from "./settings/SortRules.svelte";
   import VisualizerOptions from "./settings/VisualizerOptions.svelte";
 
-  const SECTIONS: { id: SettingsSection; name: string; about: string }[] = [
-    { id: "library", name: "Library", about: "The folders your music is in." },
-    { id: "sorting", name: "Sorting", about: "How the library is grouped and ordered in the sidebar’s views." },
-    { id: "display", name: "Display", about: "What track lists and album pages show." },
-    { id: "playback", name: "Playback", about: "Where the sound goes, and evening out loudness." },
-    { id: "visualizer", name: "Visualizer", about: "What the visualizer shows, and how." },
-    { id: "sources", name: "Online sources", about: "Where album details, covers and biographies come from, beyond your files’ tags." },
-    { id: "features", name: "Features", about: "Turn each optional feature on or off, and set its options." },
+  const SECTIONS: { id: SettingsSection; name: MessageKey; about: MessageKey }[] = [
+    { id: "general", name: "settings.general", about: "settings.generalAbout" },
+    { id: "library", name: "settings.library", about: "settings.libraryAbout" },
+    { id: "sorting", name: "settings.sorting", about: "settings.sortingAbout" },
+    { id: "display", name: "settings.display", about: "settings.displayAbout" },
+    { id: "playback", name: "settings.playback", about: "settings.playbackAbout" },
+    { id: "equaliser", name: "settings.equaliser", about: "settings.equaliserAbout" },
+    { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
+    { id: "sources", name: "settings.sources", about: "settings.sourcesAbout" },
+    { id: "features", name: "settings.features", about: "settings.featuresAbout" },
   ];
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
@@ -42,14 +47,14 @@
 
 <section class="settings" aria-labelledby="settings-heading">
   <header class="hero">
-    <h1 id="settings-heading">Settings</h1>
-    <button class="icon" title="Close (Esc)" aria-label="Close the settings" onclick={() => ui.back()}>
+    <h1 id="settings-heading">{t("settings.title")}</h1>
+    <button class="icon" title={t("settings.closeEsc")} aria-label={t("settings.close")} onclick={() => ui.back()}>
       <Icon name="close" />
     </button>
   </header>
 
   <div class="layout">
-    <div class="tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical" tabindex="-1" {onkeydown}>
+    <div class="tabs" role="tablist" aria-label={t("settings.sections")} aria-orientation="vertical" tabindex="-1" {onkeydown}>
       {#each SECTIONS as candidate (candidate.id)}
         <button
           id="settings-tab-{candidate.id}"
@@ -59,14 +64,14 @@
           tabindex={candidate.id === section.id ? 0 : -1}
           onclick={() => (ui.settingsSection = candidate.id)}
         >
-          {candidate.name}
+          {t(candidate.name)}
         </button>
       {/each}
     </div>
 
     <div class="panel" id="settings-panel" role="tabpanel" aria-labelledby="settings-tab-{section.id}">
-      <h2>{section.name}</h2>
-      <p class="muted about">{section.about}</p>
+      <h2>{t(section.name)}</h2>
+      <p class="muted about">{t(section.about)}</p>
       {#key section.id}
         {#if section.id === "library"}
           <LibraryFolders />
@@ -76,6 +81,10 @@
           <DisplayOptions />
         {:else if section.id === "playback"}
           <PlaybackOptions />
+        {:else if section.id === "equaliser"}
+          <EqualiserOptions />
+        {:else if section.id === "general"}
+          <GeneralOptions />
         {:else if section.id === "visualizer"}
           <VisualizerOptions />
         {:else if section.id === "features"}

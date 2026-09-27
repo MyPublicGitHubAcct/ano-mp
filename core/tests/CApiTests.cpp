@@ -3,8 +3,11 @@
 
 #include "anomp/anomp.h"
 
+#include <juce_core/juce_core.h>
+
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -217,4 +220,75 @@ TEST_CASE ("C API tracks, loops, tempo and crossfeed", "[c-api][engine]")
     CHECK (anomp_engine_set_device_sample_rate (engine, 48000.0) == 0);
 
     anomp_engine_destroy (engine);
+}
+
+TEST_CASE ("C API crossfade and equaliser", "[c-api][engine]")
+{
+    char error[256] = "";
+    const double flat[ANOMP_EQ_BANDS] = {};
+    CHECK (anomp_engine_set_equaliser (nullptr, flat, 0.0) == 0);
+    CHECK (anomp_track_options_default (1.0).crossfade == 0.0);
+
+    auto* engine = anomp_engine_create();
+    REQUIRE (engine != nullptr);
+    const auto flac = fixturePath ("flac-44k.flac");
+    const auto wav = fixturePath ("wav-s16-44k.wav");
+
+    REQUIRE (anomp_engine_load_track (engine, flac.c_str(), nullptr, error, sizeof (error)) == 1);
+    auto options = anomp_track_options_default (1.0);
+    options.crossfade = 0.1;
+    REQUIRE (anomp_engine_set_next_track (engine, wav.c_str(), &options, error, sizeof (error)) == 1);
+    anomp_signal_path path {};
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.crossfade == Catch::Approx (0.1));
+    CHECK (path.equaliser == 0);
+
+    double gains[ANOMP_EQ_BANDS] = { 3.0, 0.0, 0.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 12.0 };
+    CHECK (anomp_engine_set_equaliser (engine, gains, -6.0) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.equaliser == 1);
+    gains[0] = 12.5;
+    CHECK (anomp_engine_set_equaliser (engine, gains, 0.0) == 0);
+    CHECK (anomp_engine_set_equaliser (engine, flat, -13.0) == 0);
+    CHECK (anomp_engine_set_equaliser (engine, nullptr, 0.0) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.equaliser == 0);
+
+    anomp_engine_destroy (engine);
+}
+
+TEST_CASE ("C API Dock menu reports choices of enabled items", "[c-api][dock]")
+{
+    CHECK (anomp_dock_menu_perform (nullptr, 1) == 0);
+    anomp_dock_menu_set_items (nullptr, nullptr, 0);
+    anomp_dock_menu_destroy (nullptr);
+
+    struct Chosen
+    {
+        std::vector<int> ids;
+    } chosen;
+    auto* menu =
+        anomp_dock_menu_create ([] (int id, void* user) { static_cast<Chosen*> (user)->ids.push_back (id); }, &chosen);
+    REQUIRE (menu != nullptr);
+    CHECK (anomp_dock_menu_create (nullptr, nullptr) == nullptr); // One at a time.
+
+    const anomp_menu_item items[] = {
+        { 1, "Now playing: Song", 0, 0 },
+        { 0, "", 1, 0 },
+        { 2, "Pause", 1, 0 },
+        { 3, "Shuffle", 1, 1 },
+    };
+    anomp_dock_menu_set_items (menu, items, 4);
+    CHECK (anomp_dock_menu_perform (menu, 2) == 1);
+    CHECK (anomp_dock_menu_perform (menu, 3) == 1);
+    CHECK (anomp_dock_menu_perform (menu, 1) == 0); // Disabled.
+    CHECK (anomp_dock_menu_perform (menu, 0) == 0); // A separator.
+    CHECK (anomp_dock_menu_perform (menu, 9) == 0);
+    CHECK (chosen.ids == std::vector<int> { 2, 3 });
+    CHECK ((anomp_dock_menu_supported() == 1) == (JUCE_MAC != 0));
+
+    anomp_dock_menu_destroy (menu);
+    auto* again = anomp_dock_menu_create (nullptr, nullptr);
+    CHECK (again != nullptr);
+    anomp_dock_menu_destroy (again);
 }

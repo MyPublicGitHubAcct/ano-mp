@@ -13,7 +13,7 @@
     --surface-2: #e9e9ec;
     --text: #18181b;
     --text-muted: #686870;
-    --text-faint: #9d9da5;
+    --text-faint: #85858d;
     --border: #dcdce1;
     --accent: #3056d3;
     --accent-text: #ffffff;
@@ -21,6 +21,9 @@
     --selected: rgb(48 86 211 / 0.12);
     --danger: #c62828;
     --shadow: 0 6px 24px rgb(0 0 0 / 0.14);
+    /* Hearts and stars: at least 3:1 against the surfaces (WCAG 1.4.11). */
+    --heart: #d0265f;
+    --star: #a86800;
 
     color-scheme: light dark;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -46,6 +49,8 @@
       --selected: rgb(127 156 255 / 0.16);
       --danger: #ef5350;
       --shadow: 0 6px 24px rgb(0 0 0 / 0.5);
+      --heart: #ff6f9a;
+      --star: #f5b83d;
     }
   }
 
@@ -131,5 +136,15 @@
 
   :global(.muted) {
     color: var(--text-muted);
+  }
+
+  /* Motion only for those who haven't asked for less (PLAN.md F18). */
+  @media (prefers-reduced-motion: reduce) {
+    :global(*, *::before, *::after) {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>

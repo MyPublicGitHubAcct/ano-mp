@@ -128,8 +128,19 @@ impl Library {
         })
     }
 
+    /// Adds a track as the scanner would: an artist "A; B" credits both,
+    /// the first as the track's artist.
     pub fn add(&self, folder_id: i64, track: Track) {
-        let artist_id = self.artist(track.artist.as_deref());
+        let credited: Vec<i64> = track
+            .artist
+            .as_deref()
+            .map(crate::anomp::split_artists)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|name| self.artist(Some(name)))
+            .collect();
+        let artist_id = credited.first().copied();
+        let credit = track.artist.as_deref().filter(|_| credited.len() > 1);
         let album_artist_id = match track.album_artist.as_deref() {
             Some(name) => self.artist(Some(name)),
             None => artist_id,
@@ -150,8 +161,8 @@ impl Library {
                 "INSERT INTO tracks (folder_id, relative_path, file_size, file_mtime_ns, title,
                                      artist_id, album_id, album_artist_id, genre, year,
                                      disc_number, track_number, duration, sample_rate,
-                                     channels, scanned_at)
-                 VALUES (?1, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 60.0, 44100, 2, 0)",
+                                     channels, scanned_at, artist_credit)
+                 VALUES (?1, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 60.0, 44100, 2, 0, ?11)",
                 rusqlite::params![
                     folder_id,
                     track.path,
@@ -162,10 +173,21 @@ impl Library {
                     track.genre,
                     track.year,
                     track.disc,
-                    track.number
+                    track.number,
+                    credit
                 ],
             )
             .unwrap();
+        let track_id = self.conn.last_insert_rowid();
+        for (position, artist) in credited.iter().enumerate() {
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO track_artists (track_id, artist_id, position)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![track_id, artist, position as i64],
+                )
+                .unwrap();
+        }
     }
 
     pub fn page(&self, rule: &SortRule, path: &[Option<GroupKey>]) -> BrowsePage {

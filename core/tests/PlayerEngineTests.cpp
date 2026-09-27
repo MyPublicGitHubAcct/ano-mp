@@ -3,9 +3,11 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include "Crossfeed.h"
+#include "Equaliser.h"
 #include "FormatRegistry.h"
 #include "PlayerEngine.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -872,4 +874,165 @@ TEST_CASE ("Crossfeed blends the channels at low frequencies", "[crossfeed]")
         CHECK (right > 0.1f);
         CHECK (right < left);
     }
+}
+
+TEST_CASE ("PlayerEngine crossfades into a next track with equal-power curves", "[player][crossfade]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+    Harness h (44100.0, readAhead);
+    const auto first = decode ("flac-44k.flac");
+    const auto second = decode ("wav-s16-44k.wav");
+    constexpr int fade = 4410; // 0.1 s.
+
+    anomp::PlayerEngine::TrackOptions options;
+    options.crossfade = 0.1;
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav"), options).isEmpty());
+    CHECK (h.player.getSignalInfo().crossfade == Catch::Approx (0.1));
+    REQUIRE (h.player.play());
+    h.takeEvents();
+
+    const auto fadeStart = length (first) - fade;
+    h.render (length (first) + 1);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+    // The next track took over already a fade's length in.
+    CHECK (h.player.getPositionSeconds() == Catch::Approx ((length (h.output) - length (first) + fade) / 44100.0));
+
+    // The first track alone up to the fade (after the fade-in of the first block).
+    CHECK (maxError (h.output, blockSize, first, blockSize, fadeStart - blockSize) == 0.0f);
+
+    // Both, the first fading out as the second fades in.
+    float error = 0.0f;
+    for (size_t ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < fade; ++i)
+        {
+            const auto angle = juce::MathConstants<double>::halfPi * (i + 0.5) / fade;
+            const auto want = first[ch][static_cast<size_t> (fadeStart + i)] * std::cos (angle)
+                              + second[ch][static_cast<size_t> (i)] * std::sin (angle);
+            error = juce::jmax (
+                error, static_cast<float> (std::abs (h.output[ch][static_cast<size_t> (fadeStart + i)] - want)));
+        }
+    CHECK (error < 1e-6f);
+
+    // Then the rest of the second track.
+    const auto stoppedAt = h.renderUntilStopped (200000);
+    CHECK (h.takeEvents() == std::vector<std::string> { "ended", stateStopped });
+    CHECK (maxError (h.output, length (first), second, fade, stoppedAt - length (first)) == 0.0f);
+}
+
+TEST_CASE ("PlayerEngine hands off without a crossfade across rates or while looping", "[player][crossfade]")
+{
+    Harness h (44100.0, false);
+    anomp::PlayerEngine::TrackOptions options;
+    options.crossfade = 0.1;
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("opus-48k.opus"), options).isEmpty());
+    CHECK (h.player.getSignalInfo().crossfade == 0.0);
+
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav"), options).isEmpty());
+    CHECK (h.player.getSignalInfo().crossfade == Catch::Approx (0.1));
+    REQUIRE (h.player.setLoop (0.05, 0.3).isEmpty());
+    CHECK (h.player.getSignalInfo().crossfade == 0.0);
+    h.player.clearLoop();
+
+    // No longer than half of either track.
+    options.crossfade = 11.0;
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav"), options).isEmpty());
+    CHECK (h.player.getSignalInfo().crossfade == Catch::Approx ((22371 / 2) / 44100.0));
+}
+
+TEST_CASE ("PlayerEngine restarts a crossfade after a seek back", "[player][crossfade]")
+{
+    Harness h (44100.0, false);
+    const auto first = decode ("flac-44k.flac");
+    const auto second = decode ("wav-s16-44k.wav");
+    constexpr int fade = 4410;
+    anomp::PlayerEngine::TrackOptions options;
+    options.crossfade = 0.1;
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav"), options).isEmpty());
+    REQUIRE (h.player.play());
+
+    // Halfway into the fade, back to the start.
+    h.render (length (first) - fade / 2);
+    REQUIRE (h.player.seek (0.0));
+    const auto from = length (h.output);
+    h.render (length (first));
+    // The fade begins again with the next track from its start.
+    const auto fadeStart = from + length (first) - fade;
+    const auto angle = juce::MathConstants<double>::halfPi * 0.5 / fade;
+    const auto want =
+        first[0][static_cast<size_t> (length (first) - fade)] * std::cos (angle) + second[0][0] * std::sin (angle);
+    CHECK (h.output[0][static_cast<size_t> (fadeStart)] == Catch::Approx (want).margin (1e-6));
+}
+
+TEST_CASE ("Equaliser boosts and cuts each band, gliding to its settings", "[equaliser]")
+{
+    anomp::Equaliser eq;
+    eq.prepare (44100.0);
+    CHECK_FALSE (eq.isActive());
+
+    anomp::Equaliser::Gains gains {};
+    gains[5] = 6.0;  // 1 kHz
+    gains[1] = -6.0; // 62.5 Hz
+    eq.set (true, gains, 0.0);
+    CHECK (eq.isActive());
+
+    std::vector<float> left (512), right (512);
+    const auto run = [&] (int blocks)
+    {
+        for (int b = 0; b < blocks; ++b)
+        {
+            std::fill (left.begin(), left.end(), 0.0f);
+            std::fill (right.begin(), right.end(), 0.0f);
+            eq.process (left.data(), right.data(), 512);
+        }
+    };
+
+    // Part of the way after one block…
+    run (1);
+    CHECK (eq.responseDb (1000.0) > 0.5);
+    CHECK (eq.responseDb (1000.0) < 5.0);
+    // …and there after 100 ms.
+    run (10);
+    CHECK (eq.responseDb (1000.0) == Catch::Approx (6.0).margin (0.05));
+    CHECK (eq.responseDb (62.5) == Catch::Approx (-6.0).margin (0.1));
+    CHECK (std::abs (eq.responseDb (8000.0)) < 0.3);
+
+    // A 1 kHz sine comes out twice as loud (+6 dB).
+    std::vector<float> sineL (44100), sineR (44100);
+    for (size_t i = 0; i < sineL.size(); ++i)
+        sineL[i] = sineR[i] =
+            0.25f * static_cast<float> (std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / 44100.0));
+    for (size_t i = 0; i < sineL.size(); i += 512)
+        eq.process (sineL.data() + i, sineR.data() + i, static_cast<int> (juce::jmin<size_t> (512, sineL.size() - i)));
+    const auto peakOut = *std::max_element (sineL.begin() + 22050, sineL.end());
+    CHECK (peakOut == Catch::Approx (0.5).margin (0.01));
+
+    // Clamped, and off glides to flat and then bypasses.
+    gains.fill (40.0);
+    eq.set (true, gains, -40.0);
+    run (20);
+    CHECK (eq.responseDb (1000.0) > 10.0);
+    eq.set (false, gains, 0.0);
+    CHECK_FALSE (eq.isEnabled());
+    run (30);
+    CHECK_FALSE (eq.isActive());
+    CHECK (std::abs (eq.responseDb (1000.0)) < 1e-9);
+}
+
+TEST_CASE ("PlayerEngine equalises after the tap, with its preamp", "[player][equaliser]")
+{
+    Harness h (44100.0, false);
+    const auto whole = decode ("flac-44k.flac");
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    CHECK_FALSE (h.player.getSignalInfo().equaliser);
+    // Flat bands and -6.02 dB: half the level, once it has glided there.
+    h.player.setEqualiser (true, anomp::Equaliser::Gains {}, -20.0 * std::log10 (2.0));
+    CHECK (h.player.getSignalInfo().equaliser);
+    REQUIRE (h.player.play());
+    h.render (8192);
+    CHECK (maxError (h.output, 4096, whole, 4096, 4096, 0.5f) < 1e-5f);
 }

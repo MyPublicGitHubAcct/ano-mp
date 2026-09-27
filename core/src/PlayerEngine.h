@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Crossfeed.h"
+#include "Equaliser.h"
 #include "SignalTap.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -29,9 +30,17 @@ namespace anomp
     joined at the file sample rate, then (while practising) time-stretched,
     then one windowed-sinc resampler converts to the device rate, so the join
     is sample-exact whatever the device rate. The analysis tap sees that;
-    crossfeed and the volume come after it.
+    the equaliser, crossfeed and the volume come after it.
     Tracks with different sample rates switch at the next chunk boundary,
     which leaves a few milliseconds of silence between them.
+
+    Crossfade (PLAN.md F14): a next track set with `crossfade` seconds is
+    read alongside the current one over the current track's last seconds,
+    the two mixed with equal-power curves, and takes over (onTrackEnded)
+    as the current track ends, already that far in. Only between tracks at
+    one sample rate, and never while an A–B loop is on; otherwise the
+    hand-off is as above. The host decides which hand-offs crossfade (none
+    within an album).
 
     Threading: commands and dispatchEvents() run on the message thread; the
     status getters are safe on any thread. Tracks are opened and freed on the
@@ -62,6 +71,9 @@ public:
             once. A negative `skipFrom`, or `skipTo` not after it, skips
             nothing. */
         double skipFrom = -1.0, skipTo = -1.0;
+        /** For a next track only: seconds to crossfade into it over, up to
+            maxCrossfade; 0 hands off gaplessly. */
+        double crossfade = 0.0;
     };
 
     /** With a null `readAheadThread`, tracks decode on the audio thread; use
@@ -75,6 +87,9 @@ public:
 
     /** Shortest A–B loop. */
     static constexpr double minLoopSeconds = 0.25;
+
+    /** Longest crossfade, in seconds. */
+    static constexpr double maxCrossfade = 12.0;
 
     /** Tempo and transposition ranges for practising. */
     static constexpr double minTempo = 0.5, maxTempo = 1.5, maxSemitones = 12.0;
@@ -138,6 +153,10 @@ public:
     void setCrossfeed (int level);
     int getCrossfeed() const noexcept { return crossfeedLevel.load(); }
 
+    /** The graphic equaliser (see Equaliser): on with `gainsDb` and
+        `preampDb`, or gliding to flat and off. */
+    void setEqualiser (bool enabled, const Equaliser::Gains& gainsDb, double preampDb);
+
     //==============================================================================
     State getState() const noexcept { return state.load(); }
     double getPositionSeconds() const noexcept { return positionSeconds.load(); }
@@ -157,6 +176,9 @@ public:
         double tempo = 1.0, semitones = 0.0;
         double deviceSampleRate = 0.0;
         int crossfeed = 0;
+        bool equaliser = false;
+        /** Seconds the next track crossfades over; 0 if it won't. */
+        double crossfade = 0.0;
     };
     SignalInfo getSignalInfo() const;
 
@@ -210,6 +232,10 @@ private:
     void readStretched (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
     int readSource (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
     void handOff();
+    /** Samples the next track fades in over, or 0 for a gapless hand-off. */
+    juce::int64 crossfadeSamples() const;
+    /** Reads `count` samples of the fade from the current and next tracks. */
+    void readCrossfade (juce::AudioBuffer<float>& buffer, int startSample, int count);
     void jumpToLoopStart();
     void configureRate();
     void rewind();
@@ -240,6 +266,11 @@ private:
     SignalTap tap;
     Crossfeed crossfeed;
     std::atomic<int> crossfeedLevel { 0 };
+    Equaliser equaliser;
+    // The next track's samples during a crossfade, and the fade's length
+    // once it has begun (0 while not fading).
+    juce::AudioBuffer<float> fadeScratch;
+    juce::int64 fadeLength = 0;
     double deviceRate = 0.0;
     float appliedGain = 0.0f; // Gain at the end of the previous block.
     int pendingAdvances = 0;

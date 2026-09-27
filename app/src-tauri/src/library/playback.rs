@@ -47,6 +47,8 @@ impl TrackPlay {
             start: self.start,
             end: self.end,
             skip: self.skip,
+            // Set for the hand-off, which the queue decides (PLAN.md F14).
+            crossfade: 0.0,
         }
     }
 }

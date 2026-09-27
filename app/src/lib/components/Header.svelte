@@ -1,35 +1,38 @@
 <script lang="ts">
   // Breadcrumbs for the browser, the search box, and on narrow windows the
   // sidebar button.
+  import { t } from "$lib/i18n";
   import { library } from "$lib/state/library.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
 </script>
 
 <header class="header">
-  <button class="icon menu" title="Library" aria-label="Show the library" onclick={() => (ui.sidebarOpen = true)}>
+  <button class="icon menu" title={t("library.title")} aria-label={t("header.showLibrary")} onclick={() => (ui.sidebarOpen = true)}>
     <Icon name="menu" />
   </button>
-  <nav class="crumbs" aria-label="Location">
+  <nav class="crumbs" aria-label={t("header.location")}>
     {#if library.query.trim() !== ""}
-      <span class="current">Search</span>
+      <span class="current">{t("search.placeholder")}</span>
     {:else if ui.queueInMain}
-      <span class="current">Queue</span>
+      <span class="current">{t("queue.title")}</span>
     {:else if ui.nowPlayingInMain}
-      <span class="current">Now Playing</span>
+      <span class="current">{t("sidebar.nowPlaying")}</span>
     {:else if ui.visualizerInMain}
-      <span class="current">Visualizer</span>
+      <span class="current">{t("sidebar.visualizer")}</span>
     {:else if ui.artistInMain}
-      <button class="crumb" onclick={() => ui.back()}>Back</button>
+      <button class="crumb" onclick={() => ui.back()}>{t("header.back")}</button>
       <span class="separator" aria-hidden="true">›</span>
       <span class="current">{ui.artist?.name}</span>
     {:else if ui.discographyInMain}
-      <button class="crumb" onclick={() => ui.back()}>Back</button>
+      <button class="crumb" onclick={() => ui.back()}>{t("header.back")}</button>
       <span class="separator" aria-hidden="true">›</span>
-      <span class="current">{ui.artist?.name}: not in library</span>
+      <span class="current">{t("header.notInLibrary", { name: ui.artist?.name ?? "" })}</span>
+    {:else if ui.playlistInMain || ["home", "favourites", "history", "health", "settings"].includes(ui.mainView)}
+      <button class="crumb" onclick={() => ui.back()}>{t("header.back")}</button>
     {:else}
       <button class="crumb" disabled={library.crumbs.length === 0} onclick={() => library.goUp(0)}>
-        {library.rule?.name ?? "Library"}
+        {library.rule?.name ?? t("library.title")}
       </button>
       {#each library.crumbs as crumb, depth (depth)}
         <span class="separator" aria-hidden="true">›</span>
@@ -42,8 +45,9 @@
   <input
     class="search"
     type="search"
-    placeholder="Search"
-    aria-label="Search the library"
+    placeholder={t("search.placeholder")}
+    aria-label={t("search.label")}
+    title={t("search.filtersHint")}
     bind:value={library.query}
     bind:this={ui.searchInput}
     onkeydown={(event) => {

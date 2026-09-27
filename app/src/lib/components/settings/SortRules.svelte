@@ -3,6 +3,7 @@
   // edit its name, what it groups by, how albums and tracks are ordered;
   // add, save, remove; and the leading words sorting skips. A rule's edits
   // are saved together with Save; the rest are saved at once.
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { library as api, type AlbumOrder, type Level, type SortRule, type SortSettings, type TrackKey } from "$lib/api";
@@ -12,27 +13,27 @@
   import OrderedChoices from "./OrderedChoices.svelte";
 
   const LEVELS: { id: Level; name: string }[] = [
-    { id: "albumArtist", name: "Album artist" },
-    { id: "artist", name: "Artist" },
-    { id: "album", name: "Album" },
-    { id: "genre", name: "Genre" },
-    { id: "year", name: "Year" },
-    { id: "folder", name: "Folder (on its own)" },
-    { id: "composer", name: "Composer" },
-    { id: "work", name: "Work" },
+    { id: "albumArtist", name: t("column.albumArtist") },
+    { id: "artist", name: t("column.artist") },
+    { id: "album", name: t("column.album") },
+    { id: "genre", name: t("column.genre") },
+    { id: "year", name: t("column.year") },
+    { id: "folder", name: t("sort.folderAlone") },
+    { id: "composer", name: t("column.composer") },
+    { id: "work", name: t("sort.work") },
   ];
 
   const TRACK_KEYS: { id: TrackKey; name: string }[] = [
-    { id: "albumArtist", name: "Album artist" },
-    { id: "artist", name: "Artist" },
-    { id: "album", name: "Album" },
-    { id: "year", name: "Year" },
-    { id: "discNumber", name: "Disc number" },
-    { id: "trackNumber", name: "Track number" },
-    { id: "title", name: "Title" },
-    { id: "path", name: "File path" },
-    { id: "dateAdded", name: "Date added, newest first" },
-    { id: "movement", name: "Movement number" },
+    { id: "albumArtist", name: t("column.albumArtist") },
+    { id: "artist", name: t("column.artist") },
+    { id: "album", name: t("column.album") },
+    { id: "year", name: t("column.year") },
+    { id: "discNumber", name: t("sort.discNumber") },
+    { id: "trackNumber", name: t("column.trackNumber") },
+    { id: "title", name: t("album.field.title") },
+    { id: "path", name: t("sort.path") },
+    { id: "dateAdded", name: t("sort.dateAddedNewest") },
+    { id: "movement", name: t("sort.movement") },
   ];
 
   let data = $state.raw<SortSettings | null>(null);
@@ -73,7 +74,11 @@
   /** Whether unsaved edits may be dropped. */
   async function mayDiscard() {
     if (!dirty) return true;
-    return ask("Discard the changes to this view?", { title: "Unsaved changes", kind: "warning", okLabel: "Discard" });
+    return ask(t("sort.discardConfirm"), {
+      title: t("sort.discardTitle"),
+      kind: "warning",
+      okLabel: t("sort.discard"),
+    });
   }
 
   async function select(rule: SortRule) {
@@ -93,7 +98,7 @@
     isNew = true;
     draft = {
       id: `view-${n}`,
-      name: "New view",
+      name: t("sort.newView"),
       levels: ["albumArtist", "album"],
       trackOrder: ["discNumber", "trackNumber", "title", "path"],
       albumOrder: "title",
@@ -117,10 +122,10 @@
 
   async function remove() {
     if (!saved) return;
-    const confirmed = await ask(`Remove the view “${saved.name}”?`, {
-      title: "Remove view",
+    const confirmed = await ask(t("sort.removeConfirm", { name: saved.name }), {
+      title: t("sort.removeView"),
       kind: "warning",
-      okLabel: "Remove",
+      okLabel: t("services.remove"),
     });
     if (confirmed) run(() => api.removeSortRule(saved.id), null);
   }
@@ -141,28 +146,28 @@
   }
 
   async function resetAll() {
-    const confirmed = await ask("Restore the built-in views and skipped words? Views you added are removed.", {
-      title: "Reset sorting",
+    const confirmed = await ask(t("sort.resetConfirm"), {
+      title: t("sort.resetTitle"),
       kind: "warning",
-      okLabel: "Reset",
+      okLabel: t("services.reset"),
     });
     if (confirmed) run(() => api.resetSortSettings(), library.ruleId);
   }
 
   const nameOf = <T extends string>(list: { id: T; name: string }[], id: T) =>
-    list.find((item) => item.id === id)?.name.replace(" (on its own)", "") ?? id;
+    id === "folder" ? t("sort.folder") : (list.find((item) => item.id === id)?.name ?? id);
 
   const describe = (rule: SortRule) =>
-    (rule.levels.length > 0 ? rule.levels.map((level) => nameOf(LEVELS, level)).join(" → ") : "All tracks") +
+    (rule.levels.length > 0 ? rule.levels.map((level) => nameOf(LEVELS, level)).join(" → ") : t("sort.allTracks")) +
     (rule.trackOrder.length > 0
-      ? `; tracks by ${rule.trackOrder.map((key) => nameOf(TRACK_KEYS, key).toLowerCase()).join(", ")}`
+      ? t("sort.tracksBy", { keys: rule.trackOrder.map((key) => nameOf(TRACK_KEYS, key)).join(", ") })
       : "");
 </script>
 
 {#if data && draft}
   <div class="editor">
     <div class="rules">
-      <ul class="card" aria-label="Views">
+      <ul class="card" aria-label={t("sort.views")}>
         {#each data.rules as rule (rule.id)}
           <li>
             <button class:selected={!isNew && rule.id === selectedId} onclick={() => select(rule)}>
@@ -172,43 +177,43 @@
           </li>
         {/each}
         {#if isNew}
-          <li><button class="selected"><span class="rule-name">{draft.name || "New view"}</span></button></li>
+          <li><button class="selected"><span class="rule-name">{draft.name || t("sort.newView")}</span></button></li>
         {/if}
       </ul>
-      <button onclick={add} disabled={busy}><Icon name="plus" /> New view</button>
+      <button onclick={add} disabled={busy}><Icon name="plus" /> {t("sort.newView")}</button>
     </div>
 
     <form
       class="rule card"
-      aria-label="Edit {draft.name}"
+      aria-label={t("sort.edit", { name: draft.name })}
       onsubmit={(event) => {
         event.preventDefault();
         save();
       }}
     >
       <label class="field stacked">
-        <span class="label">Name</span>
+        <span class="label">{t("sort.name")}</span>
         <input type="text" bind:value={draft.name} maxlength="60" required />
       </label>
 
       <div class="field stacked">
-        <span class="label">Group by</span>
+        <span class="label">{t("sort.groupBy")}</span>
         <OrderedChoices
           options={levelOptions}
           value={draft.levels}
           onchange={(levels) => draft && (draft.levels = levels)}
-          label="Levels"
-          addLabel="Add a level…"
-          empty="Nothing: one list of every track"
+          label={t("sort.levels")}
+          addLabel={t("sort.addLevel")}
+          empty={t("sort.noLevels")}
           disabled={busy}
         />
       </div>
 
       {#if draft.levels.includes("album")}
         <label class="field">
-          <span class="label">Albums sorted by</span>
+          <span class="label">{t("sort.albumsBy")}</span>
           <select bind:value={draft.albumOrder}>
-            {#each [["title", "Title"], ["year", "Year, oldest first"], ["dateAdded", "Date added, newest first"]] as [value, name] (value)}
+            {#each [["title", t("album.field.title")], ["year", t("sort.yearOldest")], ["dateAdded", t("sort.dateAddedNewest")]] as [value, name] (value)}
               <option value={value as AlbumOrder}>{name}</option>
             {/each}
           </select>
@@ -216,50 +221,49 @@
       {/if}
 
       <div class="field stacked">
-        <span class="label">Tracks sorted by</span>
+        <span class="label">{t("sort.tracksSortedBy")}</span>
         <OrderedChoices
           options={TRACK_KEYS}
           value={draft.trackOrder}
           onchange={(order) => draft && (draft.trackOrder = order)}
-          label="Track order"
-          addLabel="Add a sort key…"
-          empty="The order they were added in"
+          label={t("sort.trackOrder")}
+          addLabel={t("sort.addKey")}
+          empty={t("sort.noKeys")}
           disabled={busy}
         />
       </div>
 
       <div class="buttons">
         <button type="submit" class="primary" disabled={busy || !dirty || draft.name.trim() === ""}>
-          {isNew ? "Add view" : "Save"}
+          {isNew ? t("sort.addView") : t("dialog.save")}
         </button>
-        {#if dirty}<button type="button" onclick={revert} disabled={busy}>{isNew ? "Cancel" : "Revert"}</button>{/if}
+        {#if dirty}<button type="button" onclick={revert} disabled={busy}>{isNew ? t("dialog.cancel") : t("sort.revert")}</button>{/if}
         {#if !isNew}
           <span class="spacer"></span>
-          <button type="button" onclick={remove} disabled={busy || data.rules.length <= 1}>Remove view</button>
+          <button type="button" onclick={remove} disabled={busy || data.rules.length <= 1}>{t("sort.removeView")}</button>
         {/if}
       </div>
     </form>
   </div>
 
-  <h3>Skipped words</h3>
+  <h3>{t("sort.skipped")}</h3>
   <form class="field articles" onsubmit={saveArticles}>
     <span class="control">
-      <input type="text" bind:value={articles} placeholder="The A" aria-label="Words skipped when sorting" />
+      <input type="text" bind:value={articles} placeholder={t("sort.skippedPlaceholder")} aria-label={t("sort.skippedLabel")} />
       <button type="submit" disabled={busy || articles.split(/[\s,]+/).filter(Boolean).join(" ") === savedArticles}>
-        Save
+        {t("dialog.save")}
       </button>
     </span>
     <span class="hint">
-      Leading words that sorting skips in names and titles, so “The Beatles” sorts under B. Separate them with
-      spaces; leave empty to sort by every word.
+      {t("sort.skippedHint")}
     </span>
   </form>
 
   <div class="actions">
-    <button onclick={resetAll} disabled={busy}>Reset to defaults</button>
+    <button onclick={resetAll} disabled={busy}>{t("settings.reset")}</button>
   </div>
 {:else}
-  <p class="muted">Loading…</p>
+  <p class="muted">{t("common.loading")}</p>
 {/if}
 
 <style>

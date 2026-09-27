@@ -22,7 +22,14 @@ export type * from "./generated/settings";
 
 // ---- Library ----------------------------------------------------------------
 
-export type Folder = { id: number; path: string; trackCount: number; lastScanAt: number | null };
+export type Folder = {
+  id: number;
+  path: string;
+  trackCount: number;
+  lastScanAt: number | null;
+  /** Whether it can be opened now (F8); false for an unplugged drive or a folder moved out of reach. */
+  available?: boolean;
+};
 
 export type Track = {
   id: number;
@@ -55,6 +62,9 @@ export type Track = {
   movementNumber: number | null;
   /** Seconds into its file where it starts: > 0 for a cue sheet's track or a chapter (O5). */
   rangeStart: number;
+  /** The user's heart and stars (F3). */
+  favourite: boolean;
+  rating: number | null;
 };
 
 /** An artist, album or library folder id, or a year; a genre or folder name. */
@@ -69,6 +79,8 @@ export type Group = {
   /** Album groups only. */
   albumArtist: string | null;
   year: number | null;
+  /** A hearted album or artist (F3). */
+  favourite: boolean;
 };
 
 export type BrowsePage = { groups: Group[]; tracks: Track[]; total: number };
@@ -81,9 +93,14 @@ export type ScanReport = {
   added: number;
   updated: number;
   removed: number;
+  /** Files moved or renamed, keeping their tracks (F10). */
+  moved: number;
   unchanged: number;
   failed: { path: string; error: string }[];
 };
+
+/** What a browse (or playing a node) keeps. */
+export type BrowseFilter = { favourites?: boolean };
 export type ScanProgress = { folderId: number; read: number; toRead: number };
 
 export type SearchKind = "artists" | "albums" | "tracks";
@@ -191,11 +208,13 @@ export type CoverWall = {
 export const library = {
   folders: () => invoke<Folder[]>("library_folders"),
   addFolder: (path: string) => invoke<Folder>("library_add_folder", { path }),
+  /** Points a folder at where the user found it; follow with a scan. */
+  locateFolder: (folderId: number, path: string) => invoke<Folder>("library_locate_folder", { folderId, path }),
   removeFolder: (folderId: number) => invoke<void>("library_remove_folder", { folderId }),
   /** One folder, or all when `folderId` is null. */
   scan: (folderId: number | null) => invoke<ScanReport[]>("library_scan", { folderId }),
-  browse: (ruleId: string, path: BrowsePath, offset: number, limit: number) =>
-    invoke<BrowsePage>("library_browse", { ruleId, path, offset, limit }),
+  browse: (ruleId: string, path: BrowsePath, offset: number, limit: number, filter: BrowseFilter | null = null) =>
+    invoke<BrowsePage>("library_browse", { ruleId, path, offset, limit, filter }),
   sortSettings: () => invoke<SortSettings>("library_sort_settings"),
   /** Adds a rule, or replaces the one with its id. */
   saveSortRule: (rule: SortRule) => invoke<SortSettings>("library_save_sort_rule", { rule }),
@@ -211,6 +230,173 @@ export const library = {
   /** Null if the track has no year (or artist). */
   coverWall: (trackId: number, basis: CoverBasis) =>
     invoke<CoverWall | null>("library_cover_wall", { trackId, basis }),
+  /** The tracks under a node, in the order it lists them. */
+  nodeTrackIds: (rule: RuleSpec, path: BrowsePath, recursive: boolean, filter: BrowseFilter | null = null) =>
+    invoke<number[]>("library_node_track_ids", { rule, path, recursive, filter }),
+  /** Everything a track's file says, for Get Info (F16). */
+  trackDetails: (trackId: number) => invoke<TrackDetails>("library_track_details", { trackId }),
+};
+
+// ---- Get Info (F16) ------------------------------------------------------------
+
+export type FileInfo = {
+  /** Each value of each tag field, as [TagLib's key, value]. */
+  fields: [string, string][];
+  pictures: { kind: string; mimeType: string; description: string }[];
+  /** "ID3v2.4, ID3v1"; "" if untagged. */
+  tagTypes: string;
+  codec: string;
+  lossless: boolean;
+  bitsPerSample: number | null;
+  bitrateKbps: number | null;
+  sampleRate: number;
+  channels: number;
+  duration: number;
+  fileSize: number;
+};
+
+export type TrackDetails = {
+  track: Track;
+  folder: string;
+  relativePath: string;
+  rangeEnd: number | null;
+  file: FileInfo;
+  pictures: { kind: string; mimeType: string; description: string; size: number; dataUrl: string | null }[];
+  musicbrainz: {
+    recording: string | null;
+    release: string | null;
+    releaseGroup: string | null;
+    releaseTrack: string | null;
+    artists: string[];
+    albumArtists: string[];
+    work: string | null;
+  };
+  /** Why the file couldn't be read (its drive isn't there…). */
+  error: string | null;
+};
+
+// ---- Playlists, hearts and ratings (F1–F3) ---------------------------------------
+
+export type SmartCondition =
+  | { field: "genre"; value: string }
+  | { field: "year"; from: number | null; to: number | null }
+  | { field: "format"; value: string }
+  | { field: "addedWithin"; days: number }
+  | { field: "favourite"; value: boolean }
+  | { field: "rating"; atLeast: number }
+  | { field: "playCount"; atLeast: number | null; atMost: number | null }
+  | { field: "notPlayedFor"; days: number }
+  | { field: "artist"; value: string };
+
+export type SmartOrder = "random" | "dateAdded" | "mostPlayed" | "lastPlayed" | "rating" | "album" | "title";
+
+export type SmartRules = {
+  matchAll: boolean;
+  conditions: SmartCondition[];
+  order: SmartOrder;
+  limit: number | null;
+  seed: number;
+};
+
+export type Playlist = {
+  id: number;
+  name: string;
+  /** A smart playlist's rules; null for a list of tracks. */
+  rules: SmartRules | null;
+  trackCount: number;
+  duration: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/** A track in a playlist; `itemId` tells two entries of one track apart (null in a smart playlist). */
+export type PlaylistEntry = Track & { itemId: number | null };
+export type PlaylistPage = { playlist: Playlist; entries: PlaylistEntry[] };
+export type PlaylistImport = { playlist: Playlist; added: number; missing: string[] };
+
+export type MarkKind = "track" | "album" | "artist";
+export type Favourites = {
+  tracks: Track[];
+  albums: AlbumCard[];
+  artists: { id: number; name: string; trackCount: number; addedAt: number }[];
+};
+
+/** What changed in the user's collection, from `collection-changed`. */
+export type CollectionChanged = "playlists" | "favourites" | "ratings" | "all";
+
+export const playlists = {
+  list: () => invoke<Playlist[]>("playlists_list"),
+  page: (playlistId: number, offset: number, limit: number) =>
+    invoke<PlaylistPage>("playlists_page", { playlistId, offset, limit }),
+  /** A list of `trackIds`, or a smart playlist of `rules`. */
+  create: (name: string, trackIds: number[] = [], rules: SmartRules | null = null) =>
+    invoke<Playlist>("playlists_create", { name, rules, trackIds }),
+  createFromQueue: (name: string) => invoke<Playlist>("playlists_create_from_queue", { name }),
+  /** How many tracks `rules` match now. */
+  preview: (rules: SmartRules) => invoke<number>("playlists_preview", { rules }),
+  rename: (playlistId: number, name: string) => invoke<Playlist>("playlists_rename", { playlistId, name }),
+  setRules: (playlistId: number, rules: SmartRules) =>
+    invoke<Playlist>("playlists_set_rules", { playlistId, rules }),
+  remove: (playlistId: number) => invoke<void>("playlists_delete", { playlistId }),
+  /** Before entry `at`, or at the end; resolves to how many were added. */
+  add: (playlistId: number, trackIds: number[], at: number | null = null) =>
+    invoke<number>("playlists_add", { playlistId, trackIds, at }),
+  removeItems: (playlistId: number, itemIds: number[]) =>
+    invoke<void>("playlists_remove", { playlistId, itemIds }),
+  /** `to` is the index after the move. */
+  move: (playlistId: number, itemIds: number[], to: number) =>
+    invoke<void>("playlists_move", { playlistId, itemIds, to }),
+  trackIds: (playlistId: number) => invoke<number[]>("playlists_track_ids", { playlistId }),
+  import: (path: string) => invoke<PlaylistImport>("playlists_import", { path }),
+  /** Resolves to how many tracks were written. */
+  export: (playlistId: number, path: string) => invoke<number>("playlists_export", { playlistId, path }),
+};
+
+export const marks = {
+  setFavourite: (kind: MarkKind, ids: number[], favourite: boolean) =>
+    invoke<void>("marks_set_favourite", { kind, ids, favourite }),
+  favouritesAmong: (kind: MarkKind, ids: number[]) => invoke<number[]>("marks_favourites_among", { kind, ids }),
+  /** 1 to 5 stars, or null to clear. */
+  setRating: (trackIds: number[], rating: number | null) => invoke<void>("marks_set_rating", { trackIds, rating }),
+  favourites: () => invoke<Favourites>("marks_favourites"),
+};
+
+// ---- The user's data (F20) -------------------------------------------------------
+
+export type DataImport = {
+  tracksFound: number;
+  tracks: number;
+  albumsFound: number;
+  albums: number;
+  artistsFound: number;
+  artists: number;
+  favourites: number;
+  ratings: number;
+  plays: number;
+  positions: number;
+  preferences: number;
+  picks: number;
+  playlists: number;
+  missing: string[];
+  settings: boolean;
+  queue: boolean;
+};
+
+export const data = {
+  export: (path: string) => invoke<void>("data_export", { path }),
+  /** With `settings`, the file's settings replace the app's. */
+  import: (path: string, settings: boolean) => invoke<DataImport>("data_import", { path, settings }),
+};
+
+// ---- The app around the page (F5–F7) ---------------------------------------------
+
+export const shell = {
+  /** Paths dropped on the window: folders (to offer as library folders) and playable files. */
+  sortDropped: (paths: string[]) => invoke<{ folders: string[]; files: string[] }>("shell_sort_dropped", { paths }),
+  /** The menus' shortcuts: [what, keys], "CmdOrCtrl" for ⌘. */
+  shortcuts: () => invoke<[string, string][]>("shell_shortcuts"),
+  showMain: () => invoke<void>("shell_show_main"),
+  toggleMiniPlayer: () => invoke<void>("shell_toggle_mini_player"),
 };
 
 /** The URL of an album's (or an album-less track's) art. `generation`
@@ -482,7 +668,16 @@ export type QueueItem = {
   skip?: boolean;
   /** Why library radio picked it (O9). */
   reason?: string;
+  /** A file outside the library, opened from the Finder (F5). */
+  external?: boolean;
 };
+
+/** A sleep timer (F13). `endsAt` is Unix seconds. */
+export type SleepTimer =
+  | { kind: "at"; endsAt: number; minutes: number }
+  | { kind: "endOfTrack" }
+  | { kind: "endOfAlbum" };
+export type SleepRequest = { kind: "minutes"; minutes: number } | { kind: "endOfTrack" } | { kind: "endOfAlbum" };
 
 export type Skipped = { uid: number; trackId: number; title: string; error: string };
 
@@ -504,6 +699,9 @@ export type QueueState = {
   resumeAt: number;
   /** Library radio keeps adding tracks (O9). */
   radio: boolean;
+  /** Playback stops after this item (F13). */
+  stopAfter: number | null;
+  sleep: SleepTimer | null;
 };
 
 /** Every step from the file to the speakers (O10). */
@@ -525,6 +723,10 @@ export type SignalPath = {
     volume: number;
     deviceSampleRate: number;
     deviceBufferSize: number;
+    /** The equaliser is on (F15). */
+    equaliser: boolean;
+    /** Seconds the next track crossfades over (F14); 0 if none. */
+    crossfade: number;
   };
   device: DeviceInfo | null;
   /** Whether the OS says the output is headphones; null if it can't tell. */
@@ -678,14 +880,21 @@ export const features = {
 export const queue = {
   state: () => invoke<QueueState>("queue_state"),
   play: (trackIds: number[], start: number) => invoke<void>("queue_play", { trackIds, start }),
-  playNode: (rule: RuleSpec, path: BrowsePath, recursive: boolean, startTrackId: number | null = null) =>
-    invoke<void>("queue_play_node", { rule, path, recursive, startTrackId }),
+  playNode: (
+    rule: RuleSpec,
+    path: BrowsePath,
+    recursive: boolean,
+    startTrackId: number | null = null,
+    filter: BrowseFilter | null = null,
+  ) => invoke<void>("queue_play_node", { rule, path, recursive, startTrackId, filter }),
   add: (trackIds: number[], next: boolean) => invoke<void>("queue_add", { trackIds, next }),
-  addNode: (rule: RuleSpec, path: BrowsePath, recursive: boolean, next: boolean) =>
-    invoke<void>("queue_add_node", { rule, path, recursive, next }),
+  addNode: (rule: RuleSpec, path: BrowsePath, recursive: boolean, next: boolean, filter: BrowseFilter | null = null) =>
+    invoke<void>("queue_add_node", { rule, path, recursive, next, filter }),
   remove: (uids: number[]) => invoke<void>("queue_remove", { uids }),
   /** `to` is the item's index after the move. */
   move: (uid: number, to: number) => invoke<void>("queue_move", { uid, to }),
+  /** Moves items together, in their order; `to` is the index after the move. */
+  moveItems: (uids: number[], to: number) => invoke<void>("queue_move_items", { uids, to }),
   clear: () => invoke<void>("queue_clear"),
   jump: (uid: number) => invoke<void>("queue_jump", { uid }),
   next: () => invoke<void>("queue_next"),
@@ -697,6 +906,11 @@ export const queue = {
   /** Library radio (O9): the track, then tracks like it, and more as it plays. */
   startRadio: (trackId: number) => invoke<void>("queue_start_radio", { trackId }),
   stopRadio: () => invoke<void>("queue_stop_radio"),
+  /** Stops after item `uid` (F13), or not with null. */
+  setStopAfter: (uid: number | null) => invoke<void>("queue_set_stop_after", { uid }),
+  setSleep: (sleep: SleepRequest | null) => invoke<void>("queue_set_sleep", { sleep }),
+  /** Plays files (from the Finder, or dropped): after the current item, starting now (F5). */
+  openFiles: (paths: string[]) => invoke<void>("queue_open_files", { paths }),
 };
 
 // ---- Visualizer ------------------------------------------------------------------
@@ -746,6 +960,17 @@ type Events = {
   "analysis-changed": number[];
   "history-changed": null;
   "library-prefs-changed": null;
+  /** A scan finished, whoever started it (F9). */
+  "library-changed": ScanReport[];
+  /** A scan started (true) or ended (false). */
+  "library-scanning": boolean;
+  "collection-changed": CollectionChanged;
+  /** A menu item the page handles, by id (F6). */
+  menu: string;
+  /** The volume changed from outside the page (the menu). */
+  "player-volume": number;
+  /** A playlist file opened from the Finder was imported. */
+  "playlist-imported": PlaylistImport;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

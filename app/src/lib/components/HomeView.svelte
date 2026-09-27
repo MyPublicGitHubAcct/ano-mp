@@ -5,6 +5,7 @@
   // added grouped by this week, this month and earlier (O15), and the
   // history's highlights (O8): favourites not played for a year, what was
   // playing a year ago today, and albums never played.
+  import { count, t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { features as api, queue, type AlbumCard, type Highlights, type RecentEntry } from "$lib/api";
   import { features } from "$lib/state/features.svelte";
@@ -40,9 +41,9 @@
     if (!added) return [];
     const now = Date.now() / 1000;
     const groups: { name: string; albums: AlbumCard[] }[] = [
-      { name: "This week", albums: [] },
-      { name: "This month", albums: [] },
-      { name: "Earlier", albums: [] },
+      { name: t("home.addedWeek"), albums: [] },
+      { name: t("home.addedMonth"), albums: [] },
+      { name: t("home.addedEarlier"), albums: [] },
     ];
     for (const album of added) {
       const age = now - (album.at ?? 0);
@@ -56,7 +57,7 @@
       .filter((entry) => entry.album !== null)
       .map((entry) => ({
         ...entry.album!,
-        note: entry.tracks.length > 1 ? `${entry.tracks.length} tracks` : entry.tracks[0]?.title ?? null,
+        note: entry.tracks.length > 1 ? count("count.tracks", entry.tracks.length) : (entry.tracks[0]?.title ?? null),
       })),
   );
   const recentTracks = $derived((recent ?? []).filter((entry) => entry.album === null));
@@ -68,24 +69,25 @@
 
 <section class="home" aria-labelledby="home-heading">
   <header>
-    <h1 id="home-heading">Home</h1>
+    <h1 id="home-heading">{t("home.title")}</h1>
   </header>
 
   {#if nothing}
     <p class="muted">
-      Turn on Recently added, Released on this day or the listening history in
-      <button class="link" onclick={() => ui.showSettings("features")}>Settings › Features</button> to fill this page.
+      {t("home.nothingBefore")}
+      <button class="link" onclick={() => ui.showSettings("features")}>{t("health.settingsFeatures")}</button>
+      {t("home.nothingAfter")}
     </p>
   {/if}
 
   {#if onThisDay && onThisDay.length > 0}
-    <h2>Released on this day</h2>
-    <AlbumCards albums={onThisDay} label="Released on this day" />
+    <h2>{t("home.onThisDay")}</h2>
+    <AlbumCards albums={onThisDay} label={t("home.onThisDay")} />
   {/if}
 
   {#if recent && recent.length > 0}
-    <h2>Recently played</h2>
-    {#if recentAlbums.length > 0}<AlbumCards albums={recentAlbums} label="Recently played" />{/if}
+    <h2>{t("history.recent")}</h2>
+    {#if recentAlbums.length > 0}<AlbumCards albums={recentAlbums} label={t("history.recent")} />{/if}
     {#if recentTracks.length > 0}
       <ul class="tracks">
         {#each recentTracks as entry (entry.playedAt)}
@@ -103,23 +105,23 @@
   {/if}
 
   {#if highlights && highlights.yearAgo.length > 0}
-    <h2>A year ago today</h2>
-    <AlbumCards albums={highlights.yearAgo} label="Played a year ago today" />
+    <h2>{t("home.yearAgo")}</h2>
+    <AlbumCards albums={highlights.yearAgo} label={t("home.yearAgoLabel")} />
   {/if}
 
   {#if highlights && highlights.forgotten.length > 0}
-    <h2>Not played for a year</h2>
-    <AlbumCards albums={highlights.forgotten} label="Favourites not played for a year" />
+    <h2>{t("home.forgotten")}</h2>
+    <AlbumCards albums={highlights.forgotten} label={t("home.forgottenLabel")} />
   {/if}
 
   {#each addedGroups as group (group.name)}
-    <h2>Added {group.name.toLowerCase()}</h2>
-    <AlbumCards albums={group.albums} label="Added {group.name.toLowerCase()}" />
+    <h2>{group.name}</h2>
+    <AlbumCards albums={group.albums} label={group.name} />
   {/each}
 
   {#if highlights && highlights.neverPlayed.length > 0}
-    <h2>Never played</h2>
-    <AlbumCards albums={highlights.neverPlayed} label="Never played" />
+    <h2>{t("home.neverPlayed")}</h2>
+    <AlbumCards albums={highlights.neverPlayed} label={t("home.neverPlayed")} />
   {/if}
 </section>
 

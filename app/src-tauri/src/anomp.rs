@@ -64,6 +64,41 @@ struct RawTags {
     cuesheet: *const c_char,
     chapter_count: c_int,
     chapters: *const RawChapter,
+    rating: c_int,
+    compilation: c_int,
+    artists: *const c_char,
+}
+
+#[repr(C)]
+struct RawTagField {
+    key: *const c_char,
+    value: *const c_char,
+}
+
+#[repr(C)]
+struct RawPicture {
+    kind: *const c_char,
+    mime_type: *const c_char,
+    description: *const c_char,
+    data: *const u8,
+    size: usize,
+}
+
+#[repr(C)]
+struct RawFileInfo {
+    field_count: c_int,
+    fields: *const RawTagField,
+    picture_count: c_int,
+    pictures: *const RawPicture,
+    tag_types: *const c_char,
+    codec: [c_char; 32],
+    lossless: c_int,
+    bits_per_sample: c_int,
+    bitrate_kbps: c_int,
+    sample_rate: f64,
+    channels: c_int,
+    duration: f64,
+    file_size: i64,
 }
 
 #[repr(C)]
@@ -110,6 +145,7 @@ struct RawTrackOptions {
     end: f64,
     skip_from: f64,
     skip_to: f64,
+    crossfade: f64,
 }
 
 #[repr(C)]
@@ -129,6 +165,8 @@ struct RawSignalPath {
     volume: f64,
     device_sample_rate: f64,
     device_buffer_size: c_int,
+    equaliser: c_int,
+    crossfade: f64,
 }
 
 #[repr(C)]
@@ -173,6 +211,21 @@ struct RawMediaTrack {
 
 type RawMediaCommandCallback =
     extern "C" fn(command: *const RawMediaCommand, user_data: *mut c_void);
+
+#[repr(C)]
+struct RawDockMenu {
+    _private: [u8; 0],
+}
+
+#[repr(C)]
+struct RawMenuItem {
+    id: c_int,
+    title: *const c_char,
+    enabled: c_int,
+    checked: c_int,
+}
+
+type RawMenuCallback = extern "C" fn(id: c_int, user_data: *mut c_void);
 
 #[repr(C)]
 struct RawAnalysisConfig {
@@ -229,6 +282,12 @@ extern "C" {
         error_size: usize,
     ) -> *mut RawTags;
     fn anomp_tags_free(tags: *mut RawTags);
+    fn anomp_read_file_info(
+        path: *const c_char,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawFileInfo;
+    fn anomp_file_info_free(info: *mut RawFileInfo);
     fn anomp_analyse_file(
         path: *const c_char,
         start: f64,
@@ -335,6 +394,11 @@ extern "C" {
     fn anomp_engine_loop(engine: *mut RawEngine, start: *mut f64, end: *mut f64) -> c_int;
     fn anomp_engine_set_tempo(engine: *mut RawEngine, rate: f64, semitones: f64) -> c_int;
     fn anomp_engine_set_crossfeed(engine: *mut RawEngine, level: c_int) -> c_int;
+    fn anomp_engine_set_equaliser(
+        engine: *mut RawEngine,
+        gains_db: *const f64,
+        preamp_db: f64,
+    ) -> c_int;
     fn anomp_engine_output_is_headphones(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_signal_path(engine: *mut RawEngine, path: *mut RawSignalPath) -> c_int;
     fn anomp_engine_set_device_sample_rate(engine: *mut RawEngine, sample_rate: f64) -> c_int;
@@ -354,6 +418,15 @@ extern "C" {
         callback: Option<RawAnalysisCallback>,
         user_data: *mut c_void,
     ) -> c_int;
+    fn anomp_dock_menu_supported() -> c_int;
+    fn anomp_dock_menu_create(
+        callback: Option<RawMenuCallback>,
+        user_data: *mut c_void,
+    ) -> *mut RawDockMenu;
+    fn anomp_dock_menu_destroy(menu: *mut RawDockMenu);
+    fn anomp_dock_menu_set_items(menu: *mut RawDockMenu, items: *const RawMenuItem, count: c_int);
+    #[cfg(test)]
+    fn anomp_dock_menu_perform(menu: *mut RawDockMenu, id: c_int) -> c_int;
     fn anomp_media_controls_supported() -> c_int;
     fn anomp_media_controls_create(
         callback: Option<RawMediaCommandCallback>,
@@ -455,6 +528,14 @@ pub struct Tags {
     /// chapters the container records.
     pub cue_sheet: Option<String>,
     pub chapters: Vec<Chapter>,
+    /// A rating the tags give, 1 to 100 (20 a star): POPM, FMPS_RATING,
+    /// RATING or MP4's rate. Read only, to seed the library's (PLAN.md F3).
+    pub rating: Option<u8>,
+    /// Marked as part of a compilation (TCMP, cpil, COMPILATION).
+    pub compilation: bool,
+    /// The credited artists of a multi-valued ARTISTS tag, if the file
+    /// has one (PLAN.md F11).
+    pub artists: Vec<String>,
 }
 
 /// A chapter of a file.
@@ -599,6 +680,128 @@ impl Tags {
                 }
                 _ => Vec::new(),
             },
+            rating: u8::try_from(raw.rating)
+                .ok()
+                .filter(|&r| (1..=100).contains(&r)),
+            compilation: raw.compilation != 0,
+            artists: text(raw.artists)
+                .map(|artists| split_artists(&artists))
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// The names in an artist field whose values were joined with "; " (or
+/// typed as "A; B"), trimmed, empty ones left out.
+pub fn split_artists(text: &str) -> Vec<String> {
+    text.split(';')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// `count` items at `ptr`, or none if it is null or `count` isn't positive.
+///
+/// # Safety
+/// A non-null `ptr` must point to `count` valid items that outlive the slice.
+unsafe fn slice_of<'a, T>(ptr: *const T, count: c_int) -> &'a [T] {
+    match usize::try_from(count) {
+        Ok(count) if count > 0 && !ptr.is_null() => std::slice::from_raw_parts(ptr, count),
+        _ => &[],
+    }
+}
+
+/// Everything a file says about itself, for Get Info (PLAN.md F16).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileInfo {
+    /// Each value of each tag field, as (TagLib's key, value).
+    pub fields: Vec<(String, String)>,
+    pub pictures: Vec<FilePicture>,
+    /// e.g. "ID3v2.4, ID3v1"; empty if untagged.
+    pub tag_types: String,
+    /// FFmpeg's codec name; empty if it can't decode the file.
+    pub codec: String,
+    pub lossless: bool,
+    pub bits_per_sample: Option<u32>,
+    pub bitrate_kbps: Option<u32>,
+    pub sample_rate: f64,
+    pub channels: u32,
+    pub duration: f64,
+    pub file_size: u64,
+}
+
+/// An embedded picture.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilePicture {
+    /// e.g. "Front Cover".
+    pub kind: String,
+    pub mime_type: String,
+    pub description: String,
+    #[serde(skip)]
+    pub data: Vec<u8>,
+}
+
+/// Reads a file's `FileInfo` without modifying it; any thread.
+pub fn read_file_info(path: &Path) -> Result<FileInfo, String> {
+    let path = path_to_cstring(path)?;
+    let mut raw = std::ptr::null_mut();
+    with_error(|error, size| {
+        // SAFETY: `path` is a valid C string and the error buffer is supplied
+        // by `with_error`, both for the whole call.
+        raw = unsafe { anomp_read_file_info(path.as_ptr(), error, size) };
+        c_int::from(!raw.is_null())
+    })?;
+    // SAFETY: `raw` is a non-null result of anomp_read_file_info, read once
+    // and then freed exactly once.
+    unsafe {
+        let info = FileInfo::from_raw(&*raw);
+        anomp_file_info_free(raw);
+        Ok(info)
+    }
+}
+
+impl FileInfo {
+    /// # Safety
+    /// `raw` must come from anomp_read_file_info and not yet be freed.
+    unsafe fn from_raw(raw: &RawFileInfo) -> FileInfo {
+        let text = |ptr: *const c_char| {
+            if ptr.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(ptr).to_string_lossy().into_owned()
+            }
+        };
+        let positive = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
+        FileInfo {
+            fields: slice_of(raw.fields, raw.field_count)
+                .iter()
+                .map(|field| (text(field.key), text(field.value)))
+                .collect(),
+            pictures: slice_of(raw.pictures, raw.picture_count)
+                .iter()
+                .map(|picture| FilePicture {
+                    kind: text(picture.kind),
+                    mime_type: text(picture.mime_type),
+                    description: text(picture.description),
+                    data: if picture.data.is_null() {
+                        Vec::new()
+                    } else {
+                        std::slice::from_raw_parts(picture.data, picture.size).to_vec()
+                    },
+                })
+                .collect(),
+            tag_types: text(raw.tag_types),
+            codec: text(raw.codec.as_ptr()),
+            lossless: raw.lossless != 0,
+            bits_per_sample: positive(raw.bits_per_sample),
+            bitrate_kbps: positive(raw.bitrate_kbps),
+            sample_rate: raw.sample_rate,
+            channels: positive(raw.channels).unwrap_or(0),
+            duration: raw.duration,
+            file_size: u64::try_from(raw.file_size).unwrap_or(0),
         }
     }
 }
@@ -918,6 +1121,11 @@ impl AnalysisFrame<'_> {
     }
 }
 
+/// Bands of the equaliser (`ANOMP_EQ_BANDS`), at 31 Hz to 16 kHz, and the
+/// most each band or the preamp moves, in dB either way.
+pub const EQ_BANDS: usize = 10;
+pub const EQ_MAX_GAIN: f64 = 12.0;
+
 /// Largest gain `Engine::load` and friends apply (about +18 dB); the core
 /// clamps to it (`ANOMP_MAX_TRACK_GAIN`).
 pub const MAX_TRACK_GAIN: f64 = 8.0;
@@ -933,7 +1141,13 @@ pub struct TrackOptions {
     pub end: Option<f64>,
     /// Seconds within the track: reaching the first jumps to the second, once.
     pub skip: Option<(f64, f64)>,
+    /// For a next track: seconds to crossfade into it over (at most
+    /// `MAX_CROSSFADE`); 0 hands off gaplessly.
+    pub crossfade: f64,
 }
+
+/// Longest crossfade, in seconds (`ANOMP_MAX_CROSSFADE`).
+pub const MAX_CROSSFADE: f64 = 12.0;
 
 impl TrackOptions {
     fn to_raw(self) -> RawTrackOptions {
@@ -943,6 +1157,7 @@ impl TrackOptions {
             end: self.end.unwrap_or(0.0),
             skip_from: self.skip.map_or(-1.0, |(from, _)| from),
             skip_to: self.skip.map_or(-1.0, |(_, to)| to),
+            crossfade: self.crossfade,
         }
     }
 }
@@ -970,6 +1185,10 @@ pub struct SignalPath {
     pub volume: f64,
     pub device_sample_rate: f64,
     pub device_buffer_size: u32,
+    /// The equaliser is on (PLAN.md F15).
+    pub equaliser: bool,
+    /// Seconds the next track crossfades over; 0 if none (PLAN.md F14).
+    pub crossfade: f64,
 }
 
 impl SignalPath {
@@ -995,6 +1214,8 @@ impl SignalPath {
             volume: raw.volume,
             device_sample_rate: raw.device_sample_rate,
             device_buffer_size: positive(raw.device_buffer_size).unwrap_or(0),
+            equaliser: raw.equaliser != 0,
+            crossfade: raw.crossfade,
         }
     }
 }
@@ -1247,6 +1468,19 @@ impl Engine {
     pub fn set_crossfeed(&mut self, level: u8) -> bool {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_set_crossfeed(self.raw.as_ptr(), c_int::from(level)) != 0 }
+    }
+
+    /// Turns the equaliser on with `EQ_BANDS` gains and a preamp, in dB
+    /// (each within `EQ_MAX_GAIN`), or off with `None`. False, changing
+    /// nothing, for values out of range.
+    pub fn set_equaliser(&mut self, settings: Option<(&[f64; EQ_BANDS], f64)>) -> bool {
+        let (gains, preamp) = match settings {
+            Some((gains, preamp)) => (gains.as_ptr(), preamp),
+            None => (std::ptr::null(), 0.0),
+        };
+        // SAFETY: `raw` is a live engine, and `gains` is null or points to
+        // EQ_BANDS values for the whole call.
+        unsafe { anomp_engine_set_equaliser(self.raw.as_ptr(), gains, preamp) != 0 }
     }
 
     /// Whether the output plays through headphones; `None` if the OS
@@ -1576,6 +1810,104 @@ impl Drop for MediaControls {
     }
 }
 
+type MenuHandler = Box<dyn Fn(i32)>;
+
+/// An item of the Dock menu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MenuItem {
+    pub id: i32,
+    /// Empty for a separator.
+    pub title: String,
+    pub enabled: bool,
+    pub checked: bool,
+}
+
+/// The Dock icon's menu (macOS; nothing elsewhere). Main thread only, like
+/// `MediaControls`: choices reach the handler on the main thread, from the
+/// OS, never inside a call on this object. One exists at a time.
+pub struct DockMenu {
+    raw: NonNull<RawDockMenu>,
+    handler: *mut MenuHandler,
+    _not_send: PhantomData<*mut ()>,
+}
+
+impl DockMenu {
+    /// Whether this platform shows a Dock menu.
+    pub fn supported() -> bool {
+        // SAFETY: no preconditions.
+        unsafe { anomp_dock_menu_supported() != 0 }
+    }
+
+    /// Starts showing a Dock menu, empty until `set_items`; `None` if one
+    /// exists already.
+    pub fn new(handler: impl Fn(i32) + 'static) -> Option<DockMenu> {
+        let handler: *mut MenuHandler = Box::into_raw(Box::new(Box::new(handler)));
+        // SAFETY: `handler` stays valid until Drop, which destroys the menu
+        // (and so the callback) before freeing it.
+        let raw = unsafe { anomp_dock_menu_create(Some(on_menu_choice), handler.cast()) };
+        match NonNull::new(raw) {
+            Some(raw) => Some(DockMenu {
+                raw,
+                handler,
+                _not_send: PhantomData,
+            }),
+            None => {
+                // SAFETY: the core refused it, so nothing else holds it.
+                drop(unsafe { Box::from_raw(handler) });
+                None
+            }
+        }
+    }
+
+    pub fn set_items(&mut self, items: &[MenuItem]) {
+        let titles: Vec<CString> = items
+            .iter()
+            .map(|item| {
+                CString::new(item.title.split('\0').next().unwrap_or("")).unwrap_or_default()
+            })
+            .collect();
+        let raw: Vec<RawMenuItem> = items
+            .iter()
+            .zip(&titles)
+            .map(|(item, title)| RawMenuItem {
+                id: item.id,
+                title: title.as_ptr(),
+                enabled: c_int::from(item.enabled),
+                checked: c_int::from(item.checked),
+            })
+            .collect();
+        let count = c_int::try_from(raw.len()).unwrap_or(c_int::MAX);
+        // SAFETY: `raw` is live, and the items and their titles outlive the
+        // call, which copies them.
+        unsafe { anomp_dock_menu_set_items(self.raw.as_ptr(), raw.as_ptr(), count) };
+    }
+
+    /// Chooses an item as the OS would, for tests.
+    #[cfg(test)]
+    pub fn perform(&mut self, id: i32) -> bool {
+        // SAFETY: `raw` is live.
+        unsafe { anomp_dock_menu_perform(self.raw.as_ptr(), id) != 0 }
+    }
+}
+
+impl Drop for DockMenu {
+    fn drop(&mut self) {
+        // SAFETY: `raw` is live and never used again; destroying it stops the
+        // callback, after which nothing else holds `handler`.
+        unsafe {
+            anomp_dock_menu_destroy(self.raw.as_ptr());
+            drop(Box::from_raw(self.handler));
+        }
+    }
+}
+
+extern "C" fn on_menu_choice(id: c_int, user_data: *mut c_void) {
+    // SAFETY: `user_data` is the handler registered by `DockMenu::new`, alive
+    // until the menu is destroyed.
+    let handler = unsafe { &*user_data.cast::<MenuHandler>() };
+    handler(id);
+}
+
 extern "C" fn on_media_command(command: *const RawMediaCommand, user_data: *mut c_void) {
     // SAFETY: the core passes a valid command for the duration of the call,
     // and `user_data` is the handler registered by `MediaControls::new`.
@@ -1806,6 +2138,9 @@ mod tests {
             cuesheet: std::ptr::null(),
             chapter_count: 3,
             chapters: std::ptr::null(),
+            rating: 150,
+            compilation: 1,
+            artists: std::ptr::null(),
         };
         // SAFETY: every pointer is null, which `from_raw` allows.
         let tags = unsafe { Tags::from_raw(&raw) };
@@ -1818,6 +2153,49 @@ mod tests {
                 album_peak: Some(0.5),
             }
         );
+        assert_eq!(tags.rating, None, "out of range");
+        assert!(tags.compilation);
+        assert!(tags.artists.is_empty());
+    }
+
+    #[test]
+    fn splits_artist_credits() {
+        assert_eq!(split_artists("A; B ;; C"), ["A", "B", "C"]);
+        assert_eq!(split_artists("AC/DC"), ["AC/DC"]);
+        assert!(split_artists(" ; ").is_empty());
+    }
+
+    #[test]
+    fn reads_every_field_of_a_file() {
+        let info = read_file_info(&fixture("tagged-vorbis.flac")).unwrap();
+        assert_eq!(info.codec, "flac");
+        assert!(info.lossless);
+        assert_eq!(info.bits_per_sample, Some(16));
+        assert!(info
+            .fields
+            .contains(&("TITLE".to_owned(), "Café Déjà Vu".to_owned())));
+        assert!(!info.pictures.is_empty());
+        assert!(!info.pictures[0].data.is_empty());
+        assert!(read_file_info(Path::new("/no/such.flac")).is_err());
+    }
+
+    #[test]
+    fn dock_menu_reports_enabled_choices() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let chosen = Rc::new(RefCell::new(Vec::new()));
+        let seen = chosen.clone();
+        let mut menu = DockMenu::new(move |id| seen.borrow_mut().push(id)).unwrap();
+        let item = |id, title: &str, enabled| MenuItem {
+            id,
+            title: title.into(),
+            enabled,
+            checked: false,
+        };
+        menu.set_items(&[item(1, "Now: Song", false), item(2, "Pause", true)]);
+        assert!(menu.perform(2));
+        assert!(!menu.perform(1));
+        assert_eq!(*chosen.borrow(), [2]);
     }
 
     #[test]

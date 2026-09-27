@@ -35,7 +35,7 @@ pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Erro
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
-        .ok_or_else(|| Error::Invalid(format!("No library folder with id {folder_id}")))?;
+        .ok_or_else(|| Error::Invalid(crate::coded::no_folder(folder_id)))?;
 
     let Some(bookmark) = bookmark else {
         if let Ok(bookmark) = anomp::create_bookmark(Path::new(&stored)) {
@@ -52,8 +52,9 @@ pub fn open_folder(conn: &Connection, folder_id: i64) -> Result<OpenFolder, Erro
         Err(error) => match rebookmark(conn, folder_id, &stored) {
             Some(open) => return Ok(open),
             None => {
-                return Err(Error::Invalid(format!(
-                    "Folder not available: {stored} ({error})"
+                return Err(Error::Invalid(crate::coded::folder_unavailable(
+                    &stored,
+                    Some(&error.to_string()),
                 )))
             }
         },
@@ -213,10 +214,10 @@ mod tests {
         let folder = add_folder(&conn, &music).unwrap();
         std::fs::remove_dir(&music).unwrap();
 
-        let error = open_folder(&conn, folder.id).err().unwrap().to_string();
-        assert!(error.starts_with("Folder not available"), "{error}");
-        let error = open_folder(&conn, folder.id + 1).err().unwrap().to_string();
-        assert!(error.starts_with("No library folder"), "{error}");
+        let error = open_folder(&conn, folder.id).err().unwrap();
+        assert!(crate::coded::is(&error, "folderUnavailable"), "{error}");
+        let error = open_folder(&conn, folder.id + 1).err().unwrap();
+        assert!(crate::coded::is(&error, "noFolder"), "{error}");
         // The stored path and bookmark are left for when it comes back.
         assert_eq!(folders(&conn).unwrap()[0].path, folder.path);
         assert!(bookmark_of(&conn, folder.id).is_some());

@@ -15,17 +15,24 @@ pub mod covers;
 pub mod cue;
 pub mod db;
 pub mod discover;
+pub mod external;
 pub mod genres;
 pub mod health;
+pub mod info;
 pub mod lyrics;
+pub mod marks;
 pub mod playback;
+pub mod playlists;
 pub mod prefs;
 pub mod rules;
 pub mod scanner;
 pub mod search;
+pub mod smart;
 pub mod sort_key;
 #[cfg(test)]
 pub mod test_library;
+pub mod transfer;
+pub mod watch;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -68,6 +75,11 @@ pub struct Folder {
     pub track_count: u32,
     /// Unix seconds; `None` until the first scan.
     pub last_scan_at: Option<i64>,
+    /// Whether its bookmark resolves now, where checked (F8): `Some(false)`
+    /// for a folder on an unplugged drive, or moved where the app can't
+    /// follow, which the user can locate again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub available: Option<bool>,
 }
 
 pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
@@ -82,6 +94,7 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
             path: row.get(1)?,
             last_scan_at: row.get(2)?,
             track_count: row.get(3)?,
+            available: None,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -127,7 +140,35 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
         path: text.to_owned(),
         track_count: 0,
         last_scan_at: None,
+        available: None,
     })
+}
+
+/// Points library folder `folder_id` at `path`, where the user found it
+/// after it moved (F8): its tracks, stored relative to it, follow, keeping
+/// their ids. Refuses a path inside, or holding, another library folder.
+pub fn relocate_folder(conn: &Connection, folder_id: i64, path: &Path) -> Result<Folder, Error> {
+    let path = std::fs::canonicalize(path)
+        .map_err(|error| Error::Invalid(format!("Cannot open {}: {error}", path.display())))?;
+    if !path.is_dir() {
+        return Err(Error::Invalid(format!("Not a folder: {}", path.display())));
+    }
+    let text = path
+        .to_str()
+        .ok_or_else(|| Error::Invalid(format!("Path is not valid UTF-8: {}", path.display())))?;
+    check_overlap(conn, &path, Some(folder_id))?;
+    let bookmark = anomp::create_bookmark(&path).map_err(Error::Invalid)?;
+    if conn.execute(
+        "UPDATE folders SET path = ?1, bookmark = ?2 WHERE id = ?3",
+        params![text, bookmark, folder_id],
+    )? == 0
+    {
+        return Err(Error::Invalid(crate::coded::no_folder(folder_id)));
+    }
+    folders(conn)?
+        .into_iter()
+        .find(|folder| folder.id == folder_id)
+        .ok_or_else(|| Error::Invalid(crate::coded::no_folder(folder_id)))
 }
 
 /// Fails if `path` is inside, contains, or is a library folder other than
@@ -154,25 +195,70 @@ fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<
 pub fn remove_folder(conn: &mut Connection, folder_id: i64) -> Result<(), Error> {
     let tx = conn.transaction()?;
     if tx.execute("DELETE FROM folders WHERE id = ?1", [folder_id])? == 0 {
-        return Err(Error::Invalid(format!(
-            "No library folder with id {folder_id}"
-        )));
+        return Err(Error::Invalid(crate::coded::no_folder(folder_id)));
     }
     remove_orphans(&tx)?;
     tx.commit()?;
     Ok(())
 }
 
-/// Deletes albums and artists that no track refers to any more.
+/// Deletes albums and artists that no track refers to any more, first
+/// keeping what the user chose for them (PLAN.md F10): an album's chosen
+/// links, cover, playback preferences and heart, an artist's chosen links
+/// and heart go to `kept_albums` and `kept_artists`, so they come back with
+/// the album or artist (`scanner::restore_kept`), e.g. after its files move
+/// to another library folder.
 fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
-        "DELETE FROM albums WHERE id NOT IN
+        "CREATE TEMP TABLE IF NOT EXISTS orphan_albums (id INTEGER PRIMARY KEY);
+         CREATE TEMP TABLE IF NOT EXISTS orphan_artists (id INTEGER PRIMARY KEY);
+         DELETE FROM temp.orphan_albums;
+         DELETE FROM temp.orphan_artists;
+
+         INSERT INTO temp.orphan_albums SELECT id FROM albums WHERE id NOT IN
              (SELECT album_id FROM tracks WHERE album_id IS NOT NULL);
-         DELETE FROM artists WHERE id NOT IN
+         INSERT INTO kept_albums (title, artist, musicbrainz_release_id, picks, kept_at)
+         SELECT al.title, ar.name, al.musicbrainz_release_id,
+                json_object(
+                    'links', (SELECT json_group_array(json_object(
+                                  'source', source, 'status', status, 'externalId', external_id,
+                                  'score', score, 'details', details, 'checkedAt', checked_at))
+                              FROM album_links WHERE album_id = al.id AND chosen_by = 'user'),
+                    'art', (SELECT json_object('source', source, 'reference', reference)
+                            FROM album_art WHERE album_id = al.id),
+                    'prefs', (SELECT json_object('skip', skip, 'neverShuffle', never_shuffle,
+                                                 'gainOffset', gain_offset)
+                              FROM album_prefs WHERE album_id = al.id),
+                    'favourite', (SELECT added_at FROM album_favourites WHERE album_id = al.id)),
+                unixepoch()
+         FROM albums al LEFT JOIN artists ar ON ar.id = al.artist_id
+         WHERE al.id IN (SELECT id FROM temp.orphan_albums)
+           AND (EXISTS (SELECT 1 FROM album_links WHERE album_id = al.id AND chosen_by = 'user')
+                OR EXISTS (SELECT 1 FROM album_art WHERE album_id = al.id)
+                OR EXISTS (SELECT 1 FROM album_prefs WHERE album_id = al.id)
+                OR EXISTS (SELECT 1 FROM album_favourites WHERE album_id = al.id));
+         DELETE FROM albums WHERE id IN (SELECT id FROM temp.orphan_albums);
+
+         INSERT INTO temp.orphan_artists SELECT id FROM artists WHERE id NOT IN
              (SELECT artist_id FROM tracks WHERE artist_id IS NOT NULL
               UNION SELECT album_artist_id FROM tracks WHERE album_artist_id IS NOT NULL
               UNION SELECT composer_id FROM tracks WHERE composer_id IS NOT NULL
-              UNION SELECT artist_id FROM albums WHERE artist_id IS NOT NULL);",
+              UNION SELECT artist_id FROM track_artists
+              UNION SELECT artist_id FROM albums WHERE artist_id IS NOT NULL);
+         INSERT OR REPLACE INTO kept_artists (name, picks, kept_at)
+         SELECT a.name,
+                json_object(
+                    'links', (SELECT json_group_array(json_object(
+                                  'source', source, 'status', status, 'externalId', external_id,
+                                  'score', score, 'details', details, 'checkedAt', checked_at))
+                              FROM artist_links WHERE artist_id = a.id AND chosen_by = 'user'),
+                    'favourite', (SELECT added_at FROM artist_favourites WHERE artist_id = a.id)),
+                unixepoch()
+         FROM artists a
+         WHERE a.id IN (SELECT id FROM temp.orphan_artists)
+           AND (EXISTS (SELECT 1 FROM artist_links WHERE artist_id = a.id AND chosen_by = 'user')
+                OR EXISTS (SELECT 1 FROM artist_favourites WHERE artist_id = a.id));
+         DELETE FROM artists WHERE id IN (SELECT id FROM temp.orphan_artists);",
     )
 }
 
@@ -212,13 +298,17 @@ pub struct TrackSummary {
     /// Part of a file (a cue sheet's track or a chapter, O5): where it
     /// starts, in seconds.
     pub range_start: f64,
+    /// The user's heart and stars (F3).
+    pub favourite: bool,
+    pub rating: Option<u8>,
 }
 
 /// The columns `track_from_row` reads, from `TRACKS_FROM`. The features'
 /// columns are subqueries, so every query over `TRACKS_FROM` (or with the
-/// same aliases) can list them.
+/// same aliases) can list them. A track's artist is its credit where the
+/// tag credits several (F11).
 pub(super) const TRACK_COLUMNS: &str =
-    "t.id, f.path, t.relative_path, t.title, artist.name, album.title,
+    "t.id, f.path, t.relative_path, t.title, IFNULL(t.artist_credit, artist.name), album.title,
      album_artist.name, t.genre, t.year, t.disc_number, t.track_number, t.duration, t.album_id,
      t.artist_id, t.bitrate_kbps, t.sample_rate, t.added_at,
      (SELECT count(*) FROM plays WHERE plays.track_id = t.id),
@@ -226,7 +316,9 @@ pub(super) const TRACK_COLUMNS: &str =
      EXISTS (SELECT 1 FROM track_prefs WHERE track_prefs.track_id = t.id)
          OR EXISTS (SELECT 1 FROM album_prefs WHERE album_prefs.album_id = t.album_id),
      (SELECT name FROM artists WHERE artists.id = t.composer_id),
-     t.work, t.movement_name, t.movement_number, t.range_start";
+     t.work, t.movement_name, t.movement_number, t.range_start,
+     EXISTS (SELECT 1 FROM track_favourites tf WHERE tf.track_id = t.id),
+     (SELECT rating FROM track_ratings tr WHERE tr.track_id = t.id)";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
 pub(super) const TRACKS_FROM: &str = "FROM tracks t
@@ -265,6 +357,8 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         movement_name: row.get(22)?,
         movement_number: row.get(23)?,
         range_start: row.get(24)?,
+        favourite: row.get(25)?,
+        rating: row.get(26)?,
     })
 }
 

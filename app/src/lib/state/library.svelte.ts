@@ -11,11 +11,13 @@ import {
   type AlbumOrder,
   type BrowsePath,
   type Folder,
+  type Group,
   type GroupKey,
   type Level,
   type ScanProgress,
   type SortRule,
 } from "$lib/api";
+import { errorText, t, type MessageKey } from "$lib/i18n";
 import { attempt, toasts } from "./toasts.svelte";
 import { loadPreference, savePreference, ui } from "./ui.svelte";
 
@@ -52,10 +54,26 @@ class LibraryStore {
     return this.rule?.levels[this.crumbs.length] ?? null;
   }
 
-  /** Follows scan progress and metadata changes; returns a function that stops. */
+  /** Whether the folders have been listed yet (the welcome view waits for it). */
+  loaded = $state(false);
+  /** A scan the user didn't start is running (at launch, after changes on disk). */
+  background = $state(false);
+
+  /** Follows scans (whoever started them) and metadata changes; returns a function that stops. */
   connect() {
     const listeners = [
       on("library-scan-progress", (progress) => (this.scanProgress = progress)),
+      on("library-scanning", (running) => {
+        if (running && !this.scanning) this.background = true;
+        if (!running) {
+          this.background = false;
+          this.scanProgress = null;
+        }
+      }),
+      on("library-changed", () => {
+        this.version++;
+        void this.refresh();
+      }),
       on("metadata-changed", ({ albums, artists }) => {
         for (const id of albums) this.artVersions.set(id, (this.artVersions.get(id) ?? 0) + 1);
         for (const id of artists) this.artistVersions.set(id, (this.artistVersions.get(id) ?? 0) + 1);
@@ -70,6 +88,7 @@ class LibraryStore {
 
   async refresh() {
     this.folders = await api.folders();
+    this.loaded = true;
     this.rules = (await api.sortSettings()).rules;
     if (!this.rule) this.navigate(this.rules[0].id, []);
   }
@@ -122,8 +141,8 @@ class LibraryStore {
       try {
         const reports = await api.scan(folderId);
         const failed = reports.flatMap((report) => report.failed);
-        for (const failure of failed.slice(0, 3)) toasts.show(`${failure.path}: ${failure.error}`);
-        if (failed.length > 3) toasts.show(`${failed.length - 3} more files could not be read`);
+        for (const failure of failed.slice(0, 3)) toasts.show(`${failure.path}: ${errorText(failure.error)}`);
+        if (failed.length > 3) toasts.show(t("folders.moreFailed", { count: failed.length - 3 }));
       } finally {
         this.scanning = false;
         this.scanProgress = null;
@@ -132,13 +151,37 @@ class LibraryStore {
       }
     });
 
-  addFolder = () =>
+  /** Asks for a folder (starting at `defaultPath`), adds it and scans it. */
+  addFolder = (defaultPath?: string) =>
     attempt(async () => {
-      const path = await open({ multiple: false, directory: true });
+      const path = await open({ multiple: false, directory: true, defaultPath });
       if (path === null) return;
       // A folder already in the library comes back with a fresh bookmark.
       const folder = await api.addFolder(path);
       this.folders = [...this.folders.filter((f) => f.id !== folder.id), folder];
+      await this.scan(folder.id);
+    });
+
+  /** Adds the folder at `path` (dropped on the window, say) and scans it. */
+  addFolderAt = (path: string) =>
+    attempt(async () => {
+      const folder = await api.addFolder(path);
+      this.folders = [...this.folders.filter((f) => f.id !== folder.id), folder];
+      await this.scan(folder.id);
+    });
+
+  /** A folder that moved, or whose drive is unplugged: the user shows where it is now (F8). */
+  locateFolder = (folder: Folder) =>
+    attempt(async () => {
+      const path = await open({
+        multiple: false,
+        directory: true,
+        defaultPath: folder.path,
+        title: t("folders.locateTitle", { name: folderName(folder.path) }),
+      });
+      if (path === null) return;
+      await api.locateFolder(folder.id, path);
+      await this.refresh();
       await this.scan(folder.id);
     });
 
@@ -157,7 +200,7 @@ class LibraryStore {
     const byAlbum = this.ruleStartingWith("album");
     if (byArtist) {
       this.navigate(byArtist.id, [
-        { key: album.albumArtistId, name: album.albumArtist ?? "Unknown artist" },
+        { key: album.albumArtistId, name: album.albumArtist ?? t("library.unknownArtist") },
         { key: album.id, name: album.title },
       ]);
     } else if (byAlbum) {
@@ -182,10 +225,26 @@ const standardTrackOrder: SortRule["trackOrder"] = ["discNumber", "trackNumber",
 
 /** A rule of `levels`, for playing what search or an artist page found
     whatever the stored rules are. */
+const UNKNOWN: Record<Level, MessageKey> = {
+  albumArtist: "library.unknownArtist",
+  artist: "library.unknownArtist",
+  album: "library.unknownAlbum",
+  genre: "library.unknownGenre",
+  year: "library.unknownYear",
+  folder: "library.unknownFolder",
+  composer: "library.unknownComposer",
+  work: "library.noWork",
+};
+
+/** A group's name as shown: the backend names the group of tracks
+    without a value at `level` ("Unknown artist") in English. */
+export const groupName = (group: Pick<Group, "key" | "name">, level: Level | null | undefined) =>
+  group.key === null && level ? t(UNKNOWN[level]) : group.name;
+
 export function adHocRule(levels: Level[], albumOrder?: AlbumOrder): SortRule {
   return {
     id: `ad-hoc-${levels.join("-")}`,
-    name: "Search",
+    name: t("search.placeholder"),
     levels,
     trackOrder: levels.includes("album") ? standardTrackOrder : ["album", ...standardTrackOrder],
     albumOrder: albumOrder ?? "title",

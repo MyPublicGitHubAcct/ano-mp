@@ -335,6 +335,7 @@ juce::String PlayerEngine::load (const juce::File& file, const TrackOptions& opt
         loopRewindPending = false;
         oldRetired = takeRetired();
         pendingEnded = false;
+        fadeLength = 0;
         state = State::stopped;
         appliedGain = 0.0f;
         configureRate();
@@ -359,6 +360,8 @@ juce::String PlayerEngine::setNext (const juce::File& file, const TrackOptions& 
         const juce::ScopedLock sl (lock);
         oldNext = std::exchange (next, std::move (track));
         oldRetired = takeRetired();
+        // A fade into the replaced track starts again with this one.
+        fadeLength = 0;
     }
     return {};
 }
@@ -405,6 +408,7 @@ void PlayerEngine::clearNext()
         const juce::ScopedLock sl (lock);
         oldNext = std::move (next);
         oldRetired = takeRetired();
+        fadeLength = 0;
     }
 }
 
@@ -444,6 +448,10 @@ bool PlayerEngine::seek (double seconds)
         return false;
 
     current->setPosition (juce::jlimit (juce::int64 { 0 }, current->length, toSamples (seconds, current->sampleRate)));
+    // A crossfade under way starts again from wherever the fade now begins.
+    if (next != nullptr && fadeLength > 0)
+        next->setPosition (0);
+    fadeLength = 0;
     resampler->reset();
     if (stretcher != nullptr)
         stretcher->reset();
@@ -494,6 +502,10 @@ juce::String PlayerEngine::setLoop (double start, double end)
         loopStart = first;
         loopEnd = last;
         loopRewindPending = false;
+        // No crossfade while looping.
+        if (next != nullptr && fadeLength > 0)
+            next->setPosition (0);
+        fadeLength = 0;
 
         // Already past the end: back to the start now.
         if (current->position >= loopEnd)
@@ -561,6 +573,12 @@ bool PlayerEngine::setTempo (double rate, double semitones)
 
 void PlayerEngine::setCrossfeed (int level) { crossfeedLevel = juce::jlimit (0, Crossfeed::maxLevel, level); }
 
+void PlayerEngine::setEqualiser (bool enabled, const Equaliser::Gains& gainsDb, double preampDb)
+{
+    const juce::ScopedLock sl (lock);
+    equaliser.set (enabled, gainsDb, preampDb);
+}
+
 bool PlayerEngine::hasNext() const
 {
     const juce::ScopedLock sl (lock);
@@ -573,6 +591,10 @@ PlayerEngine::SignalInfo PlayerEngine::getSignalInfo() const
     const juce::ScopedLock sl (lock);
     info.deviceSampleRate = deviceRate;
     info.crossfeed = crossfeedLevel.load();
+    info.equaliser = equaliser.isEnabled();
+    if (current != nullptr && next != nullptr)
+        if (const auto fade = crossfadeSamples(); fade > 0)
+            info.crossfade = static_cast<double> (fade) / current->sampleRate;
     if (stretcher != nullptr && stretcher->isActive())
     {
         info.tempo = stretcher->getTempo();
@@ -657,10 +679,12 @@ void PlayerEngine::prepareToPlay (int samplesPerBlockExpected, double sampleRate
     deviceRate = sampleRate;
     tap.setSampleRate (sampleRate);
     crossfeed.prepare (sampleRate);
+    equaliser.prepare (sampleRate);
 
     const auto chunkSize = juce::jmax (samplesPerBlockExpected, 256);
     scratch.setSize (outputChannels, chunkSize);
     resampler->prepare (chunkSize * maxResampleRatio + 8);
+    fadeScratch.setSize (outputChannels, resampler->getInputCapacity());
     if (stretcher != nullptr && current != nullptr)
         stretcher->configure (current->sampleRate, resampler->getInputCapacity());
     configureRate();
@@ -713,12 +737,17 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
         tap.push (left, right, info.numSamples);
     }
 
-    // Crossfeed after the tap, so the visualizer shows the mix as it is.
+    // The equaliser and crossfeed after the tap, so the visualizer shows
+    // the mix as it is.
     if (const auto level = crossfeedLevel.load(); level != crossfeed.getLevel())
         crossfeed.setLevel (level);
     if (out.getNumChannels() >= 2)
+    {
+        equaliser.process (out.getWritePointer (0, info.startSample), out.getWritePointer (1, info.startSample),
+                           info.numSamples);
         crossfeed.process (out.getWritePointer (0, info.startSample), out.getWritePointer (1, info.startSample),
                            info.numSamples);
+    }
 
     // Pause and play fade over one block; volume changes ramp the same way.
     const auto targetGain = playing ? volume.load() : 0.0f;
@@ -801,11 +830,27 @@ int PlayerEngine::readSource (juce::AudioBuffer<float>& buffer, int startSample,
             continue;
         }
 
+        // The last seconds of a track that crossfades into the next one.
+        const auto fade = crossfadeSamples();
+        if (fade > 0 && current->remaining() <= fade)
+        {
+            if (fadeLength == 0)
+                fadeLength = current->remaining();
+            auto count = juce::jmin (static_cast<juce::int64> (numSamples - done), current->remaining());
+            if (current->skipFrom > current->position)
+                count = juce::jmin (count, current->skipFrom - current->position);
+            readCrossfade (buffer, startSample + done, static_cast<int> (count));
+            done += static_cast<int> (count);
+            continue;
+        }
+
         auto limit = juce::jmin (static_cast<juce::int64> (numSamples - done), current->remaining());
         if (loopTrack != nullptr)
             limit = juce::jmin (limit, loopEnd - current->position);
         if (current->skipFrom > current->position)
             limit = juce::jmin (limit, current->skipFrom - current->position);
+        if (fade > 0)
+            limit = juce::jmin (limit, current->remaining() - fade);
 
         done += current->read (buffer, startSample + done, static_cast<int> (limit));
     }
@@ -821,6 +866,7 @@ void PlayerEngine::handOff()
 {
     retire (std::move (current));
     current = std::move (next);
+    fadeLength = 0;
     // A loop belongs to the track that was playing.
     if (loopTrack != nullptr)
         retire (std::move (loopTrack));
@@ -828,6 +874,51 @@ void PlayerEngine::handOff()
     loopRewindPending = false;
     ++pendingAdvances;
     ++advanceCount;
+}
+
+juce::int64 PlayerEngine::crossfadeSamples() const
+{
+    if (fadeLength > 0)
+        return fadeLength;
+    if (current == nullptr || next == nullptr || loopTrack != nullptr || ! (next->options.crossfade > 0.0)
+        || ! juce::exactlyEqual (next->sampleRate, current->sampleRate))
+        return 0;
+    const auto wanted = toSamples (juce::jmin (next->options.crossfade, maxCrossfade), current->sampleRate);
+    return juce::jmin (wanted, current->length / 2, next->length / 2);
+}
+
+void PlayerEngine::readCrossfade (juce::AudioBuffer<float>& buffer, int startSample, int count)
+{
+    for (int done = 0; done < count;)
+    {
+        const auto piece = juce::jmin (count - done, fadeScratch.getNumSamples());
+        if (piece <= 0)
+        {
+            // Not prepared: the current track alone.
+            current->read (buffer, startSample + done, count - done);
+            return;
+        }
+
+        // Samples into the fade, before this piece.
+        const auto into = fadeLength - current->remaining();
+        current->read (buffer, startSample + done, piece);
+        if (const auto got = next->read (fadeScratch, 0, piece); got < piece)
+            fadeScratch.clear (got, piece - got);
+
+        for (int ch = 0; ch < outputChannels; ++ch)
+        {
+            auto* out = buffer.getWritePointer (ch, startSample + done);
+            const auto* in = fadeScratch.getReadPointer (ch);
+            for (int i = 0; i < piece; ++i)
+            {
+                // Equal power: the two gains' squares always add up to 1.
+                const auto angle = juce::MathConstants<double>::halfPi * (static_cast<double> (into + i) + 0.5)
+                                   / static_cast<double> (fadeLength);
+                out[i] = static_cast<float> (out[i] * std::cos (angle) + in[i] * std::sin (angle));
+            }
+        }
+        done += piece;
+    }
 }
 
 void PlayerEngine::jumpToLoopStart()
@@ -877,6 +968,9 @@ void PlayerEngine::configureRate()
 void PlayerEngine::rewind()
 {
     current->setPosition (0);
+    if (next != nullptr && fadeLength > 0)
+        next->setPosition (0);
+    fadeLength = 0;
     resampler->reset();
     if (stretcher != nullptr)
         stretcher->reset();

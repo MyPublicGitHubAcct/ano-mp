@@ -14,13 +14,18 @@
 //! After every change the queue emits `queue-changed` with a `QueueState`
 //! and is saved under `player.queue` in `settings`, with the position in
 //! the current track and the volume. At launch it is restored paused and
-//! not loaded: no file is opened until playback is asked for.
+//! not loaded: no file is opened until playback is asked for. Long tracks'
+//! positions go to `track_positions` (PLAN.md F17).
+//!
+//! Files opened from outside the library (F5, `library::external`) are
+//! queue items with negative track ids, played from their path.
 
 pub mod model;
 pub mod radio;
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,12 +35,13 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::anomp::{Engine, PlayerState, TrackOptions};
 use crate::audio;
-use crate::library::browse::{self, GroupKey, RuleSpec};
+use crate::library::browse::{self, Filter, GroupKey, RuleSpec};
 use crate::library::commands::{on_library, LibraryState};
+use crate::library::external;
 use crate::library::playback::TrackPlay;
 use crate::library::Error;
 use crate::settings::{self, FeatureSettings, PlaybackSettings};
-use model::{Player, Queue, QueueState, Repeat, Saved, TrackInfo, Uid};
+use model::{Player, Queue, QueueState, Repeat, Saved, SleepTimer, TrackInfo, Uid};
 
 thread_local! {
     static QUEUE: RefCell<Option<Queue>> = const { RefCell::new(None) };
@@ -66,6 +72,24 @@ pub struct EnginePlayer<'a> {
 }
 
 impl EnginePlayer<'_> {
+    /// How to play track `track_id`: a library track as `library::playback`
+    /// says, or a file opened from outside the library, whole.
+    fn track_play(&self, track_id: i64) -> Result<TrackPlay, String> {
+        if track_id < 0 {
+            let file = external::file(track_id).ok_or("The file is no longer open to the app")?;
+            return Ok(TrackPlay {
+                path: file.path,
+                start: 0.0,
+                end: None,
+                replay_gain: file.replay_gain,
+                gain_offset_db: 0.0,
+                skip: None,
+                sample_rate: file.sample_rate,
+            });
+        }
+        self.library.track_play(track_id, &self.features)
+    }
+
     /// Resolves the track's folder and holds it open until `open` has
     /// opened the file (see `library::access`).
     fn open(
@@ -73,7 +97,7 @@ impl EnginePlayer<'_> {
         track_id: i64,
         open: impl FnOnce(&mut Engine, &TrackPlay, &TrackOptions) -> Result<(), String>,
     ) -> Result<(), String> {
-        let play = self.library.track_play(track_id, &self.features)?;
+        let play = self.track_play(track_id)?;
         let _folder = self.library.open_folder_of(&play.path)?;
         open(self.engine, &play, &play.options(&self.playback))
     }
@@ -81,7 +105,7 @@ impl EnginePlayer<'_> {
     /// Gives the engine's copy of the track its gain under the current
     /// settings.
     fn refresh_gain(&mut self, track_id: i64) -> Result<(), String> {
-        let play = self.library.track_play(track_id, &self.features)?;
+        let play = self.track_play(track_id)?;
         let gain = play.options(&self.playback).gain;
         self.engine.set_track_gain_at(&play.path, play.start, gain);
         Ok(())
@@ -98,7 +122,7 @@ impl EnginePlayer<'_> {
         points: Option<(f64, f64)>,
     ) -> Result<Option<(f64, f64)>, String> {
         if points.is_some() {
-            let play = self.library.track_play(track_id, &self.features)?;
+            let play = self.track_play(track_id)?;
             let _folder = self.library.open_folder_of(&play.path)?;
             self.engine.set_loop(points)?;
         } else {
@@ -122,13 +146,28 @@ impl Player for EnginePlayer<'_> {
             engine.load_track(&play.path, options)
         })
     }
-    fn set_next(&mut self, track_id: Option<i64>) -> Result<(), String> {
+    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String> {
+        let seconds = if crossfade {
+            self.playback.crossfade
+        } else {
+            0.0
+        };
         match track_id {
             Some(id) => self.open(id, |engine, play, options| {
-                engine.set_next_track(Some((&play.path, options)))
+                let options = TrackOptions {
+                    crossfade: seconds,
+                    ..*options
+                };
+                engine.set_next_track(Some((&play.path, &options)))
             }),
             None => self.engine.set_next_track(None),
         }
+    }
+    fn volume(&self) -> f64 {
+        self.engine.volume()
+    }
+    fn set_volume(&mut self, volume: f64) {
+        self.engine.set_volume(volume);
     }
     fn play(&mut self) -> bool {
         self.engine.play()
@@ -188,8 +227,75 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
 /// shuts down.
 pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
     let queue = QUEUE.with_borrow_mut(Option::take);
-    if let Some(queue) = queue {
+    if let Some(mut queue) = queue {
+        if let Ok(position) = audio::engine_mut(|engine| engine.position()) {
+            queue.remember_position(&Position(position));
+        }
+        save_positions(app, &mut queue);
         save(app, &queue);
+    }
+}
+
+/// A player that only knows where it is, for noting a position at quit.
+struct Position(f64);
+
+impl Player for Position {
+    fn load(&mut self, _: i64) -> Result<(), String> {
+        Err("not a player".into())
+    }
+    fn set_next(&mut self, _: Option<i64>, _: bool) -> Result<(), String> {
+        Ok(())
+    }
+    fn volume(&self) -> f64 {
+        1.0
+    }
+    fn set_volume(&mut self, _: f64) {}
+    fn play(&mut self) -> bool {
+        false
+    }
+    fn pause(&mut self) {}
+    fn stop(&mut self) {}
+    fn seek(&mut self, _: f64) -> bool {
+        false
+    }
+    fn state(&self) -> PlayerState {
+        PlayerState::Paused
+    }
+    fn position(&self) -> f64 {
+        self.0
+    }
+    fn advance_count(&self) -> i64 {
+        0
+    }
+}
+
+/// Writes the long tracks' positions the queue noted.
+fn save_positions<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
+    let positions = queue.take_positions();
+    if positions.is_empty() {
+        return;
+    }
+    let Some(library) = app.try_state::<LibraryState>() else {
+        return;
+    };
+    let conn = library.conn();
+    for (track_id, position) in positions {
+        let result = match position {
+            Some(position) => conn.execute(
+                "INSERT INTO track_positions (track_id, position, saved_at)
+                 SELECT id, ?2, ?3 FROM tracks WHERE id = ?1
+                 ON CONFLICT (track_id) DO UPDATE SET position = excluded.position,
+                     saved_at = excluded.saved_at",
+                rusqlite::params![track_id, position, crate::library::unix_now()],
+            ),
+            None => conn.execute(
+                "DELETE FROM track_positions WHERE track_id = ?1",
+                [track_id],
+            ),
+        };
+        if let Err(error) = result {
+            eprintln!("[queue] cannot save a position: {error}");
+        }
     }
 }
 
@@ -197,6 +303,13 @@ fn seed() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(1, |elapsed| elapsed.as_nanos() as u64)
+}
+
+/// The clock sleep timers run by: Unix time in seconds.
+fn clock() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |elapsed| elapsed.as_secs_f64())
 }
 
 /// Runs `f` on the main thread with the queue and the engine, then emits
@@ -219,6 +332,7 @@ where
         QUEUE.with(|slot| {
             let mut slot = slot.try_borrow_mut().map_err(|_| "The queue is busy")?;
             let queue = slot.as_mut().ok_or("The queue is not available")?;
+            queue.set_clock(clock());
             let result = audio::engine_mut(|engine| {
                 let mut player = EnginePlayer {
                     engine,
@@ -228,6 +342,7 @@ where
                 };
                 f(queue, &mut player)
             })?;
+            save_positions(&app, queue);
             publish(&app, queue);
             Ok(result)
         })
@@ -247,11 +362,32 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         // track analysed ahead of the library, for its waveform.
         let playing = state.current_item.as_ref().filter(|_| state.loaded);
         crate::metadata::worker::playing(app, playing.and_then(|item| item.track.album_id));
-        if let Some(item) = playing {
+        if let Some(item) = playing.filter(|item| !item.track.external) {
             crate::library::analysis::playing(app, item.track.track_id);
         }
         save(app, queue);
         fill_radio(app, queue);
+        SLEEPING.store(state.sleep.is_some(), Ordering::Relaxed);
+        crate::shell::queue_changed(app, &state);
+    }
+}
+
+/// Set while a sleep timer runs, so position reports tick it (and only
+/// then).
+static SLEEPING: AtomicBool = AtomicBool::new(false);
+
+/// The engine reported its position (every 50 ms while playing): runs a
+/// sleep timer. Main thread.
+pub fn tick<R: Runtime>(app: &AppHandle<R>) {
+    if SLEEPING.load(Ordering::Relaxed) {
+        let _ = run(app, |queue, player| queue.tick(player, clock()));
+    }
+}
+
+/// The user set the volume: a sleep timer's fade carries on from it.
+pub fn volume_changed<R: Runtime>(app: &AppHandle<R>) {
+    if SLEEPING.load(Ordering::Relaxed) {
+        let _ = run(app, |queue, _| queue.volume_changed());
     }
 }
 
@@ -372,8 +508,10 @@ pub fn track_infos(
     }
     let ids_json = serde_json::to_string(ids).expect("ids serialize");
     let mut statement = conn.prepare_cached(
-        "SELECT t.id, t.title, t.relative_path, artist.name, album.title, t.album_id, t.duration,
-                t.artist_id, IFNULL(tp.skip, ap.skip)
+        "SELECT t.id, t.title, t.relative_path, IFNULL(t.artist_credit, artist.name), album.title,
+                t.album_id, t.duration,
+                t.artist_id, IFNULL(tp.skip, ap.skip),
+                (SELECT position FROM track_positions pos WHERE pos.track_id = t.id)
          FROM tracks t
          LEFT JOIN artists artist ON artist.id = t.artist_id
          LEFT JOIN albums album ON album.id = t.album_id
@@ -394,6 +532,7 @@ pub fn track_infos(
             duration: row.get(6)?,
             artist_id: row.get(7)?,
             skip: features.playback_preferences && skip.unwrap_or(0) != 0,
+            resume: row.get(9)?,
             ..TrackInfo::default()
         })
     })?;
@@ -575,6 +714,32 @@ pub fn seek<R: Runtime>(app: &AppHandle<R>, seconds: f64) -> Result<(), String> 
     run(app, move |queue, player| queue.seek(player, seconds))
 }
 
+/// Shuffle on or off, whichever it isn't (the Controls menu).
+pub fn toggle_shuffle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    run(app, |queue, player| {
+        let on = queue.state_shuffle();
+        queue.set_shuffle(player, !on);
+    })
+}
+
+pub fn set_repeat<R: Runtime>(app: &AppHandle<R>, repeat: Repeat) -> Result<(), String> {
+    run(app, move |queue, player| queue.set_repeat(player, repeat))
+}
+
+/// Stops after the current item, or not if it already would (the Controls
+/// menu).
+pub fn toggle_stop_after_current<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    run(app, |queue, player| {
+        let current = queue.current_item().map(|item| item.uid);
+        let uid = if queue.stop_after() == current {
+            None
+        } else {
+            current
+        };
+        queue.set_stop_after(player, uid);
+    })
+}
+
 // ---- Commands ---------------------------------------------------------------
 
 /// The whole queue state, list included.
@@ -610,8 +775,9 @@ pub async fn queue_play_node<R: Runtime>(
     path: Vec<Option<GroupKey>>,
     recursive: bool,
     start_track_id: Option<i64>,
+    filter: Option<Filter>,
 ) -> Result<(), String> {
-    let tracks = node_tracks(&app, rule, path, recursive).await?;
+    let tracks = node_tracks(&app, rule, path, recursive, filter.unwrap_or_default()).await?;
     let start = start_track_id.and_then(|id| tracks.iter().position(|track| track.track_id == id));
     run(&app, move |queue, player| {
         queue.replace_from(player, tracks, start.unwrap_or(0), true, start.is_some())
@@ -641,8 +807,9 @@ pub async fn queue_add_node<R: Runtime>(
     path: Vec<Option<GroupKey>>,
     recursive: bool,
     next: bool,
+    filter: Option<Filter>,
 ) -> Result<(), String> {
-    let tracks = node_tracks(&app, rule, path, recursive).await?;
+    let tracks = node_tracks(&app, rule, path, recursive, filter.unwrap_or_default()).await?;
     run(&app, move |queue, player| queue.add(player, tracks, next))
 }
 
@@ -651,11 +818,12 @@ async fn node_tracks<R: Runtime>(
     rule: RuleSpec,
     path: Vec<Option<GroupKey>>,
     recursive: bool,
+    filter: Filter,
 ) -> Result<Vec<TrackInfo>, String> {
     let features = settings::current(app).features;
     on_library(app, move |library| {
         let conn = library.conn();
-        let ids = browse::node_track_ids_rule(&conn, &rule, &path, recursive)?;
+        let ids = browse::node_track_ids_rule(&conn, &rule, &path, recursive, filter)?;
         track_infos(&conn, &ids, &features)
     })
     .await
@@ -670,6 +838,19 @@ pub fn queue_remove<R: Runtime>(app: AppHandle<R>, uids: Vec<Uid>) -> Result<(),
 #[tauri::command]
 pub fn queue_move<R: Runtime>(app: AppHandle<R>, uid: Uid, to: usize) -> Result<(), String> {
     run(&app, move |queue, player| queue.move_item(player, uid, to))
+}
+
+/// Moves items, keeping their order, to index `to` of the list after the
+/// move.
+#[tauri::command]
+pub fn queue_move_items<R: Runtime>(
+    app: AppHandle<R>,
+    uids: Vec<Uid>,
+    to: usize,
+) -> Result<(), String> {
+    run(&app, move |queue, player| {
+        queue.move_items(player, &uids, to)
+    })
 }
 
 #[tauri::command]
@@ -723,7 +904,7 @@ pub fn queue_set_repeat<R: Runtime>(app: AppHandle<R>, repeat: Repeat) -> Result
 pub async fn queue_start_radio<R: Runtime>(app: AppHandle<R>, track_id: i64) -> Result<(), String> {
     let features = settings::current(&app).features;
     if !features.library_radio {
-        return Err("Library radio is turned off in Settings › Features".into());
+        return Err(crate::coded::feature_off("libraryRadio", "Library radio"));
     }
     let tracks = on_library(&app, move |library| {
         let conn = library.conn();
@@ -740,7 +921,7 @@ pub async fn queue_start_radio<R: Runtime>(app: AppHandle<R>, track_id: i64) -> 
     })
     .await?;
     if tracks.is_empty() {
-        return Err("The track is no longer in the library".into());
+        return Err(crate::coded::gone(crate::coded::Gone::Track));
     }
     run(&app, move |queue, player| queue.start_radio(player, tracks))
 }
@@ -755,7 +936,7 @@ pub fn player_set_loop<R: Runtime>(
 ) -> Result<Option<(f64, f64)>, String> {
     let points = start.zip(end);
     if points.is_some() && !settings::current(&app).features.practice_mode {
-        return Err("Practice mode is turned off in Settings › Features".into());
+        return Err(crate::coded::feature_off("practiceMode", "Practice mode"));
     }
     run(&app, move |queue, player| {
         let track_id = queue
@@ -771,6 +952,156 @@ pub fn player_set_loop<R: Runtime>(
 #[tauri::command]
 pub fn queue_stop_radio<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     run(&app, |queue, _| queue.stop_radio())
+}
+
+/// Stops playback after item `uid` (F13), or not with null.
+#[tauri::command]
+pub fn queue_set_stop_after<R: Runtime>(app: AppHandle<R>, uid: Option<Uid>) -> Result<(), String> {
+    run(&app, move |queue, player| queue.set_stop_after(player, uid))
+}
+
+/// A sleep timer, as the UI asks for it.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SleepRequest {
+    /// In this many minutes, 1 to 1440.
+    Minutes {
+        minutes: u32,
+    },
+    EndOfTrack,
+    EndOfAlbum,
+}
+
+/// Starts a sleep timer (F13), or ends it with null.
+#[tauri::command]
+pub fn queue_set_sleep<R: Runtime>(
+    app: AppHandle<R>,
+    sleep: Option<SleepRequest>,
+) -> Result<(), String> {
+    let timer = match sleep {
+        Some(SleepRequest::Minutes { minutes }) if (1..=1440).contains(&minutes) => {
+            Some(SleepTimer::At {
+                ends_at: clock() + f64::from(minutes) * 60.0,
+                minutes,
+            })
+        }
+        Some(SleepRequest::Minutes { .. }) => {
+            return Err(crate::coded::coded(
+                "sleepRange",
+                &[],
+                "A sleep timer runs for 1 minute to a day",
+            ))
+        }
+        Some(SleepRequest::EndOfTrack) => Some(SleepTimer::EndOfTrack),
+        Some(SleepRequest::EndOfAlbum) => Some(SleepTimer::EndOfAlbum),
+        None => None,
+    };
+    run(&app, move |queue, player| queue.set_sleep(player, timer))
+}
+
+/// Plays files opened from the Finder or dropped on the window (F5): those
+/// in the library as library tracks, others as they are, after the current
+/// item, starting with the first. Files that can't be read are skipped;
+/// fails if none can.
+pub async fn open_files<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) -> Result<(), String> {
+    let features = settings::current(app).features;
+    let tracks = tauri::async_runtime::spawn_blocking({
+        let app = app.clone();
+        move || -> Result<Vec<TrackInfo>, String> {
+            let library = app.try_state::<LibraryState>();
+            let mut tracks = Vec::new();
+            let mut errors = Vec::new();
+            for path in paths {
+                let in_library = match &library {
+                    Some(library) => external::library_track(&library.conn(), &path)
+                        .map_err(|e| e.to_string())?
+                        .map(|id| track_infos(&library.conn(), &[id], &features))
+                        .transpose()
+                        .map_err(|e| e.to_string())?
+                        .and_then(|mut found| found.pop()),
+                    None => None,
+                };
+                match in_library {
+                    Some(track) => tracks.push(track),
+                    None => match external::register(&path) {
+                        Ok(track) => tracks.push(track),
+                        Err(error) => errors.push(error),
+                    },
+                }
+            }
+            if tracks.is_empty() {
+                return Err(errors
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| "Nothing to play".into()));
+            }
+            Ok(tracks)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    run(app, move |queue, player| queue.play_now(player, tracks))
+}
+
+#[tauri::command]
+pub async fn queue_open_files<R: Runtime>(
+    app: AppHandle<R>,
+    paths: Vec<PathBuf>,
+) -> Result<(), String> {
+    open_files(&app, paths).await
+}
+
+/// The queue's track ids in order (library tracks only), e.g. to save it
+/// as a playlist.
+pub fn library_track_ids<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<i64>, String> {
+    run(app, |queue, _| {
+        queue
+            .track_ids()
+            .into_iter()
+            .filter(|&id| id >= 0)
+            .collect()
+    })
+}
+
+/// The queue for an export: library track ids, the current one's index
+/// among them, the position in it, and the repeat mode.
+pub fn snapshot<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<(Vec<i64>, Option<usize>, f64, serde_json::Value), String> {
+    run(app, |queue, player| {
+        let saved = queue.saved(player.position());
+        (
+            saved.tracks,
+            saved.current,
+            saved.position,
+            serde_json::to_value(saved.repeat).unwrap_or_default(),
+        )
+    })
+}
+
+/// Replaces an empty queue with imported tracks, paused at `current` and
+/// `position`; leaves a queue that has anything alone.
+pub async fn restore_imported<R: Runtime>(
+    app: &AppHandle<R>,
+    ids: Vec<i64>,
+    current: Option<usize>,
+    position: f64,
+) -> Result<bool, String> {
+    let features = settings::current(app).features;
+    let tracks = on_library(app, move |library| {
+        track_infos(&library.conn(), &ids, &features)
+    })
+    .await?;
+    run(app, move |queue, player| {
+        if !queue.track_ids().is_empty() || tracks.is_empty() {
+            return false;
+        }
+        queue.replace_from(player, tracks, current.unwrap_or(0), false, true);
+        if position > 0.0 {
+            queue.seek(player, position);
+        }
+        true
+    })
 }
 
 /// The settings changed: radio mode ends if library radio was turned off,

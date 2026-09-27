@@ -6,8 +6,10 @@
 <dict>
     <key>com.apple.security.app-sandbox</key>
     <true/>
-    <!-- Folders and files the user picks in an open panel, read-only. -->
-    <key>com.apple.security.files.user-selected.read-only</key>
+    <!-- Folders and files the user picks in an open or save panel. Read
+         and write, so a playlist (M3U8) or the user's data can be exported
+         to the file they name (PLAN.md F1, F20); nothing else is written. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
     <!-- Security-scoped bookmarks that keep that access across launches
          (library/access.rs, core/src/FolderAccess_apple.mm). -->

@@ -35,7 +35,8 @@ const RECENT_PLAYS: u32 = 2000;
 /// The latest `limit` entries of recently played, newest first (O16).
 pub fn recently_played(conn: &Connection, limit: usize) -> Result<Vec<RecentEntry>, Error> {
     let mut statement = conn.prepare_cached(
-        "SELECT p.played_at, t.id, IFNULL(t.title, t.relative_path), artist.name, t.album_id,
+        "SELECT p.played_at, t.id, IFNULL(t.title, t.relative_path),
+                IFNULL(t.artist_credit, artist.name), t.album_id,
                 al.title, album_artist.name, al.artist_id,
                 (SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id)
          FROM plays p JOIN tracks t ON t.id = p.track_id
@@ -155,7 +156,7 @@ pub fn top_played(
     let (group, columns) = match kind {
         TopKind::Tracks => (
             "t.id",
-            "t.id, IFNULL(t.title, t.relative_path), artist.name, t.album_id",
+            "t.id, IFNULL(t.title, t.relative_path), IFNULL(t.artist_credit, artist.name), t.album_id",
         ),
         TopKind::Albums => (
             "t.album_id",

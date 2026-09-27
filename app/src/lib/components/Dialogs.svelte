@@ -5,6 +5,9 @@
   import FindArtistDialog from "./FindArtistDialog.svelte";
   import FindDetailsDialog from "./FindDetailsDialog.svelte";
   import PrefsDialog from "./PrefsDialog.svelte";
+  import ShortcutsDialog from "./ShortcutsDialog.svelte";
+  import SmartPlaylistDialog from "./SmartPlaylistDialog.svelte";
+  import TrackInfoDialog from "./TrackInfoDialog.svelte";
 
   const close = () => (ui.dialog = null);
 </script>
@@ -17,4 +20,10 @@
   {#key ui.dialog}<FindArtistDialog artist={ui.dialog.artist} info={ui.dialog.info} onclose={close} />{/key}
 {:else if ui.dialog?.kind === "prefs"}
   {#key ui.dialog}<PrefsDialog track={ui.dialog.track} album={ui.dialog.album} onclose={close} />{/key}
+{:else if ui.dialog?.kind === "smartPlaylist"}
+  {#key ui.dialog}<SmartPlaylistDialog playlist={ui.dialog.playlist} onclose={close} />{/key}
+{:else if ui.dialog?.kind === "trackInfo"}
+  {#key ui.dialog}<TrackInfoDialog trackId={ui.dialog.trackId} onclose={close} />{/key}
+{:else if ui.dialog?.kind === "shortcuts"}
+  <ShortcutsDialog onclose={close} />
 {/if}

@@ -1,10 +1,27 @@
 // Grouping releases by their MusicBrainz release group types, as the
-// artist page and the discography page list them.
+// artist page and the discography page list them. Sections are named in
+// English here (the names are stored, e.g. which are collapsed); pages show
+// them through `sectionName`.
+
+import { t, type MessageKey } from "$lib/i18n";
 
 export type Typed = { releaseType: string | null; secondaryTypes: string[] };
 
 /** Sections in the order pages show them. */
 export const SECTIONS = ["Albums", "EPs", "Singles", "Live albums", "Compilations", "Soundtracks", "Other releases"];
+
+const NAMES: Record<string, MessageKey> = {
+  Albums: "releases.albums",
+  EPs: "releases.eps",
+  Singles: "releases.singles",
+  "Live albums": "releases.live",
+  Compilations: "releases.compilations",
+  Soundtracks: "releases.soundtracks",
+  "Other releases": "releases.other",
+};
+
+/** A section's name as the UI shows it. */
+export const sectionName = (section: string) => (NAMES[section] ? t(NAMES[section]) : section);
 
 const SPOKEN = ["Interview", "Spokenword", "Audiobook", "Audio drama"];
 

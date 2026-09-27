@@ -2,6 +2,7 @@
   // A modal dialog over the whole window (the native <dialog>, so focus stays
   // inside and Escape closes it): a title bar, a scrolling body, and an
   // optional row of actions at the bottom.
+  import { t } from "$lib/i18n";
   import type { Snippet } from "svelte";
   import Icon from "./Icon.svelte";
 
@@ -36,7 +37,7 @@
 <dialog bind:this={dialog} aria-labelledby={id} {onclose} {onclick}>
   <header>
     <h2 {id}>{title}</h2>
-    <button class="icon" aria-label="Close" onclick={() => dialog.close()}><Icon name="close" /></button>
+    <button class="icon" aria-label={t("dialog.close")} onclick={() => dialog.close()}><Icon name="close" /></button>
   </header>
   <div class="body">{@render children()}</div>
   {#if actions}

@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use crate::anomp::{DeviceInfo, Engine, Event, PlayerState, SignalPath};
 use crate::library::access::OpenFolder;
 use crate::library::commands::LibraryState;
-use crate::settings::{self, FeatureSettings, OutputSettings};
+use crate::settings::{self, EqualiserSettings, FeatureSettings, OutputSettings};
 
 thread_local! {
     static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
@@ -36,6 +36,9 @@ pub const PLAYER_STATE_EVENT: &str = "player-state";
 pub const PLAYER_POSITION_EVENT: &str = "player-position";
 /// Frontend event with a `TrackEndedPayload`.
 pub const PLAYER_TRACK_ENDED_EVENT: &str = "player-track-ended";
+/// Frontend event with the volume (0 to 1), when something other than the
+/// page changed it (the menu, the remote).
+pub const PLAYER_VOLUME_EVENT: &str = "player-volume";
 
 #[derive(Clone, Serialize)]
 pub struct PositionPayload {
@@ -84,13 +87,20 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 eprintln!("[audio] device changed");
                 reopen_chosen(&app);
                 // Headphones may have come or gone with it.
-                let features = settings::current(&app).features;
-                let _ = engine_mut(|engine| apply_crossfeed(engine, &features));
+                let current = settings::current(&app);
+                let _ = engine_mut(|engine| {
+                    apply_crossfeed(engine, &current.features);
+                    apply_equaliser_to(engine, &current.equaliser);
+                });
                 app.emit(DEVICE_CHANGED_EVENT, ())
             }
-            Event::StateChanged(state) => app.emit(PLAYER_STATE_EVENT, state),
+            Event::StateChanged(state) => {
+                crate::shell::playing_changed(&app, state == PlayerState::Playing);
+                app.emit(PLAYER_STATE_EVENT, state)
+            }
             Event::Position { position, duration } => {
                 crate::history::position(&app, position, duration);
+                crate::queue::tick(&app);
                 app.emit(
                     PLAYER_POSITION_EVENT,
                     PositionPayload { position, duration },
@@ -105,7 +115,9 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         };
     });
     let opened = open_output(&mut engine, &output);
-    apply_crossfeed(&mut engine, &settings::current(&app_for_init).features);
+    let current = settings::current(&app_for_init);
+    apply_crossfeed(&mut engine, &current.features);
+    apply_equaliser_to(&mut engine, &current.equaliser);
     ENGINE.with_borrow_mut(|slot| *slot = Some(engine));
     opened
 }
@@ -116,6 +128,36 @@ pub fn apply_crossfeed(engine: &mut Engine, features: &FeatureSettings) {
     let level = features.crossfeed.level();
     let on = !features.crossfeed_headphones_only || engine.output_is_headphones() == Some(true);
     engine.set_crossfeed(if on { level } else { 0 });
+}
+
+/// Sets the engine's equaliser as `settings` say, with the headphones
+/// profile while the OS says headphones are plugged in, if it follows the
+/// output (PLAN.md F15).
+pub fn apply_equaliser_to(engine: &mut Engine, settings: &EqualiserSettings) {
+    let headphones = if settings.follow_output {
+        engine.output_is_headphones()
+    } else {
+        None
+    };
+    let applied = match settings.active(headphones) {
+        Some(profile) => {
+            let mut gains = [0.0; crate::anomp::EQ_BANDS];
+            for (gain, value) in gains.iter_mut().zip(&profile.gains) {
+                *gain = *value;
+            }
+            engine.set_equaliser(Some((&gains, profile.preamp)))
+        }
+        None => engine.set_equaliser(None),
+    };
+    if !applied {
+        eprintln!("[audio] the equaliser's settings are out of range");
+    }
+}
+
+/// The equaliser's settings changed.
+pub fn apply_equaliser<R: Runtime>(app: &AppHandle<R>, settings: &EqualiserSettings) {
+    let settings = settings.clone();
+    let _ = with_engine(app, move |engine| apply_equaliser_to(engine, &settings));
 }
 
 /// The features changed: crossfeed, and practice mode's loop and tempo.
@@ -342,7 +384,21 @@ pub fn player_seek<R: Runtime>(app: AppHandle<R>, seconds: f64) -> Result<(), St
 
 #[tauri::command]
 pub fn player_set_volume<R: Runtime>(app: AppHandle<R>, volume: f64) -> Result<(), String> {
-    with_engine(&app, move |engine| engine.set_volume(volume))
+    with_engine(&app, move |engine| engine.set_volume(volume))?;
+    crate::queue::volume_changed(&app);
+    Ok(())
+}
+
+/// Changes the volume by `step` (e.g. 0.05 up, -0.05 down), for the menu's
+/// volume items; returns the new volume.
+pub fn change_volume<R: Runtime>(app: &AppHandle<R>, step: f64) -> Result<f64, String> {
+    let volume = with_engine(app, move |engine| {
+        let volume = (engine.volume() + step).clamp(0.0, 1.0);
+        engine.set_volume(volume);
+        volume
+    })?;
+    crate::queue::volume_changed(app);
+    Ok(volume)
 }
 
 /// Every step from the file to the speakers (O10).
@@ -373,7 +429,7 @@ pub fn player_set_tempo<R: Runtime>(
 ) -> Result<(), String> {
     let changing = rate != 1.0 || semitones != 0.0;
     if changing && !settings::current(&app).features.practice_mode {
-        return Err("Practice mode is turned off in Settings › Features".into());
+        return Err(crate::coded::feature_off("practiceMode", "Practice mode"));
     }
     with_engine(&app, move |engine| engine.set_tempo(rate, semitones))?
         .then_some(())

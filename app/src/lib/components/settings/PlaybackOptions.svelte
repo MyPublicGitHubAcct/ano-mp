@@ -3,19 +3,16 @@
   // the device is doing now) and ReplayGain (off, by track or by album, the
   // preamp, the gain for untagged tracks, clipping). A new device is opened
   // before the setting is saved; if it won't open, the one before plays on.
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { on, settings as api, type OutputStatus, type ReplayGainMode } from "$lib/api";
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
 
   const MODES: { id: ReplayGainMode; name: string; about: string }[] = [
-    { id: "off", name: "Off", about: "Every track plays as it was mastered." },
-    { id: "track", name: "By track", about: "Every track at about the same loudness; best for shuffle." },
-    {
-      id: "album",
-      name: "By album",
-      about: "Every album at about the same loudness, keeping the quiet and loud tracks within it.",
-    },
+    { id: "off", name: t("playback.rgOff"), about: t("playback.rgOffAbout") },
+    { id: "track", name: t("playback.rgTrack"), about: t("playback.rgTrackAbout") },
+    { id: "album", name: t("playback.rgAlbum"), about: t("playback.rgAlbumAbout") },
   ];
 
   let status = $state.raw<OutputStatus | null>(null);
@@ -47,14 +44,16 @@
   }
 
   const ms = (samples: number) =>
-    current && current.sampleRate > 0 ? ` (${((samples / current.sampleRate) * 1000).toFixed(1)} ms)` : "";
+    current && current.sampleRate > 0
+      ? ` ${t("playback.ms", { ms: ((samples / current.sampleRate) * 1000).toFixed(1) })}`
+      : "";
 
   const db = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(1)} dB`;
 </script>
 
-<h3>Output</h3>
+<h3>{t("playback.output")}</h3>
 <label class="field">
-  <span class="label">Device</span>
+  <span class="label">{t("playback.device")}</span>
   <span class="control">
     <select
       value={output.device ?? ""}
@@ -64,24 +63,22 @@
         setOutput((next) => (next.device = device));
       }}
     >
-      <option value="">System default</option>
+      <option value="">{t("playback.systemDefault")}</option>
       {#each status?.devices ?? [] as device (device)}
         <option value={device}>{device}</option>
       {/each}
       {#if output.device !== null && status?.chosenMissing}
-        <option value={output.device}>{output.device} (not connected)</option>
+        <option value={output.device}>{t("playback.notConnected", { name: output.device })}</option>
       {/if}
     </select>
   </span>
   {#if status?.chosenMissing}
-    <span class="hint warning">
-      {output.device} isn’t connected, so the default device plays; it takes over again when it’s back.
-    </span>
+    <span class="hint warning">{t("playback.missing", { name: output.device ?? "" })}</span>
   {/if}
 </label>
 
 <label class="field">
-  <span class="label">Buffer size</span>
+  <span class="label">{t("playback.bufferSize")}</span>
   <span class="control">
     <select
       value={output.bufferSize === null ? "" : String(output.bufferSize)}
@@ -91,31 +88,36 @@
         setOutput((next) => (next.bufferSize = value === "" ? null : Number(value)));
       }}
     >
-      <option value="">Device default{current ? `: ${current.defaultBufferSize} samples${ms(current.defaultBufferSize)}` : ""}</option>
+      <option value=""
+        >{current
+          ? t("playback.deviceDefaultSize", { size: current.defaultBufferSize }) + ms(current.defaultBufferSize)
+          : t("playback.deviceDefault")}</option
+      >
       {#each sizes as size (size)}
-        <option value={String(size)}>{size} samples{ms(size)}</option>
+        <option value={String(size)}>{t("playback.samples", { count: size })}{ms(size)}</option>
       {/each}
     </select>
   </span>
-  <span class="hint">
-    Smaller buffers respond sooner (pause, seek, the visualizer) but may crackle on a busy computer; larger ones are
-    safer.
-  </span>
+  <span class="hint">{t("playback.bufferHint")}</span>
 </label>
 
 <p class="now muted" role="status">
   {#if status === null}
-    Looking for devices…
+    {t("playback.looking")}
   {:else if current}
-    Playing through {current.name} at {(current.sampleRate / 1000).toLocaleString()} kHz, {current.bufferSize} samples
-    a block, about {Math.round(current.outputLatency * 1000)} ms to the speakers.
+    {t("playback.now", {
+      name: current.name,
+      rate: (current.sampleRate / 1000).toLocaleString(),
+      size: current.bufferSize,
+      latency: Math.round(current.outputLatency * 1000),
+    })}
   {:else}
-    No output device is open.
+    {t("playback.noDevice")}
   {/if}
 </p>
 
-<h3>ReplayGain</h3>
-<div class="modes" role="radiogroup" aria-label="ReplayGain">
+<h3>{t("playback.replayGain")}</h3>
+<div class="modes" role="radiogroup" aria-label={t("playback.replayGain")}>
   {#each MODES as mode (mode.id)}
     <label class="switch">
       <input
@@ -133,15 +135,11 @@
     </label>
   {/each}
 </div>
-<p class="hint">
-  Uses the ReplayGain (or Opus R128) tags that a loudness scanner such as foobar2000, beets or loudgain wrote into
-  your files; they’re read when folders are scanned. A track with only one kind of gain uses that one in either
-  mode.
-</p>
+<p class="hint">{t("playback.rgHint")}</p>
 
 <fieldset disabled={playback.replayGain === "off" || appSettings.saving}>
   <label class="field">
-    <span class="label">Preamp</span>
+    <span class="label">{t("eq.preamp")}</span>
     <span class="control">
       <input
         type="range"
@@ -156,10 +154,10 @@
       />
       <span class="value">{db(playback.preamp)}</span>
     </span>
-    <span class="hint">Added to every tagged track’s gain. ReplayGain aims a little quieter than most modern releases.</span>
+    <span class="hint">{t("playback.preampHint")}</span>
   </label>
   <label class="field">
-    <span class="label">Untagged tracks</span>
+    <span class="label">{t("playback.untagged")}</span>
     <span class="control">
       <input
         type="range"
@@ -174,7 +172,7 @@
       />
       <span class="value">{db(playback.untaggedGain)}</span>
     </span>
-    <span class="hint">For tracks without ReplayGain tags, so they aren’t much louder than tagged ones.</span>
+    <span class="hint">{t("playback.untaggedHint")}</span>
   </label>
   <label class="switch">
     <input
@@ -186,20 +184,44 @@
       }}
     />
     <span>
-      <span class="title">Prevent clipping</span>
-      <span class="hint">Turns a track up only as far as its tagged peak allows.</span>
+      <span class="title">{t("playback.preventClipping")}</span>
+      <span class="hint">{t("playback.preventClippingHint")}</span>
     </span>
   </label>
 </fieldset>
 
+<h3>{t("playback.crossfadeTitle")}</h3>
+<label class="field">
+  <span class="label">{t("playback.crossfade")}</span>
+  <span class="control">
+    <input
+      type="range"
+      min="0"
+      max="12"
+      step="0.5"
+      value={playback.crossfade}
+      disabled={appSettings.saving}
+      aria-valuetext={playback.crossfade === 0 ? t("playback.crossfadeOff") : t("playback.seconds", { count: playback.crossfade })}
+      onchange={(event) => {
+        const value = Number(event.currentTarget.value);
+        appSettings.save((next) => (next.playback.crossfade = value));
+      }}
+    />
+    <span class="value">
+      {playback.crossfade === 0 ? t("playback.crossfadeOff") : t("playback.seconds", { count: playback.crossfade })}
+    </span>
+  </span>
+  <span class="hint">{t("playback.crossfadeHint")}</span>
+</label>
+
 <div class="actions">
-  <button onclick={() => appSettings.reset("playback")} disabled={appSettings.saving}>Reset ReplayGain</button>
+  <button onclick={() => appSettings.reset("playback")} disabled={appSettings.saving}>{t("playback.reset")}</button>
   <button
     onclick={async () => {
       await appSettings.reset("output");
       await refresh();
     }}
-    disabled={appSettings.saving}>Use the default device</button
+    disabled={appSettings.saving}>{t("playback.useDefault")}</button
   >
 </div>
 

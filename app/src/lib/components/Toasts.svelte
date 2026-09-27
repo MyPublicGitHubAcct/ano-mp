@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n";
   import { toasts } from "$lib/state/toasts.svelte";
   import Icon from "./Icon.svelte";
 </script>
@@ -7,7 +8,7 @@
   {#each toasts.list as toast (toast.id)}
     <div class="toast" class:error={toast.kind === "error"}>
       <span>{toast.text}</span>
-      <button class="icon" aria-label="Dismiss" onclick={() => toasts.dismiss(toast.id)}>
+      <button class="icon" aria-label={t("toast.dismiss")} onclick={() => toasts.dismiss(toast.id)}>
         <Icon name="close" size="1rem" />
       </button>
     </div>

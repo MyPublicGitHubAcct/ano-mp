@@ -13,6 +13,7 @@
     type CoverCandidate,
     type CoverChoices,
   } from "$lib/api";
+  import { errorText, t } from "$lib/i18n";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import type { AlbumRef } from "$lib/state/ui.svelte";
   import Dialog from "./Dialog.svelte";
@@ -79,7 +80,7 @@
   function onload(event: Event, candidate: CoverCandidate) {
     const img = event.currentTarget as HTMLImageElement;
     // The archive's preview is a thumbnail; its size says nothing.
-    if (candidate.source !== "cover-art-archive") sizes.set(keyOf(candidate), `${img.naturalWidth} × ${img.naturalHeight}`);
+    if (candidate.source !== "cover-art-archive") sizes.set(keyOf(candidate), t("cover.pixels", { width: img.naturalWidth, height: img.naturalHeight }));
   }
 
   async function act(action: () => Promise<unknown>, done: string) {
@@ -89,7 +90,7 @@
       toasts.show(done, "info", 3000);
       onclose();
     } catch (error) {
-      toasts.show(String(error));
+      toasts.show(errorText(error));
     } finally {
       busy = false;
     }
@@ -100,28 +101,28 @@
     if (candidate)
       act(
         () => metadata.chooseCover(album.id, candidate.source, candidate.reference),
-        `Cover for ${album.title} changed`,
+        t("cover.changed", { title: album.title }),
       );
   };
-  const automatic = () => act(() => metadata.useAutomaticCover(album.id), `${album.title} shows its automatic cover`);
+  const automatic = () => act(() => metadata.useAutomaticCover(album.id), t("cover.automaticDone", { title: album.title }));
 </script>
 
-<Dialog title="Choose a cover for {album.title}" {onclose}>
+<Dialog title={t("album.chooseCoverFor", { title: album.title })} {onclose}>
   {#if details}
     <p class="muted small">
       {#if details.cover}
-        Showing {details.cover.chosen ? "your choice" : "a picture"} from {details.cover.sourceName}.
+        {t(details.cover.chosen ? "cover.showingChoice" : "cover.showing", { source: details.cover.sourceName })}
       {:else}
-        No cover found yet.
+        {t("cover.noneYet")}
       {/if}
-      Without a choice, the first picture found in the order set in Online sources is shown.
+      {t("cover.hint")}
     </p>
   {/if}
 
   {#if choices === null}
-    <p class="muted" aria-live="polite">Looking for pictures…</p>
+    <p class="muted" aria-live="polite">{t("cover.looking")}</p>
   {:else if choices.sources.length === 0}
-    <p class="note">Every album art source is turned off in Online sources.</p>
+    <p class="note">{t("cover.allOff")}</p>
   {:else}
     {#each choices.sources as source (source.source)}
       <section aria-label={source.sourceName}>
@@ -129,7 +130,7 @@
         {#if source.note}
           <p class="note">{source.note}</p>
         {:else if source.candidates.length === 0}
-          <p class="muted small">No pictures.</p>
+          <p class="muted small">{t("cover.noPictures")}</p>
         {/if}
         <ul class="tiles">
           {#each source.candidates as candidate (keyOf(candidate))}
@@ -148,10 +149,10 @@
                     <img src={candidateArtUrl(album.id, candidate)} alt="" onload={(event) => onload(event, candidate)} />
                   {:else}
                     <span class="muted small">
-                      {state === "loading" ? "Loading…" : state === "missing" ? "Not available" : "Couldn’t load"}
+                      {t(state === "loading" ? "common.loading" : state === "missing" ? "cover.missing" : "cover.failed")}
                     </span>
                   {/if}
-                  {#if isChosen(candidate)}<span class="badge"><Icon name="check" size="0.9rem" /> Your choice</span>{/if}
+                  {#if isChosen(candidate)}<span class="badge"><Icon name="check" size="0.9rem" /> {t("cover.yourChoice")}</span>{/if}
                 </span>
                 <span class="label" title={candidate.label}>{candidate.label}</span>
                 {#if candidate.detail || sizes.has(key)}
@@ -169,14 +170,14 @@
 
   {#snippet actions()}
     {#if choices?.chosen}
-      <button onclick={automatic} disabled={busy}>Use automatic</button>
+      <button onclick={automatic} disabled={busy}>{t("cover.useAutomatic")}</button>
     {/if}
     <span class="spacer"></span>
-    <button onclick={onclose} disabled={busy}>Cancel</button>
+    <button onclick={onclose} disabled={busy}>{t("dialog.cancel")}</button>
     <button
       class="primary"
       onclick={choose}
-      disabled={busy || selectedCandidate === null || isChosen(selectedCandidate)}>Use this picture</button
+      disabled={busy || selectedCandidate === null || isChosen(selectedCandidate)}>{t("cover.use")}</button
     >
   {/snippet}
 </Dialog>

@@ -18,7 +18,11 @@
     type Release,
     type SourceId,
   } from "$lib/api";
-  import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent, plural } from "$lib/format";
+  import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent } from "$lib/format";
+  import { count, errorText, t } from "$lib/i18n";
+  import { collection } from "$lib/state/collection.svelte";
+  import { marks } from "$lib/api";
+  import Heart from "./Heart.svelte";
   import { library } from "$lib/state/library.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -79,7 +83,7 @@
       try {
         result = { id: releaseId, release: await metadata.releaseDetails(id, link.source), error: null };
       } catch (error) {
-        result = { id: releaseId, release: null, error: String(error) };
+        result = { id: releaseId, release: null, error: errorText(error) };
       }
       if (current !== request) return;
       fetched = { ...fetched, [link.source]: result };
@@ -135,28 +139,30 @@
 
   function status(link: AlbumLink | null) {
     if (!details) return "";
-    if (link === null) return details.canLookUp ? "Not looked up online yet." : "";
+    if (link === null) return details.canLookUp ? t("album.notLookedUp") : "";
     switch (link.status) {
       case "matched":
         return "";
       case "review":
-        return `A possible match on ${link.sourceName} needs your review.`;
+        return t("album.needsReview", { source: link.sourceName });
       case "none":
         return link.chosenByUser
-          ? `You said ${link.sourceName} doesn’t have this album.`
-          : `Not found on ${link.sourceName}.`;
+          ? t("album.youSaidNone", { source: link.sourceName })
+          : t("album.notFoundOn", { source: link.sourceName });
     }
   }
 
   function describeLink(link: AlbumLink) {
-    const checked = `checked ${formatDay(link.checkedAt)}`;
+    const day = formatDay(link.checkedAt);
     switch (link.status) {
       case "matched":
-        return `${link.chosenByUser ? "Chosen by you" : `Matched automatically (${percent(link.score)})`}, ${checked}`;
+        return link.chosenByUser
+          ? t("album.linkChosen", { day })
+          : t("album.linkMatched", { score: percent(link.score), day });
       case "review":
-        return `Needs review (${percent(link.score)}), ${checked}`;
+        return t("album.linkReview", { score: percent(link.score), day });
       case "none":
-        return link.chosenByUser ? "None of its releases, you said" : `Not found, ${checked}`;
+        return link.chosenByUser ? t("album.linkNoneYou") : t("album.linkNotFound", { day });
     }
   }
 
@@ -165,71 +171,80 @@
 
   const rows = $derived.by((): Row[] => {
     if (!details) return [];
-    const tags = "Tags";
+    const tags = t("album.fromTags");
     const rows: Row[] = [
-      { field: "Title", value: details.title, source: tags },
-      { field: "Album artist", value: details.albumArtist ?? "—", source: tags },
-      { field: "Year", value: details.year === null ? "—" : String(details.year), source: tags },
-      { field: "Genre", value: details.genres.join(", ") || "—", source: tags },
+      { field: t("album.field.title"), value: details.title, source: tags },
+      { field: t("album.field.albumArtist"), value: details.albumArtist ?? "—", source: tags },
+      { field: t("album.field.year"), value: details.year === null ? "—" : String(details.year), source: tags },
+      { field: t("album.field.genre"), value: details.genres.join(", ") || "—", source: tags },
       {
-        field: "Tracks",
-        value: `${plural(details.tracks.length, "file")}, ${formatTime(details.duration)}`,
+        field: t("album.field.tracks"),
+        value: `${count("count.files", details.tracks.length)}, ${formatTime(details.duration)}`,
         source: tags,
       },
     ];
-    if (details.taggedReleaseId) rows.push({ field: "Release id", value: details.taggedReleaseId, source: tags });
+    if (details.taggedReleaseId)
+      rows.push({ field: t("album.field.releaseId"), value: details.taggedReleaseId, source: tags });
     for (const link of links) {
       const source = link.credit ?? link.sourceName;
       const href = link.credit && link.pageUrl ? link.pageUrl : undefined;
-      rows.push({ field: "Match", value: describeLink(link), source: link.sourceName });
+      rows.push({ field: t("album.field.match"), value: describeLink(link), source: link.sourceName });
       const release = link.release;
       const error = fetchedFor(link)?.error;
       if (!release && error && link.status !== "none") {
-        rows.push({ field: "Details", value: `Not available now: ${error}`, source: link.sourceName });
+        rows.push({ field: t("album.field.details"), value: t("album.notAvailable", { error }), source: link.sourceName });
       }
       if (!release) continue;
       if (link.status === "review") {
         const when = release.date ? `, ${formatDate(release.date)}` : "";
-        rows.push({ field: "Candidate", value: `${release.title} by ${release.artist}${when}`, source, href });
+        rows.push({
+          field: t("album.field.candidate"),
+          value: t("album.releaseBy", { title: release.title, artist: release.artist }) + when,
+          source,
+          href,
+        });
         continue;
       }
       if (link.status !== "matched") continue;
       const add = (field: string, value: string | null | undefined) => {
         if (value) rows.push({ field, value, source, href });
       };
-      add("Release", `${release.title} by ${release.artist}`);
+      add(t("album.field.release"), t("album.releaseBy", { title: release.title, artist: release.artist }));
       add(
-        "Released",
+        t("album.field.released"),
         [
           release.date ? formatDate(release.date) : null,
           release.firstReleaseDate && release.firstReleaseDate.slice(0, 4) !== release.date?.slice(0, 4)
-            ? `first ${formatDate(release.firstReleaseDate)}`
+            ? t("album.firstReleased", { date: formatDate(release.firstReleaseDate) })
             : null,
         ]
           .filter(Boolean)
           .join(", "),
       );
-      add("Label", formatLabels(release.labels));
-      add("Country", release.country);
-      add("Format", release.formats.length > 0 ? formatMedia(release.formats) : null);
-      add("Type", release.releaseType ? [release.releaseType, ...release.secondaryTypes].join(", ") : null);
-      add("Status", release.status);
-      add("Barcode", release.barcode);
-      add("Genres", release.genres.join(", "));
-      add("Styles", release.styles.join(", "));
-      add("Credits", release.credits.map((credit) => `${credit.role}: ${credit.name}`).join("; "));
+      add(t("album.field.label"), formatLabels(release.labels));
+      add(t("album.field.country"), release.country);
+      add(t("album.field.format"), release.formats.length > 0 ? formatMedia(release.formats) : null);
+      add(
+        t("album.field.type"),
+        release.releaseType ? [release.releaseType, ...release.secondaryTypes].join(", ") : null,
+      );
+      add(t("album.field.status"), release.status);
+      add(t("album.field.barcode"), release.barcode);
+      add(t("album.field.genres"), release.genres.join(", "));
+      add(t("album.field.styles"), release.styles.join(", "));
+      add(t("album.field.credits"), release.credits.map((credit) => `${credit.role}: ${credit.name}`).join("; "));
     }
     if (details.description) {
       rows.push({
-        field: "Description",
-        value: `The article “${details.description.title}”`,
+        field: t("album.field.description"),
+        value: t("album.article", { title: details.description.title }),
         source: details.description.sourceName,
       });
     }
     if (details.cover) {
       rows.push({
-        field: "Cover",
-        value: details.cover.chosen ? "Chosen by you" : "First found in the source order",
+        field: t("album.field.cover"),
+        value: details.cover.chosen ? t("album.coverChosen") : t("album.coverFirst"),
         source: details.cover.sourceName,
       });
     }
@@ -242,19 +257,38 @@
     attempt(() => openUrl(href));
   }
 
+  /** The album's heart (PLAN.md F3). */
+  let hearted = $state(false);
+  $effect(() => {
+    const id = album.id;
+    void collection.version;
+    untrack(async () => {
+      hearted = (await marks.favouritesAmong("album", [id]).catch(() => [])).length > 0;
+    });
+  });
+  async function heart(on: boolean) {
+    hearted = on;
+    await collection.setFavourite("album", [album.id], on);
+  }
+
   const findDetails = () => (ui.dialog = { kind: "findDetails", album });
   const chooseCover = () => (ui.dialog = { kind: "chooseCover", album });
 </script>
 
-<section class="album-info" aria-label="About {album.title}">
+<section class="album-info" aria-label={t("album.about", { title: album.title })}>
   <div class="top">
-    <button class="cover" title="Choose a cover" aria-label="Choose a cover for {album.title}" onclick={chooseCover}>
+    <button
+      class="cover"
+      title={t("album.chooseACover")}
+      aria-label={t("album.chooseCoverFor", { title: album.title })}
+      onclick={chooseCover}
+    >
       <Art albumId={album.id} size="100%" />
     </button>
     <div class="facts">
       {#if details}
         <p class="muted small">
-          {[details.albumArtist, details.year, plural(details.tracks.length, "track"), formatTime(details.duration)]
+          {[details.albumArtist, details.year, count("count.tracks", details.tracks.length), formatTime(details.duration)]
             .filter((part) => part !== null)
             .join(" · ")}
         </p>
@@ -264,7 +298,7 @@
             {#if matched.credit && matched.pageUrl}
               <a class="source" href={matched.pageUrl} onclick={openLink}>{matched.credit}</a>
             {:else}
-              <span class="source" title="From {matched.sourceName}">{matched.sourceName}</span>
+              <span class="source" title={t("album.from", { source: matched.sourceName })}>{matched.sourceName}</span>
             {/if}
           </p>
         {/if}
@@ -272,19 +306,20 @@
           <p class="status">{status(first)}</p>
         {/if}
         {#if genres.length > 0}
-          <ul class="genres" aria-label="Genres">
+          <ul class="genres" aria-label={t("album.field.genres")}>
             {#each genres.slice(0, GENRES_SHOWN) as genre (genre)}<li>{genre}</li>{/each}
           </ul>
         {/if}
       {/if}
       <div class="buttons">
-        <button onclick={findDetails}><Icon name="search" /> Find details…</button>
-        <button onclick={chooseCover}>Choose cover…</button>
+        <Heart on={hearted} label={album.title} onchange={heart} size="1.2rem" />
+        <button onclick={findDetails}><Icon name="search" /> {t("menu.findDetails")}</button>
+        <button onclick={chooseCover}>{t("menu.chooseCover")}</button>
         {#if features.on.playbackPreferences}
-          <button onclick={() => (ui.dialog = { kind: "prefs", track: null, album })}>Playback…</button>
+          <button onclick={() => (ui.dialog = { kind: "prefs", track: null, album })}>{t("album.playback")}</button>
         {/if}
         <button class="link" aria-expanded={open} onclick={() => (open = !open)}>
-          {open ? "Hide details" : "Details"}
+          {open ? t("album.hideDetails") : t("album.details")}
         </button>
       </div>
     </div>
@@ -297,12 +332,12 @@
       {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
       {#if description.paragraphs.length > SHORT_DESCRIPTION}
         <button class="link" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
-          {expanded ? "Show less" : "Read more"}
+          {expanded ? t("album.showLess") : t("album.readMore")}
         </button>
       {/if}
       <p class="credit muted small">
-        From the {description.sourceName} article
-        <a href={description.url} onclick={openLink}>“{description.title}”</a>, under
+        {t("album.creditFrom", { source: description.sourceName })}
+        <a href={description.url} onclick={openLink}>“{description.title}”</a>{t("album.creditUnder")}
         <a href={description.licenseUrl} onclick={openLink}>{description.license}</a>.
       </p>
     </div>
@@ -314,7 +349,11 @@
     <div class="table">
       <table>
         <thead>
-          <tr><th scope="col">Field</th><th scope="col">Value</th><th scope="col">Source</th></tr>
+          <tr>
+            <th scope="col">{t("album.col.field")}</th><th scope="col">{t("album.col.value")}</th><th scope="col"
+              >{t("album.col.source")}</th
+            >
+          </tr>
         </thead>
         <tbody>
           {#each rows as row, index (index)}

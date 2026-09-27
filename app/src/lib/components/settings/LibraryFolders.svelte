@@ -1,47 +1,71 @@
 <script lang="ts">
   // The library's folders: where each is, how many tracks it has and when it
-  // was last scanned, with rescan and remove; add a folder, rescan them all.
+  // was last scanned, with rescan and remove, or "Locate…" for one that
+  // can't be opened (PLAN.md F8); add a folder, rescan them all. Then
+  // keeping the library in step with the disk (F9), and exporting and
+  // importing what you've made of it (F20).
   import { ask } from "@tauri-apps/plugin-dialog";
   import type { Folder } from "$lib/api";
-  import { formatDay, plural } from "$lib/format";
+  import { formatDay } from "$lib/format";
+  import { count, t } from "$lib/i18n";
+  import { collection } from "$lib/state/collection.svelte";
   import { folderName, library } from "$lib/state/library.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import Icon from "../Icon.svelte";
 
+  const settings = $derived(appSettings.current.library);
+
   async function remove(folder: Folder) {
-    const confirmed = await ask(`Remove ${folder.path} from the library? The files stay where they are.`, {
-      title: "Remove folder",
+    const confirmed = await ask(t("folders.removeConfirm", { path: folder.path }), {
+      title: t("folders.removeTitle"),
       kind: "warning",
-      okLabel: "Remove",
+      okLabel: t("folders.removeOk"),
     });
     if (confirmed) library.removeFolder(folder);
+  }
+
+  async function importData() {
+    const settings = await ask(t("menuAction.importSettings"), {
+      title: t("menuAction.importTitle"),
+      okLabel: t("menuAction.importWithSettings"),
+      cancelLabel: t("menuAction.importWithout"),
+    });
+    await collection.importData(settings);
   }
 </script>
 
 {#if library.folders.length === 0}
-  <p class="muted">No folders yet. Add the folders your music is in; each is scanned when added.</p>
+  <p class="muted">{t("folders.none")}</p>
 {:else}
   <ul class="folders card">
     {#each library.folders as folder (folder.id)}
-      <li>
-        <span class="glyph"><Icon name="folder" /></span>
+      <li class:missing={folder.available === false}>
+        <span class="glyph"><Icon name={folder.available === false ? "warning" : "folder"} /></span>
         <span class="text">
           <span class="name">{folderName(folder.path)}</span>
           <span class="muted small path" title={folder.path}>{folder.path}</span>
           <span class="muted small">
-            {#if folder.lastScanAt === null}
-              Not scanned yet
+            {#if folder.available === false}
+              {t("folders.unavailableLong")}
+            {:else if folder.lastScanAt === null}
+              {t("folders.notScannedYet")}
             {:else}
-              {plural(folder.trackCount, "track")} · scanned {formatDay(folder.lastScanAt)}
+              {t("folders.scanned", { tracks: count("count.tracks", folder.trackCount), day: formatDay(folder.lastScanAt) })}
             {/if}
           </span>
         </span>
-        <button disabled={library.scanning} onclick={() => library.scan(folder.id)}>
-          <Icon name="refresh" size="1rem" /> Rescan
-        </button>
+        {#if folder.available === false}
+          <button onclick={() => library.locateFolder(folder)}>{t("folders.locate")}</button>
+        {:else}
+          <button disabled={library.scanning} onclick={() => library.scan(folder.id)}>
+            <Icon name="refresh" size="1rem" />
+            {t("folders.rescan")}
+          </button>
+        {/if}
         <button
           class="icon"
-          title="Remove from the library"
-          aria-label="Remove {folder.path} from the library"
+          title={t("folders.removeTitle")}
+          aria-label={t("folders.removePath", { path: folder.path })}
           disabled={library.scanning}
           onclick={() => remove(folder)}><Icon name="close" /></button
         >
@@ -50,29 +74,64 @@
   </ul>
 {/if}
 
-{#if library.scanning}
+{#if library.scanning || library.background}
   <p class="scan muted" role="status">
-    {#if library.scanProgress}
-      Scanning: read {library.scanProgress.read.toLocaleString()} of
-      {library.scanProgress.toRead.toLocaleString()} new or changed files
+    {#if library.scanProgress && library.scanProgress.toRead > 0}
+      {t("sidebar.scanProgress", { read: library.scanProgress.read, count: library.scanProgress.toRead })}
     {:else}
-      Scanning…
+      {t("sidebar.scanning")}
     {/if}
   </p>
 {/if}
 
 <div class="actions">
-  <button class="primary" onclick={library.addFolder} disabled={library.scanning}>
-    <Icon name="plus" /> Add folder…
+  <button class="primary" onclick={() => library.addFolder()} disabled={library.scanning}>
+    <Icon name="plus" />
+    {t("folders.add")}
   </button>
   <button onclick={() => library.scan(null)} disabled={library.scanning || library.folders.length === 0}>
-    <Icon name="refresh" /> Rescan all
+    <Icon name="refresh" />
+    {t("folders.rescanAll")}
   </button>
 </div>
-<p class="hint">
-  A rescan reads only files that are new or changed since the last one, and drops files that are gone. Removing
-  a folder leaves its files where they are.
-</p>
+<p class="hint">{t("folders.hint")}</p>
+
+<h3>{t("folders.keepUp")}</h3>
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={settings.rescanAtLaunch}
+    onchange={(event) => {
+      const on = event.currentTarget.checked;
+      appSettings.save((next) => (next.library.rescanAtLaunch = on));
+    }}
+  />
+  <span>
+    <span class="title">{t("folders.rescanAtLaunch")}</span>
+    <span class="hint">{t("folders.rescanAtLaunchHint")}</span>
+  </span>
+</label>
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={settings.watchFolders}
+    onchange={(event) => {
+      const on = event.currentTarget.checked;
+      appSettings.save((next) => (next.library.watchFolders = on));
+    }}
+  />
+  <span>
+    <span class="title">{t("folders.watch")}</span>
+    <span class="hint">{t("folders.watchHint")}</span>
+  </span>
+</label>
+
+<h3>{t("data.title")}</h3>
+<p class="hint">{t("data.hint")}</p>
+<div class="actions">
+  <button onclick={collection.exportData}><Icon name="export" /> {t("data.export")}</button>
+  <button onclick={importData}><Icon name="import" /> {t("data.import")}</button>
+</div>
 
 <style>
   .folders {
@@ -95,6 +154,10 @@
   .glyph {
     color: var(--text-faint);
     display: flex;
+  }
+
+  .missing .glyph {
+    color: var(--danger);
   }
 
   .text {

@@ -3,6 +3,7 @@
   // and shuffle play, never shuffle the album, a gain offset, and trims.
   // A track's own value takes over from its album's; "Album's" leaves it to
   // the album. Kept in the library, never written to the files.
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { features as api, type AlbumPrefs, type TrackPrefs } from "$lib/api";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -43,36 +44,36 @@
   }
 </script>
 
-<Dialog title="Playback preferences" {onclose}>
+<Dialog title={t("prefs.title")} {onclose}>
   {#if loaded}
     {#if track}
-      <h3>Track: {track.title}</h3>
+      <h3>{t("prefs.track", { title: track.title })}</h3>
       <label class="row">
-        <span>Skip in album and shuffle play</span>
+        <span>{t("prefs.skip")}</span>
         <select
           value={choice(trackPrefs.skip)}
           onchange={(event) => (trackPrefs.skip = fromChoice(event.currentTarget.value))}
         >
-          <option value="">As the album</option>
-          <option value="yes">Skip</option>
-          <option value="no">Play</option>
+          <option value="">{t("prefs.asAlbum")}</option>
+          <option value="yes">{t("prefs.skipOption")}</option>
+          <option value="no">{t("prefs.playOption")}</option>
         </select>
       </label>
-      <p class="hint">A skipped track still plays when you choose it.</p>
+      <p class="hint">{t("prefs.skipHint")}</p>
       <label class="row">
-        <span>Gain offset (dB)</span>
+        <span>{t("prefs.gain")}</span>
         <input
           type="number"
           step="0.5"
           min="-15"
           max="15"
-          placeholder="As the album"
+          placeholder={t("prefs.asAlbum")}
           value={trackPrefs.gainOffset ?? ""}
           onchange={(event) => (trackPrefs.gainOffset = number(event.currentTarget.value))}
         />
       </label>
       <label class="row">
-        <span>Trim the start (seconds)</span>
+        <span>{t("prefs.trimStart")}</span>
         <input
           type="number"
           step="0.1"
@@ -83,7 +84,7 @@
         />
       </label>
       <label class="row">
-        <span>Trim the end (seconds)</span>
+        <span>{t("prefs.trimEnd")}</span>
         <input
           type="number"
           step="0.1"
@@ -95,14 +96,14 @@
       </label>
     {/if}
     {#if album}
-      <h3>Album: {album.title}</h3>
+      <h3>{t("prefs.album", { title: album.title })}</h3>
       <label class="check">
         <input
           type="checkbox"
           checked={albumPrefs.neverShuffle === true}
           onchange={(event) => (albumPrefs.neverShuffle = event.currentTarget.checked || null)}
         />
-        Never shuffle it: shuffle plays it whole, in order
+        {t("prefs.neverShuffle")}
       </label>
       <label class="check">
         <input
@@ -110,10 +111,10 @@
           checked={albumPrefs.skip === true}
           onchange={(event) => (albumPrefs.skip = event.currentTarget.checked || null)}
         />
-        Skip its tracks in album and shuffle play (unless a track says otherwise)
+        {t("prefs.albumSkip")}
       </label>
       <label class="row">
-        <span>Gain offset (dB)</span>
+        <span>{t("prefs.gain")}</span>
         <input
           type="number"
           step="0.5"
@@ -125,17 +126,17 @@
         />
       </label>
     {/if}
-    <p class="hint">Offsets are added to ReplayGain’s gain. Trims and offsets apply from the next time the track starts.</p>
+    <p class="hint">{t("prefs.hint")}</p>
   {/if}
   {#snippet actions()}
     <button
       onclick={() => {
         trackPrefs = {};
         albumPrefs = {};
-      }}>Clear all</button
+      }}>{t("prefs.clearAll")}</button
     >
-    <button onclick={onclose}>Cancel</button>
-    <button class="primary" onclick={save} disabled={!loaded}>Save</button>
+    <button onclick={onclose}>{t("dialog.cancel")}</button>
+    <button class="primary" onclick={save} disabled={!loaded}>{t("dialog.save")}</button>
   {/snippet}
 </Dialog>
 

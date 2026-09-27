@@ -2,7 +2,19 @@
 // `queue-changed` and `player-state` events). The position is separate
 // (`position.svelte.ts`).
 
-import { on, onAll, player as playerApi, queue as queueApi, type PlayerState, type QueueItem, type QueueState, type Repeat } from "$lib/api";
+import {
+  on,
+  onAll,
+  player as playerApi,
+  queue as queueApi,
+  type PlayerState,
+  type QueueItem,
+  type QueueState,
+  type Repeat,
+  type SleepRequest,
+  type SleepTimer,
+} from "$lib/api";
+import { t } from "$lib/i18n";
 import { playback } from "./position.svelte";
 import { attempt, toasts } from "./toasts.svelte";
 
@@ -22,6 +34,9 @@ class PlayerStore {
   resumeAt = $state(0);
   /** Library radio keeps adding tracks (O9). */
   radio = $state(false);
+  /** Playback stops after this item (F13). */
+  stopAfter = $state<number | null>(null);
+  sleep = $state.raw<SleepTimer | null>(null);
   #revision = 0;
 
   get playing() {
@@ -51,7 +66,9 @@ class PlayerStore {
     this.loaded = state.loaded;
     this.resumeAt = state.resumeAt;
     this.radio = state.radio;
-    for (const skipped of state.skipped) toasts.show(`Skipped “${skipped.title}”: ${skipped.error}`);
+    this.stopAfter = state.stopAfter;
+    this.sleep = state.sleep;
+    for (const skipped of state.skipped) toasts.show(t("queue.skippedTrack", { title: skipped.title, error: skipped.error }));
   }
 
   /** Follows the backend; returns a function that stops. */
@@ -59,6 +76,7 @@ class PlayerStore {
     const stop = onAll([
       on("queue-changed", (state) => this.apply(state)),
       on("player-state", (state) => (this.state = state)),
+      on("player-volume", (volume) => (this.volume = volume)),
       on("player-position", ({ position, duration }) => {
         playback.position = position;
         playback.duration = duration;
@@ -89,6 +107,12 @@ class PlayerStore {
     return attempt(() => playerApi.setVolume(volume));
   };
   toggleShuffle = () => attempt(() => queueApi.setShuffle(!this.shuffle));
+  setSleep = (sleep: SleepRequest | null) => attempt(() => queueApi.setSleep(sleep));
+  /** Stops after the current item, or not if it already would. */
+  toggleStopAfter = () => {
+    const uid = this.currentItem?.uid ?? null;
+    return attempt(() => queueApi.setStopAfter(this.stopAfter === uid ? null : uid));
+  };
   cycleRepeat = () => {
     const next: Record<Repeat, Repeat> = { off: "all", all: "one", one: "off" };
     return attempt(() => queueApi.setRepeat(next[this.repeat]));

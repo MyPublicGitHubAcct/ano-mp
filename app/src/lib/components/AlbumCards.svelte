@@ -2,6 +2,7 @@
   // A row (or grid) of albums with their covers, as the Home and History
   // views and "More in this genre" list them: click to open the album,
   // the play button to play it, right-click for more.
+  import { t } from "$lib/i18n";
   import { queue, type AlbumCard } from "$lib/api";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -27,12 +28,12 @@
 
   function menu(event: MouseEvent, album: AlbumCard) {
     ui.openMenu(event, [
-      { label: "Play", action: () => play(album) },
-      { label: "Play next", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, true)) },
-      { label: "Add to queue", action: () => attempt(() => queue.addNode(albumRule, [album.id], true, false)) },
-      { label: "Open album", action: () => open(album) },
+      { label: t("menu.play"), action: () => play(album) },
+      { label: t("menu.playNext"), action: () => attempt(() => queue.addNode(albumRule, [album.id], true, true)) },
+      { label: t("menu.addToQueue"), action: () => attempt(() => queue.addNode(albumRule, [album.id], true, false)) },
+      { label: t("menu.openAlbum"), action: () => open(album) },
       {
-        label: "Go to artist",
+        label: t("menu.goToArtist"),
         disabled: album.artistId === null,
         action: () => {
           if (album.artistId !== null) ui.showArtist({ id: album.artistId, name: album.artist ?? "" });
@@ -47,13 +48,13 @@
     <li>
       <div class="card" role="group" aria-label={album.title} oncontextmenu={(event) => menu(event, album)}>
         <div class="art">
-          <button class="cover" title="Open {album.title}" onclick={() => open(album)}>
+          <button class="cover" title={t("library.openName", { name: album.title })} onclick={() => open(album)}>
             <Art albumId={album.id} size="100%" />
           </button>
           <button
             class="icon play"
-            title="Play {album.title}"
-            aria-label="Play {album.title}"
+            title={t("library.playName", { name: album.title })}
+            aria-label={t("library.playName", { name: album.title })}
             onclick={() => play(album)}><Icon name="play" /></button
           >
         </div>

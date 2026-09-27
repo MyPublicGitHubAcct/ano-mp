@@ -4,6 +4,7 @@
 // horizontal smear. Traces glow and fade like a phosphor; the bar below is
 // the channels' correlation.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { along, approach, clearStage, rgba } from "../util";
 
@@ -94,7 +95,7 @@ function create(): Renderer {
       ctx.textAlign = "right";
       ctx.fillText("+1", barX + barWidth, barY + 18);
       ctx.textAlign = "center";
-      ctx.fillText("correlation", barX + barWidth / 2, barY + 18);
+      ctx.fillText(t("vectorscope.correlation"), barX + barWidth / 2, barY + 18);
       ctx.restore();
     },
   };
@@ -102,7 +103,11 @@ function create(): Renderer {
 
 export const vectorscope: Visualization = {
   id: "vectorscope",
-  name: "Vectorscope",
-  description: "The stereo image: mono draws a vertical line, wide stereo a cloud; with the channels' correlation.",
+  get name() {
+    return t("viz.vectorscope.name");
+  },
+  get description() {
+    return t("viz.vectorscope.description");
+  },
   create,
 };

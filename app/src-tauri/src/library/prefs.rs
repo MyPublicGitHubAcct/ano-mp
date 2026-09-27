@@ -73,9 +73,9 @@ pub fn set_track_prefs(conn: &Connection, track_id: i64, prefs: &TrackPrefs) -> 
         )
         .optional()?;
     let Some(duration) = duration else {
-        return Err(Error::Invalid(
-            "The track is no longer in the library".into(),
-        ));
+        return Err(Error::Invalid(crate::coded::gone(
+            crate::coded::Gone::Track,
+        )));
     };
     let trims = [prefs.trim_start, prefs.trim_end];
     if trims
@@ -132,9 +132,9 @@ pub fn set_album_prefs(conn: &Connection, album_id: i64, prefs: &AlbumPrefs) -> 
         .optional()?
         .is_some();
     if !exists {
-        return Err(Error::Invalid(
-            "The album is no longer in the library".into(),
-        ));
+        return Err(Error::Invalid(crate::coded::gone(
+            crate::coded::Gone::Album,
+        )));
     }
     if *prefs == AlbumPrefs::default() {
         conn.execute("DELETE FROM album_prefs WHERE album_id = ?1", [album_id])?;

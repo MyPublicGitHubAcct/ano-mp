@@ -1,6 +1,7 @@
 // Spectrum bars with falling peak caps and a reflection, coloured across
 // the palette from bass to treble.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { along, approach, approachAll, clearStage, rgba } from "../util";
 
@@ -73,7 +74,11 @@ function create(): Renderer {
 
 export const bars: Visualization = {
   id: "bars",
-  name: "Spectrum",
-  description: "Bars from bass to treble, with falling peaks.",
+  get name() {
+    return t("viz.bars.name");
+  },
+  get description() {
+    return t("viz.bars.description");
+  },
   create,
 };

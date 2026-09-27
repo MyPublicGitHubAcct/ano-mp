@@ -223,7 +223,7 @@ pub async fn metadata_album<R: Runtime>(
 ) -> Result<AlbumDetails, String> {
     on_library(&app, move |library| {
         library_albums::album_details(library, album_id)?.ok_or_else(|| {
-            crate::library::Error::Invalid("The album is no longer in the library".into())
+            crate::library::Error::Invalid(crate::coded::gone(crate::coded::Gone::Album))
         })
     })
     .await
@@ -247,7 +247,7 @@ pub async fn metadata_release_candidates<R: Runtime>(
             let library = library(app)?;
             let conn = library.conn();
             let (facts, _) = albums::album_facts(&conn, album_id)?
-                .ok_or_else(|| Error::Invalid("The album is no longer in the library".into()))?;
+                .ok_or_else(|| Error::Invalid(crate::coded::gone(crate::coded::Gone::Album)))?;
             (facts.title, facts.artist)
         };
         let query = match &title {

@@ -5,6 +5,7 @@
   // require), and for each kind of data the order the sources are tried in.
   // Every change is saved at once; keys go to the keychain, never into the
   // settings. A section of the settings page (SettingsPage).
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -22,10 +23,10 @@
   import Icon from "./Icon.svelte";
 
   const KINDS: { kind: MetadataKind; name: string; about: string }[] = [
-    { kind: "release", name: "Album details", about: "Release dates, labels, formats and genres." },
-    { kind: "albumArt", name: "Album art", about: "The first source with a picture for an album is shown." },
-    { kind: "artistInfo", name: "Artist biographies", about: "The first source with a biography is shown." },
-    { kind: "albumInfo", name: "Album descriptions", about: "The first source with a description is shown." },
+    { kind: "release", name: t("services.release"), about: t("services.releaseAbout") },
+    { kind: "albumArt", name: t("services.albumArt"), about: t("services.albumArtAbout") },
+    { kind: "artistInfo", name: t("services.artistInfo"), about: t("services.artistInfoAbout") },
+    { kind: "albumInfo", name: t("services.albumInfo"), about: t("services.albumInfoAbout") },
   ];
 
   let data = $state.raw<MetadataSettings | null>(null);
@@ -84,10 +85,11 @@
   }
 
   async function removeKey(info: SourceInfo) {
-    const confirmed = await ask(`Remove the ${info.keyName?.toLowerCase() ?? "key"} for ${info.name}? ${info.name} won’t be used until you add one again.`, {
-      title: `Remove ${info.name} key`,
+    const keyName = info.keyName ?? t("services.apiKey");
+    const confirmed = await ask(t("services.removeKeyConfirm", { key: keyName, name: info.name }), {
+      title: t("services.removeKeyTitle", { name: info.name }),
       kind: "warning",
-      okLabel: "Remove",
+      okLabel: t("services.remove"),
     });
     if (confirmed) setKey(info.id, null);
   }
@@ -100,10 +102,10 @@
     });
 
   async function reset() {
-    const confirmed = await ask("Restore the default sources and order? Saved keys are kept.", {
-      title: "Reset online sources",
+    const confirmed = await ask(t("services.resetConfirm"), {
+      title: t("services.resetTitle"),
       kind: "warning",
-      okLabel: "Reset",
+      okLabel: t("services.reset"),
     });
     if (!confirmed) return;
     await attempt(async () => {
@@ -128,15 +130,15 @@
   /** What a source is doing, and whether that's a problem. */
   function status(info: SourceInfo): { text: string; tone: "on" | "off" | "problem" } {
     const source = sourceSettings(info.id);
-    if (!source?.enabled) return { text: "Off", tone: "off" };
-    if (info.online && !settings?.online) return { text: "Online services off", tone: "off" };
+    if (!source?.enabled) return { text: t("signal.off"), tone: "off" };
+    if (info.online && !settings?.online) return { text: t("services.onlineOff"), tone: "off" };
     if (info.requires !== null && !usable(info.requires))
-      return { text: `Needs ${infoOf(info.requires)?.name ?? info.requires}`, tone: "problem" };
+      return { text: t("services.needs", { name: infoOf(info.requires)?.name ?? info.requires }), tone: "problem" };
     if (info.needsKey && !source.hasKey)
-      return { text: `Needs a ${info.keyName?.toLowerCase() ?? "key"}`, tone: "problem" };
+      return { text: t("services.needsKey", { key: info.keyName ?? t("services.apiKey") }), tone: "problem" };
     if (info.hosts.some((host) => metadataStatus.progress.unreachable.includes(host)))
-      return { text: "Can’t be reached", tone: "problem" };
-    return { text: "In use", tone: "on" };
+      return { text: t("services.unreachable"), tone: "problem" };
+    return { text: t("services.inUse"), tone: "on" };
   }
 
   const kindNames = (info: SourceInfo) =>
@@ -155,13 +157,13 @@
     <Icon name="cloud" />
     <span>{metadataStatus.summary}</span>
     {#if metadataStatus.progress.unreachable.length > 0}
-      <button onclick={() => attempt(metadata.retryNow)}><Icon name="refresh" /> Try now</button>
+      <button onclick={() => attempt(metadata.retryNow)}><Icon name="refresh" /> {t("services.tryNow")}</button>
     {/if}
   </div>
 
   {#if settings && data}
     <section aria-labelledby="general-heading">
-      <h3 id="general-heading">General</h3>
+      <h3 id="general-heading">{t("services.general")}</h3>
       <label class="switch">
         <input
           type="checkbox"
@@ -170,10 +172,8 @@
           onchange={(event) => change((next) => (next.online = event.currentTarget.checked))}
         />
         <span>
-          <span class="title">Use online services</span>
-          <span class="muted small">
-            When off, nothing is fetched; details and covers already fetched keep showing.
-          </span>
+          <span class="title">{t("services.online")}</span>
+          <span class="muted small">{t("services.onlineHint")}</span>
         </span>
       </label>
       <label class="switch">
@@ -184,16 +184,14 @@
           onchange={(event) => change((next) => (next.autoMatch = event.currentTarget.checked))}
         />
         <span>
-          <span class="title">Look up albums and artists automatically</span>
-          <span class="muted small">
-            In the background after a scan, and the album playing. When off, only what you ask for is looked up.
-          </span>
+          <span class="title">{t("services.autoMatch")}</span>
+          <span class="muted small">{t("services.autoMatchHint")}</span>
         </span>
       </label>
     </section>
 
     <section aria-labelledby="sources-heading">
-      <h3 id="sources-heading">Sources</h3>
+      <h3 id="sources-heading">{t("services.sources")}</h3>
       <ul class="sources">
         {#each data.sources as info (info.id)}
           {@const source = sourceSettings(info.id)}
@@ -214,19 +212,24 @@
                   {/if}
                 </span>
                 <span class="muted small">
-                  {kindNames(info)}{info.requires ? ` · uses ${infoOf(info.requires)?.name} matches` : ""}{info.online
-                    ? ""
-                    : " · on this computer"}{info.storesDetails ? "" : " · fetched when shown, never stored"}
+                  {[
+                    kindNames(info),
+                    info.requires ? t("services.usesMatches", { name: infoOf(info.requires)?.name ?? info.requires }) : null,
+                    info.online ? null : t("services.local"),
+                    info.storesDetails ? null : t("services.notStored"),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               </span>
             </label>
             <span class="pill {state.tone}">{state.text}</span>
             {#if info.needsKey}
-              {@const keyName = info.keyName ?? "API key"}
+              {@const keyName = info.keyName ?? t("services.apiKey")}
               {#if source?.hasKey}
                 <div class="key">
-                  <span class="muted small">{keyName} saved in the keychain</span>
-                  <button class="link small" disabled={saving} onclick={() => removeKey(info)}>Remove</button>
+                  <span class="muted small">{t("services.keySaved", { key: keyName })}</span>
+                  <button class="link small" disabled={saving} onclick={() => removeKey(info)}>{t("services.remove")}</button>
                 </div>
               {:else}
                 <form
@@ -241,9 +244,9 @@
                     <span class="muted small">{keyName}</span>
                     <input type="password" autocomplete="off" spellcheck="false" bind:value={keys[info.id]} />
                   </label>
-                  <button type="submit" disabled={saving || !keys[info.id]?.trim()}>Save</button>
+                  <button type="submit" disabled={saving || !keys[info.id]?.trim()}>{t("dialog.save")}</button>
                   {#if info.keyUrl}
-                    <a class="small" href={info.keyUrl} onclick={openLink}>Get one</a>
+                    <a class="small" href={info.keyUrl} onclick={openLink}>{t("services.getKey")}</a>
                   {/if}
                 </form>
               {/if}
@@ -257,8 +260,8 @@
     </section>
 
     <section aria-labelledby="order-heading">
-      <h3 id="order-heading">Order</h3>
-      <p class="muted small">For each kind of data, sources are tried from the top. A cover you choose for an album comes first.</p>
+      <h3 id="order-heading">{t("services.order")}</h3>
+      <p class="muted small">{t("services.orderHint")}</p>
       <div class="orders">
         {#each KINDS as { kind, name, about } (kind)}
           <div class="order">
@@ -271,15 +274,15 @@
                   <span class="name">{infoOf(id)?.name ?? id}</span>
                   <button
                     class="icon"
-                    title="Move up"
-                    aria-label="Move {infoOf(id)?.name} up"
+                    title={t("choices.moveUp")}
+                    aria-label={t("choices.moveUpName", { name: infoOf(id)?.name ?? id })}
                     disabled={saving || index === 0}
                     onclick={() => move(kind, index, -1)}><Icon name="up" size="1rem" /></button
                   >
                   <button
                     class="icon"
-                    title="Move down"
-                    aria-label="Move {infoOf(id)?.name} down"
+                    title={t("choices.moveDown")}
+                    aria-label={t("choices.moveDownName", { name: infoOf(id)?.name ?? id })}
                     disabled={saving || index === settings.order[kind].length - 1}
                     onclick={() => move(kind, index, 1)}><Icon name="down" size="1rem" /></button
                   >
@@ -292,10 +295,10 @@
     </section>
 
     <section class="reset">
-      <button onclick={reset} disabled={saving}>Reset to defaults</button>
+      <button onclick={reset} disabled={saving}>{t("settings.reset")}</button>
     </section>
   {:else}
-    <p class="muted">Loading…</p>
+    <p class="muted">{t("common.loading")}</p>
   {/if}
 </div>
 

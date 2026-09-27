@@ -2,6 +2,7 @@
   // The current track's lyrics (O13), read from its tags or a .lrc file
   // when shown. Synced lines light up as the track plays and seek there
   // when clicked; unsynced ones are plain text.
+  import { t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { features as api, type Lyrics } from "$lib/api";
   import { playback } from "$lib/state/position.svelte";
@@ -39,11 +40,11 @@
 </script>
 
 {#if lyrics}
-  <section class="lyrics" aria-label="Lyrics">
+  <section class="lyrics" aria-label={t("lyrics.label")}>
     {#if lyrics.lines.length > 0}
       <ol bind:this={list}>
         {#each lyrics.lines as line, index (index)}
-          <li class:current={index === current} class:past={index < current}>
+          <li class:current={index === current}>
             <button class="line" onclick={() => player.seek(line.time)}>{line.text || "♪"}</button>
           </li>
         {/each}
@@ -51,7 +52,7 @@
     {:else if lyrics.text}
       <p class="text">{lyrics.text}</p>
     {/if}
-    <p class="source muted">From {lyrics.source === "lrc" ? "a .lrc file next to the track" : "the track’s tags"}</p>
+    <p class="source muted">{t(lyrics.source === "lrc" ? "lyrics.fromLrc" : "lyrics.fromTags")}</p>
   </section>
 {/if}
 
@@ -82,10 +83,6 @@
   .line:hover:not(:disabled) {
     background: none;
     color: var(--text);
-  }
-
-  .past .line {
-    color: var(--text-faint);
   }
 
   .current .line {

@@ -1,6 +1,7 @@
 // An oscilloscope: the waveform, held still by the core's trigger, drawn as
 // a glowing phosphor trace that fades behind it, over a graticule.
 
+import { t } from "$lib/i18n";
 import type { Renderer, Scene, Visualization } from "../types";
 import { approach, clearStage, rgba } from "../util";
 
@@ -67,7 +68,11 @@ function create(): Renderer {
 
 export const scope: Visualization = {
   id: "scope",
-  name: "Oscilloscope",
-  description: "The waveform as a glowing trace; each channel faintly behind their mix.",
+  get name() {
+    return t("viz.scope.name");
+  },
+  get description() {
+    return t("viz.scope.description");
+  },
   create,
 };

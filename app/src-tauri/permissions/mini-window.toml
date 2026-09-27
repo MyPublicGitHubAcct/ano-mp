@@ -1,0 +1,25 @@
+# What the mini player may call (PLAN.md F7): its playing bar (the queue's
+# transport, the volume, the seek bar's waveform, the heart), the settings
+# it reads, and bringing back the main window. Nothing that changes the
+# library or reads files.
+
+[[set]]
+identifier = "mini-window"
+description = "The mini player's commands."
+permissions = [
+    "allow-queue-state",
+    "allow-queue-toggle",
+    "allow-queue-next",
+    "allow-queue-previous",
+    "allow-queue-seek",
+    "allow-queue-set-shuffle",
+    "allow-queue-set-repeat",
+    "allow-player-status",
+    "allow-player-set-volume",
+    "allow-settings-get",
+    "allow-analysis-waveform",
+    "allow-marks-set-favourite",
+    "allow-marks-favourites-among",
+    "allow-shell-show-main",
+    "allow-shell-toggle-mini-player",
+]

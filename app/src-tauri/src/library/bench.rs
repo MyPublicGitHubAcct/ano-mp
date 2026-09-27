@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::browse::{browse_rule, node_track_ids_rule, GroupKey, RuleSpec};
+use super::browse::{browse_rule, node_track_ids_rule, Filter, GroupKey, RuleSpec};
 use super::db;
 use super::search::{search, SearchKind, ALL_KINDS};
 use super::sort_key::fold;
@@ -203,7 +203,7 @@ fn bench_node_tracks_and_queue() {
     let library = library();
     let by_artist = RuleSpec::Id("album-artist".into());
     let all = time(5, || {
-        node_track_ids_rule(&library.conn, &by_artist, &[], true).unwrap()
+        node_track_ids_rule(&library.conn, &by_artist, &[], true, Filter::default()).unwrap()
     });
     println!("all tracks under album artist, in order: {}", ms(all));
     let folder = Some(GroupKey::Number(library.folder_id));
@@ -213,11 +213,12 @@ fn bench_node_tracks_and_queue() {
             &RuleSpec::Id("folder".into()),
             std::slice::from_ref(&folder),
             true,
+            Filter::default(),
         )
         .unwrap()
     });
     println!("a library folder's whole tree, in order: {}", ms(tree));
-    let first = browse_rule(&library.conn, "album-artist", &[], 0, 1)
+    let first = browse_rule(&library.conn, "album-artist", &[], 0, 1, Filter::default())
         .unwrap()
         .groups[0]
         .key
@@ -228,12 +229,13 @@ fn bench_node_tracks_and_queue() {
             &by_artist,
             std::slice::from_ref(&first),
             true,
+            Filter::default(),
         )
         .unwrap()
     });
     println!("one album artist's tracks: {}", ms(artist));
 
-    let ids = node_track_ids_rule(&library.conn, &by_artist, &[], true).unwrap();
+    let ids = node_track_ids_rule(&library.conn, &by_artist, &[], true, Filter::default()).unwrap();
     let infos = time(5, || {
         track_infos(
             &library.conn,
@@ -260,8 +262,11 @@ fn bench_node_tracks_and_queue() {
 #[test]
 #[ignore]
 fn bench_index_cost_when_scanning() {
-    // The same inserts without the search triggers (schema 1) and with them.
-    for version in [1, 2] {
+    // The same inserts with the word indexes (schema 8, the first the test
+    // library can write, since it fills the credits) and with the trigram
+    // indexes for substring search too (9, F12); and the database's size
+    // after.
+    for version in [8, 9] {
         let conn = db::open_in_memory_at(version).unwrap();
         let start = Instant::now();
         let library = Library::from_conn(conn);
@@ -277,9 +282,18 @@ fn bench_index_cost_when_scanning() {
             );
         }
         library.conn.execute_batch("COMMIT").unwrap();
+        let elapsed = start.elapsed().as_secs_f64();
+        let bytes: i64 = library
+            .conn
+            .query_row(
+                "SELECT page_count * page_size FROM pragma_page_count, pragma_page_size",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         println!(
-            "schema {version}: {TRACKS} inserts in {:.2} s",
-            start.elapsed().as_secs_f64()
+            "schema {version}: {TRACKS} inserts in {elapsed:.2} s, database {:.1} MB",
+            bytes as f64 / 1e6
         );
     }
 }

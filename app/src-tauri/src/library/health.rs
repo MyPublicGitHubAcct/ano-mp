@@ -69,8 +69,8 @@ pub struct DuplicateGroup {
     pub tracks: Vec<HealthTrack>,
 }
 
-const TRACK: &str =
-    "t.id, f.path, t.relative_path, IFNULL(t.title, t.relative_path), artist.name, album.title";
+const TRACK: &str = "t.id, f.path, t.relative_path, IFNULL(t.title, t.relative_path),
+     IFNULL(t.artist_credit, artist.name), album.title";
 const FROM: &str = "FROM tracks t JOIN folders f ON f.id = t.folder_id
      LEFT JOIN artists artist ON artist.id = t.artist_id
      LEFT JOIN albums album ON album.id = t.album_id";

@@ -16,6 +16,9 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/004_replay_gain.sql"),
     include_str!("migrations/005_track_parts.sql"),
     include_str!("migrations/006_features.sql"),
+    include_str!("migrations/007_user_data.sql"),
+    include_str!("migrations/008_credits.sql"),
+    include_str!("migrations/009_substring_search.sql"),
 ];
 
 /// Opens (creating if needed) the library database at `path` and brings its
@@ -107,24 +110,34 @@ mod tests {
         assert_eq!(
             names(
                 "SELECT name FROM sqlite_schema WHERE type = 'table'
-                 AND name NOT LIKE '%search%' ORDER BY name"
+                 AND name NOT LIKE '%search%' AND name NOT LIKE '%trigram%' ORDER BY name"
             ),
             [
                 "album_analysis",
                 "album_art",
+                "album_favourites",
                 "album_links",
                 "album_prefs",
                 "albums",
+                "artist_favourites",
                 "artist_links",
                 "artists",
                 "folders",
+                "kept_albums",
+                "kept_artists",
                 "listens_pending",
                 "mb_cache",
+                "playlist_items",
+                "playlists",
                 "plays",
                 "remote_devices",
                 "settings",
                 "track_analysis",
+                "track_artists",
+                "track_favourites",
+                "track_positions",
                 "track_prefs",
+                "track_ratings",
                 "tracks"
             ]
         );
@@ -133,7 +146,14 @@ mod tests {
                 "SELECT name FROM sqlite_schema
                  WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%' ORDER BY name"
             ),
-            ["albums_search", "artists_search", "tracks_search"]
+            [
+                "albums_search",
+                "albums_trigram",
+                "artists_search",
+                "artists_trigram",
+                "tracks_search",
+                "tracks_trigram"
+            ]
         );
     }
 

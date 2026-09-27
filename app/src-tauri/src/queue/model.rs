@@ -16,6 +16,19 @@
 //! to skip are passed over by next, previous and the automatic advance,
 //! but play when chosen directly. In radio mode (O9) the host keeps adding
 //! tracks as the queue nears its end (`radio_seed`).
+//!
+//! Playback can stop on its own (PLAN.md F13): after a chosen item ("stop
+//! after this track"), at the end of the current track or album, or when a
+//! sleep timer runs out, fading out over its last `SLEEP_FADE` seconds
+//! through the volume (`tick`). The queue then moves to the next item,
+//! paused, so play carries on from there.
+//!
+//! A long track (an audiobook, a DJ mix: over `LONG_TRACK` seconds) starts
+//! where it was left (F17): the host gives each its saved position
+//! (`TrackInfo::resume`), and the queue says where it left each one
+//! (`take_positions`). A hand-off crossfades (F14) unless the two tracks
+//! are on one album or in one unit, which stay gapless; the host decides how
+//! long a crossfade is, if any.
 
 use std::collections::{HashMap, HashSet};
 
@@ -30,6 +43,15 @@ pub type Uid = u64;
 /// Seconds into a track after which "previous" restarts it rather than
 /// going back a track.
 pub const RESTART_THRESHOLD: f64 = 3.0;
+
+/// Tracks longer than this, in seconds, start where they were left.
+pub const LONG_TRACK: f64 = 20.0 * 60.0;
+
+/// A long track's position is kept only this far (seconds) from either end.
+const LONG_TRACK_MARGIN: f64 = 30.0;
+
+/// Seconds a sleep timer fades out over before it pauses.
+pub const SLEEP_FADE: f64 = 10.0;
 
 /// What the queue shows about a track.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -52,6 +74,43 @@ pub struct TrackInfo {
     /// Why library radio picked it ("same label, 1994").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// A long track's saved position, where it starts (F17).
+    #[serde(skip)]
+    pub resume: Option<f64>,
+    /// A file outside the library, opened from the Finder (F5): its track
+    /// id is negative and only good for this session.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
+}
+
+impl TrackInfo {
+    fn is_long(&self) -> bool {
+        self.duration > LONG_TRACK
+    }
+}
+
+/// When a sleep timer stops playback.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+pub enum SleepTimer {
+    /// At this time (the host's clock, in seconds), fading out before it;
+    /// set for `minutes`.
+    At { ends_at: f64, minutes: u32 },
+    /// When the current track ends.
+    EndOfTrack,
+    /// When the last track of the current item's album ends.
+    EndOfAlbum,
+}
+
+/// A sleep timer running, and the volume a fade started from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Sleep {
+    timer: SleepTimer,
+    fading_from: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -86,8 +145,12 @@ pub trait Player {
     /// Opens a track as the current one, stopped at its start; this clears
     /// the next track. On failure nothing changes.
     fn load(&mut self, track_id: i64) -> Result<(), String>;
-    /// Opens the track that follows the current one gaplessly, or clears it.
-    fn set_next(&mut self, track_id: Option<i64>) -> Result<(), String>;
+    /// Opens the track that follows the current one gaplessly (crossfading
+    /// into it if `crossfade`, as far as the settings say), or clears it.
+    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String>;
+    /// The volume, 0 to 1, which a sleep timer fades.
+    fn volume(&self) -> f64;
+    fn set_volume(&mut self, volume: f64);
     fn play(&mut self) -> bool;
     fn pause(&mut self);
     fn stop(&mut self);
@@ -126,6 +189,10 @@ pub struct QueueState {
     pub resume_at: f64,
     /// Library radio keeps adding tracks as the queue runs out.
     pub radio: bool,
+    /// Playback stops after this item (F13).
+    pub stop_after: Option<Uid>,
+    /// The sleep timer running, if any.
+    pub sleep: Option<SleepTimer>,
 }
 
 /// The queue as saved across launches.
@@ -164,6 +231,12 @@ pub struct Queue {
     skipped: Vec<Skipped>,
     /// Radio mode (O9): the host adds tracks as the queue runs out.
     radio: bool,
+    stop_after: Option<Uid>,
+    sleep: Option<Sleep>,
+    /// Long tracks' positions to save (`None` forgets one), by track id.
+    positions: Vec<(i64, Option<f64>)>,
+    /// The host's clock, in seconds, as of its last call (`set_clock`).
+    clock: f64,
 }
 
 impl Queue {
@@ -186,6 +259,10 @@ impl Queue {
             list_changed: false,
             skipped: Vec::new(),
             radio: false,
+            stop_after: None,
+            sleep: None,
+            positions: Vec::new(),
+            clock: 0.0,
         }
     }
 
@@ -243,25 +320,34 @@ impl Queue {
     }
 
     /// What to save; `position` is the seconds into the current track.
+    /// Files outside the library are left out: the OS lets the app open
+    /// them only until it quits.
     pub fn saved(&self, position: f64) -> Saved {
-        let index: HashMap<Uid, usize> = self
+        let kept: Vec<&Item> = self
             .items
+            .iter()
+            .filter(|item| !item.track.external)
+            .collect();
+        let index: HashMap<Uid, usize> = kept
             .iter()
             .enumerate()
             .map(|(index, item)| (item.uid, index))
             .collect();
+        let current = self
+            .current_item()
+            .and_then(|item| index.get(&item.uid).copied());
         Saved {
-            tracks: self.items.iter().map(|item| item.track.track_id).collect(),
+            tracks: kept.iter().map(|item| item.track.track_id).collect(),
             original: self.original.as_ref().map(|uids| {
                 uids.iter()
                     .filter_map(|uid| index.get(uid).copied())
                     .collect()
             }),
-            current: self.current,
-            position: if self.loaded {
-                position
-            } else {
-                self.resume_at
+            current,
+            position: match (current, self.loaded) {
+                (None, _) => 0.0,
+                (Some(_), true) => position,
+                (Some(_), false) => self.resume_at,
             },
             repeat: self.repeat,
         }
@@ -302,6 +388,11 @@ impl Queue {
                     reason: item.track.reason.clone(),
                     ..track.clone()
                 };
+                let track = TrackInfo {
+                    // Where the queue left it is newer than the library's.
+                    resume: item.track.resume,
+                    ..track
+                };
                 if track != item.track {
                     item.track = track;
                     self.list_changed = true;
@@ -312,6 +403,14 @@ impl Queue {
 
     pub fn is_loaded(&self) -> bool {
         self.loaded
+    }
+
+    pub fn state_shuffle(&self) -> bool {
+        self.original.is_some()
+    }
+
+    pub fn stop_after(&self) -> Option<Uid> {
+        self.stop_after
     }
 
     pub fn current_item(&self) -> Option<&Item> {
@@ -356,6 +455,8 @@ impl Queue {
             loaded: self.loaded,
             resume_at: if self.loaded { 0.0 } else { self.resume_at },
             radio: self.radio,
+            stop_after: self.stop_after,
+            sleep: self.sleep.map(|sleep| sleep.timer),
         };
         self.changed = false;
         self.list_changed = false;
@@ -393,6 +494,8 @@ impl Queue {
         if tracks.is_empty() {
             return self.clear(p);
         }
+        self.stop_after = None;
+        self.leave_current(p);
         self.items = tracks
             .into_iter()
             .map(|track| self.new_item(track))
@@ -482,6 +585,17 @@ impl Queue {
         self.sync_next(p);
     }
 
+    /// Adds tracks after the current item and plays the first of them, e.g.
+    /// files opened from the Finder (F5).
+    pub fn play_now(&mut self, p: &mut impl Player, tracks: Vec<TrackInfo>) {
+        if tracks.is_empty() {
+            return;
+        }
+        let first = self.next_uid;
+        self.add(p, tracks, true);
+        self.jump(p, first);
+    }
+
     /// Removes items. If the current one goes, the item after it takes its
     /// place (loaded, and playing if it was); if it was last, the one before
     /// it does, without playing.
@@ -495,6 +609,9 @@ impl Queue {
             return;
         }
         let removing_current = gone.contains(&self.items[current].uid);
+        if removing_current {
+            self.leave_current(p);
+        }
         let kept_before = self.items[..current]
             .iter()
             .filter(|item| !gone.contains(&item.uid))
@@ -502,6 +619,9 @@ impl Queue {
         self.items.retain(|item| !gone.contains(&item.uid));
         if let Some(original) = &mut self.original {
             original.retain(|uid| !gone.contains(uid));
+        }
+        if self.stop_after.is_some_and(|uid| gone.contains(&uid)) {
+            self.stop_after = None;
         }
         self.unavailable.retain(|uid| !gone.contains(uid));
         self.list_changed = true;
@@ -541,12 +661,39 @@ impl Queue {
         self.sync_next(p);
     }
 
+    /// Moves items (keeping their order) to `to`, an index in the list after
+    /// the move: a block dragged together (F4).
+    pub fn move_items(&mut self, p: &mut impl Player, uids: &[Uid], to: usize) {
+        self.reconcile(p);
+        let moving: Vec<Item> = self
+            .items
+            .iter()
+            .filter(|item| uids.contains(&item.uid))
+            .cloned()
+            .collect();
+        if moving.is_empty() {
+            return;
+        }
+        let current_uid = self.current_item().map(|item| item.uid);
+        self.items.retain(|item| !uids.contains(&item.uid));
+        let to = to.min(self.items.len());
+        self.items.splice(to..to, moving);
+        self.current = current_uid.and_then(|uid| self.index_of(uid));
+        self.list_changed = true;
+        self.sync_next(p);
+    }
+
     /// Empties the queue and stops playback.
     pub fn clear(&mut self, p: &mut impl Player) {
         self.reconcile(p);
+        if let Some(index) = self.current.filter(|_| self.loaded) {
+            self.record_position(index, p.position());
+        }
+        self.end_sleep(p);
+        self.stop_after = None;
         if self.loaded {
             p.stop();
-            let _ = p.set_next(None);
+            let _ = p.set_next(None, false);
         }
         self.items.clear();
         if let Some(original) = &mut self.original {
@@ -566,6 +713,7 @@ impl Queue {
         self.reconcile(p);
         if let Some(index) = self.index_of(uid) {
             self.unavailable.remove(&uid);
+            self.leave_current(p);
             self.start(p, index, true, 0.0);
         }
     }
@@ -604,6 +752,13 @@ impl Queue {
 
     pub fn play(&mut self, p: &mut impl Player) {
         self.reconcile(p);
+        // Playing on through a sleep timer's fade, or after it ran out while
+        // paused, ends it.
+        if let Some(SleepTimer::At { ends_at, .. }) = self.sleep.map(|sleep| sleep.timer) {
+            if self.clock >= ends_at - SLEEP_FADE {
+                self.end_sleep(p);
+            }
+        }
         if self.loaded {
             p.play();
         } else if let Some(current) = self.current {
@@ -616,6 +771,14 @@ impl Queue {
         self.reconcile(p);
         if self.loaded {
             p.pause();
+            if let Some(sleep) = &mut self.sleep {
+                if let Some(volume) = sleep.fading_from.take() {
+                    p.set_volume(volume);
+                }
+            }
+            if let Some(index) = self.current {
+                self.record_position(index, p.position());
+            }
         }
     }
 
@@ -669,6 +832,88 @@ impl Queue {
         self.sync_next(p);
     }
 
+    /// Stops after item `uid` (F13), or not with `None`.
+    pub fn set_stop_after(&mut self, p: &mut impl Player, uid: Option<Uid>) {
+        self.reconcile(p);
+        self.stop_after = uid.filter(|&uid| self.index_of(uid).is_some());
+        self.changed = true;
+        self.sync_next(p);
+    }
+
+    /// Starts a sleep timer, or ends it with `None` (restoring the volume
+    /// if it was fading).
+    pub fn set_sleep(&mut self, p: &mut impl Player, timer: Option<SleepTimer>) {
+        self.reconcile(p);
+        self.end_sleep(p);
+        self.sleep = timer.map(|timer| Sleep {
+            timer,
+            fading_from: None,
+        });
+        self.changed = true;
+        self.sync_next(p);
+    }
+
+    /// The host's clock, in seconds, which sleep timers are set by; call
+    /// before each command.
+    pub fn set_clock(&mut self, now: f64) {
+        self.clock = now;
+    }
+
+    /// The user set the volume: a sleep timer's fade carries on from it.
+    pub fn volume_changed(&mut self) {
+        if let Some(sleep) = &mut self.sleep {
+            sleep.fading_from = None;
+        }
+    }
+
+    /// Runs a sleep timer while playing: fades the volume out over its last
+    /// `SLEEP_FADE` seconds, then pauses, puts the volume back and ends it.
+    /// Call often (on each position report); `now` as for `set_clock`.
+    pub fn tick(&mut self, p: &mut impl Player, now: f64) {
+        self.clock = now;
+        self.reconcile(p);
+        let Some(sleep) = self.sleep else {
+            return;
+        };
+        let SleepTimer::At { ends_at, .. } = sleep.timer else {
+            return;
+        };
+        if !self.loaded || p.state() != PlayerState::Playing {
+            return;
+        }
+        let left = ends_at - now;
+        if left > SLEEP_FADE {
+            return;
+        }
+        let from = sleep.fading_from.unwrap_or_else(|| p.volume());
+        if left <= 0.0 {
+            p.pause();
+            p.set_volume(from);
+            self.sleep = None;
+            self.changed = true;
+            if let Some(index) = self.current {
+                self.record_position(index, p.position());
+            }
+        } else {
+            p.set_volume(from * left / SLEEP_FADE);
+            self.sleep = Some(Sleep {
+                fading_from: Some(from),
+                ..sleep
+            });
+        }
+    }
+
+    /// Long tracks' positions to save since the last call: `None` forgets
+    /// one (played to the end, or near either end).
+    pub fn take_positions(&mut self) -> Vec<(i64, Option<f64>)> {
+        std::mem::take(&mut self.positions)
+    }
+
+    /// Notes where the current track is, if it's long, e.g. at quit.
+    pub fn remember_position(&mut self, p: &impl Player) {
+        self.leave_current(p);
+    }
+
     // ---- Engine events ----------------------------------------------------
 
     /// The engine reported `TrackEnded`.
@@ -678,6 +923,19 @@ impl Queue {
             return;
         }
         if !advanced && p.state() == PlayerState::Stopped {
+            if let Some(current) = self.current {
+                // Played to its end: a long track starts at the start again.
+                let duration = self.items[current].track.duration;
+                self.record_position(current, duration);
+                if self.stops_after(current) {
+                    // Stopped as asked: the next item waits, paused.
+                    self.finish_stop(current);
+                    if let Some(index) = self.following(current) {
+                        self.start(p, index, false, 0.0);
+                    }
+                    return;
+                }
+            }
             // Nothing was armed when the track ended, but something may
             // follow it now (an edit too late for a gapless hand-off).
             if let Some(index) = self.current.and_then(|current| self.following(current)) {
@@ -701,6 +959,75 @@ impl Queue {
 
     // ---- Internals --------------------------------------------------------
 
+    /// Whether playback stops when item `index` ends: it's the item to stop
+    /// after, or a sleep timer ends with it (its track, or its album).
+    fn stops_after(&self, index: usize) -> bool {
+        let item = &self.items[index];
+        if self.stop_after == Some(item.uid) {
+            return true;
+        }
+        match self.sleep.map(|sleep| sleep.timer) {
+            Some(SleepTimer::EndOfTrack) => true,
+            Some(SleepTimer::EndOfAlbum) => self.following(index).is_none_or(|next| {
+                item.track.album_id.is_none()
+                    || self.items[next].track.album_id != item.track.album_id
+            }),
+            _ => false,
+        }
+    }
+
+    /// Playback stopped after item `index`, as asked: that's done.
+    fn finish_stop(&mut self, index: usize) {
+        if self.stop_after == Some(self.items[index].uid) {
+            self.stop_after = None;
+        }
+        if matches!(
+            self.sleep.map(|sleep| sleep.timer),
+            Some(SleepTimer::EndOfTrack | SleepTimer::EndOfAlbum)
+        ) {
+            self.sleep = None;
+        }
+        self.changed = true;
+    }
+
+    /// Ends the sleep timer, putting back the volume a fade started from.
+    fn end_sleep(&mut self, p: &mut impl Player) {
+        if let Some(sleep) = self.sleep.take() {
+            if let Some(volume) = sleep.fading_from {
+                p.set_volume(volume);
+            }
+            self.changed = true;
+        }
+    }
+
+    /// Notes where the loaded current item is being left, if it's long.
+    fn leave_current(&mut self, p: &impl Player) {
+        if let Some(index) = self.current.filter(|_| self.loaded) {
+            self.record_position(index, p.position());
+        }
+    }
+
+    /// Notes that item `index` was left `position` seconds in, if it's a
+    /// long library track: kept away from its ends, else forgotten.
+    fn record_position(&mut self, index: usize, position: f64) {
+        let track = &self.items[index].track;
+        if !track.is_long() || track.external {
+            return;
+        }
+        let track_id = track.track_id;
+        let keep = position > LONG_TRACK_MARGIN && position < track.duration - LONG_TRACK_MARGIN;
+        let value = keep.then_some(position);
+        if track.resume == value {
+            return;
+        }
+        for item in &mut self.items {
+            if item.track.track_id == track_id {
+                item.track.resume = value;
+            }
+        }
+        self.positions.push((track_id, value));
+    }
+
     fn new_item(&mut self, track: TrackInfo) -> Item {
         let uid = self.next_uid;
         self.next_uid += 1;
@@ -723,6 +1050,11 @@ impl Queue {
         if self.seen_advances < count {
             match self.armed.take().and_then(|uid| self.index_of(uid)) {
                 Some(index) => {
+                    // The one before played to its end.
+                    if let Some(previous) = self.current {
+                        let duration = self.items[previous].track.duration;
+                        self.record_position(previous, duration);
+                    }
                     self.current = Some(index);
                     self.changed = true;
                 }
@@ -775,6 +1107,7 @@ impl Queue {
     /// Moves to `index`: loaded and keeping the play state if the queue is
     /// loaded, otherwise just selected.
     fn go_to(&mut self, p: &mut impl Player, index: usize) {
+        self.leave_current(p);
         if self.loaded {
             let play = p.state() == PlayerState::Playing;
             self.start(p, index, play, 0.0);
@@ -793,6 +1126,11 @@ impl Queue {
         while let Some(index) = candidate {
             let item = &self.items[index];
             let uid = item.uid;
+            // A long track carries on where it was left.
+            let resume_at = match item.track.resume {
+                Some(saved) if resume_at <= 0.0 && item.track.is_long() => saved,
+                _ => resume_at,
+            };
             match p.load(item.track.track_id) {
                 Ok(()) => {
                     self.current = Some(index);
@@ -834,14 +1172,18 @@ impl Queue {
             return;
         };
         let current = self.next_pass(current);
+        let stopping = self.stops_after(current);
         loop {
-            let candidate = self.following(current);
+            let candidate = self.following(current).filter(|_| !stopping);
             let uid = candidate.map(|index| self.items[index].uid);
             if uid == self.armed {
                 return;
             }
             let track = candidate.map(|index| self.items[index].track.track_id);
-            match (p.set_next(track), candidate) {
+            let crossfade = candidate.is_some_and(|index| {
+                crossfades(&self.items[current].track, &self.items[index].track)
+            });
+            match (p.set_next(track, crossfade), candidate) {
                 (Ok(()), _) => {
                     self.armed = uid;
                     return;
@@ -933,6 +1275,15 @@ impl Queue {
     }
 }
 
+/// Whether a hand-off from `from` to `to` may crossfade: not between
+/// tracks of one album, nor within a unit (a segue, a work), which stay
+/// gapless, nor into the same track again.
+fn crossfades(from: &TrackInfo, to: &TrackInfo) -> bool {
+    let same_album = from.album_id.is_some() && from.album_id == to.album_id;
+    let same_unit = from.unit.is_some() && from.unit == to.unit;
+    !same_album && !same_unit && from.track_id != to.track_id
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -942,11 +1293,15 @@ mod tests {
     struct Fake {
         current: Option<i64>,
         next: Option<i64>,
+        /// Whether the next track was set to crossfade.
+        crossfade: bool,
         state: Option<PlayerState>,
         position: f64,
         advances: i64,
         unreadable: HashSet<i64>,
         loads: Vec<i64>,
+        /// None until set: 1.
+        volume: Option<f64>,
     }
 
     impl Fake {
@@ -980,12 +1335,19 @@ mod tests {
             self.position = 0.0;
             Ok(())
         }
-        fn set_next(&mut self, track_id: Option<i64>) -> Result<(), String> {
+        fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String> {
             if let Some(id) = track_id.filter(|id| self.unreadable.contains(id)) {
                 return Err(format!("cannot open {id}"));
             }
             self.next = track_id;
+            self.crossfade = crossfade && track_id.is_some();
             Ok(())
+        }
+        fn volume(&self) -> f64 {
+            self.volume.unwrap_or(1.0)
+        }
+        fn set_volume(&mut self, volume: f64) {
+            self.volume = Some(volume);
         }
         fn play(&mut self) -> bool {
             self.state = Some(PlayerState::Playing);
@@ -1513,7 +1875,7 @@ mod tests {
         queue.replace(&mut p, infos([1, 2]), 0, true);
         queue.detach();
         p.load(99).unwrap();
-        p.set_next(Some(98)).unwrap();
+        p.set_next(Some(98), false).unwrap();
         end_track(&mut queue, &mut p);
         assert_eq!(current_id(&queue), Some(1));
         assert_eq!(p.next, None, "the queue didn't arm anything");
@@ -1614,5 +1976,213 @@ mod tests {
         assert!(queue.is_radio(), "adding keeps it on");
         queue.replace(&mut p, infos([1]), 0, true);
         assert!(!queue.is_radio(), "playing something else ends it");
+    }
+
+    fn album(ids: impl IntoIterator<Item = i64>, album_id: i64) -> Vec<TrackInfo> {
+        ids.into_iter()
+            .map(|id| TrackInfo {
+                album_id: Some(album_id),
+                ..info(id)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn stops_after_the_chosen_item_and_waits_on_the_next() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        let two = uid_of(&queue, 2);
+        queue.set_stop_after(&mut p, Some(two));
+        assert_eq!(queue.state().stop_after, Some(two));
+        assert_eq!(p.next, Some(2), "1 still hands off to 2");
+
+        end_track(&mut queue, &mut p);
+        assert_eq!(current_id(&queue), Some(2));
+        assert_eq!(p.next, None, "nothing follows 2");
+        end_track(&mut queue, &mut p);
+        // Stopped, and 3 waits, loaded and paused.
+        assert_eq!(current_id(&queue), Some(3));
+        assert!(queue.is_loaded());
+        assert_ne!(p.state(), PlayerState::Playing);
+        assert_eq!(queue.state().stop_after, None);
+        check(&queue, &p);
+
+        // Removing the item forgets it; so does choosing none.
+        queue.set_stop_after(&mut p, Some(uid_of(&queue, 3)));
+        queue.remove(&mut p, &[uid_of(&queue, 3)]);
+        assert_eq!(queue.state().stop_after, None);
+        queue.set_stop_after(&mut p, Some(12345));
+        assert_eq!(queue.state().stop_after, None, "not in the queue");
+    }
+
+    #[test]
+    fn a_sleep_timer_fades_out_then_pauses() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        p.set_volume(0.8);
+        queue.set_clock(1000.0);
+        queue.set_sleep(
+            &mut p,
+            Some(SleepTimer::At {
+                ends_at: 1100.0,
+                minutes: 1,
+            }),
+        );
+        assert!(queue.state().sleep.is_some());
+        assert_eq!(
+            serde_json::to_value(queue.state().sleep).unwrap(),
+            serde_json::json!({"kind": "at", "endsAt": 1100.0, "minutes": 1})
+        );
+
+        queue.tick(&mut p, 1050.0);
+        assert_eq!(p.volume(), 0.8, "not yet");
+        queue.tick(&mut p, 1095.0);
+        assert!((p.volume() - 0.4).abs() < 1e-9, "halfway through the fade");
+        // The user turns it up: the fade carries on from there.
+        p.set_volume(1.0);
+        queue.volume_changed();
+        queue.tick(&mut p, 1097.5);
+        assert!((p.volume() - 0.25).abs() < 1e-9);
+        queue.tick(&mut p, 1100.5);
+        assert_eq!(p.state(), PlayerState::Paused);
+        assert_eq!(p.volume(), 1.0, "put back for next time");
+        assert_eq!(queue.state().sleep, None);
+
+        // Pausing during the fade puts the volume back; playing after the
+        // end ends the timer.
+        queue.play(&mut p);
+        queue.set_sleep(
+            &mut p,
+            Some(SleepTimer::At {
+                ends_at: 2000.0,
+                minutes: 1,
+            }),
+        );
+        queue.tick(&mut p, 1995.0);
+        assert!((p.volume() - 0.5).abs() < 1e-9);
+        queue.pause(&mut p);
+        assert_eq!(p.volume(), 1.0);
+        queue.set_clock(2500.0);
+        queue.play(&mut p);
+        assert_eq!(queue.state().sleep, None);
+        assert_eq!(p.state(), PlayerState::Playing);
+    }
+
+    #[test]
+    fn sleep_at_the_end_of_the_track_or_album() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        let mut tracks = album([1, 2], 7);
+        tracks.extend(album([3], 8));
+        queue.replace(&mut p, tracks, 0, true);
+        queue.set_sleep(&mut p, Some(SleepTimer::EndOfAlbum));
+        assert_eq!(p.next, Some(2), "the album goes on");
+        end_track(&mut queue, &mut p);
+        assert_eq!(p.next, None, "its last track");
+        end_track(&mut queue, &mut p);
+        assert_eq!(current_id(&queue), Some(3));
+        assert_ne!(p.state(), PlayerState::Playing);
+        assert_eq!(queue.state().sleep, None);
+
+        queue.replace(&mut p, infos([4, 5]), 0, true);
+        queue.set_sleep(&mut p, Some(SleepTimer::EndOfTrack));
+        assert_eq!(p.next, None);
+        queue.set_sleep(&mut p, None);
+        assert_eq!(p.next, Some(5));
+    }
+
+    #[test]
+    fn long_tracks_resume_where_they_were_left() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        let book = TrackInfo {
+            duration: 3600.0,
+            ..info(1)
+        };
+        queue.replace(&mut p, vec![book.clone(), info(2)], 0, true);
+        p.position = 600.0;
+        queue.next(&mut p);
+        assert_eq!(queue.take_positions(), [(1, Some(600.0))]);
+
+        // Back to it: it starts at 600 s.
+        queue.jump(&mut p, uid_of(&queue, 1));
+        assert_eq!(p.position, 600.0);
+        assert!(
+            queue.take_positions().is_empty(),
+            "short tracks aren't kept"
+        );
+
+        // Near its end counts as finished.
+        p.position = 3590.0;
+        queue.pause(&mut p);
+        assert_eq!(queue.take_positions(), [(1, None)]);
+
+        // The host's saved position, from the library.
+        let saved = TrackInfo {
+            resume: Some(1234.0),
+            ..book
+        };
+        queue.replace(&mut p, vec![saved], 0, true);
+        assert_eq!(p.position, 1234.0);
+        // Played to the end: forgotten.
+        end_track(&mut queue, &mut p);
+        assert_eq!(queue.take_positions(), [(1, None)]);
+    }
+
+    #[test]
+    fn crossfades_between_albums_but_not_within_one() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        let mut tracks = album([1, 2], 7);
+        tracks.extend(infos([3]));
+        tracks.extend(with_units(&[(4, 9), (5, 9)], [4, 5]));
+        queue.replace(&mut p, tracks, 0, true);
+        assert!(!p.crossfade, "1 to 2: one album");
+        end_track(&mut queue, &mut p);
+        assert!(p.crossfade, "2 to 3: another album");
+        end_track(&mut queue, &mut p);
+        assert!(p.crossfade, "3 to 4");
+        end_track(&mut queue, &mut p);
+        assert!(!p.crossfade, "4 to 5: one unit");
+        queue.set_repeat(&mut p, Repeat::One);
+        assert!(!p.crossfade, "the same track again");
+    }
+
+    #[test]
+    fn moves_a_block_of_items() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3, 4, 5]), 1, true);
+        let (one, four) = (uid_of(&queue, 1), uid_of(&queue, 4));
+        queue.move_items(&mut p, &[four, one], 1);
+        assert_eq!(ids(&queue), [2, 1, 4, 3, 5]);
+        assert_eq!(current_id(&queue), Some(2));
+        check(&queue, &p);
+        queue.move_items(&mut p, &[four], 99);
+        assert_eq!(ids(&queue), [2, 1, 3, 5, 4]);
+        queue.move_items(&mut p, &[12345], 0);
+        assert_eq!(ids(&queue), [2, 1, 3, 5, 4]);
+    }
+
+    #[test]
+    fn files_outside_the_library_are_played_but_not_saved() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        let outside = TrackInfo {
+            external: true,
+            ..info(-1)
+        };
+        queue.play_now(&mut p, vec![outside]);
+        assert_eq!(ids(&queue), [1, -1, 2]);
+        assert_eq!(p.current, Some(-1));
+        let saved = queue.saved(10.0);
+        assert_eq!(saved.tracks, [1, 2]);
+        assert_eq!(saved.current, None, "the current one isn't kept");
+        assert_eq!(saved.position, 0.0);
+        queue.next(&mut p);
+        assert_eq!(queue.saved(5.0).current, Some(1));
     }
 }

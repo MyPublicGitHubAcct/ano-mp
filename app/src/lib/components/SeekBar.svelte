@@ -4,6 +4,7 @@
   // waveform seek bar on (O2) and the track analysed, the track's waveform
   // is drawn under the slider, the played part in the accent colour;
   // until then it is the plain slider.
+  import { t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { formatTime } from "$lib/format";
   import { features } from "$lib/state/features.svelte";
@@ -85,8 +86,8 @@
       step="0.1"
       value={position}
       {disabled}
-      aria-label="Position"
-      aria-valuetext="{formatTime(position)} of {formatTime(duration)}"
+      aria-label={t("seek.label")}
+      aria-valuetext={t("seek.value", { position: formatTime(position), duration: formatTime(duration) })}
       style:--progress="{duration > 0 ? (position / duration) * 100 : 0}%"
       oninput={(event) => (held = Number(event.currentTarget.value))}
       onchange={commit}

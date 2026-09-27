@@ -6,7 +6,7 @@
   import { untrack } from "svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { features as api, type HealthReport, type HealthTrack } from "$lib/api";
-  import { plural } from "$lib/format";
+  import { count, t } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -50,7 +50,7 @@
           {#if track.detail}<span class="detail small">{track.detail}</span>{/if}
           <span class="path small" title={track.path}>{track.path}</span>
         </span>
-        <button onclick={() => reveal(track)}>Reveal in Finder</button>
+        <button onclick={() => reveal(track)}>{t("menu.showInFinder")}</button>
       </li>
     {/each}
   </ul>
@@ -58,69 +58,66 @@
 
 <section class="health" aria-labelledby="health-heading">
   <header>
-    <h1 id="health-heading">Library health</h1>
-    <button onclick={load} disabled={loading}>Check again</button>
+    <h1 id="health-heading">{t("health.title")}</h1>
+    <button onclick={load} disabled={loading}>{t("discography.checkAgain")}</button>
   </header>
 
   {#if !features.on.healthReport}
     <p class="muted">
-      The health report is off. Turn it on in
-      <button class="link" onclick={() => ui.showSettings("features")}>Settings › Features</button>.
+      {t("health.off")}
+      <button class="link" onclick={() => ui.showSettings("features")}>{t("health.settingsFeatures")}</button>.
     </p>
   {:else if report}
     <p class="muted">
-      {problems === 0 ? "No problems found." : `${plural(problems, "problem")} found.`}
-      The decoding and transcode checks cover the {report.analysed.toLocaleString()} of
-      {plural(report.tracks, "track")} analysed so far{features.on.loudnessAnalysis
-        ? ""
-        : "; turn on the loudness analysis to check them all"}.
+      {problems === 0 ? t("health.noProblems") : count("health.problems", problems)}
+      {t(features.on.loudnessAnalysis ? "health.coverage" : "health.coveragePaused", {
+        analysed: report.analysed,
+        tracks: count("count.tracks", report.tracks),
+      })}
     </p>
 
     {#if report.undecodable.length > 0}
-      <h2>Don’t decode</h2>
+      <h2>{t("health.undecodable")}</h2>
       {@render trackList(report.undecodable)}
     {/if}
     {#if report.truncated.length > 0}
-      <h2>Cut short</h2>
-      <p class="hint">They end sooner than their headers say, often from an interrupted copy or download.</p>
+      <h2>{t("health.truncated")}</h2>
+      <p class="hint">{t("health.truncatedHint")}</p>
       {@render trackList(report.truncated)}
     {/if}
     {#if report.transcodes.length > 0}
-      <h2>Suspected transcodes</h2>
-      <p class="hint">
-        Lossless files whose sound stops at 15–19.5 kHz for the whole track, as MP3 or AAC encoders leave it. A
-        heuristic: some recordings are like that anyway.
-      </p>
+      <h2>{t("health.transcodes")}</h2>
+      <p class="hint">{t("health.transcodesHint")}</p>
       {@render trackList(report.transcodes)}
     {/if}
     {#if report.albums.length > 0}
-      <h2>Albums whose tracks disagree</h2>
+      <h2>{t("health.albums")}</h2>
       <ul>
         {#each report.albums as album (album.albumId)}
           <li>
             <span class="text">
               <span class="name">{album.title}</span>
-              <span class="muted small">{album.artist ?? "No album artist"}</span>
+              <span class="muted small">{album.artist ?? t("health.noAlbumArtist")}</span>
               {#each album.problems as problem (problem)}<span class="detail small">{problem}</span>{/each}
             </span>
             <button
               onclick={() =>
                 library.showAlbum({ id: album.albumId, title: album.title, albumArtist: album.artist, albumArtistId: null })}
-              >Show</button
+              >{t("health.show")}</button
             >
           </li>
         {/each}
       </ul>
     {/if}
     {#if report.duplicates.length > 0}
-      <h2>Likely duplicates</h2>
+      <h2>{t("health.duplicates")}</h2>
       {#each report.duplicates as group, index (index)}
         <p class="hint">{group.reason}</p>
         {@render trackList(group.tracks)}
       {/each}
     {/if}
   {:else if loading}
-    <p class="muted">Checking…</p>
+    <p class="muted">{t("health.checking")}</p>
   {/if}
 </section>
 
@@ -190,6 +187,6 @@
   }
 
   .path {
-    color: var(--text-faint);
+    color: var(--text-muted);
   }
 </style>

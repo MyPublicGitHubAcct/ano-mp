@@ -46,7 +46,8 @@ pub fn artist_page(conn: &Connection, artist_id: i64) -> Result<Option<ArtistPag
         .query_row(
             "SELECT name,
                     (SELECT count(*) FROM tracks
-                     WHERE album_artist_id = ?1 OR artist_id = ?1)
+                     WHERE album_artist_id = ?1 OR artist_id = ?1
+                        OR id IN (SELECT track_id FROM track_artists WHERE artist_id = ?1))
              FROM artists WHERE id = ?1",
             [artist_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -61,7 +62,8 @@ pub fn artist_page(conn: &Connection, artist_id: i64) -> Result<Option<ArtistPag
         conn,
         artist_id,
         "al.artist_id IS NOT ?1 AND al.id IN
-             (SELECT album_id FROM tracks WHERE artist_id = ?1 AND album_id IS NOT NULL)",
+             (SELECT t.album_id FROM track_artists ta JOIN tracks t ON t.id = ta.track_id
+              WHERE ta.artist_id = ?1 AND t.album_id IS NOT NULL)",
         show_types,
     )?;
     Ok(Some(ArtistPage {

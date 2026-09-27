@@ -11,6 +11,7 @@ use rusqlite::types::{Value, ValueRef};
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
+use super::marks::{self, MarkKind, FAVOURITE_FILTER};
 use super::rules::{self, AlbumOrder, Level, SortRule, TrackKey};
 use super::sort_key;
 use super::{track_from_row, Error, TrackSummary, TRACKS_FROM, TRACK_COLUMNS};
@@ -40,6 +41,8 @@ pub struct Group {
     /// earliest among its tracks).
     pub album_artist: Option<String>,
     pub year: Option<u32>,
+    /// An album or artist the user hearted (F3).
+    pub favourite: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -53,6 +56,26 @@ pub struct BrowsePage {
     pub total: u32,
 }
 
+/// What a browse (or playing a node) keeps of the library.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Filter {
+    /// Only favourites: tracks hearted, on hearted albums or by hearted
+    /// artists (F3).
+    pub favourites: bool,
+}
+
+impl Filter {
+    /// Extra conditions on tracks `t`, each after " AND ".
+    fn sql(self) -> String {
+        if self.favourites {
+            format!(" AND {FAVOURITE_FILTER}")
+        } else {
+            String::new()
+        }
+    }
+}
+
 /// Browses the stored rule `rule_id` with the stored ignored articles; see
 /// `browse`.
 pub fn browse_rule(
@@ -61,6 +84,7 @@ pub fn browse_rule(
     path: &[Option<GroupKey>],
     offset: u32,
     limit: u32,
+    filter: Filter,
 ) -> Result<BrowsePage, Error> {
     let settings = rules::sort_settings(conn)?;
     let rule = settings
@@ -68,7 +92,15 @@ pub fn browse_rule(
         .iter()
         .find(|rule| rule.id == rule_id)
         .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\"")))?;
-    browse(conn, rule, &settings.ignored_articles, path, offset, limit)
+    browse_filtered(
+        conn,
+        rule,
+        &settings.ignored_articles,
+        path,
+        offset,
+        limit,
+        filter,
+    )
 }
 
 /// Lists up to `limit` children of the node at `path`, from `offset`. The
@@ -79,6 +111,7 @@ pub fn browse_rule(
 ///
 /// Pages come from separate queries, so a scan that changes the library
 /// between them can shift rows from one page to the next.
+#[cfg(test)]
 pub fn browse(
     conn: &Connection,
     rule: &SortRule,
@@ -87,12 +120,25 @@ pub fn browse(
     offset: u32,
     limit: u32,
 ) -> Result<BrowsePage, Error> {
+    browse_filtered(conn, rule, articles, path, offset, limit, Filter::default())
+}
+
+/// `browse`, keeping only what `filter` keeps.
+pub fn browse_filtered(
+    conn: &Connection,
+    rule: &SortRule,
+    articles: &[String],
+    path: &[Option<GroupKey>],
+    offset: u32,
+    limit: u32,
+    filter: Filter,
+) -> Result<BrowsePage, Error> {
     rule.validate()?;
     let mut params = Params::new(articles);
     let node = if rule.levels == [Level::Folder] {
-        folder_node(rule, path, &mut params)?
+        folder_node(rule, path, &mut params, filter)?
     } else {
-        tag_node(rule, path, &mut params)?
+        tag_node(rule, path, &mut params, filter)?
     };
 
     let limit = limit.min(MAX_PAGE_SIZE);
@@ -113,6 +159,7 @@ pub fn browse(
         page.groups = fetch(conn, &params, &groups.listing, offset, limit, |row| {
             group_from_row(row, groups.unknown)
         })?;
+        mark_favourites(conn, rule.levels.get(path.len()).copied(), &mut page.groups)?;
     }
     let track_offset = offset.saturating_sub(group_total);
     let track_limit = limit - page.groups.len() as u32;
@@ -133,6 +180,31 @@ pub fn browse(
     Ok(page)
 }
 
+/// Hearts the album and artist groups the user hearted.
+fn mark_favourites(
+    conn: &Connection,
+    level: Option<Level>,
+    groups: &mut [Group],
+) -> Result<(), Error> {
+    let kind = match level {
+        Some(Level::Album) => MarkKind::Album,
+        Some(Level::AlbumArtist | Level::Artist | Level::Composer) => MarkKind::Artist,
+        _ => return Ok(()),
+    };
+    let ids: Vec<i64> = groups
+        .iter()
+        .filter_map(|group| match group.key {
+            Some(GroupKey::Number(id)) => Some(id),
+            _ => None,
+        })
+        .collect();
+    let hearted = marks::favourites_among(conn, kind, &ids)?;
+    for group in groups {
+        group.favourite = matches!(group.key, Some(GroupKey::Number(id)) if hearted.contains(&id));
+    }
+    Ok(())
+}
+
 /// A stored rule, by id, or a rule given in full (e.g. to play an album
 /// found by search, whatever the stored rules are).
 #[derive(Debug, Clone, Deserialize)]
@@ -148,6 +220,7 @@ pub fn node_track_ids_rule(
     rule: &RuleSpec,
     path: &[Option<GroupKey>],
     recursive: bool,
+    filter: Filter,
 ) -> Result<Vec<i64>, Error> {
     let settings = rules::sort_settings(conn)?;
     let rule = match rule {
@@ -158,7 +231,14 @@ pub fn node_track_ids_rule(
             .find(|rule| &rule.id == rule_id)
             .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\"")))?,
     };
-    node_track_ids(conn, rule, &settings.ignored_articles, path, recursive)
+    node_track_ids_filtered(
+        conn,
+        rule,
+        &settings.ignored_articles,
+        path,
+        recursive,
+        filter,
+    )
 }
 
 /// The ids of the tracks under the node at `path`, in the order browsing
@@ -167,6 +247,7 @@ pub fn node_track_ids_rule(
 /// `recursive`, when its subfolders' come first (as browsing lists them).
 /// Under a genre level, a track tagged with several genres is listed once,
 /// ordered by its whole genre tag.
+#[cfg(test)]
 pub fn node_track_ids(
     conn: &Connection,
     rule: &SortRule,
@@ -174,13 +255,25 @@ pub fn node_track_ids(
     path: &[Option<GroupKey>],
     recursive: bool,
 ) -> Result<Vec<i64>, Error> {
+    node_track_ids_filtered(conn, rule, articles, path, recursive, Filter::default())
+}
+
+/// `node_track_ids`, keeping only what `filter` keeps.
+pub fn node_track_ids_filtered(
+    conn: &Connection,
+    rule: &SortRule,
+    articles: &[String],
+    path: &[Option<GroupKey>],
+    recursive: bool,
+    filter: Filter,
+) -> Result<Vec<i64>, Error> {
     rule.validate()?;
     let mut params = Params::new(articles);
     if rule.levels == [Level::Folder] {
-        return folder_track_ids(conn, rule, path, recursive, &mut params);
+        return folder_track_ids(conn, rule, path, recursive, &mut params, filter);
     }
     // Checks the path, and gives the filter and joins.
-    let node = tag_node(rule, path, &mut params)?;
+    let node = tag_node(rule, path, &mut params, filter)?;
     let mut from = TRACKS_FROM.to_owned();
     if rule.levels.contains(&Level::Year) {
         from.push_str(" LEFT JOIN album_years ay ON ay.album_id = t.album_id");
@@ -225,7 +318,11 @@ fn level_order(level: Level, album_order: AlbumOrder) -> String {
         Level::AlbumArtist => {
             "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_artist_id"
         }
-        Level::Artist => "anomp_sort_key(artist.name, ?1) NULLS LAST, artist.name, t.artist_id",
+        // A track crediting several artists is listed once, by its credit.
+        Level::Artist => {
+            "anomp_sort_key(IFNULL(t.artist_credit, artist.name), ?1) NULLS LAST,
+             IFNULL(t.artist_credit, artist.name), t.artist_id"
+        }
         // Tracks without an album are one group, whatever their artists.
         Level::Album => {
             "anomp_sort_key(album.title, ?1) NULLS LAST, album.title,
@@ -256,8 +353,9 @@ fn folder_track_ids(
     path: &[Option<GroupKey>],
     recursive: bool,
     params: &mut Params,
+    filter: Filter,
 ) -> Result<Vec<i64>, Error> {
-    let node = folder_node(rule, path, params)?;
+    let node = folder_node(rule, path, params, filter)?;
     let (filter, rest) = (node.filter, node.rest);
     let mut terms = vec!["anomp_sort_key(f.path, NULL), f.path, f.id"];
     terms.extend(track_order_terms(&rule.track_order));
@@ -370,6 +468,7 @@ fn tag_node(
     rule: &SortRule,
     path: &[Option<GroupKey>],
     params: &mut Params,
+    extra: Filter,
 ) -> Result<Node, Error> {
     if path.len() > rule.levels.len() {
         return Err(Error::Invalid(format!(
@@ -384,6 +483,7 @@ fn tag_node(
         filter.push_str(" AND ");
         filter.push_str(&level_filter(level, key.as_ref(), params)?);
     }
+    filter.push_str(&extra.sql());
     let mut from = TRACKS_FROM.to_owned();
     if rule
         .levels
@@ -428,7 +528,12 @@ fn level_filter(
     let value = params.bind(value);
     Ok(match level {
         Level::AlbumArtist => format!("t.album_artist_id IS {value}"),
-        Level::Artist => format!("t.artist_id IS {value}"),
+        // Each artist a track credits (F11); the null key, tracks without one.
+        Level::Artist => format!(
+            "CASE WHEN {value} IS NULL THEN t.artist_id IS NULL
+             ELSE EXISTS (SELECT 1 FROM track_artists ta
+                          WHERE ta.track_id = t.id AND ta.artist_id = {value}) END"
+        ),
         Level::Album => format!("t.album_id IS {value}"),
         Level::Year => format!("{ALBUM_YEAR} IS {value}"),
         Level::Genre => format!("anomp_has_genre(t.genre, {value})"),
@@ -460,6 +565,26 @@ fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str)
             unknown: "Unknown genre",
         };
     }
+    if level == Level::Artist {
+        // A row per track and credited artist (F11): a duet is in both
+        // artists' groups.
+        return Groups {
+            listing: Listing {
+                select: format!(
+                    "SELECT credited.artist_id, credited_artist.name, NULL, NULL, count(*)
+                     {from}
+                     LEFT JOIN track_artists credited ON credited.track_id = t.id
+                     LEFT JOIN artists credited_artist ON credited_artist.id = credited.artist_id
+                     WHERE {filter} GROUP BY credited.artist_id"
+                ),
+                order_by:
+                    "anomp_sort_key(credited_artist.name, ?1) NULLS LAST, credited_artist.name,
+                           credited.artist_id"
+                        .into(),
+            },
+            unknown: "Unknown artist",
+        };
+    }
     // Key, name (null to use the key), album artist, year.
     let (columns, group_by, order_by, unknown) = match level {
         Level::AlbumArtist => (
@@ -468,12 +593,7 @@ fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str)
             "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name, t.album_artist_id".to_owned(),
             "Unknown artist",
         ),
-        Level::Artist => (
-            "t.artist_id, artist.name, NULL, NULL".to_owned(),
-            "t.artist_id".to_owned(),
-            "anomp_sort_key(artist.name, ?1) NULLS LAST, artist.name, t.artist_id".to_owned(),
-            "Unknown artist",
-        ),
+        Level::Artist => unreachable!("handled above"),
         // An album's artist is its tracks' album artist.
         Level::Album => (
             format!(
@@ -541,7 +661,10 @@ fn track_order_terms(order: &[TrackKey]) -> Vec<&'static str> {
         .iter()
         .map(|key| match key {
             TrackKey::AlbumArtist => "anomp_sort_key(album_artist.name, ?1) NULLS LAST, album_artist.name",
-            TrackKey::Artist => "anomp_sort_key(artist.name, ?1) NULLS LAST, artist.name",
+            TrackKey::Artist => {
+                "anomp_sort_key(IFNULL(t.artist_credit, artist.name), ?1) NULLS LAST,
+                 IFNULL(t.artist_credit, artist.name)"
+            }
             TrackKey::Album => "anomp_sort_key(album.title, ?1) NULLS LAST, album.title",
             TrackKey::Year => "t.year NULLS LAST",
             TrackKey::DiscNumber => "IFNULL(t.disc_number, 1)",
@@ -562,17 +685,20 @@ fn folder_node(
     rule: &SortRule,
     path: &[Option<GroupKey>],
     params: &mut Params,
+    extra: Filter,
 ) -> Result<Node, Error> {
     let Some((folder, names)) = path.split_first() else {
         return Ok(Node {
-            filter: "1".into(),
+            filter: format!("1{}", extra.sql()),
             rest: "t.relative_path".into(),
             groups: Some(Groups {
                 listing: Listing {
-                    select: "SELECT f.id, f.path, NULL, NULL,
-                                    (SELECT count(*) FROM tracks WHERE folder_id = f.id)
-                             FROM folders f"
-                        .into(),
+                    select: format!(
+                        "SELECT f.id, f.path, NULL, NULL,
+                                (SELECT count(*) FROM tracks t WHERE t.folder_id = f.id{})
+                         FROM folders f",
+                        extra.sql()
+                    ),
                     order_by: "anomp_sort_key(f.path, NULL), f.path, f.id".into(),
                 },
                 unknown: "",
@@ -600,7 +726,7 @@ fn folder_node(
         }
     }
 
-    let mut filter = format!("t.folder_id = {}", params.bind(*folder_id));
+    let mut filter = format!("t.folder_id = {}{}", params.bind(*folder_id), extra.sql());
     if let Some(parent) = prefix.strip_suffix('/') {
         // The paths that start with `prefix` are an index range, since '0'
         // follows '/'.
@@ -655,6 +781,7 @@ fn group_from_row(row: &Row, unknown: &str) -> rusqlite::Result<Group> {
         album_artist: row.get(2)?,
         year: row.get(3)?,
         track_count: row.get(4)?,
+        favourite: false,
     })
 }
 
@@ -959,7 +1086,9 @@ mod tests {
 
         // `browse_rule` takes the articles from the settings.
         let first = |conn: &Connection| {
-            browse_rule(conn, "album-artist", &[], 0, 1).unwrap().groups[0]
+            browse_rule(conn, "album-artist", &[], 0, 1, Filter::default())
+                .unwrap()
+                .groups[0]
                 .name
                 .clone()
         };
@@ -1372,18 +1501,22 @@ mod tests {
             &[library.key(&rule("album-artist"), &[], "A")],
             "X",
         );
-        let ids = node_track_ids_rule(&library.conn, &album, &[x], true).unwrap();
+        let ids =
+            node_track_ids_rule(&library.conn, &album, &[x], true, Filter::default()).unwrap();
         let first = library.page(
             &rule("album-artist"),
             &[library.key(&rule("album-artist"), &[], "A")],
         );
         assert_eq!(first.groups.len(), 1);
         assert_eq!(ids.len(), 2);
-        let all = node_track_ids_rule(&library.conn, &stored, &[], true).unwrap();
+        let all =
+            node_track_ids_rule(&library.conn, &stored, &[], true, Filter::default()).unwrap();
         assert_eq!(all.len(), 3);
         assert_eq!(all[..2], ids[..], "album order, by track number");
         let missing = RuleSpec::Id("nope".into());
-        assert!(node_track_ids_rule(&library.conn, &missing, &[], true).is_err());
+        assert!(
+            node_track_ids_rule(&library.conn, &missing, &[], true, Filter::default()).is_err()
+        );
     }
 
     #[test]
@@ -1465,7 +1598,8 @@ mod tests {
         mixed.levels.push(Level::Folder);
         assert!(error(&mixed, &[]).contains("folder level"));
 
-        let unknown = browse_rule(&library.conn, "nope", &[], 0, 10).unwrap_err();
+        let unknown =
+            browse_rule(&library.conn, "nope", &[], 0, 10, Filter::default()).unwrap_err();
         assert!(unknown.to_string().contains("No sort rule"), "{unknown}");
         // A key that matches nothing is just an empty node.
         let page = browse(
@@ -1550,5 +1684,84 @@ mod tests {
         assert_eq!(page.tracks[0].added_at, 2);
         assert_eq!(page.tracks[0].play_count, 0);
         assert!(!page.tracks[0].has_prefs);
+    }
+
+    #[test]
+    fn a_track_crediting_several_artists_is_under_each() {
+        let library = Library::new([
+            track("1.flac")
+                .title("Duet")
+                .artist("Singer; Rapper")
+                .album("Songs"),
+            track("2.flac")
+                .title("Solo")
+                .artist("Singer")
+                .album("Songs"),
+        ]);
+        let by_artist = SortRule {
+            id: "artist".into(),
+            name: "Artist".into(),
+            levels: vec![Level::Artist],
+            track_order: vec![TrackKey::Title],
+            album_order: AlbumOrder::Title,
+        };
+        assert_eq!(
+            library.names(&by_artist, &[]),
+            named(&[("Rapper", 1), ("Singer", 2)])
+        );
+        let rapper = library.key(&by_artist, &[], "Rapper");
+        assert_eq!(library.titles(&by_artist, &[rapper]), ["Duet"]);
+        // Listed once, under its credit, when a node's tracks are played.
+        let all = node_track_ids(&library.conn, &by_artist, &[], &[], true).unwrap();
+        assert_eq!(all.len(), 2);
+        let page = library.page(&by_artist, &[library.key(&by_artist, &[], "Singer")]);
+        assert_eq!(page.tracks[0].artist.as_deref(), Some("Singer; Rapper"));
+    }
+
+    #[test]
+    fn keeps_only_favourites_when_asked_and_hearts_groups() {
+        let library = Library::new([
+            track("a/1.flac").title("One").artist("A").album("X"),
+            track("a/2.flac").title("Two").artist("A").album("X"),
+            track("b/1.flac").title("Three").artist("B").album("Y"),
+        ]);
+        let conn = &library.conn;
+        let album_y: i64 = conn
+            .query_row("SELECT id FROM albums WHERE title = 'Y'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let one: i64 = conn
+            .query_row("SELECT id FROM tracks WHERE title = 'One'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        marks::set_favourite(conn, MarkKind::Album, &[album_y], true).unwrap();
+        marks::set_favourite(conn, MarkKind::Track, &[one], true).unwrap();
+
+        let rule = rule("album-artist");
+        let favourites = Filter { favourites: true };
+        let artists = browse_filtered(conn, &rule, &[], &[], 0, 100, favourites).unwrap();
+        let counts: Vec<(String, u32)> = artists
+            .groups
+            .iter()
+            .map(|group| (group.name.clone(), group.track_count))
+            .collect();
+        assert_eq!(counts, named(&[("A", 1), ("B", 1)]));
+        let a = artists.groups[0].key.clone();
+        let albums = browse(conn, &rule, &[], std::slice::from_ref(&a), 0, 100).unwrap();
+        assert!(!albums.groups[0].favourite);
+        let b = artists.groups[1].key.clone();
+        let albums = browse(conn, &rule, &[], std::slice::from_ref(&b), 0, 100).unwrap();
+        assert!(albums.groups[0].favourite, "album Y is hearted");
+        let ids = node_track_ids_filtered(conn, &rule, &[], &[], true, favourites).unwrap();
+        assert_eq!(ids.len(), 2);
+        let folder = rule_folder();
+        let root = browse_filtered(conn, &folder, &[], &[], 0, 100, favourites).unwrap();
+        assert_eq!(root.groups[0].track_count, 2);
+    }
+
+    fn rule_folder() -> SortRule {
+        rule("folder")
     }
 }

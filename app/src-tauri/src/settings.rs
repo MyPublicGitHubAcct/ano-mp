@@ -41,6 +41,94 @@ pub struct AppSettings {
     pub output: OutputSettings,
     pub visualizer: VisualizerSettings,
     pub features: FeatureSettings,
+    pub equaliser: EqualiserSettings,
+    pub library: LibrarySettings,
+    pub window: WindowSettings,
+}
+
+/// Keeping the library in step with the disk (PLAN.md F9).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySettings {
+    /// Rescans every folder in the background at launch.
+    pub rescan_at_launch: bool,
+    /// Rescans a folder when its files change while the app runs.
+    pub watch_folders: bool,
+}
+
+impl Default for LibrarySettings {
+    fn default() -> Self {
+        LibrarySettings {
+            rescan_at_launch: true,
+            watch_folders: true,
+        }
+    }
+}
+
+/// The app's windows and what it shows outside them (PLAN.md F7, F21).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct WindowSettings {
+    /// Transport and the current track in the menu bar.
+    pub menu_bar_controls: bool,
+    /// The mini player stays above other windows.
+    pub mini_player_on_top: bool,
+    /// A notification when the track changes while the window isn't in
+    /// front, with the cover.
+    pub track_notifications: bool,
+    /// The visualizer's note about flashing lights was read (F18).
+    pub visualizer_note_seen: bool,
+}
+
+/// The graphic equaliser (PLAN.md F15): ten bands and a preamp, with a
+/// profile for speakers and, if it follows the output, one for headphones.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct EqualiserSettings {
+    pub enabled: bool,
+    /// Used unless `follow_output` is on and headphones are plugged in.
+    pub speakers: EqualiserProfile,
+    pub headphones: EqualiserProfile,
+    /// Switches to the headphones profile while the OS says headphones
+    /// are plugged in.
+    pub follow_output: bool,
+}
+
+/// Gains for the ten bands (31 Hz to 16 kHz) and a preamp, in dB.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct EqualiserProfile {
+    /// The preset these came from ("flat", "bassBoost"…), or "custom".
+    pub preset: String,
+    pub preamp: f64,
+    pub gains: Vec<f64>,
+}
+
+impl Default for EqualiserProfile {
+    fn default() -> Self {
+        EqualiserProfile {
+            preset: "flat".into(),
+            preamp: 0.0,
+            gains: vec![0.0; crate::anomp::EQ_BANDS],
+        }
+    }
+}
+
+impl EqualiserSettings {
+    /// The profile for the output, if the equaliser is on.
+    pub fn active(&self, headphones: Option<bool>) -> Option<&EqualiserProfile> {
+        self.enabled.then(|| {
+            if self.follow_output && headphones == Some(true) {
+                &self.headphones
+            } else {
+                &self.speakers
+            }
+        })
+    }
 }
 
 /// The optional features (PLAN.md §4.6, O1–O19), each of which the user
@@ -219,6 +307,8 @@ pub enum TrackColumn {
     DateAdded,
     /// The composer (O6).
     Composer,
+    /// The user's stars (F3).
+    Rating,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -247,6 +337,9 @@ pub struct PlaybackSettings {
     pub untagged_gain: f64,
     /// Lowers a track's gain so its tagged peak doesn't clip.
     pub prevent_clipping: bool,
+    /// Seconds to crossfade between tracks, 0 (off, gapless) to 12; never
+    /// between tracks of one album (PLAN.md F14).
+    pub crossfade: f64,
 }
 
 impl Default for PlaybackSettings {
@@ -256,6 +349,7 @@ impl Default for PlaybackSettings {
             preamp: 0.0,
             untagged_gain: 0.0,
             prevent_clipping: true,
+            crossfade: 0.0,
         }
     }
 }
@@ -338,6 +432,9 @@ pub struct VisualizerSettings {
     pub colors_from_cover: bool,
     /// Moves on to the next visualization this often; 0 never.
     pub cycle_seconds: u32,
+    /// Calm mode: no beats, slow motion (PLAN.md F18); on by itself while
+    /// the OS asks for reduced motion.
+    pub calm: bool,
 }
 
 impl Default for VisualizerSettings {
@@ -349,6 +446,7 @@ impl Default for VisualizerSettings {
             sensitivity: 1.0,
             colors_from_cover: true,
             cycle_seconds: 0,
+            calm: false,
         }
     }
 }
@@ -374,6 +472,9 @@ impl AppSettings {
                     "The {name} must be between -{MAX_GAIN_DB} and {MAX_GAIN_DB} dB"
                 ));
             }
+        }
+        if !(0.0..=crate::anomp::MAX_CROSSFADE).contains(&playback.crossfade) {
+            return invalid("The crossfade must be 0 to 12 seconds".into());
         }
         let output = &self.output;
         if let Some(device) = &output.device {
@@ -405,6 +506,19 @@ impl AppSettings {
         }
         if features.remote_port < 1024 {
             return invalid("The remote's port must be 1024 to 65535".into());
+        }
+        for profile in [&self.equaliser.speakers, &self.equaliser.headphones] {
+            let in_range =
+                |db: f64| (-crate::anomp::EQ_MAX_GAIN..=crate::anomp::EQ_MAX_GAIN).contains(&db);
+            if profile.gains.len() != crate::anomp::EQ_BANDS {
+                return invalid("The equaliser has ten bands".into());
+            }
+            if !profile.gains.iter().all(|&db| in_range(db)) || !in_range(profile.preamp) {
+                return invalid("The equaliser's gains must be between -12 and 12 dB".into());
+            }
+            if profile.preset.trim().is_empty() || profile.preset.len() > 64 {
+                return invalid("An equaliser preset's id must be 1 to 64 bytes".into());
+            }
         }
         Ok(())
     }
@@ -474,6 +588,12 @@ fn try_replace(root: &mut Value, pointer: &str, value: Value) -> bool {
     }
     *root.pointer_mut(pointer).expect("pointer checked by merge") = previous;
     false
+}
+
+/// Settings from a JSON value (e.g. an imported data file), read as leniently
+/// as stored ones.
+pub fn from_value(value: &Value) -> AppSettings {
+    AppSettings::from_json(&value.to_string())
 }
 
 pub fn load(conn: &Connection) -> Result<AppSettings, Error> {
@@ -577,6 +697,15 @@ pub async fn settings_save<R: Runtime>(
     if settings.playback != before.playback {
         crate::queue::refresh_gains(&app);
     }
+    if settings.equaliser != before.equaliser {
+        crate::audio::apply_equaliser(&app, &settings.equaliser);
+    }
+    if settings.library != before.library {
+        crate::library::watch::configure(&app, &settings.library);
+    }
+    if settings.window != before.window {
+        crate::shell::window_settings_changed(&app, &settings.window);
+    }
     if settings.visualizer.frame_rate != before.visualizer.frame_rate {
         crate::visualizer::restart(&app);
     }
@@ -675,6 +804,9 @@ mod tests {
         assert!(error(|s| s.visualizer.cycle_seconds = 7200).contains("hour"));
         assert!(error(|s| s.features.skip_silence_after = 0).contains("Silence"));
         assert!(error(|s| s.features.remote_port = 80).contains("port"));
+        assert!(error(|s| s.playback.crossfade = 13.0).contains("crossfade"));
+        assert!(error(|s| s.equaliser.speakers.gains = vec![0.0; 3]).contains("ten bands"));
+        assert!(error(|s| s.equaliser.headphones.preamp = 13.0).contains("between"));
         assert_eq!(
             load(&conn).unwrap(),
             AppSettings::default(),
@@ -834,6 +966,10 @@ mod bindings {
         declare::<CoverBasis>(&cfg, out);
         declare::<FeatureSettings>(&cfg, out);
         declare::<CrossfeedLevel>(&cfg, out);
+        declare::<EqualiserSettings>(&cfg, out);
+        declare::<EqualiserProfile>(&cfg, out);
+        declare::<LibrarySettings>(&cfg, out);
+        declare::<WindowSettings>(&cfg, out);
         declare::<crate::audio::OutputStatus>(&cfg, out);
         declare::<crate::anomp::DeviceInfo>(&cfg, out);
         declare::<rules::SortSettings>(&cfg, out);

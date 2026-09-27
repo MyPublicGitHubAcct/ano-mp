@@ -8,6 +8,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { metadata, type ArtistCandidate, type ArtistInfo } from "$lib/api";
   import { lifeSpan } from "$lib/format";
+  import { errorText, t } from "$lib/i18n";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import type { ArtistRef } from "$lib/state/ui.svelte";
   import Dialog from "./Dialog.svelte";
@@ -40,7 +41,7 @@
     } catch (error) {
       if (at === request) {
         candidates = [];
-        toasts.show(String(error));
+        toasts.show(errorText(error));
       }
     } finally {
       if (at === request) searching = false;
@@ -58,7 +59,7 @@
       toasts.show(done, "info", 3000);
       onclose();
     } catch (error) {
-      toasts.show(String(error));
+      toasts.show(errorText(error));
     } finally {
       busy = false;
     }
@@ -66,7 +67,7 @@
 
   const choose = () => {
     const mbid = selected;
-    if (mbid) act(() => metadata.chooseArtist(artist.id, mbid), `${artist.name} updated`);
+    if (mbid) act(() => metadata.chooseArtist(artist.id, mbid), t("findArtist.updated", { name: artist.name }));
   };
 
   function openLink(event: MouseEvent) {
@@ -76,7 +77,7 @@
   }
 </script>
 
-<Dialog title="Find {artist.name} on MusicBrainz" {onclose}>
+<Dialog title={t("findArtist.title", { name: artist.name })} {onclose}>
   <form
     class="search"
     onsubmit={(event) => {
@@ -85,16 +86,16 @@
     }}
   >
     <label>
-      <span class="muted small">Name, or a MusicBrainz artist link</span>
+      <span class="muted small">{t("findArtist.query")}</span>
       <input type="text" bind:value={name} />
     </label>
-    <button type="submit" disabled={searching || name.trim() === ""}><Icon name="search" /> Search</button>
+    <button type="submit" disabled={searching || name.trim() === ""}><Icon name="search" /> {t("findArtist.search")}</button>
   </form>
 
   {#if candidates === null}
-    <p class="muted" aria-live="polite">Searching…</p>
+    <p class="muted" aria-live="polite">{t("findArtist.searching")}</p>
   {:else if candidates.length === 0}
-    <p class="muted">{searching ? "Searching…" : "No artists found. Try another name."}</p>
+    <p class="muted">{t(searching ? "findArtist.searching" : "findArtist.none")}</p>
   {:else}
     <ul class="candidates" aria-busy={searching}>
       {#each candidates as candidate (candidate.artist.id)}
@@ -110,15 +111,15 @@
               <span class="name">
                 {found.name}{#if found.disambiguation}{" "}<span class="muted">({found.disambiguation})</span>{/if}
               </span>
-              <span class="score muted" title="MusicBrainz’s score for the search">{candidate.score}</span>
+              <span class="score muted" title={t("findArtist.score")}>{candidate.score}</span>
             </span>
             {#if describe(candidate)}<span class="muted small">{describe(candidate)}</span>{/if}
             {#if found.id === current}
-              <span class="badges"><span class="badge">{info.chosenByUser ? "Your choice" : "Current match"}</span></span>
+              <span class="badges"><span class="badge">{t(info.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span></span>
             {/if}
           </button>
           {#if selected === found.id}
-            <a class="small more" href="https://musicbrainz.org/artist/{found.id}" onclick={openLink}>Open on MusicBrainz</a>
+            <a class="small more" href="https://musicbrainz.org/artist/{found.id}" onclick={openLink}>{t("findArtist.open")}</a>
           {/if}
         </li>
       {/each}
@@ -128,23 +129,23 @@
   {#snippet actions()}
     {#if info.status !== null}
       <button
-        onclick={() => act(() => metadata.useAutomaticArtist(artist.id), `${artist.name} was looked up again`)}
+        onclick={() => act(() => metadata.useAutomaticArtist(artist.id), t("findArtist.again", { name: artist.name }))}
         disabled={busy}
-        title="Forget this artist’s match and look them up again now">Use automatic</button
+        title={t("findArtist.automaticHint")}>{t("cover.useAutomatic")}</button
       >
     {/if}
     {#if !(info.status === "none" && info.chosenByUser)}
       <button
-        onclick={() => act(() => metadata.rejectArtist(artist.id), `${artist.name} won’t be looked up automatically`)}
-        disabled={busy}>None of these</button
+        onclick={() => act(() => metadata.rejectArtist(artist.id), t("findArtist.rejected", { name: artist.name }))}
+        disabled={busy}>{t("findArtist.noneOfThese")}</button
       >
     {/if}
     <span class="spacer"></span>
-    <button onclick={onclose} disabled={busy}>Cancel</button>
+    <button onclick={onclose} disabled={busy}>{t("dialog.cancel")}</button>
     <button
       class="primary"
       onclick={choose}
-      disabled={busy || selected === null || (selected === current && info.chosenByUser)}>Use this artist</button
+      disabled={busy || selected === null || (selected === current && info.chosenByUser)}>{t("findArtist.use")}</button
     >
   {/snippet}
 </Dialog>

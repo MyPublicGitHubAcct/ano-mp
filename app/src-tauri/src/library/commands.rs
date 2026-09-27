@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use super::access::{self, OpenFolder};
 use super::art::ArtCache;
 use super::artists::{self, ArtistPage};
-use super::browse::{self, BrowsePage, GroupKey};
+use super::browse::{self, BrowsePage, Filter, GroupKey};
 use super::covers::{self, CoverBasis, CoverWall};
 use super::playback::{self, TrackPlay};
 use super::rules::{self, SortRule, SortSettings};
@@ -27,6 +27,11 @@ use crate::settings::FeatureSettings;
 
 /// Frontend event with a `ScanProgress` payload.
 pub const SCAN_PROGRESS_EVENT: &str = "library-scan-progress";
+/// Frontend event with the `ScanReport`s of a scan that finished, whoever
+/// started it (the user, the launch, a change on disk).
+pub const LIBRARY_CHANGED_EVENT: &str = "library-changed";
+/// Frontend event while a scan runs: `true` as it starts, `false` when done.
+pub const SCANNING_EVENT: &str = "library-scanning";
 
 pub struct LibraryState {
     db_path: PathBuf,
@@ -68,7 +73,7 @@ impl LibraryState {
     ) -> Result<TrackPlay, String> {
         playback::track_play(&self.conn(), track_id, features)
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| "The track is no longer in the library".to_string())
+            .ok_or_else(|| crate::coded::gone(crate::coded::Gone::Track))
     }
 }
 
@@ -124,27 +129,68 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     Ok(())
 }
 
+/// The library folders, each saying whether it can be opened now (F8).
 #[tauri::command]
-pub fn library_folders(state: State<'_, LibraryState>) -> Result<Vec<Folder>, String> {
-    super::folders(&state.conn()).map_err(|e| e.to_string())
+pub async fn library_folders<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Folder>, String> {
+    on_library(&app, |library| {
+        let conn = library.conn();
+        let mut folders = super::folders(&conn)?;
+        for folder in &mut folders {
+            folder.available = Some(access::open_folder(&conn, folder.id).is_ok());
+        }
+        Ok(folders)
+    })
+    .await
 }
 
 /// Adds a folder, unscanned; follow with `library_scan`.
 #[tauri::command]
-pub fn library_add_folder(state: State<'_, LibraryState>, path: PathBuf) -> Result<Folder, String> {
-    super::add_folder(&state.conn(), &path).map_err(|e| e.to_string())
+pub fn library_add_folder<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, LibraryState>,
+    path: PathBuf,
+) -> Result<Folder, String> {
+    let folder = super::add_folder(&state.conn(), &path).map_err(|e| e.to_string())?;
+    super::watch::folders_changed(&app);
+    Ok(folder)
+}
+
+/// Points a folder at where the user found it (F8); follow with
+/// `library_scan`.
+#[tauri::command]
+pub fn library_locate_folder<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, LibraryState>,
+    folder_id: i64,
+    path: PathBuf,
+) -> Result<Folder, String> {
+    let folder =
+        super::relocate_folder(&state.conn(), folder_id, &path).map_err(|e| e.to_string())?;
+    super::watch::folders_changed(&app);
+    Ok(folder)
 }
 
 #[tauri::command]
-pub fn library_remove_folder(state: State<'_, LibraryState>, folder_id: i64) -> Result<(), String> {
+pub fn library_remove_folder<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, LibraryState>,
+    folder_id: i64,
+) -> Result<(), String> {
     if state.scanning.load(Ordering::SeqCst) {
-        return Err("Wait for the library scan to finish".into());
+        return Err(crate::coded::coded(
+            "waitForScan",
+            &[],
+            "Wait for the library scan to finish",
+        ));
     }
-    super::remove_folder(&mut state.conn(), folder_id).map_err(|e| e.to_string())
+    super::remove_folder(&mut state.conn(), folder_id).map_err(|e| e.to_string())?;
+    super::watch::folders_changed(&app);
+    Ok(())
 }
 
 /// One page of the children of the node at `path` under the sort rule
-/// `rule_id`; see `library::browse::browse`.
+/// `rule_id`, keeping what `filter` keeps (all by default); see
+/// `library::browse::browse`.
 #[tauri::command]
 pub async fn library_browse<R: Runtime>(
     app: AppHandle<R>,
@@ -152,9 +198,39 @@ pub async fn library_browse<R: Runtime>(
     path: Vec<Option<GroupKey>>,
     offset: u32,
     limit: u32,
+    filter: Option<Filter>,
 ) -> Result<BrowsePage, String> {
     on_library(&app, move |library| {
-        browse::browse_rule(&library.conn(), &rule_id, &path, offset, limit)
+        browse::browse_rule(
+            &library.conn(),
+            &rule_id,
+            &path,
+            offset,
+            limit,
+            filter.unwrap_or_default(),
+        )
+    })
+    .await
+}
+
+/// The ids of the tracks under the node at `path` (see
+/// `browse::node_track_ids`), e.g. to add an album to a playlist.
+#[tauri::command]
+pub async fn library_node_track_ids<R: Runtime>(
+    app: AppHandle<R>,
+    rule: browse::RuleSpec,
+    path: Vec<Option<GroupKey>>,
+    recursive: bool,
+    filter: Option<Filter>,
+) -> Result<Vec<i64>, String> {
+    on_library(&app, move |library| {
+        browse::node_track_ids_rule(
+            &library.conn(),
+            &rule,
+            &path,
+            recursive,
+            filter.unwrap_or_default(),
+        )
     })
     .await
 }
@@ -188,7 +264,7 @@ pub async fn library_artist<R: Runtime>(
 ) -> Result<ArtistPage, String> {
     let page = on_library(&app, move |library| {
         artists::artist_page(&library.conn(), artist_id)?
-            .ok_or_else(|| Error::Invalid("The artist is no longer in the library".into()))
+            .ok_or_else(|| Error::Invalid(crate::coded::gone(crate::coded::Gone::Artist)))
     })
     .await?;
     crate::metadata::worker::viewing_artist(&app, artist_id);
@@ -253,32 +329,52 @@ pub fn library_reset_sort_settings(state: State<'_, LibraryState>) -> Result<Sor
 #[tauri::command]
 pub async fn library_scan<R: Runtime>(
     app: AppHandle<R>,
-    state: State<'_, LibraryState>,
     folder_id: Option<i64>,
 ) -> Result<Vec<ScanReport>, String> {
+    run_scan(&app, folder_id.map(|id| vec![id]), false).await
+}
+
+/// Scans `folder_ids` together (every folder when `None`), emitting
+/// progress, then `library-changed`. One scan runs at a time: this fails
+/// while another runs. A `background` scan runs at a low priority (F9).
+pub async fn run_scan<R: Runtime>(
+    app: &AppHandle<R>,
+    folder_ids: Option<Vec<i64>>,
+    background: bool,
+) -> Result<Vec<ScanReport>, String> {
+    let state = app
+        .try_state::<LibraryState>()
+        .ok_or("The library is not available")?;
     if state.scanning.swap(true, Ordering::SeqCst) {
-        return Err("A library scan is already running".into());
+        return Err(crate::coded::scan_running());
     }
     let _scanning = ClearOnDrop(&state.scanning);
+    let _ = app.emit(SCANNING_EVENT, true);
     let db_path = state.db_path.clone();
     let scan_app = app.clone();
     let options = ScanOptions {
-        parts: crate::settings::current(&app).features.cue_sheets,
+        parts: crate::settings::current(app).features.cue_sheets,
+        background,
     };
     let reports = tauri::async_runtime::spawn_blocking(move || {
-        scan_folders(&db_path, folder_id, options, |progress| {
+        if background {
+            super::watch::lower_priority();
+        }
+        scan_folders(&db_path, folder_ids, options, |progress| {
             let _ = scan_app.emit(SCAN_PROGRESS_EVENT, progress);
         })
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string());
+    let _ = app.emit(SCANNING_EVENT, false);
+    let reports = reports?.map_err(|e| e.to_string())?;
     // Files may have new art or tags.
     state.art.clear();
-    crate::queue::refresh_tracks(&app).await;
+    crate::queue::refresh_tracks(app).await;
     // New albums to look up, if the settings say so, and tracks to analyse.
-    crate::metadata::worker::enrich_library(&app);
-    super::analysis::library_changed(&app);
+    crate::metadata::worker::enrich_library(app);
+    super::analysis::library_changed(app);
+    let _ = app.emit(LIBRARY_CHANGED_EVENT, &reports);
     Ok(reports)
 }
 
@@ -300,7 +396,7 @@ pub fn reread_all<R: Runtime>(app: &AppHandle<R>) {
             eprintln!("[library] {error}");
             return;
         }
-        if let Err(error) = library_scan(app.clone(), state, None).await {
+        if let Err(error) = run_scan(&app, None, false).await {
             eprintln!("[library] {error}");
         }
     });
@@ -315,36 +411,39 @@ async fn tokio_sleep() {
 
 fn scan_folders(
     db_path: &Path,
-    folder_id: Option<i64>,
+    folder_ids: Option<Vec<i64>>,
     options: ScanOptions,
-    mut progress: impl FnMut(scanner::ScanProgress),
+    progress: impl FnMut(scanner::ScanProgress),
 ) -> Result<Vec<ScanReport>, Error> {
     let mut conn = db::open(db_path)?;
     let folders: Vec<Folder> = super::folders(&conn)?
         .into_iter()
-        .filter(|folder| folder_id.is_none_or(|id| id == folder.id))
+        .filter(|folder| {
+            folder_ids
+                .as_ref()
+                .is_none_or(|ids| ids.contains(&folder.id))
+        })
         .collect();
-    if let (Some(id), true) = (folder_id, folders.is_empty()) {
-        return Err(Error::Invalid(format!("No library folder with id {id}")));
+    if let (Some(ids), true) = (&folder_ids, folders.is_empty()) {
+        return Err(Error::Invalid(crate::coded::no_folder(ids)));
     }
-    let mut reports = Vec::new();
-    for folder in folders {
-        reports.push(
-            match scanner::scan_folder(&mut conn, folder.id, options, &mut progress) {
-                Ok(report) => report,
-                Err(Error::Invalid(error)) => ScanReport {
-                    folder_id: folder.id,
-                    failed: vec![ScanFailure {
-                        path: folder.path,
-                        error,
-                    }],
-                    ..ScanReport::default()
-                },
-                Err(error) => return Err(error),
+    let ids: Vec<i64> = folders.iter().map(|folder| folder.id).collect();
+    let results = scanner::scan_folders(&mut conn, &ids, options, progress)?;
+    Ok(folders
+        .into_iter()
+        .zip(results)
+        .map(|(folder, result)| match result {
+            Ok(report) => report,
+            Err(error) => ScanReport {
+                folder_id: folder.id,
+                failed: vec![ScanFailure {
+                    path: folder.path,
+                    error: error.to_string(),
+                }],
+                ..ScanReport::default()
             },
-        );
-    }
-    Ok(reports)
+        })
+        .collect())
 }
 
 struct ClearOnDrop<'a>(&'a AtomicBool);

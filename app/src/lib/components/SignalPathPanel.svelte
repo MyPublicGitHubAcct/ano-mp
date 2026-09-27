@@ -2,9 +2,11 @@
   // The signal path (O10): every step from the file to the speakers, as the
   // engine has it now — the file's codec, bit depth, rate and bit rate, the
   // gain applied, practice mode's stretching, resampling (or not),
-  // crossfeed, the volume, and the device.
+  // the equaliser, crossfeed, crossfading into the next track, the volume,
+  // and the device.
   import { onMount } from "svelte";
   import { player as api, type SignalPath } from "$lib/api";
+  import { t, type MessageKey } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import Popover from "./Popover.svelte";
@@ -20,69 +22,86 @@
     return () => clearInterval(timer);
   });
 
-  const khz = (hz: number) => `${(hz / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} kHz`;
+  const khz = (hz: number) =>
+    t("info.kHz", { rate: (hz / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 }) });
   const db = (linear: number) => {
     if (linear <= 0) return "−∞ dB";
     const value = 20 * Math.log10(linear);
     return `${value > 0.05 ? "+" : value < -0.05 ? "−" : ""}${Math.abs(value).toFixed(1)} dB`;
   };
-  const CROSSFEED = ["Off", "Light", "Medium", "Strong"];
+  const CROSSFEED: MessageKey[] = ["signal.off", "signal.crossfeedLight", "signal.crossfeedMedium", "signal.crossfeedStrong"];
 </script>
 
-<Popover title="Signal path" {onclose}>
+<Popover title={t("signal.title")} {onclose}>
   {#if !path || !path.path.loaded}
-    <p class="muted">{player.currentItem ? "Start playing to see the path." : "Nothing is playing."}</p>
+    <p class="muted">{t(player.currentItem ? "signal.startPlaying" : "signal.nothing")}</p>
   {:else}
     {@const p = path.path}
     <ol>
       <li>
-        <span class="step">File</span>
+        <span class="step">{t("signal.file")}</span>
         <span>
           {p.codec.toUpperCase()}
-          {#if p.bitsPerSample}· {p.bitsPerSample}-bit{/if}
-          · {khz(p.fileSampleRate)} · {p.fileChannels === 1 ? "mono" : p.fileChannels === 2 ? "stereo" : `${p.fileChannels} channels`}
-          {#if p.bitrateKbps}· {p.bitrateKbps} kbps{/if}
-          <span class="muted">{p.lossless ? "(lossless)" : "(lossy)"}</span>
+          {#if p.bitsPerSample}· {t("signal.bits", { bits: p.bitsPerSample })}{/if}
+          · {khz(p.fileSampleRate)} · {p.fileChannels === 1
+            ? t("info.mono")
+            : p.fileChannels === 2
+              ? t("info.stereo")
+              : t("info.channels", { count: p.fileChannels })}
+          {#if p.bitrateKbps}· {t("info.kbps", { rate: p.bitrateKbps })}{/if}
+          <span class="muted">{t(p.lossless ? "info.lossless" : "signal.lossy")}</span>
         </span>
       </li>
       <li>
-        <span class="step">Gain</span>
-        <span>{db(p.trackGain)} <span class="muted">(ReplayGain and your offsets)</span></span>
+        <span class="step">{t("signal.gain")}</span>
+        <span>{db(p.trackGain)} <span class="muted">{t("signal.gainHint")}</span></span>
       </li>
       {#if p.tempo !== 1 || p.semitones !== 0}
         <li>
-          <span class="step">Practice</span>
-          <span>{Math.round(p.tempo * 100)}% speed{p.semitones !== 0 ? `, ${p.semitones > 0 ? "+" : ""}${p.semitones} semitones` : ""}</span>
+          <span class="step">{t("signal.practice")}</span>
+          <span>
+            {t("signal.speed", { percent: Math.round(p.tempo * 100) })}{p.semitones !== 0
+              ? `, ${t("signal.semitones", { count: p.semitones, signed: `${p.semitones > 0 ? "+" : ""}${p.semitones}` })}`
+              : ""}
+          </span>
         </li>
       {/if}
       <li>
-        <span class="step">Rate</span>
+        <span class="step">{t("signal.rate")}</span>
         <span>
           {#if p.resampling}
-            Resampled {khz(p.fileSampleRate)} → {khz(p.deviceSampleRate)}
+            {t("signal.resampled", { from: khz(p.fileSampleRate), to: khz(p.deviceSampleRate) })}
           {:else}
-            Not resampled
+            {t("signal.notResampled")}
           {/if}
           {#if p.resampling && !features.on.matchSampleRate}
-            <span class="muted">(“Match the device’s sample rate” in Features avoids this)</span>
+            <span class="muted">{t("signal.matchRateHint")}</span>
           {/if}
         </span>
       </li>
       <li>
-        <span class="step">Crossfeed</span>
+        <span class="step">{t("signal.equaliser")}</span>
+        <span>{t(p.equaliser ? "signal.on" : "signal.off")}</span>
+      </li>
+      <li>
+        <span class="step">{t("signal.crossfeed")}</span>
         <span>
-          {CROSSFEED[p.crossfeed] ?? "Off"}
-          {#if path.headphones !== null}<span class="muted">({path.headphones ? "headphones" : "not headphones"})</span>{/if}
+          {t(CROSSFEED[p.crossfeed] ?? "signal.off")}
+          {#if path.headphones !== null}<span class="muted">{t(path.headphones ? "signal.headphones" : "signal.notHeadphones")}</span>{/if}
         </span>
       </li>
-      <li><span class="step">Volume</span><span>{db(p.volume)}</span></li>
       <li>
-        <span class="step">Device</span>
+        <span class="step">{t("signal.crossfade")}</span>
+        <span>{p.crossfade > 0 ? t("signal.crossfadeSeconds", { seconds: p.crossfade }) : t("signal.off")}</span>
+      </li>
+      <li><span class="step">{t("signal.volume")}</span><span>{db(p.volume)}</span></li>
+      <li>
+        <span class="step">{t("signal.device")}</span>
         <span>
           {#if path.device}
-            {path.device.name} · {khz(path.device.sampleRate)} · {path.device.bufferSize} samples
+            {path.device.name} · {khz(path.device.sampleRate)} · {t("signal.buffer", { count: path.device.bufferSize })}
           {:else}
-            None open
+            {t("signal.noDevice")}
           {/if}
         </span>
       </li>

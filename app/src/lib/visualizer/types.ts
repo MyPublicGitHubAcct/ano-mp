@@ -27,9 +27,12 @@ export type Scene = {
   dt: number;
   /** The latest analysis. */
   frame: Frame;
-  /** Whether a new analysis arrived since the previous draw, and whether any of those was a beat. */
+  /** Whether a new analysis arrived since the previous draw, and whether any of those was a beat
+      (at most three a second, none when calm: `safety.ts`). */
   fresh: boolean;
   beat: boolean;
+  /** Calm mode (reduced motion, or the setting): move slowly and never jump (PLAN.md F18). */
+  calm: boolean;
   /** The current track, and its cover once loaded. */
   track: { trackId: number; albumId: number | null } | null;
   cover: CanvasImageSource | null;

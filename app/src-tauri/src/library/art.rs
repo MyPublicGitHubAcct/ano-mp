@@ -130,6 +130,12 @@ impl ArtCache {
 
 /// The art for `key`, or `None` if there is none.
 pub fn lookup(library: &LibraryState, key: ArtKey) -> Result<Option<Arc<Art>>, Error> {
+    // A file opened from outside the library (F5): its own picture.
+    if let ArtKey::Track(id) = key {
+        if id < 0 {
+            return Ok(super::external::art(id));
+        }
+    }
     if let Some(cached) = library.art.get(key) {
         return Ok(cached);
     }
@@ -452,9 +458,9 @@ pub fn choose(
         })
         .optional()?;
     if exists.is_none() {
-        return Err(Error::Invalid(
-            "The album is no longer in the library".into(),
-        ));
+        return Err(Error::Invalid(crate::coded::gone(
+            crate::coded::Gone::Album,
+        )));
     }
     let invalid = |message: &str| Err(Error::Invalid(message.into()));
     match choice {
