@@ -2763,6 +2763,14 @@ matches it.
   - GitHub secret scanning with push protection, and `gitleaks` in the
     pre-commit hook. The app handles keys now (the Discogs token), and
     signing secrets arrive with §8.2.
+  - **Done 2026-09-27 (Tauri's pins):** `tauri`, `tauri-build` and the
+    dialog and opener plugins are pinned exactly in `Cargo.toml`, and
+    their npm packages (`@tauri-apps/api`, `cli` and the plugins)
+    exactly in `package.json`. The loose `2` ranges had let `cargo`
+    move `tauri` to 2.12 while npm kept `@tauri-apps/api` at 2.11,
+    and `tauri build` refuses mismatched major.minor versions. Each
+    crate moves together with its npm package. The rest of H7 is still
+    to do.
 - **H8 Lint gates and pinned toolchains.**
   - `cargo clippy --all-targets -- -D warnings` runs in `check-all.py`.
   - A `[lints]` table in `Cargo.toml`, including `unsafe_op_in_unsafe_fn`

@@ -128,6 +128,9 @@ fetched by FetchContent into
 `build/<preset>/_deps` — the first configure takes several minutes. TagLib is a
 separate static lib (`libtag.a`), so `build.rs` links it next to `anomp_core`.
 The `release` preset sets `ANOMP_BUILD_TESTS=OFF`, so tests only run in `debug`.
+Tauri's crates and plugins are pinned exactly in `app/src-tauri/Cargo.toml`, and
+their npm packages exactly in `app/package.json`; `tauri build` refuses mismatched
+major.minor versions, so update each crate and its npm package together.
 
 Each Catch2 `TEST_CASE` is registered with CTest individually via `catch_discover_tests`:
 

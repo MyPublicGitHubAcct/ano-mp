@@ -13,17 +13,20 @@ name = "ano_mp_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "=2.7.0", features = [] }
 cmake = "0.1"
 
 [dependencies]
+# Tauri and its plugins are pinned exactly, in step with their npm packages
+# in package.json: the build refuses to run when the two sides differ in
+# major.minor. Move each pair together (PLAN.md H7).
 # tray-icon: the optional menu-bar controls (PLAN.md F7).
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "=2.12.0", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = "=2.7.3"
 # Opens web links (a biography's Wikipedia article) in the browser.
-tauri-plugin-opener = "2"
+tauri-plugin-opener = "=2.5.5"
 # Track-change notifications, opt-in (PLAN.md F21). What
 # tauri-plugin-notification uses on desktop, used directly because the
 # plugin leaves out a notification's image there, and the cover is the
