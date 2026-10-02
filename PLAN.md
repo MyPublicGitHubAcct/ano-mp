@@ -108,13 +108,13 @@ Why this split:
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events, advance count), `anomp_media_controls_*` | `core/include/anomp/anomp.h` |
+| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events, advance count), `anomp_media_controls_*`, `anomp_set_log_callback`, `anomp_volume_watcher_*` | `core/include/anomp/anomp.h` |
 | TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 100 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| 102 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -131,8 +131,11 @@ Why this split:
 | Menus, Dock menu, menu-bar controls, mini player, files opened from the Finder, track-change notifications | `app/src-tauri/src/shell/`, `core/src/DockMenu*` |
 | Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
 | UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
+| Library DB safety (H10): a copy before each migration, a check at launch with the restore or rebuild offer, `PRAGMA optimize` at exit, the response cache pruned | `app/src-tauri/src/library/db.rs`, `app/src-tauri/src/library/recovery.rs`, `app/src/lib/components/DbRepairDialog.svelte` |
+| Missing folders (H22a): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte` |
+| Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
 | 21 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links) | `app/tests/` |
-| 342 passing `cargo test` tests (playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 383 passing `cargo test` tests (database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -2007,7 +2010,7 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     scanning it.
   - Known limits: a job that fails with an HTTP error (e.g. a 503 after
     three tries) is logged and dropped until the next enrichment; nothing
-    prunes `mb_cache` yet; a rescan that changes an album's tracks
+    prunes `mb_cache` yet (H10 does since 2026-10-02); a rescan that changes an album's tracks
     doesn't make an accepted match be looked at again; covers are
     downloaded even when a local picture comes first in the order (the
     DB doesn't record which albums have embedded art), so a library of
@@ -2717,13 +2720,27 @@ in order. Step 6 runs alongside all of them.
    - H8 (clippy, `[lints]`, toolchain pins), H7's remainder (SHA pins for
      JUCE and Catch2, `cargo deny`, the update bot, secret scanning).
    - H13's P1 part (ESLint and Prettier), H6 (sanitizer presets).
-3. **P1 items that protect user data (3–5 days).**
+3. **P1 items that protect user data (3–5 days). Done 2026-10-02,
+   apart from H22b.**
+   - Every suite passed on a clean tree: ctest 102 (also under the `asan`
+     and `tsan` presets), `cargo test` 383 (9 ignored), `npm test` 21,
+     `svelte-check` 0 errors, script tests 30. `check-all.py` (still 21
+     steps) ran in full after each item.
+   - The CI job still hasn't run: Steps 1–3 aren't pushed yet. Secret
+     scanning and the hook are still the owner's to turn on.
    - H10 (DB backups and checks): the DB now holds playlists, ratings,
      history and picks that a rescan can't recreate.
    - H22 (missing folders at launch): a folder whose path exists but is
-     empty is emptied by the launch rescan today.
-   - H9 (logs, panics, diagnostics): release builds abort on a panic and
-     leave no trace.
+     empty was emptied by the launch rescan. Split in two: H22a (the
+     data loss, the folder states, the launch message, the queue, the
+     workers, drives coming back) is done; H22b (the lists) is left.
+   - H9 (logs, panics, diagnostics): release builds aborted on a panic
+     and left no trace.
+   - Wording drafted for the owner to review: the missing-folders message
+     (`missing.*`, `folderState.*`, `folderShort.*` and
+     `error.folderUnavailable.*` in `en.json`), the database repair offer
+     (`dbRepair.*`) and Settings › About (`about.*`).
+   - What only a sandboxed bundle shows is in Step 4's list.
 4. **Exit checks in a sandboxed bundle.**
    - Merge the exit lists of Phases 4, 5, 6, 6b and 6c into one
      checklist, ordered by risk:
@@ -2734,6 +2751,25 @@ in order. Step 6 runs alongside all of them.
      - the visualizers last.
    - This comes after H9 so that failures leave logs. Each failure
      becomes a fix with a test.
+   - From Step 3, only a sandboxed bundle shows these:
+     - H22's own list (a USB drive unplugged at launch, then plugged in;
+       an SMB share not mounted; a folder moved to the Trash; a folder
+       deleted), with what each shows: the folder's state and reason,
+       the launch message, the queue skipping, the drive found again
+       without a restart (the `VolumeWatcher`'s NSWorkspace notifications
+       under the sandbox).
+     - A rebuilt bundle's folders: their bookmarks don't resolve, so they
+       should read as "no access" (`noPermission`), keep their tracks,
+       and come back with "Locate…". `access::unresolved` tells that from
+       "missing" by the bookmark error's text, or by the stored path still
+       being a folder, which the sandbox may hide.
+     - The log in the container (`~/Library/Containers/<id>/Data/Library/
+       Logs/<id>/ano-mp.log`), "Show logs" revealing it in the Finder,
+       and "Copy diagnostics" (`navigator.clipboard` in the webview).
+     - A panic in a release build: the log ends with it (a temporary
+       probe).
+     - The database repair offer: restore and rebuild, each restarting
+       the app (a damaged copy of a scratch library).
 5. **The larger core P1 items (about 1 week).**
    - H5 (fuzzing).
    - H11 (opening files off the main thread). This is the riskiest
@@ -2983,8 +3019,8 @@ matches it.
       `app/.npmrc` makes npm refuse other versions.
     - C++ lint is H21. `doctor.py` (M4) doesn't exist yet; it should read
       both pins when written.
-- **H9 Logs, panics and diagnostics.** The Rust code reports problems
-  with `eprintln!` (54 calls on 2026-10-02), which a bundled app sends nowhere. With
+- **H9 Logs, panics and diagnostics.** The Rust code reported problems
+  with `eprintln!` (54 calls on 2026-10-02, none now), which a bundled app sends nowhere. With
   `panic = "abort"` in the release profile, a panic leaves no trace.
   - Use the `log` facade with `tauri-plugin-log`, writing a rotating file
     of a few MB in the app's log directory.
@@ -2998,6 +3034,54 @@ matches it.
     OS, output device, and library counts, with no paths or titles.
   - This is needed whatever the crash-reporting decision in §8.1 is, and
     a crash reporter would build on it.
+  - **Done 2026-10-02.**
+    - `logging.rs`: tauri-plugin-log 2.10.0 (the crate and its npm
+      package pinned exactly; MIT or Apache-2.0, `cargo deny` passes)
+      writes `ano-mp.log` in the app's log directory
+      (`~/Library/Logs/dev.anomp.player`, inside the container when
+      sandboxed): 2 MB a file, the current one and two old ones.
+      - Release builds write info and above; debug builds debug too, and
+        copy it to stderr. Other crates log only warnings.
+      - Lines are `<UTC time> <LEVEL> <target>: <message>`. Targets are
+        module paths, "core" for the C++ core, "webview" for the page,
+        "panic".
+    - Redaction, at every level: keys the app holds (`keep_secret`,
+      which `metadata::keys` calls for each key it reads or stores, the
+      ListenBrainz token included), `Authorization` values, and the
+      `token`, `access_token`, `api_key`, `apikey`, `key`, `secret` and
+      `password` query parameters.
+    - At info and above (the owner's decision): absolute paths become
+      `<path>`, and URLs keep only their scheme and host. Messages give
+      ids and counts; titles, artists and paths go at debug.
+    - Panics: `logging::install_panic_hook`, the first thing `run` does,
+      writes the message, where, the thread and a backtrace, and
+      flushes before the default hook and the abort. In release builds
+      (`strip = true`) the backtrace has addresses only.
+    - The core: `anomp_set_log_callback` (`core/src/Log.*`). JUCE's
+      `Logger` goes there, and `JUCE_LOG_ASSERTIONS=1` sends failed
+      assertions there in every build.
+    - The webview's uncaught errors and unhandled rejections
+      (`lib/logErrors.ts`, both windows, `log:allow-log`).
+    - Settings › About (`AboutOptions.svelte`): the versions, "Show logs"
+      (reveals the file in the Finder) and "Copy diagnostics"
+      (`diagnostics.rs`). The diagnostics are versions, OS, build,
+      whether sandboxed, the output device, library counts, folder states
+      (counts), the feature switches and online sources that are on, the
+      schema version, the DB's size, its copies, the launch check, and
+      the log's last 100 lines at info and above. No paths or titles;
+      the owner approved the additions to the list above.
+    - The `eprintln!` calls are log calls. 51 were swapped mechanically:
+      the "[tag]" prefix dropped (the target names the module), setup
+      failures as errors, other failures as warnings, the rest as
+      information. Two are in `remote/mod.rs`, for the §8.1 review to see.
+      The queue's skipped-track message logs the track's id, and the art
+      handler's error its picture's path only at debug.
+    - Tests: redaction, scrubbing, levels, timestamps, the log's last
+      lines, the panic hook, the diagnostics' text, switches and counts,
+      and the core's callback (Catch2 and Rust).
+    - Left: readable release backtraces need symbols (`strip =
+      "debuginfo"`, or a saved dSYM), a size question for §8.2. FFmpeg's
+      own log (`av_log`) isn't routed; it would be noisy on damaged files.
 - **H10 Library DB safety.** The DB now holds work users can't recreate
   by rescanning: their picks, and soon playlists and history (F1, O8).
   - Before applying migrations, write a copy with `VACUUM INTO`
@@ -3007,6 +3091,40 @@ matches it.
     exporting what F20 can save.
   - Run `PRAGMA optimize` at exit.
   - Prune `mb_cache` by age and size. 4.5 records that nothing prunes it.
+  - **Done 2026-10-02.**
+    - Copies: before applying migration n to an existing database,
+      `db::open` writes `library.sqlite3.pre-<n>` with `VACUUM INTO` (to
+      a `.partial` file, then renamed), and keeps the newest two. (The
+      file is `library.sqlite3`, not `library.db`.) A copy that can't be
+      written stops the migration: the database stays as it was, and the
+      library doesn't open until there is room.
+    - The check: `library/recovery.rs` runs `PRAGMA quick_check(20)` on
+      a thread of its own at launch (`commands::upkeep`). A database that
+      can't be opened at all fails the same way.
+    - The offer: on failure the UI shows `DbRepairDialog`, to restore the
+      newest copy or to rebuild, or to do neither until the next launch.
+      - Either choice is written to `library.recovery.json`, and the app
+        restarts; the next launch carries it out before anything opens the
+        database.
+      - The damaged database (with its WAL files) is moved aside as
+        `library.sqlite3.damaged-<unix seconds>`, never deleted.
+      - A rebuild first exports what F20 can save to
+        `library-rescue-<unix seconds>.json` next to the database; if
+        that fails, the dialog asks before going on without it. It starts
+        a new database with the old one's folders (bookmarks included)
+        and settings, scans every folder, then imports the export.
+    - `PRAGMA optimize` at exit (`commands::shutdown`).
+    - `mb_cache` is pruned after a passing launch check: copies older
+      than 180 days (`cache::MAX_AGE`; the longest freshness is 30 days),
+      then the oldest until the rest fit in 64 MB (`cache::MAX_BYTES`).
+    - Tests: `db` (a copy before migrating, none for a new database, the
+      newest two kept, a copy that can't be written stops the migration),
+      `recovery` (a sound and a damaged file, restore, rebuild, a request
+      carried out once, a restore names only a file next to the
+      database), `cache` (age and size).
+    - Left: no database has a copy until migration 010 ships; until then
+      a damaged one can only be rebuilt. A copy at other times (say, once
+      a week) would close that; not planned.
 - **H11 Open files off the main thread.** Opens run synchronously on the
   main thread (Phase 1's known limit: 7 ms for a local MP3). A sleeping
   USB disk, a NAS, or a cloud placeholder (H12) can take seconds, which
@@ -3028,8 +3146,8 @@ matches it.
     - The check lives behind a small core interface next to
       `FolderAccess`.
   - Test SMB folders, and a drive unmounted in the middle of a scan. A
-    missing folder already keeps its tracks, but an empty mount point
-    doesn't (H22).
+    missing folder keeps its tracks, and so do an empty mount point and
+    files that go during a scan (H22).
 - **H13 Frontend lint, format and tests.** The frontend has
   `svelte-check` and 5 tests of pure modules. There is no linter or
   formatter.
@@ -3207,6 +3325,76 @@ matches it.
     - an SMB share that isn't mounted;
     - a folder moved to the Trash;
     - a folder deleted.
+  - **Done 2026-10-02 (H22a), all but the lists (H22b).**
+    - States: `access::FolderState` (available, missing, empty,
+      mostlyGone, inTrash, noPermission), with the system's words.
+      - `access::check_folder` finds them: it resolves the bookmark
+        through the `Bookmarks` trait (`System` over `FolderAccess`; a
+        fake in tests), lists the folder, and calls it empty only if it
+        had tracks.
+      - `availability::FolderStates` keeps them in memory: they are found
+        again at each launch, so no migration. `library_folders` returns
+        them (`Folder.status`); each change is logged and announced
+        (`library-folders`).
+    - Never emptied: `scanner::holds` keeps a folder's tracks when a
+      scan would remove all of them, or more than half of a folder of 20
+      or more. Moves to other folders are matched first. The folder fails
+      as `empty` (nothing found) or `mostlyGone`.
+      - `library_remove_missing` removes them when the user says so
+        (after a confirmation).
+      - A file that fails to read because it went during the scan keeps
+        its tracks too.
+    - The Trash: `open_folder` refuses a bookmark that resolves into a
+      Trash (`.Trash`, `.Trashes`, a freedesktop `Trash/files`) and leaves
+      the stored path alone; the user locates or removes the folder.
+    - At launch: every folder is checked off the main thread, on a
+      connection of its own, before the launch rescan. Only folders that
+      are there are rescanned and watched.
+    - The message (`MissingFolders.svelte`) sits above the main view and
+      isn't a dialog: "N folders can't be found", each folder's reason,
+      and "Locate…", "Remove…" (or "Remove missing tracks…" for empty and
+      mostlyGone) and "Keep" (hidden until the next launch).
+      - When every folder is missing, it takes the place of the library
+        and Home views.
+      - The sidebar and Settings › Library show each folder's reason.
+    - The queue: `Queue::set_unavailable_tracks` marks the items of
+      unavailable folders (not reported as skipped) whenever folders
+      change. When nothing opens, the current item stays with its
+      position, and nothing spins. Now Playing shows a restored current
+      item that can't be opened as stopped.
+    - Drives coming back: the core's `VolumeWatcher`, next to
+      `FolderAccess` (NSWorkspace's mount and unmount notifications;
+      nothing on iOS or elsewhere yet), through `anomp_volume_watcher_*`,
+      hosted on the main thread by `availability::watch_volumes`.
+      - Each event checks the folders again.
+      - A folder that came back is rescanned and watched again, its
+        queue items are tried again, and its tracks analysed.
+    - Workers:
+      - The analysis worker leaves a folder it can't read alone until a
+        scan or the folder's return, storing no failure. It retries rows
+        earlier versions stored; the health view and the failure count
+        leave those out.
+      - The metadata worker doesn't open library files, so it needed no
+        change.
+    - Errors: `coded::folder_unavailable(path, reason, detail)`, and
+      `errorText` shows `error.<code>.<reason>` when the catalogue has it.
+    - Tests:
+      - folder states with fake bookmarks (each state, the Trash not
+        followed, states through errors);
+      - `availability` (a folder going, then coming back through empty; a
+        held folder staying held; tracks of folders);
+      - the scanner (an empty directory keeps its tracks and playlist
+        entries, then removes them when told; most of a folder held, half
+        not; files moved to another folder not held);
+      - the queue (a restored queue with nothing available plays nothing
+        and keeps its position, then plays when it comes back; a folder
+        going while playing is passed over);
+      - Now Playing showing it stopped;
+      - the volume watcher (Catch2 and Rust).
+  - **Left (H22b, P1):** tracks of unavailable folders shown as such in
+    browse, search, playlists and history, and left out by radio, shuffle
+    refills, smart playlists' "play" and Home's suggestions. Playback
+    already passes over them, since the queue skips what it can't open.
 
 - **Exit:** the macOS app is ready for the first release in §8.3, with
   the P1 items of §4.7 and of H1–H22 done.

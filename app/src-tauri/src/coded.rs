@@ -45,14 +45,19 @@ pub fn feature_off(feature: &str, name: &str) -> String {
     )
 }
 
-/// A library folder that can't be opened (its drive unplugged, or the
-/// folder moved or deleted); `reason` is the system's, when there is one.
-pub fn folder_unavailable(path: &str, reason: Option<&str>) -> String {
-    let message = match reason {
-        Some(reason) => format!("Folder not available: {path} ({reason})"),
-        None => format!("Folder not available: {path}"),
+/// A library folder that can't be read now (PLAN.md H22); `reason` is a
+/// `FolderState` code ("missing", "empty", "mostlyGone", "inTrash",
+/// "noPermission"), and `detail` the system's words, when there are any.
+pub fn folder_unavailable(path: &str, reason: &str, detail: Option<&str>) -> String {
+    let message = match detail {
+        Some(detail) => format!("Folder not available ({reason}): {path} ({detail})"),
+        None => format!("Folder not available ({reason}): {path}"),
     };
-    coded("folderUnavailable", &[("path", json!(path))], message)
+    let mut params = vec![("path", json!(path)), ("reason", json!(reason))];
+    if let Some(detail) = detail {
+        params.push(("detail", json!(detail)));
+    }
+    coded("folderUnavailable", &params, message)
 }
 
 /// Whether `error` is the error code `code`.

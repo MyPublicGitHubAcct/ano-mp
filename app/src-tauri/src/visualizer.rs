@@ -227,7 +227,7 @@ fn forwarder<R: Runtime>(
             let app = app.clone();
             let _ = app.clone().run_on_main_thread(move || {
                 if let Err(error) = sync(&app) {
-                    eprintln!("[visualizer] {error}");
+                    log::warn!("{error}");
                 }
             });
         }
@@ -237,7 +237,7 @@ fn forwarder<R: Runtime>(
 /// Restarts the analysis, if it's running, with the settings' frame rate.
 pub fn restart<R: Runtime>(app: &AppHandle<R>) {
     if let Err(error) = sync_or_restart(app, true) {
-        eprintln!("[visualizer] {error}");
+        log::warn!("{error}");
     }
 }
 
@@ -250,7 +250,7 @@ pub fn page_loading<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
     let _ = app.clone().run_on_main_thread(move || {
         if let Err(error) = sync(&app) {
-            eprintln!("[visualizer] {error}");
+            log::warn!("{error}");
         }
     });
 }

@@ -7,6 +7,7 @@ pub mod albums;
 pub mod analysis;
 pub mod art;
 pub mod artists;
+pub mod availability;
 #[cfg(test)]
 mod bench;
 pub mod browse;
@@ -24,6 +25,7 @@ pub mod marks;
 pub mod playback;
 pub mod playlists;
 pub mod prefs;
+pub mod recovery;
 pub mod rules;
 pub mod scanner;
 pub mod search;
@@ -75,11 +77,14 @@ pub struct Folder {
     pub track_count: u32,
     /// Unix seconds; `None` until the first scan.
     pub last_scan_at: Option<i64>,
-    /// Whether its bookmark resolves now, where checked (F8): `Some(false)`
-    /// for a folder on an unplugged drive, or moved where the app can't
-    /// follow, which the user can locate again.
+    /// Whether it can be read now, where checked (F8): `Some(false)` for a
+    /// folder on an unplugged drive, or moved where the app can't follow,
+    /// which the user can locate again.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub available: Option<bool>,
+    /// Why, where checked (PLAN.md H22, `availability`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<access::FolderStatus>,
 }
 
 pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
@@ -95,6 +100,7 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
             last_scan_at: row.get(2)?,
             track_count: row.get(3)?,
             available: None,
+            status: None,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -141,6 +147,7 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
         track_count: 0,
         last_scan_at: None,
         available: None,
+        status: None,
     })
 }
 

@@ -81,7 +81,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         crate::media::player_event(event);
         let _ = match event {
             Event::DeviceChanged => {
-                eprintln!("[audio] device changed");
+                log::info!("device changed");
                 reopen_chosen(&app);
                 // Headphones may have come or gone with it.
                 let current = settings::current(&app);
@@ -147,7 +147,7 @@ pub fn apply_equaliser_to(engine: &mut Engine, settings: &EqualiserSettings) {
         None => engine.set_equaliser(None),
     };
     if !applied {
-        eprintln!("[audio] the equaliser's settings are out of range");
+        log::warn!("the equaliser's settings are out of range");
     }
 }
 
@@ -176,7 +176,7 @@ fn open_output(engine: &mut Engine, output: &OutputSettings) -> Result<(), Strin
     let opened = engine.open_device(output.device.as_deref(), output.buffer_size);
     if opened.is_err() && output.device.is_some() {
         if let Err(error) = engine.open_device(None, output.buffer_size) {
-            eprintln!("[audio] cannot open the default device either: {error}");
+            log::warn!("cannot open the default device either: {error}");
         }
     }
     opened
@@ -214,11 +214,11 @@ fn reopen_chosen<R: Runtime>(app: &AppHandle<R>) {
     });
     match result {
         Ok(Some((Ok(()), _))) => {
-            eprintln!("[audio] back to {chosen}");
+            log::info!("back to {chosen}");
             FAILED_RETRY.with_borrow_mut(|failed| *failed = None);
         }
         Ok(Some((Err(error), devices))) => {
-            eprintln!("[audio] cannot reopen {chosen}: {error}");
+            log::warn!("cannot reopen {chosen}: {error}");
             FAILED_RETRY.with_borrow_mut(|failed| *failed = Some(devices));
             // Opening it may have closed the one that was playing.
             let _ = engine_mut(|engine| {

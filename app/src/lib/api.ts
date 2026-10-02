@@ -22,13 +22,19 @@ export type * from "./generated/settings";
 
 // ---- Library ----------------------------------------------------------------
 
+/** Whether a library folder can be read now, and if not why (PLAN.md H22). */
+export type FolderState = "available" | "missing" | "empty" | "mostlyGone" | "inTrash" | "noPermission";
+export type FolderStatus = { state: FolderState; /** The system's words, in English. */ detail?: string };
+
 export type Folder = {
   id: number;
   path: string;
   trackCount: number;
   lastScanAt: number | null;
-  /** Whether it can be opened now (F8); false for an unplugged drive or a folder moved out of reach. */
+  /** Whether it can be read now (F8); false for an unplugged drive or a folder moved out of reach. */
   available?: boolean;
+  /** Why not (H22). */
+  status?: FolderStatus;
 };
 
 export type Track = {
@@ -97,6 +103,8 @@ export type ScanReport = {
   moved: number;
   unchanged: number;
   failed: { path: string; error: string }[];
+  /** The folder couldn't be scanned, or the scan kept tracks it didn't find (H22): why. */
+  unavailable?: FolderStatus;
 };
 
 /** What a browse (or playing a node) keeps. */
@@ -205,12 +213,32 @@ export type CoverWall = {
   albums: CoverAlbum[];
 };
 
+/** The launch check of the library database (PLAN.md H10). */
+export type DbCheck =
+  | { state: "running" }
+  | { state: "ok" }
+  | {
+      state: "failed";
+      /** SQLite's report, in English. */
+      problems: string[];
+      /** The copy a restore would use: written before the last upgrade. */
+      copy: { fileName: string; writtenAt: number | null } | null;
+    };
+
 export const library = {
+  dbCheck: () => invoke<DbCheck>("library_db_check"),
+  /** Restarts the app with the newest copy of the database in place. */
+  dbRestore: () => invoke<void>("library_db_restore"),
+  /** Exports the user's data, then restarts with a new database that scans the folders and imports it.
+      Fails if the export fails, unless `force`. */
+  dbRebuild: (force: boolean) => invoke<void>("library_db_rebuild", { force }),
   folders: () => invoke<Folder[]>("library_folders"),
   addFolder: (path: string) => invoke<Folder>("library_add_folder", { path }),
   /** Points a folder at where the user found it; follow with a scan. */
   locateFolder: (folderId: number, path: string) => invoke<Folder>("library_locate_folder", { folderId, path }),
   removeFolder: (folderId: number) => invoke<void>("library_remove_folder", { folderId }),
+  /** Rescans a folder, removing the tracks it doesn't find even when a scan would keep them (H22). */
+  removeMissing: (folderId: number) => invoke<ScanReport[]>("library_remove_missing", { folderId }),
   /** One folder, or all when `folderId` is null. */
   scan: (folderId: number | null) => invoke<ScanReport[]>("library_scan", { folderId }),
   browse: (ruleId: string, path: BrowsePath, offset: number, limit: number, filter: BrowseFilter | null = null) =>
@@ -389,6 +417,16 @@ export const data = {
 };
 
 // ---- The app around the page (F5–F7) ---------------------------------------------
+
+// ---- Diagnostics (H9) -----------------------------------------------------------
+
+export const diagnostics = {
+  /** Versions, the OS, the output device, counts, the folders' states, the switches on and the log's
+      last lines, as text to paste into a bug report; no paths or titles. */
+  text: () => invoke<string>("diagnostics_text"),
+  /** Shows the log files in the Finder. */
+  showLogs: () => invoke<void>("diagnostics_show_logs"),
+};
 
 export const shell = {
   /** Paths dropped on the window: folders (to offer as library folders) and playable files. */
@@ -960,6 +998,10 @@ type Events = {
   "library-changed": ScanReport[];
   /** A scan started (true) or ended (false). */
   "library-scanning": boolean;
+  /** A library folder came back or went (H22). */
+  "library-folders": null;
+  /** The launch check of the database finished (H10). */
+  "library-db-check": DbCheck;
   "collection-changed": CollectionChanged;
   /** A menu item the page handles, by id (F6). */
   menu: string;

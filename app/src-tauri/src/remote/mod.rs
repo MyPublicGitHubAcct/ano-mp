@@ -284,7 +284,7 @@ pub fn configure<R: Runtime>(app: &AppHandle<R>, features: &FeatureSettings) {
             }
         }
         Err(error) => {
-            eprintln!("[remote] cannot listen on port {port}: {error}");
+            log::warn!("cannot listen on port {port}: {error}");
             *server.error.lock().unwrap_or_else(|e| e.into_inner()) =
                 Some(format!("Port {port} can't be used: {error}"));
         }
@@ -316,7 +316,7 @@ fn serve<R: Runtime>(app: &AppHandle<R>, listener: &TcpListener, stop: &AtomicBo
                 std::thread::sleep(Duration::from_millis(100));
             }
             Err(error) => {
-                eprintln!("[remote] {error}");
+                log::warn!("{error}");
                 std::thread::sleep(Duration::from_millis(500));
             }
         }

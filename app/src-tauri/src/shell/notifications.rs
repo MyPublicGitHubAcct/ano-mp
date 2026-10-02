@@ -78,6 +78,6 @@ fn show<R: Runtime>(app: &AppHandle<R>, title: &str, body: &str, key: ArtKey) {
         notification.image_path(path);
     }
     if let Err(error) = notification.show() {
-        eprintln!("[notifications] {error}");
+        log::warn!("{error}");
     }
 }

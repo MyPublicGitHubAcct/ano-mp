@@ -18,6 +18,14 @@
 //! An album or artist left without tracks keeps the user's picks in
 //! `kept_albums` and `kept_artists` until it comes back (`restore_kept`).
 //!
+//! A scan never empties a folder on its own (PLAN.md H22): when every
+//! track of a folder, or most of a large one (`holds`), would go, they are
+//! kept and the folder fails as `FolderState::MostlyGone` (or `Empty` if it
+//! holds nothing at all), since an unmounted share or drive can leave an
+//! empty folder at its path. The user removes them with `remove_missing`.
+//! A file that fails to read because it has gone (a drive unmounted during
+//! the scan) keeps its tracks too.
+//!
 //! Artists (PLAN.md F11): an artist tag that credits several artists ("A; B",
 //! or a multi-valued ARTISTS tag) lists each in `track_artists`, the first
 //! as the track's artist, keeping the tag's text as its credit. A file
@@ -34,7 +42,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 use walkdir::WalkDir;
 
-use super::access::{open_folder, OpenFolder};
+use super::access::{open_folder, FolderState, FolderStatus, OpenFolder};
 use super::cue::{self, CuePart, CueSheet};
 use super::{remove_orphans, unix_now, Error};
 use crate::anomp::{self, split_artists, TagParts, Tags};
@@ -54,6 +62,17 @@ const BATCH_SIZE: usize = 256;
 /// Cue sheets larger than this aren't cue sheets.
 const CUE_LIMIT: u64 = 256 << 10;
 
+/// A folder with at least this many tracks is held when a scan would
+/// remove more than half of them (`holds`).
+const HOLD_MIN_TRACKS: usize = 20;
+
+/// Whether a scan that would remove `gone` of a folder's `known` tracks
+/// keeps them and asks first: all of them, or more than half of a folder
+/// of at least `HOLD_MIN_TRACKS`.
+fn holds(known: usize, gone: usize) -> bool {
+    gone > 0 && (gone == known || (known >= HOLD_MIN_TRACKS && gone * 2 > known))
+}
+
 /// How a scan reads files.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ScanOptions {
@@ -62,6 +81,9 @@ pub struct ScanOptions {
     /// A scan the user didn't ask for (at launch, after changes on disk):
     /// its threads run at a low priority, and fewer of them (F9).
     pub background: bool,
+    /// Remove missing tracks even when `holds` would keep them: the user
+    /// said to.
+    pub remove_missing: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -81,6 +103,10 @@ pub struct ScanReport {
     /// Files and folders that couldn't be read. Such files are left out of
     /// the library; tracks under such folders are kept.
     pub failed: Vec<ScanFailure>,
+    /// Set when the folder couldn't be scanned, or the scan kept tracks it
+    /// didn't find (PLAN.md H22): why.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<FolderStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -201,17 +227,35 @@ pub fn scan_folders(
     }
 
     let tx = conn.transaction()?;
-    for (_, scan) in &mut scans {
-        for id in pool.unmatched(scan.folder_id) {
-            tx.prepare_cached("DELETE FROM tracks WHERE id = ?1")?
-                .execute([id])?;
-            scan.report.removed += 1;
+    let mut held = Vec::new();
+    for (index, scan) in &mut scans {
+        let gone = pool.unmatched(scan.folder_id);
+        if !options.remove_missing && holds(scan.known, gone.len()) {
+            let state = if scan.found == 0 {
+                FolderState::Empty
+            } else {
+                FolderState::MostlyGone
+            };
+            log::warn!(
+                "kept the {} of {} tracks a scan of folder {} didn't find ({})",
+                gone.len(),
+                scan.known,
+                scan.folder_id,
+                state.code()
+            );
+            held.push((*index, scan.root.clone(), state, gone.len()));
+        } else {
+            for id in gone {
+                tx.prepare_cached("DELETE FROM tracks WHERE id = ?1")?
+                    .execute([id])?;
+                scan.report.removed += 1;
+            }
+            tx.execute(
+                "UPDATE folders SET last_scan_at = ?1 WHERE id = ?2",
+                params![unix_now(), scan.folder_id],
+            )?;
         }
         regroup_compilations(&tx, scan.folder_id)?;
-        tx.execute(
-            "UPDATE folders SET last_scan_at = ?1 WHERE id = ?2",
-            params![unix_now(), scan.folder_id],
-        )?;
     }
     remove_orphans(&tx)?;
     restore_kept(&tx)?;
@@ -220,16 +264,28 @@ pub fn scan_folders(
     for (index, scan) in scans {
         results[index] = Ok(scan.report);
     }
+    for (index, root, state, gone) in held {
+        results[index] = Err(Error::Invalid(crate::coded::folder_unavailable(
+            &root.to_string_lossy(),
+            state.code(),
+            Some(&format!("{gone} tracks not found")),
+        )));
+    }
     Ok(results)
 }
 
 /// A folder walked, and what its scan found so far.
 struct FolderScan {
     folder_id: i64,
+    root: PathBuf,
     /// Readable until the scan ends.
     _open: OpenFolder,
     report: ScanReport,
     pending: Vec<Pending>,
+    /// Tracks the folder had before the scan.
+    known: usize,
+    /// Audio files the walk found.
+    found: usize,
 }
 
 /// Opens and walks one folder: its new and changed files, and (into the
@@ -244,6 +300,7 @@ fn walk_folder(
     if !root.is_dir() {
         return Err(Error::Invalid(crate::coded::folder_unavailable(
             &root.to_string_lossy(),
+            FolderState::Missing.code(),
             None,
         )));
     }
@@ -253,7 +310,9 @@ fn walk_folder(
         ..ScanReport::default()
     };
     let mut known = known_tracks(conn, folder_id)?;
+    let known_count = known.values().map(Vec::len).sum();
     let (pending, unreadable) = walk(&root, &mut known, options, &mut report);
+    let found = pending.len() + (known_count - known.values().map(Vec::len).sum::<usize>());
 
     // What's left in `known` wasn't found, but a folder that couldn't be
     // read may still hold it.
@@ -273,9 +332,12 @@ fn walk_folder(
     Ok((
         FolderScan {
             folder_id,
+            root,
             _open: folder,
             report,
             pending,
+            known: known_count,
+            found,
         },
         missing,
     ))
@@ -341,10 +403,16 @@ fn read_and_write(
                     }
                 }
                 Err(error) => {
-                    for part in &file.known {
-                        tx.prepare_cached("DELETE FROM tracks WHERE id = ?1")?
-                            .execute([part.id])?;
-                        scan.report.removed += 1;
+                    // A file that went during the scan (its drive unmounted)
+                    // keeps its tracks until a scan finds it gone.
+                    if file.path.exists() {
+                        for part in &file.known {
+                            tx.prepare_cached("DELETE FROM tracks WHERE id = ?1")?
+                                .execute([part.id])?;
+                            scan.report.removed += 1;
+                        }
+                    } else {
+                        scan.report.unchanged += file.known.len();
                     }
                     scan.report.failed.push(ScanFailure {
                         path: file.path.to_string_lossy().into_owned(),
@@ -1462,6 +1530,7 @@ mod tests {
     const PARTS: ScanOptions = ScanOptions {
         parts: true,
         background: false,
+        remove_missing: false,
     };
 
     fn sample_library() -> Library {
@@ -1647,6 +1716,100 @@ mod tests {
         let error = scan_folder(&mut library.conn, library.folder_id, PARTS, |_| {}).unwrap_err();
         assert!(crate::coded::is(&error, "folderUnavailable"), "{error}");
         assert_eq!(library.tracks().len(), 3);
+    }
+
+    #[test]
+    fn a_folder_that_reads_as_empty_keeps_its_tracks() {
+        let mut library = sample_library();
+        library.scan();
+        let ids: Vec<i64> = library.tracks().iter().map(|track| track.id).collect();
+        crate::library::playlists::create(&mut library.conn, "Mine", None, &ids).unwrap();
+
+        // An unmounted share leaves an empty folder at its path.
+        fs::remove_dir_all(&library.root).unwrap();
+        fs::create_dir(&library.root).unwrap();
+        let error = scan_folder(&mut library.conn, library.folder_id, PARTS, |_| {}).unwrap_err();
+        assert_eq!(
+            FolderState::of_error(&error),
+            Some(FolderState::Empty),
+            "{error}"
+        );
+        assert_eq!(
+            library
+                .tracks()
+                .iter()
+                .map(|track| track.id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert_eq!(library.count("playlist_items"), 3);
+
+        // Told to, the scan removes them.
+        let options = ScanOptions {
+            remove_missing: true,
+            ..PARTS
+        };
+        let report = scan_folder(&mut library.conn, library.folder_id, options, |_| {}).unwrap();
+        assert_eq!(report.removed, 3);
+        assert!(library.tracks().is_empty());
+    }
+
+    #[test]
+    fn a_scan_that_would_remove_most_of_a_folder_keeps_it() {
+        let mut library = Library::new(&[]);
+        for i in 0..HOLD_MIN_TRACKS {
+            library.copy("wav-s16-44k.wav", &format!("{i:02}.wav"));
+        }
+        library.scan();
+        // Half can go: a user tidying up.
+        for i in 0..HOLD_MIN_TRACKS / 2 {
+            fs::remove_file(library.path(&format!("{i:02}.wav"))).unwrap();
+        }
+        assert_eq!(library.scan().removed, HOLD_MIN_TRACKS / 2);
+        assert!(!holds(HOLD_MIN_TRACKS, HOLD_MIN_TRACKS / 2));
+        // Losing one of two is fine below the minimum; all of them isn't.
+        assert!(!holds(2, 1));
+        assert!(holds(2, 2));
+        assert!(holds(HOLD_MIN_TRACKS, HOLD_MIN_TRACKS / 2 + 1));
+
+        // Most of what's left goes at once, a file still there.
+        let mut library = Library::new(&[]);
+        for i in 0..HOLD_MIN_TRACKS {
+            library.copy("wav-s16-44k.wav", &format!("{i:02}.wav"));
+        }
+        library.scan();
+        for i in 1..HOLD_MIN_TRACKS {
+            fs::remove_file(library.path(&format!("{i:02}.wav"))).unwrap();
+        }
+        let error = scan_folder(&mut library.conn, library.folder_id, PARTS, |_| {}).unwrap_err();
+        assert_eq!(
+            FolderState::of_error(&error),
+            Some(FolderState::MostlyGone),
+            "{error}"
+        );
+        assert_eq!(library.tracks().len(), HOLD_MIN_TRACKS);
+    }
+
+    #[test]
+    fn files_moved_to_another_folder_are_not_held() {
+        let mut library =
+            Library::new(&[("flac-44k.flac", "a.flac"), ("wav-s16-44k.wav", "b.wav")]);
+        let other_root = library._dir.path().join("Other");
+        fs::create_dir(&other_root).unwrap();
+        let other = add_folder(&library.conn, &other_root).unwrap();
+        let both = [library.folder_id, other.id];
+        scan_folders(&mut library.conn, &both, PARTS, |_| {}).unwrap();
+        let ids: Vec<i64> = library.tracks().iter().map(|track| track.id).collect();
+
+        // Every file of the first folder moves to the second.
+        for name in ["a.flac", "b.wav"] {
+            fs::rename(library.path(name), other_root.join(name)).unwrap();
+        }
+        let results = scan_folders(&mut library.conn, &both, PARTS, |_| {}).unwrap();
+        assert!(results.iter().all(Result::is_ok));
+        let mut after: Vec<i64> = library.tracks().iter().map(|track| track.id).collect();
+        after.sort_unstable();
+        assert_eq!(after, ids);
     }
 
     #[cfg(target_vendor = "apple")]

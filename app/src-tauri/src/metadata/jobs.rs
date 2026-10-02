@@ -502,7 +502,7 @@ impl<H: Host> Worker<H> {
         }
         if enrich {
             if let Err(error) = self.queue_enrichment() {
-                eprintln!("[metadata] enrichment: {error}");
+                log::warn!("enrichment: {error}");
             }
         }
 
@@ -668,7 +668,7 @@ impl<H: Host> Worker<H> {
                 if let (Error::Offline(_), Some(priority)) = (&error, entry.automatic) {
                     requeue(&mut self.shared.lock(), priority);
                 } else if !matches!(error, Error::Offline(_)) {
-                    eprintln!("[metadata] {job:?}: {error}");
+                    log::warn!("{job:?}: {error}");
                 }
                 entry
                     .replies
@@ -947,11 +947,11 @@ impl<H: Host> Worker<H> {
         }
         if progress.paused != self.reported.paused {
             match progress.paused {
-                true => eprintln!(
-                    "[metadata] paused: {} can't be reached",
+                true => log::warn!(
+                    "paused: {} can't be reached",
                     progress.unreachable.join(", ")
                 ),
-                false => eprintln!("[metadata] resumed"),
+                false => log::info!("resumed"),
             }
         }
         self.host.progress(&progress);

@@ -16,6 +16,7 @@
   import ArtistPage from "$lib/components/ArtistPage.svelte";
   import BrowsePane from "$lib/components/BrowsePane.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import DbRepairDialog from "$lib/components/DbRepairDialog.svelte";
   import Dialogs from "$lib/components/Dialogs.svelte";
   import DiscographyPage from "$lib/components/DiscographyPage.svelte";
   import DragGhost from "$lib/components/DragGhost.svelte";
@@ -43,11 +44,14 @@
   import HomeView from "$lib/components/HomeView.svelte";
   import HistoryView from "$lib/components/HistoryView.svelte";
   import HealthView from "$lib/components/HealthView.svelte";
+  import MissingFolders from "$lib/components/MissingFolders.svelte";
 
   const SEEK_STEP = 5;
 
   /** Something is being dragged in from the Finder. */
   let dropping = $state(false);
+  /** The user put off repairing a damaged database until the next launch. */
+  let repairLater = $state(false);
 
   $effect(() => {
     const stopPlayer = player.connect();
@@ -254,6 +258,12 @@
   const welcome = $derived(
     library.loaded && library.folders.length === 0 && (ui.mainView === "library" || ui.mainView === "home"),
   );
+  /** Every folder is out of reach (a library on a drive that isn't plugged in, H22). */
+  const allMissing = $derived(
+    library.folders.length > 0 &&
+      library.unavailable.length === library.folders.length &&
+      (ui.mainView === "library" || ui.mainView === "home"),
+  );
 </script>
 
 <svelte:window {onkeydown} />
@@ -271,10 +281,15 @@
   {/if}
   <div class="header"><Header /></div>
   <main class="main" id="main" tabindex="-1">
+    {#if !searching && !allMissing && !ui.settingsInMain}
+      <MissingFolders />
+    {/if}
     {#if searching}
       <SearchResults />
     {:else if welcome}
       <WelcomeView />
+    {:else if allMissing && !ui.queueInMain && !ui.nowPlayingInMain && !ui.visualizerInMain && !ui.artistInMain && !ui.discographyInMain && !ui.playlistInMain && !ui.settingsInMain}
+      <MissingFolders full />
     {:else if ui.queueInMain}
       <QueuePanel main />
     {:else if ui.nowPlayingInMain}
@@ -315,6 +330,9 @@
 
 <ContextMenu />
 <Dialogs />
+{#if library.dbCheck.state === "failed" && !repairLater}
+  <DbRepairDialog check={library.dbCheck} onclose={() => (repairLater = true)} />
+{/if}
 <DragGhost />
 <Toasts />
 

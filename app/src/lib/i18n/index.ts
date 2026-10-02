@@ -56,12 +56,28 @@ export function errorText(error: unknown): string {
   try {
     const coded = JSON.parse(text) as { code?: string; params?: Params; message?: string };
     if (typeof coded.code === "string") {
+      // A reason may have its own message: `error.<code>.<reason>`.
+      const reason = coded.params?.reason;
+      const specific = `error.${coded.code}.${reason}`;
+      if (typeof reason === "string" && has(specific)) return t(specific, coded.params ?? {});
       const key = `error.${coded.code}`;
       if (has(key)) return t(key, coded.params ?? {});
     }
     return coded.message ?? text;
   } catch {
     return text;
+  }
+}
+
+/** A coded error's code, else null. */
+export function errorCode(error: unknown): string | null {
+  const text = error instanceof Error ? error.message : String(error);
+  if (!text.startsWith("{")) return null;
+  try {
+    const code = (JSON.parse(text) as { code?: unknown }).code;
+    return typeof code === "string" ? code : null;
+  } catch {
+    return null;
   }
 }
 

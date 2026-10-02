@@ -241,7 +241,7 @@ impl Sender {
     }
 
     fn fail(&mut self, error: String) {
-        eprintln!("[listenbrainz] {error}");
+        log::warn!("{error}");
         self.error = Some(error);
         self.retry_at = Some(Instant::now() + RETRY_WAIT);
     }

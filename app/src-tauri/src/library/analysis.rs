@@ -20,7 +20,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use super::access::open_folder_of;
+use super::access::{open_folder_of, FolderState};
 use super::commands::LibraryState;
 use super::{db, track_path, unix_now, Error};
 use crate::anomp::{self, FileAnalysis};
@@ -242,18 +242,28 @@ pub const HISTOGRAM_STEP: f64 = 0.5;
 /// Tracks still to analyse: never analysed, or their file changed since.
 /// Tracks whose file hasn't been read since a migration (-1) wait for the
 /// scan.
+/// Tracks never analysed, changed since, or whose folder couldn't be read
+/// when they were tried (stored by earlier versions; see `run`).
 const NEEDS_ANALYSIS: &str = "FROM tracks t
      LEFT JOIN track_analysis a ON a.track_id = t.id
      WHERE t.file_mtime_ns >= 0
-       AND (a.track_id IS NULL OR a.file_size != t.file_size OR a.file_mtime_ns != t.file_mtime_ns)";
+       AND (a.track_id IS NULL OR a.file_size != t.file_size OR a.file_mtime_ns != t.file_mtime_ns
+            OR a.error LIKE '{\"code\":\"folderUnavailable\"%')";
 
-/// Up to `limit` tracks to analyse next, an album at a time.
-pub fn next_tracks(conn: &Connection, limit: usize) -> Result<Vec<i64>, Error> {
+/// An analysis error that is a folder out of reach, not a failure.
+pub const NOT_FOLDER_ERROR: &str = "error NOT LIKE '{\"code\":\"folderUnavailable\"%'";
+
+/// Up to `limit` tracks to analyse next, an album at a time, leaving out
+/// the folders `skip` (out of reach for now).
+pub fn next_tracks(conn: &Connection, limit: usize, skip: &[i64]) -> Result<Vec<i64>, Error> {
     let mut statement = conn.prepare_cached(&format!(
-        "SELECT t.id {NEEDS_ANALYSIS} ORDER BY t.album_id NULLS LAST, t.id LIMIT ?1"
+        "SELECT t.id {NEEDS_ANALYSIS}
+           AND t.folder_id NOT IN (SELECT value FROM json_each(?2))
+         ORDER BY t.album_id NULLS LAST, t.id LIMIT ?1"
     ))?;
+    let skip = serde_json::to_string(skip).unwrap_or_else(|_| "[]".into());
     let ids = statement
-        .query_map([limit as i64], |row| row.get(0))?
+        .query_map(params![limit as i64, skip], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
     Ok(ids)
 }
@@ -275,7 +285,9 @@ fn counts(conn: &Connection) -> Result<(u32, u32, u32), Error> {
             row.get(0)
         })?;
     let (done, failed): (u32, u32) = conn.query_row(
-        "SELECT count(*), count(error) FROM track_analysis",
+        &format!(
+            "SELECT count(*), count(CASE WHEN {NOT_FOLDER_ERROR} THEN 1 END) FROM track_analysis"
+        ),
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
@@ -330,7 +342,8 @@ pub fn track_analysis(conn: &Connection, track_id: i64) -> Result<Option<TrackAn
 }
 
 /// Analyses track `track_id` from its file (resolving its folder's bookmark
-/// first), giving up when `keep_going` says so.
+/// first), giving up when `keep_going` says so. A folder that can't be read
+/// gives a `folderUnavailable` error, which isn't the file's fault.
 pub fn analyse_track(
     conn: &Connection,
     track_id: i64,
@@ -374,6 +387,9 @@ struct State {
     stop: bool,
     /// A new library pass: counts are read again.
     changed: bool,
+    /// Folders found out of reach are tried again (a scan finished, or a
+    /// folder came back).
+    retry: bool,
 }
 
 /// The analysis thread's controls, managed by Tauri.
@@ -441,15 +457,22 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
     let conn = match db::open(db_path) {
         Ok(conn) => conn,
         Err(error) => {
-            eprintln!("[analysis] {error}");
+            log::warn!("{error}");
             return;
         }
     };
     let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
+    // Folders that couldn't be read: their tracks wait, "not now" rather
+    // than failed, until a scan or a folder's return says to try again
+    // (PLAN.md H22).
+    let mut waiting: Vec<i64> = Vec::new();
     loop {
         // What to do next: a request, else a batch of the library, else wait.
         let (requested, background) = {
             let mut state = worker.lock();
+            if std::mem::take(&mut state.retry) {
+                waiting.clear();
+            }
             loop {
                 if state.stop {
                     return;
@@ -471,14 +494,14 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
                 Ok(true) => vec![id],
                 Ok(false) => continue,
                 Err(error) => {
-                    eprintln!("[analysis] {error}");
+                    log::warn!("{error}");
                     continue;
                 }
             },
-            None => match next_tracks(&conn, parallelism()) {
+            None => match next_tracks(&conn, parallelism(), &waiting) {
                 Ok(ids) => ids,
                 Err(error) => {
-                    eprintln!("[analysis] {error}");
+                    log::warn!("{error}");
                     Vec::new()
                 }
             },
@@ -521,11 +544,24 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
         for (id, result) in results {
             match result {
                 Ok(Err(error)) if error == "Cancelled" => {}
+                Ok(Err(error)) if FolderState::of_error(&error).is_some() => {
+                    let folder: Option<i64> = conn
+                        .query_row("SELECT folder_id FROM tracks WHERE id = ?1", [id], |row| {
+                            row.get(0)
+                        })
+                        .optional()
+                        .ok()
+                        .flatten();
+                    if let Some(folder) = folder.filter(|folder| !waiting.contains(folder)) {
+                        log::info!("folder {folder} can't be read; its tracks wait");
+                        waiting.push(folder);
+                    }
+                }
                 Ok(result) => match store(&conn, id, &result) {
                     Ok(()) => analysed.push(id),
-                    Err(error) => eprintln!("[analysis] {error}"),
+                    Err(error) => log::warn!("{error}"),
                 },
-                Err(error) => eprintln!("[analysis] {error}"),
+                Err(error) => log::warn!("{error}"),
             }
         }
         if !analysed.is_empty() {
@@ -574,7 +610,9 @@ pub fn configure<R: Runtime>(app: &AppHandle<R>, features: &FeatureSettings) {
 /// A scan finished: new tracks may need analysing.
 pub fn library_changed<R: Runtime>(app: &AppHandle<R>) {
     with_worker(app, |worker| {
-        worker.lock().changed = true;
+        let mut state = worker.lock();
+        state.changed = true;
+        state.retry = true;
         worker.wake.notify_all();
     });
 }
@@ -625,10 +663,32 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_out_of_reach_is_not_a_failure() {
+        let library = Library::new([track("a/1.flac"), track("a/2.flac")]);
+        let conn = &library.conn;
+        let ids = next_tracks(conn, 10, &[]).unwrap();
+        // As an earlier version stored it.
+        let unavailable = crate::coded::folder_unavailable("/Music", "missing", None);
+        store(conn, ids[0], &Err(unavailable)).unwrap();
+        assert_eq!(counts(conn).unwrap(), (1, 2, 0), "tried again, not failed");
+        assert!(needs_analysis(conn, ids[0]).unwrap());
+        // The worker leaves out the folders it found out of reach.
+        let folder: i64 = conn
+            .query_row(
+                "SELECT folder_id FROM tracks WHERE id = ?1",
+                [ids[0]],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(next_tracks(conn, 10, &[folder]).unwrap().is_empty());
+        assert_eq!(next_tracks(conn, 10, &[folder + 1]).unwrap().len(), 2);
+    }
+
+    #[test]
     fn stores_analyses_and_keeps_album_loudness() {
         let library = Library::new([track("a/1.flac").album("A"), track("a/2.flac").album("A")]);
         let conn = &library.conn;
-        let ids = next_tracks(conn, 10).unwrap();
+        let ids = next_tracks(conn, 10, &[]).unwrap();
         assert_eq!(ids.len(), 2);
         let analysis = |bin: usize| {
             let mut histogram = vec![0; 150];
@@ -653,9 +713,9 @@ mod tests {
             })
         };
         store(conn, ids[0], &analysis(94)).unwrap();
-        assert_eq!(next_tracks(conn, 10).unwrap(), [ids[1]]);
+        assert_eq!(next_tracks(conn, 10, &[]).unwrap(), [ids[1]]);
         store(conn, ids[1], &analysis(96)).unwrap();
-        assert!(next_tracks(conn, 10).unwrap().is_empty());
+        assert!(next_tracks(conn, 10, &[]).unwrap().is_empty());
 
         let (loudness, peak, tracks): (f64, f64, i64) = conn
             .query_row(
@@ -678,7 +738,7 @@ mod tests {
 
         // A failure is kept, so the file isn't tried again until it changes.
         store(conn, ids[1], &Err("Cannot decode".into())).unwrap();
-        assert!(next_tracks(conn, 10).unwrap().is_empty());
+        assert!(next_tracks(conn, 10, &[]).unwrap().is_empty());
         assert_eq!(counts(conn).unwrap(), (2, 0, 1));
         conn.execute("UPDATE tracks SET file_size = 99 WHERE id = ?1", [ids[1]])
             .unwrap();

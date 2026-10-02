@@ -12,6 +12,10 @@
 //!
 //! Background scans run at a low priority (`lower_priority`), and never
 //! alongside another scan: they wait for one in progress.
+//!
+//! Before the launch rescan every folder is checked (`availability`), off
+//! the main thread, and only the folders that can be read are rescanned
+//! and watched (PLAN.md H22).
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -22,7 +26,8 @@ use std::time::{Duration, Instant};
 use notify::{EventKind, RecursiveMode, Watcher as _};
 use tauri::{AppHandle, Manager, Runtime};
 
-use super::access::{self, OpenFolder};
+use super::access::{self, FolderState, OpenFolder};
+use super::availability::{self, FolderStates};
 use super::commands::{run_scan, LibraryState};
 use crate::settings::{self, LibrarySettings};
 
@@ -41,31 +46,46 @@ struct Watching {
     _open: Vec<OpenFolder>,
 }
 
-/// Starts watching as the settings say, and rescans every folder scanned
-/// before in the background if they say so. Call after the library.
+/// Checks every folder in the background, then starts watching as the
+/// settings say, and rescans every folder that was scanned before and can
+/// be read now if they say so. Also starts watching for volumes, so a
+/// folder whose drive comes back is found. Call after the library, on the
+/// main thread.
 pub fn init<R: Runtime>(app: &AppHandle<R>) {
     app.manage(WatchState::default());
-    let library = settings::current(app).library;
-    if library.rescan_at_launch {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            // Only folders that have been scanned: a new one is scanned
-            // when it's added.
-            let scanned: Option<Vec<i64>> = app.try_state::<LibraryState>().and_then(|library| {
-                super::folders(&library.conn()).ok().map(|folders| {
-                    folders
-                        .into_iter()
-                        .filter(|folder| folder.last_scan_at.is_some())
-                        .map(|folder| folder.id)
-                        .collect()
-                })
-            });
-            if let Some(ids) = scanned.filter(|ids| !ids.is_empty()) {
-                scan_when_free(&app, ids).await;
+    availability::watch_volumes(app);
+    let rescan = settings::current(app).library.rescan_at_launch;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let check = app.clone();
+        let checked = tauri::async_runtime::spawn_blocking(move || availability::refresh(&check))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|result| result);
+        let folders = match checked {
+            Ok(folders) => folders,
+            Err(error) => {
+                log::error!("cannot check the folders: {error}");
+                return;
             }
-        });
-    }
-    configure(app, &library);
+        };
+        let missing = folders
+            .iter()
+            .filter(|f| f.available == Some(false))
+            .count();
+        log::info!("{} folders, {missing} unavailable", folders.len());
+        configure(&app, &settings::current(&app).library);
+        // Only folders that have been scanned (a new one is scanned when
+        // it's added) and are there.
+        let ids: Vec<i64> = folders
+            .into_iter()
+            .filter(|folder| folder.last_scan_at.is_some() && folder.available != Some(false))
+            .map(|folder| folder.id)
+            .collect();
+        if rescan && !ids.is_empty() {
+            scan_when_free(&app, ids).await;
+        }
+    });
 }
 
 /// The settings changed: starts or stops watching.
@@ -78,7 +98,7 @@ pub fn configure<R: Runtime>(app: &AppHandle<R>, settings: &LibrarySettings) {
     if settings.watch_folders {
         match start(app) {
             Ok(watching) => *state.0.lock().unwrap_or_else(|e| e.into_inner()) = watching,
-            Err(error) => eprintln!("[library] cannot watch the folders: {error}"),
+            Err(error) => log::error!("cannot watch the folders: {error}"),
         }
     }
 }
@@ -93,13 +113,21 @@ fn start<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Watching>, String> {
     let library = app
         .try_state::<LibraryState>()
         .ok_or("The library is not available")?;
+    let states = app.try_state::<FolderStates>();
     let (roots, open) = {
         let conn = library.conn();
         let folders = super::folders(&conn).map_err(|e| e.to_string())?;
         let mut roots = Vec::new();
         let mut open = Vec::new();
         for folder in folders {
-            // A folder that isn't there now (an unplugged drive) isn't watched.
+            // A folder that isn't there now (an unplugged drive) isn't
+            // watched; the volume watcher finds it when it comes back.
+            let state = states
+                .as_ref()
+                .map_or(FolderState::Available, |states| states.get(folder.id).state);
+            if !matches!(state, FolderState::Available | FolderState::MostlyGone) {
+                continue;
+            }
             if let Ok(folder_open) = access::open_folder(&conn, folder.id) {
                 roots.push((folder.id, folder_open.path.clone()));
                 open.push(folder_open);
@@ -179,7 +207,7 @@ fn debounce<R: Runtime>(app: &AppHandle<R>, receiver: &mpsc::Receiver<i64>) {
 }
 
 /// Scans `folder_ids` in the background, after any scan in progress.
-async fn scan_when_free<R: Runtime>(app: &AppHandle<R>, folder_ids: Vec<i64>) {
+pub async fn scan_when_free<R: Runtime>(app: &AppHandle<R>, folder_ids: Vec<i64>) {
     loop {
         match run_scan(app, Some(folder_ids.clone()), true).await {
             Err(error) if error.contains("already running") => {
@@ -189,7 +217,7 @@ async fn scan_when_free<R: Runtime>(app: &AppHandle<R>, folder_ids: Vec<i64>) {
                 .await;
             }
             Err(error) => {
-                eprintln!("[library] background scan: {error}");
+                log::warn!("background scan: {error}");
                 return;
             }
             Ok(_) => return,

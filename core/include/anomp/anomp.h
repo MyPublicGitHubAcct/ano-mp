@@ -300,6 +300,58 @@ int anomp_folder_access_is_stale(const anomp_folder_access* access);
 /** Stops accessing the folder and frees `access`. Null is ignored. */
 void anomp_folder_access_stop(anomp_folder_access* access);
 
+/* ---- Logging -------------------------------------------------------------
+   The core's log messages, JUCE's Logger and failed assertions (in every
+   build) included, for the host to write with its own (PLAN.md H9). */
+
+/** Log levels, most severe first. */
+enum
+{
+    ANOMP_LOG_ERROR = 1,
+    ANOMP_LOG_WARN = 2,
+    ANOMP_LOG_INFO = 3,
+    ANOMP_LOG_DEBUG = 4
+};
+
+/** `level` is an ANOMP_LOG_* value; `message` (UTF-8) is valid during the
+    call only. Called on the thread that logs, which may be the audio
+    thread: return quickly, and don't call back into the core. */
+typedef void (*anomp_log_callback)(int level, const char* message, void* user_data);
+
+/** Sends the core's log messages to `callback` (null stops them). Any
+    thread; set it once, before anything else. */
+void anomp_set_log_callback(anomp_log_callback callback, void* user_data);
+
+/** Writes `message` to the core's log at `level`, as the core does: for
+    tests. */
+void anomp_log_write(int level, const char* message);
+
+/* ---- Volumes -------------------------------------------------------------
+   Reports volumes (drives, disk images, network shares) mounted and
+   unmounted, so the host can check library folders on them again (macOS;
+   elsewhere nothing is reported yet). Main thread only: the callback runs
+   on it, never inside one of these calls. */
+
+typedef struct anomp_volume_watcher anomp_volume_watcher;
+
+/** `mounted` is 1 for a volume mounted, 0 for one unmounted; `path` is its
+    mount point (UTF-8, "" if unknown), valid during the call only. */
+typedef void (*anomp_volume_callback)(int mounted, const char* path, void* user_data);
+
+/** Returns 1 if this platform reports volumes, 0 if not. */
+int anomp_volume_watcher_supported(void);
+
+/** Starts reporting volumes to `callback`. Returns null if `callback` is
+    null or on failure. Stop with anomp_volume_watcher_stop. */
+anomp_volume_watcher* anomp_volume_watcher_start(anomp_volume_callback callback, void* user_data);
+
+/** Stops reporting and frees `watcher`. Null is ignored. */
+void anomp_volume_watcher_stop(anomp_volume_watcher* watcher);
+
+/** Reports a volume as the OS would, for tests: calls the callback now.
+    `path` may be null. */
+void anomp_volume_watcher_notify(anomp_volume_watcher* watcher, int mounted, const char* path);
+
 /* ---- Engine ------------------------------------------------------------
    Every engine function must be called on the process's main thread, and
    event callbacks are delivered on it. The host must run the platform's main

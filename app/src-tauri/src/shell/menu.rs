@@ -313,7 +313,7 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, id: &str) {
         }
     };
     if let Err(error) = result {
-        eprintln!("[menu] {id}: {error}");
+        log::warn!("{id}: {error}");
     }
     // The check items reflect the queue, not the click: put them back if
     // nothing changed (the next queue state updates them otherwise).

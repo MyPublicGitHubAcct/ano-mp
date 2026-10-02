@@ -128,12 +128,12 @@ pub fn opened<R: Runtime>(app: &AppHandle<R>, urls: Vec<Url>) {
                 Ok(report) => {
                     let _ = tauri::Emitter::emit(&app, "playlist-imported", report);
                 }
-                Err(error) => eprintln!("[shell] cannot import a playlist: {error}"),
+                Err(error) => log::warn!("cannot import a playlist: {error}"),
             }
         }
         if !paths.is_empty() {
             if let Err(error) = crate::queue::open_files(&app, paths).await {
-                eprintln!("[shell] cannot open files: {error}");
+                log::warn!("cannot open files: {error}");
             }
         }
         let _ = show_main(&app);

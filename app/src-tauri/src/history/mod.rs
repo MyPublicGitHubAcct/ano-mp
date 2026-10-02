@@ -192,7 +192,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .name("history".into())
         .spawn(move || match db::open(&db_path) {
             Ok(conn) => run(&thread_app, &conn, &receiver),
-            Err(error) => eprintln!("[history] {error}"),
+            Err(error) => log::warn!("{error}"),
         })
         .map_err(|e| format!("Cannot start the history: {e}"))?;
     app.manage(History {
@@ -260,11 +260,11 @@ fn run<R: Runtime>(app: &AppHandle<R>, conn: &Connection, receiver: &Receiver<Me
                     let features = settings::current(app).features;
                     if features.listenbrainz {
                         if let Err(error) = listenbrainz::queue(conn, track_id, started_at) {
-                            eprintln!("[history] {error}");
+                            log::warn!("{error}");
                         }
                     }
                 }
-                Err(error) => eprintln!("[history] {error}"),
+                Err(error) => log::warn!("{error}"),
             },
             Ok(Message::Listened { token, seconds }) => {
                 if let Some(row) = rows.remove(&token) {
@@ -272,7 +272,7 @@ fn run<R: Runtime>(app: &AppHandle<R>, conn: &Connection, receiver: &Receiver<Me
                         "UPDATE plays SET seconds = ?1 WHERE id = ?2",
                         params![seconds, row],
                     ) {
-                        eprintln!("[history] {error}");
+                        log::warn!("{error}");
                     }
                 }
             }

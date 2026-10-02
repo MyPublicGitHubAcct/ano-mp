@@ -24,7 +24,16 @@ export type MainView =
   | "playlist";
 /** The parts of the settings view. */
 export type SettingsSection =
-  "library" | "sorting" | "display" | "playback" | "equaliser" | "visualizer" | "sources" | "features" | "general";
+  | "library"
+  | "sorting"
+  | "display"
+  | "playback"
+  | "equaliser"
+  | "visualizer"
+  | "sources"
+  | "features"
+  | "general"
+  | "about";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
 

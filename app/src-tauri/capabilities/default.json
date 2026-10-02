@@ -14,6 +14,7 @@
     "core:window:allow-set-always-on-top",
     "dialog:allow-save",
     "opener:allow-reveal-item-in-dir",
+    "log:allow-log",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

@@ -4,8 +4,10 @@
 #include "FileAnalyser.h"
 #include "FolderAccess.h"
 #include "FormatRegistry.h"
+#include "Log.h"
 #include "MediaControls.h"
 #include "TagReader.h"
+#include "VolumeWatcher.h"
 
 #include <atomic>
 #include <cmath>
@@ -79,6 +81,13 @@ struct anomp_folder_access
 {
     std::unique_ptr<anomp::FolderAccess> access;
     std::string path;
+};
+
+struct anomp_volume_watcher
+{
+    anomp_volume_callback callback = nullptr;
+    void* userData = nullptr;
+    std::unique_ptr<anomp::VolumeWatcher> watcher; // Declared last, so destroyed first.
 };
 
 struct anomp_media_controls
@@ -499,6 +508,50 @@ extern "C" int anomp_folder_access_is_stale (const anomp_folder_access* access)
 }
 
 extern "C" void anomp_folder_access_stop (anomp_folder_access* access) { delete access; }
+
+extern "C" void anomp_set_log_callback (anomp_log_callback callback, void* userData)
+{
+    anomp::log::setCallback (callback, userData);
+}
+
+extern "C" void anomp_log_write (int level, const char* message)
+{
+    const auto clamped = juce::jlimit<int> (ANOMP_LOG_ERROR, ANOMP_LOG_DEBUG, level);
+    anomp::log::write (static_cast<anomp::log::Level> (clamped),
+                       juce::String::fromUTF8 (message != nullptr ? message : ""));
+}
+
+extern "C" int anomp_volume_watcher_supported (void) { return anomp::VolumeWatcher::isSupported() ? 1 : 0; }
+
+extern "C" anomp_volume_watcher* anomp_volume_watcher_start (anomp_volume_callback callback, void* userData)
+{
+    if (callback == nullptr)
+        return nullptr;
+    try
+    {
+        auto handle = std::make_unique<anomp_volume_watcher>();
+        handle->callback = callback;
+        handle->userData = userData;
+        auto* raw = handle.get();
+        handle->watcher = std::make_unique<anomp::VolumeWatcher> (
+            [raw] (bool mounted, const juce::String& path)
+            { raw->callback (mounted ? 1 : 0, path.toRawUTF8(), raw->userData); });
+        return handle.release();
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
+}
+
+extern "C" void anomp_volume_watcher_stop (anomp_volume_watcher* watcher) { delete watcher; }
+
+extern "C" void anomp_volume_watcher_notify (anomp_volume_watcher* watcher, int mounted, const char* path)
+{
+    if (watcher == nullptr || watcher->watcher == nullptr)
+        return;
+    watcher->watcher->notify (mounted != 0, juce::String::fromUTF8 (path != nullptr ? path : ""));
+}
 
 extern "C" anomp_engine* anomp_engine_create (void)
 {

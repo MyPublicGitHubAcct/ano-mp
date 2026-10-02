@@ -77,7 +77,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             let conn = match db::open(&db_path) {
                 Ok(conn) => conn,
                 Err(error) => {
-                    eprintln!("[metadata] {error}");
+                    log::warn!("{error}");
                     worker_shared.stop();
                     return;
                 }

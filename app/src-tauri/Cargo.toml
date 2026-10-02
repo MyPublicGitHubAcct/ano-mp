@@ -37,6 +37,10 @@ cmake = "0.1"
 tauri = { version = "=2.12.0", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Logging (PLAN.md H9): the facade, written to a rotating file in the
+# app's log directory by tauri-plugin-log.
+log = "0.4"
+tauri-plugin-log = "=2.10.0"
 tauri-plugin-dialog = "=2.7.3"
 # Opens web links (a biography's Wikipedia article) in the browser.
 tauri-plugin-opener = "=2.5.5"

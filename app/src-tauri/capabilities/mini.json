@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "mini",
-  "description": "Capability for the mini player (PLAN.md F7): events, and the few commands of permissions/mini-window.toml",
+  "description": "Capability for the mini player (PLAN.md F7): events, the few commands of permissions/mini-window.toml, and logging its errors (PLAN.md H9)",
   "windows": ["mini"],
-  "permissions": ["core:default", "mini-window"]
+  "permissions": ["core:default", "mini-window", "log:allow-log"]
 }

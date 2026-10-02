@@ -67,6 +67,9 @@ pub fn get(account: impl Into<Account>) -> Result<Option<String>, Error> {
         return Ok(key.clone());
     }
     let key = store::read(account.id())?;
+    if let Some(key) = &key {
+        crate::logging::keep_secret(key);
+    }
     cache.insert(account, key.clone());
     Ok(key)
 }
@@ -82,6 +85,9 @@ pub fn set(account: impl Into<Account>, key: Option<&str>) -> Result<(), Error> 
                 account.name()
             )));
         }
+    }
+    if let Some(key) = key {
+        crate::logging::keep_secret(key);
     }
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     match key {

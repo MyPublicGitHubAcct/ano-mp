@@ -17,6 +17,7 @@ use std::path::Path;
 use rusqlite::Connection;
 use serde::Serialize;
 
+use super::analysis::NOT_FOLDER_ERROR;
 use super::{track_path, Error};
 
 /// Rows listed per kind at most.
@@ -112,7 +113,11 @@ pub fn report(conn: &Connection) -> Result<HealthReport, Error> {
     };
 
     let undecodable = tracks(
-        &format!("SELECT {TRACK}, a.error {FROM} {ANALYSIS} WHERE a.error IS NOT NULL LIMIT ?1"),
+        // A folder out of reach isn't a broken file (PLAN.md H22).
+        &format!(
+            "SELECT {TRACK}, a.error {FROM} {ANALYSIS}
+             WHERE a.error IS NOT NULL AND a.{NOT_FOLDER_ERROR} LIMIT ?1"
+        ),
         &|row| row.get(6),
     )?;
     let truncated = tracks(
@@ -376,6 +381,21 @@ fn duplicates(conn: &Connection) -> Result<Vec<DuplicateGroup>, Error> {
 mod tests {
     use super::*;
     use crate::library::test_library::{track, Library};
+
+    #[test]
+    fn a_folder_out_of_reach_is_not_undecodable() {
+        let library = Library::new([track("a.flac")]);
+        let error = crate::coded::folder_unavailable("/Music", "missing", None);
+        library
+            .conn
+            .execute(
+                "INSERT INTO track_analysis (track_id, file_size, file_mtime_ns, analysed_at, error)
+                 VALUES (1, 0, 0, 0, ?1)",
+                [error],
+            )
+            .unwrap();
+        assert!(report(&library.conn).unwrap().undecodable.is_empty());
+    }
 
     #[test]
     fn reports_analysis_problems() {

@@ -15,7 +15,9 @@
 //! A queue restored at launch is published paused where it will resume,
 //! before anything is loaded (PLAN.md F17), so the media keys and Now
 //! Playing can start it; until it loads, the engine's events (it has
-//! nothing open) are ignored. An empty queue publishes nothing.
+//! nothing open) are ignored. An empty queue publishes nothing. A current
+//! item that can't be opened (its folder out of reach, PLAN.md H22) is
+//! published stopped.
 //!
 //! Commands go straight to the queue (`queue::play`, `next`, ...). The core
 //! calls the handler only from the OS's own handler, never inside a call
@@ -144,7 +146,7 @@ fn fetch_artwork<R: Runtime>(app: &AppHandle<R>, key: ArtKey) {
     tauri::async_runtime::spawn_blocking(move || {
         let art = app.try_state::<LibraryState>().and_then(|library| {
             art::lookup(&library, key).unwrap_or_else(|error| {
-                eprintln!("[media] artwork: {error}");
+                log::warn!("artwork: {error}");
                 None
             })
         });
@@ -167,7 +169,7 @@ fn on_command<R: Runtime>(app: &AppHandle<R>, command: MediaCommand) {
         MediaCommand::Seek(seconds) => queue::seek(app, seconds),
     };
     if let Err(error) = result {
-        eprintln!("[media] {command:?}: {error}");
+        log::warn!("{command:?}: {error}");
     }
 }
 
@@ -193,13 +195,13 @@ impl Publisher for MediaControls {
     }
     fn set_playback(&mut self, state: PlayerState, elapsed: f64, duration: f64) {
         if !MediaControls::set_playback(self, state, elapsed, duration) {
-            eprintln!("[media] bad playback position {elapsed} of {duration}");
+            log::warn!("bad playback position {elapsed} of {duration}");
         }
     }
     fn set_artwork(&mut self, art: Option<&Art>) {
         if !MediaControls::set_artwork(self, art.map(|art| art.data.as_slice())) {
             let mime_type = art.map_or("", |art| art.mime_type.as_str());
-            eprintln!("[media] cannot show the artwork ({mime_type})");
+            log::warn!("cannot show the artwork ({mime_type})");
         }
     }
     fn set_navigation(&mut self, has_next: bool, has_previous: bool) {
@@ -271,8 +273,13 @@ impl NowPlaying {
         // something else), shown paused where it will start.
         self.restored = !state.loaded;
         if self.restored {
+            let unavailable = state.unavailable.contains(&item.uid);
             self.player = Player {
-                state: PlayerState::Paused,
+                state: if unavailable {
+                    PlayerState::Stopped
+                } else {
+                    PlayerState::Paused
+                },
                 position: state.resume_at,
                 duration: 0.0,
             };
@@ -501,6 +508,24 @@ mod tests {
             source: crate::metadata::settings::SourceId::Embedded,
             chosen: false,
         }
+    }
+
+    #[test]
+    fn an_unavailable_current_item_is_published_stopped() {
+        let (mut p, mut now_playing) = (Fake::default(), NowPlaying::default());
+        let current = item(1, "One", Some(7));
+        let mut restored = queue(Some(current.clone()), false, true, false);
+        restored.resume_at = 42.0;
+        restored.unavailable = vec![current.uid];
+        now_playing.queue_changed(&mut p, &restored, Player::default(), 0.0);
+        assert_eq!(
+            p.take().last(),
+            Some(&Call::Playback(PlayerState::Stopped, 42.0, 180.0))
+        );
+        // Its drive comes back: paused, ready to play.
+        restored.unavailable.clear();
+        now_playing.queue_changed(&mut p, &restored, Player::default(), 1.0);
+        assert_eq!(p.take(), [Call::Playback(PlayerState::Paused, 42.0, 180.0)]);
     }
 
     #[test]

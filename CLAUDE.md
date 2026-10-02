@@ -89,6 +89,11 @@ the library (`library/external.rs`), data export and import
 app outside its page in `app/src-tauri/src/shell/` (menus, the Dock menu,
 the menu-bar item, the mini player, opened files, notifications). What
 remains is checking them in the app (Phase 6c's exit).
+Phase 7 (hardening) follows the "Order of work" in `PLAN.md`: Steps 1–3
+are done (CI baseline, quick security fixes, and H10, H22a and H9: the
+library DB's copies and launch check, missing folders, and logs). H22b
+(unavailable tracks in lists) is left; Step 4 is the exit checks in a
+sandboxed bundle.
 `docs/` is empty.
 
 ## Build & test
@@ -202,6 +207,15 @@ never use these functions in the schema, an index or a migration, since other
 SQLite clients don't have them. Browse queries (`library/browse.rs`) are built
 from fixed SQL fragments; bind every value, never format it in.
 
+Before applying migrations to an existing database, `db::open` writes a copy,
+`library.sqlite3.pre-<n>` (n: the first migration applied), next to it and
+keeps the newest two (PLAN.md H10); a copy that can't be written stops the
+migration. A launch check (`library/recovery.rs`, `PRAGMA quick_check`)
+offers to restore that copy or to rebuild; the choice is carried out at the
+next launch, before anything opens the database, and the damaged file is
+kept as `library.sqlite3.damaged-<secs>`. Test a migration against a file
+database too (`db` tests' `file_at`), so the copy is exercised.
+
 Under the macOS sandbox a library file can be opened only while its folder's
 bookmark is resolved, so anything that opens library files goes through
 `library::access::open_folder`/`open_folder_of` first and holds the result
@@ -218,6 +232,16 @@ hardened runtime off, FFmpeg embedded in `Contents/Frameworks`). The
 versions, so update it when the FFmpeg pin changes. Only debug builds have an
 rpath into `third_party/`; `cargo test --release` gets it from
 `app/src-tauri/.cargo/config.toml`.
+
+A folder that can't be read is never treated as empty (PLAN.md H22): its
+state (`access::FolderState`, kept by `library::availability`) says why, and
+its tracks stay. A scan that would remove all of a folder's tracks, or most
+of a large one, keeps them and fails the folder (`scanner::holds`); only
+`library_remove_missing` removes them. Code that opens files must treat a
+`folderUnavailable` error (`FolderState::of_error`) as "not now", never as a
+broken file: don't store it as a failure. `open_folder` doesn't follow a
+folder into the Trash. Folder-state tests use `access::testing::FakeBookmarks`
+over temp dirs, not real bookmarks.
 
 `PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
 device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling
@@ -268,12 +292,29 @@ schema change to `tracks`, `artists` or `albums` columns they index must update
 both sets of triggers in a new migration. Run the search benchmark
 (`library/bench.rs`) after changing the search SQL.
 
+Log through the `log` macros, never `eprintln!` (PLAN.md H9; `logging.rs`).
+The file is `ano-mp.log` in the app's log directory (`~/Library/Logs/
+dev.anomp.player`, inside the container when sandboxed); release builds
+write info and above, debug builds debug too and also stderr. The target is
+the module; don't prefix messages with it. At info and above, write ids and
+counts only: titles, artists, file names and paths go at debug (the
+formatter scrubs absolute paths and URL paths at info and above anyway, and
+redacts keys, `Authorization` values and `token=`-like parameters at every
+level). A new key or token the app holds goes through `metadata::keys`, which
+registers it with `logging::keep_secret`. The core logs through
+`anomp_set_log_callback` (`core/src/Log.h`: `anomp::log::warn` and so on);
+JUCE's `Logger` and failed assertions (`JUCE_LOG_ASSERTIONS=1`) arrive there.
+"Copy diagnostics" (`diagnostics.rs`) holds no paths or titles; adding to
+it, or to what logs may contain, is an owner decision.
+
 Every string the UI shows comes from `app/src/lib/i18n/en.json` through `t`
 (typed keys; a plural message is an object of `Intl.PluralRules` forms), never
 a literal in a component. Rust errors the UI shows are made with
 `crate::coded` (`{code, params, message}`), each code with an `error.<code>`
 message in `en.json` (`tests/i18n.test.mjs` checks), and the UI shows a
-command's error through `errorText`, never `String(error)`.
+command's error through `errorText`, never `String(error)`. A coded error with
+a `reason` param may have `error.<code>.<reason>` messages, which `errorText`
+prefers (`folderUnavailable`); `errorCode` reads a code to branch on.
 
 The /dev page and its commands (`src/dev.rs`) exist in debug builds only
 (`PLAN.md` H2): the commands are registered under `#[cfg(debug_assertions)]`

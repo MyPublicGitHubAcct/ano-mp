@@ -8,8 +8,8 @@
   // folder that can't be opened (an unplugged drive, a folder moved out of
   // reach) says so, and "Locate…" points it at where it is now (F8).
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { queue, type Folder, type Playlist } from "$lib/api";
-  import { count, t } from "$lib/i18n";
+  import { queue, type Folder, type FolderState, type Playlist } from "$lib/api";
+  import { count, t, type MessageKey } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
   import { registerDropTarget } from "$lib/state/drag.svelte";
   import { folderName, library } from "$lib/state/library.svelte";
@@ -136,8 +136,17 @@
     if (remove) library.removeFolder(folder);
   }
 
+  const SHORT: Record<FolderState, MessageKey> = {
+    available: "folders.unavailable",
+    missing: "folderShort.missing",
+    empty: "folderShort.empty",
+    mostlyGone: "folderShort.mostlyGone",
+    inTrash: "folderShort.inTrash",
+    noPermission: "folderShort.noPermission",
+  };
+
   function folderStatus(folder: Folder) {
-    if (folder.available === false) return t("folders.unavailable");
+    if (folder.available === false) return t(SHORT[folder.status?.state ?? "available"]);
     return folder.lastScanAt === null ? t("folders.notScanned") : count("count.tracks", folder.trackCount);
   }
 </script>

@@ -213,6 +213,15 @@ type RawMediaCommandCallback =
     extern "C" fn(command: *const RawMediaCommand, user_data: *mut c_void);
 
 #[repr(C)]
+struct RawVolumeWatcher {
+    _private: [u8; 0],
+}
+
+type RawLogCallback = extern "C" fn(level: c_int, message: *const c_char, user_data: *mut c_void);
+
+type RawVolumeCallback = extern "C" fn(mounted: c_int, path: *const c_char, user_data: *mut c_void);
+
+#[repr(C)]
 struct RawDockMenu {
     _private: [u8; 0],
 }
@@ -314,6 +323,22 @@ extern "C" {
     fn anomp_folder_access_path(access: *const RawFolderAccess) -> *const c_char;
     fn anomp_folder_access_is_stale(access: *const RawFolderAccess) -> c_int;
     fn anomp_folder_access_stop(access: *mut RawFolderAccess);
+    fn anomp_set_log_callback(callback: Option<RawLogCallback>, user_data: *mut c_void);
+    #[cfg(test)]
+    fn anomp_log_write(level: c_int, message: *const c_char);
+    #[cfg(test)]
+    fn anomp_volume_watcher_supported() -> c_int;
+    fn anomp_volume_watcher_start(
+        callback: Option<RawVolumeCallback>,
+        user_data: *mut c_void,
+    ) -> *mut RawVolumeWatcher;
+    fn anomp_volume_watcher_stop(watcher: *mut RawVolumeWatcher);
+    #[cfg(test)]
+    fn anomp_volume_watcher_notify(
+        watcher: *mut RawVolumeWatcher,
+        mounted: c_int,
+        path: *const c_char,
+    );
 
     fn anomp_engine_create() -> *mut RawEngine;
     fn anomp_engine_destroy(engine: *mut RawEngine);
@@ -1852,6 +1877,129 @@ impl Drop for MediaControls {
 
 type MenuHandler = Box<dyn Fn(i32)>;
 
+/// Sends the core's log messages (JUCE's Logger and failed assertions
+/// included) to the `log` facade, with the target "core" (PLAN.md H9).
+pub fn forward_core_log() {
+    // SAFETY: `on_core_log` uses no user data and may run on any thread.
+    unsafe { anomp_set_log_callback(Some(on_core_log), std::ptr::null_mut()) };
+}
+
+/// Stops sending the core's log messages anywhere.
+#[cfg(test)]
+pub fn stop_core_log() {
+    // SAFETY: no preconditions.
+    unsafe { anomp_set_log_callback(None, std::ptr::null_mut()) };
+}
+
+/// Writes to the core's log, as the core does; for tests.
+#[cfg(test)]
+pub fn core_log_write(level: log::Level, message: &str) {
+    let message = CString::new(message).unwrap_or_default();
+    let level = match level {
+        log::Level::Error => 1,
+        log::Level::Warn => 2,
+        log::Level::Info => 3,
+        log::Level::Debug | log::Level::Trace => 4,
+    };
+    // SAFETY: `message` is a C string valid for the call.
+    unsafe { anomp_log_write(level, message.as_ptr()) };
+}
+
+extern "C" fn on_core_log(level: c_int, message: *const c_char, _user_data: *mut c_void) {
+    if message.is_null() {
+        return;
+    }
+    // SAFETY: the core passes a C string valid for the call.
+    let message = unsafe { CStr::from_ptr(message) }.to_string_lossy();
+    let level = match level {
+        1 => log::Level::Error,
+        2 => log::Level::Warn,
+        3 => log::Level::Info,
+        _ => log::Level::Debug,
+    };
+    log::log!(target: "core", level, "{message}");
+}
+
+type VolumeHandler = Box<dyn Fn(bool, PathBuf)>;
+
+/// Reports volumes mounted and unmounted (macOS; nothing elsewhere yet), so
+/// library folders on them are checked again (PLAN.md H22). Main thread
+/// only: the handler runs there, from the OS, never inside a call on this
+/// object.
+pub struct VolumeWatcher {
+    raw: NonNull<RawVolumeWatcher>,
+    handler: *mut VolumeHandler,
+    _not_send: PhantomData<*mut ()>,
+}
+
+impl VolumeWatcher {
+    /// Whether this platform reports volumes.
+    #[cfg(test)]
+    pub fn supported() -> bool {
+        // SAFETY: no preconditions.
+        unsafe { anomp_volume_watcher_supported() != 0 }
+    }
+
+    /// Starts reporting each volume mounted (`true`) or unmounted, with its
+    /// mount point (empty if unknown), to `handler`.
+    pub fn new(handler: impl Fn(bool, PathBuf) + 'static) -> Option<VolumeWatcher> {
+        let handler: *mut VolumeHandler = Box::into_raw(Box::new(Box::new(handler)));
+        // SAFETY: `handler` stays valid until Drop, which stops the watcher
+        // (and so the callback) before freeing it.
+        let raw = unsafe { anomp_volume_watcher_start(Some(on_volume), handler.cast()) };
+        match NonNull::new(raw) {
+            Some(raw) => Some(VolumeWatcher {
+                raw,
+                handler,
+                _not_send: PhantomData,
+            }),
+            None => {
+                // SAFETY: the core refused it, so nothing else holds it.
+                drop(unsafe { Box::from_raw(handler) });
+                None
+            }
+        }
+    }
+
+    /// Reports a volume as the OS would, for tests.
+    #[cfg(test)]
+    pub fn notify(&mut self, mounted: bool, path: &str) {
+        let path = CString::new(path).unwrap_or_default();
+        // SAFETY: `raw` is live and `path` outlives the call.
+        unsafe {
+            anomp_volume_watcher_notify(self.raw.as_ptr(), c_int::from(mounted), path.as_ptr())
+        };
+    }
+}
+
+impl Drop for VolumeWatcher {
+    fn drop(&mut self) {
+        // SAFETY: `raw` is live and never used again; stopping it ends the
+        // callback, after which nothing else holds `handler`.
+        unsafe {
+            anomp_volume_watcher_stop(self.raw.as_ptr());
+            drop(Box::from_raw(self.handler));
+        }
+    }
+}
+
+extern "C" fn on_volume(mounted: c_int, path: *const c_char, user_data: *mut c_void) {
+    // SAFETY: `user_data` is the handler registered by `VolumeWatcher::new`,
+    // alive until the watcher stops; `path` is null or a C string valid for
+    // the call.
+    let (handler, path) = unsafe {
+        (
+            &*user_data.cast::<VolumeHandler>(),
+            if path.is_null() {
+                String::new()
+            } else {
+                CStr::from_ptr(path).to_string_lossy().into_owned()
+            },
+        )
+    };
+    handler(mounted != 0, PathBuf::from(path));
+}
+
 /// An item of the Dock menu.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MenuItem {
@@ -2236,6 +2384,27 @@ mod tests {
         assert!(menu.perform(2));
         assert!(!menu.perform(1));
         assert_eq!(*chosen.borrow(), [2]);
+    }
+
+    #[test]
+    fn volume_watcher_reports_volumes() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let volumes = Rc::new(RefCell::new(Vec::new()));
+        let seen = volumes.clone();
+        let mut watcher =
+            VolumeWatcher::new(move |mounted, path| seen.borrow_mut().push((mounted, path)))
+                .unwrap();
+        watcher.notify(true, "/Volumes/Música");
+        watcher.notify(false, "");
+        assert_eq!(
+            *volumes.borrow(),
+            [
+                (true, PathBuf::from("/Volumes/Música")),
+                (false, PathBuf::new())
+            ]
+        );
+        assert_eq!(VolumeWatcher::supported(), cfg!(target_os = "macos"));
     }
 
     #[test]

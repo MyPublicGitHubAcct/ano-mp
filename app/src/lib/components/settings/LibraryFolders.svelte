@@ -5,15 +5,25 @@
   // keeping the library in step with the disk (F9), and exporting and
   // importing what you've made of it (F20).
   import { ask } from "@tauri-apps/plugin-dialog";
-  import type { Folder } from "$lib/api";
+  import type { Folder, FolderState } from "$lib/api";
   import { formatDay } from "$lib/format";
-  import { count, t } from "$lib/i18n";
+  import { count, t, type MessageKey } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
   import { folderName, library } from "$lib/state/library.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
   import Icon from "../Icon.svelte";
 
   const settings = $derived(appSettings.current.library);
+
+  /** Why a folder can't be read (PLAN.md H22). */
+  const LONG: Record<FolderState, MessageKey> = {
+    available: "folders.unavailableLong",
+    missing: "folderState.missing",
+    empty: "folderState.empty",
+    mostlyGone: "folderState.mostlyGone",
+    inTrash: "folderState.inTrash",
+    noPermission: "folderState.noPermission",
+  };
 
   async function remove(folder: Folder) {
     const confirmed = await ask(t("folders.removeConfirm", { path: folder.path }), {
@@ -46,7 +56,7 @@
           <span class="muted small path" title={folder.path}>{folder.path}</span>
           <span class="muted small">
             {#if folder.available === false}
-              {t("folders.unavailableLong")}
+              {t(LONG[folder.status?.state ?? "available"])}
             {:else if folder.lastScanAt === null}
               {t("folders.notScannedYet")}
             {:else}

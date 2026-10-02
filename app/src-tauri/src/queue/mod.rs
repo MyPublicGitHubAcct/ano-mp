@@ -294,7 +294,7 @@ fn save_positions<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
             ),
         };
         if let Err(error) = result {
-            eprintln!("[queue] cannot save a position: {error}");
+            log::warn!("cannot save a position: {error}");
         }
     }
 }
@@ -353,7 +353,8 @@ where
 fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
     if let Some(state) = queue.take_state() {
         for skipped in &state.skipped {
-            eprintln!("[queue] skipped {}: {}", skipped.title, skipped.error);
+            log::warn!("skipped track {}: {}", skipped.track_id, skipped.error);
+            log::debug!("skipped {}", skipped.title);
         }
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
         crate::media::queue_changed(app, &state);
@@ -426,7 +427,7 @@ fn fill_radio<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
                 });
             }
             Ok(_) => {}
-            Err(error) => eprintln!("[radio] {error}"),
+            Err(error) => log::warn!("{error}"),
         }
         RADIO_FILLING.store(false, Ordering::SeqCst);
     });
@@ -477,7 +478,7 @@ fn save<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
                 .map_err(|e| e.to_string())
         });
     if let Err(error) = result {
-        eprintln!("[queue] cannot save: {error}");
+        log::warn!("cannot save: {error}");
     }
 }
 
@@ -639,7 +640,7 @@ pub fn on_track_ended<R: Runtime>(app: &AppHandle<R>, advanced: bool) {
     if let Err(error) = run(app, move |queue, player| {
         queue.on_track_ended(player, advanced)
     }) {
-        eprintln!("[queue] {error}");
+        log::warn!("{error}");
     }
 }
 
@@ -653,7 +654,7 @@ pub fn refresh_gains<R: Runtime>(app: &AppHandle<R>) {
             .try_for_each(|track_id| player.refresh_gain(track_id))
     });
     if let Err(error) = result.and_then(|refreshed| refreshed) {
-        eprintln!("[queue] cannot change the gain: {error}");
+        log::warn!("cannot change the gain: {error}");
     }
 }
 
@@ -1103,6 +1104,29 @@ pub async fn restore_imported<R: Runtime>(
         }
         true
     })
+}
+
+/// Library folders came back or went (PLAN.md H22): the queue passes over
+/// the items of folders none of whose files can be opened now, and tries
+/// the others.
+pub async fn folders_changed<R: Runtime>(app: &AppHandle<R>) {
+    let Ok(ids) = run(app, |queue, _| queue.track_ids()) else {
+        return;
+    };
+    let unavailable = app
+        .try_state::<crate::library::availability::FolderStates>()
+        .map(|states| states.unreadable())
+        .unwrap_or_default();
+    let Ok(missing) = on_library(app, move |library| {
+        crate::library::availability::tracks_in(&library.conn(), &ids, &unavailable)
+    })
+    .await
+    else {
+        return;
+    };
+    let _ = run(app, move |queue, player| {
+        queue.set_unavailable_tracks(player, &missing);
+    });
 }
 
 /// The settings changed: radio mode ends if library radio was turned off,

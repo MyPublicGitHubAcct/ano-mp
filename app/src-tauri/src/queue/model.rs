@@ -23,6 +23,12 @@
 //! through the volume (`tick`). The queue then moves to the next item,
 //! paused, so play carries on from there.
 //!
+//! Items that can't be opened are passed over: those that failed to open,
+//! and those whose folder can't be read now (PLAN.md H22,
+//! `set_unavailable_tracks`), which aren't reported as skipped. When
+//! nothing can be opened, nothing plays, the current item stays current and
+//! keeps its position, and the queue doesn't spin.
+//!
 //! A long track (an audiobook, a DJ mix: over `LONG_TRACK` seconds) starts
 //! where it was left (F17): the host gives each its saved position
 //! (`TrackInfo::resume`), and the queue says where it left each one
@@ -708,6 +714,25 @@ impl Queue {
         self.list_changed = true;
     }
 
+    /// Marks the items of `track_ids` unavailable, their folders being out
+    /// of reach (an unplugged drive, PLAN.md H22), and clears every other
+    /// mark, so items that failed to open are tried again. The next track
+    /// is armed again if it changed.
+    pub fn set_unavailable_tracks(&mut self, p: &mut impl Player, track_ids: &HashSet<i64>) {
+        self.reconcile(p);
+        let unavailable: HashSet<Uid> = self
+            .items
+            .iter()
+            .filter(|item| track_ids.contains(&item.track.track_id))
+            .map(|item| item.uid)
+            .collect();
+        if unavailable != self.unavailable {
+            self.unavailable = unavailable;
+            self.changed = true;
+        }
+        self.sync_next(p);
+    }
+
     /// Plays an item, trying it again if it couldn't be opened before.
     pub fn jump(&mut self, p: &mut impl Player, uid: Uid) {
         self.reconcile(p);
@@ -1154,14 +1179,14 @@ impl Queue {
                 }
             }
         }
-        // Nothing could be opened.
+        // Nothing could be opened: it stays where it was asked to start.
         if self.loaded {
             p.stop();
         }
         self.current = Some(index);
         self.loaded = false;
         self.armed = None;
-        self.resume_at = 0.0;
+        self.resume_at = resume_at;
     }
 
     /// Arms the engine with the item that should follow the current one,
@@ -1866,6 +1891,64 @@ mod tests {
         let restored = Queue::restore(saved, &tracks, 1);
         assert_eq!(current_id(&restored), Some(3));
         assert_eq!(Queue::restore(Saved::default(), &tracks, 1).current, None);
+    }
+
+    #[test]
+    fn a_restored_queue_with_nothing_available_plays_nothing() {
+        let tracks: HashMap<i64, TrackInfo> = [1, 2, 3].map(|id| (id, info(id))).into();
+        let saved = Saved {
+            tracks: vec![1, 2, 3],
+            current: Some(1),
+            position: 42.0,
+            repeat: Repeat::All,
+            ..Saved::default()
+        };
+        let mut queue = Queue::restore(saved, &tracks, 1);
+        // Their drive isn't connected.
+        let mut p = Fake {
+            unreadable: [1, 2, 3].into(),
+            ..Fake::default()
+        };
+        queue.set_unavailable_tracks(&mut p, &[1, 2, 3].into());
+        let state = queue.take_state().unwrap();
+        assert_eq!(state.unavailable.len(), 3);
+        assert!(state.skipped.is_empty(), "not reported as skipped");
+        assert_eq!((state.loaded, state.resume_at), (false, 42.0));
+
+        // Play tries each once, with repeat all, and stops.
+        queue.toggle(&mut p);
+        assert_eq!(p.state(), PlayerState::Empty);
+        assert!(!queue.is_loaded());
+        assert_eq!(current_id(&queue), Some(2), "the current item stays");
+        let state = queue.take_state().unwrap();
+        assert_eq!(state.skipped.len(), 1, "only the current one is tried");
+        assert_eq!(state.resume_at, 42.0, "with its position");
+        // Next has nowhere to go.
+        queue.next(&mut p);
+        assert_eq!(p.state(), PlayerState::Empty);
+        assert_eq!(current_id(&queue), Some(2));
+
+        // The drive comes back: it plays from where it was.
+        p.unreadable.clear();
+        queue.set_unavailable_tracks(&mut p, &HashSet::new());
+        assert!(queue.state().unavailable.is_empty());
+        queue.toggle(&mut p);
+        assert_eq!((p.current, p.next, p.position), (Some(2), Some(3), 42.0));
+        assert_eq!(p.state(), PlayerState::Playing);
+        check(&queue, &p);
+    }
+
+    #[test]
+    fn a_folder_going_while_playing_is_passed_over() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3, 4]), 0, true);
+        assert_eq!(p.next, Some(2));
+        queue.set_unavailable_tracks(&mut p, &[2, 3].into());
+        assert_eq!(p.next, Some(4), "re-armed past them");
+        queue.set_unavailable_tracks(&mut p, &HashSet::new());
+        assert_eq!(p.next, Some(2));
+        check(&queue, &p);
     }
 
     #[test]

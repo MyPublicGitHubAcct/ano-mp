@@ -608,7 +608,8 @@ pub fn respond(
             .expect("a valid response"),
         Ok(None) => status(StatusCode::NOT_FOUND),
         Err(error) => {
-            eprintln!("[art] {path}: {error}");
+            log::warn!("cannot serve a picture: {error}");
+            log::debug!("the picture was {path}");
             status(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

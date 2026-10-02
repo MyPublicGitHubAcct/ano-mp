@@ -9,6 +9,7 @@
   import { ui, type SettingsSection } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
   import ServicesPanel from "./ServicesPanel.svelte";
+  import AboutOptions from "./settings/AboutOptions.svelte";
   import DisplayOptions from "./settings/DisplayOptions.svelte";
   import EqualiserOptions from "./settings/EqualiserOptions.svelte";
   import GeneralOptions from "./settings/GeneralOptions.svelte";
@@ -28,6 +29,7 @@
     { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
     { id: "sources", name: "settings.sources", about: "settings.sourcesAbout" },
     { id: "features", name: "settings.features", about: "settings.featuresAbout" },
+    { id: "about", name: "settings.about", about: "settings.aboutAbout" },
   ];
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
@@ -96,6 +98,8 @@
           <VisualizerOptions />
         {:else if section.id === "features"}
           <FeaturesOptions />
+        {:else if section.id === "about"}
+          <AboutOptions />
         {:else}
           <ServicesPanel />
         {/if}

@@ -1,8 +1,8 @@
 // The library's folders and sort rules, where the browser is, the search
 // query, and scanning.
 
-import { open } from "@tauri-apps/plugin-dialog";
-import { SvelteMap } from "svelte/reactivity";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import {
   library as api,
   on,
@@ -10,6 +10,7 @@ import {
   type AlbumHit,
   type AlbumOrder,
   type BrowsePath,
+  type DbCheck,
   type Folder,
   type Group,
   type GroupKey,
@@ -58,6 +59,10 @@ class LibraryStore {
   loaded = $state(false);
   /** A scan the user didn't start is running (at launch, after changes on disk). */
   background = $state(false);
+  /** Unavailable folders the user chose to keep: no message about them until the next launch (H22). */
+  kept = new SvelteSet<number>();
+  /** The launch check of the database (H10); a failure offers a repair. */
+  dbCheck = $state.raw<DbCheck>({ state: "running" });
 
   /** Follows scans (whoever started them) and metadata changes; returns a function that stops. */
   connect() {
@@ -78,11 +83,18 @@ class LibraryStore {
         for (const id of albums) this.artVersions.set(id, (this.artVersions.get(id) ?? 0) + 1);
         for (const id of artists) this.artistVersions.set(id, (this.artistVersions.get(id) ?? 0) + 1);
       }),
+      on("library-db-check", (check) => (this.dbCheck = check)),
+      on("library-folders", () => void this.refresh()),
       on("metadata-progress", ({ current }) => {
         this.lookingUp = current?.kind === "artist" ? current.artistId : null;
       }),
     ];
     attempt(() => this.refresh());
+    attempt(async () => {
+      const check = await api.dbCheck();
+      // The event may have come first.
+      if (this.dbCheck.state === "running") this.dbCheck = check;
+    });
     return onAll(listeners);
   }
 
@@ -183,6 +195,25 @@ class LibraryStore {
       await api.locateFolder(folder.id, path);
       await this.refresh();
       await this.scan(folder.id);
+    });
+
+  /** Folders that can't be read now (H22). */
+  get unavailable(): Folder[] {
+    return this.folders.filter((folder) => folder.available === false);
+  }
+
+  /** Rescans `folder`, removing the tracks it doesn't find, after asking (H22). */
+  removeMissing = (folder: Folder) =>
+    attempt(async () => {
+      const confirmed = await ask(t("missing.removeTracksConfirm", { name: folderName(folder.path) }), {
+        title: t("missing.removeTracksTitle"),
+        kind: "warning",
+        okLabel: t("missing.removeTracksOk"),
+      });
+      if (!confirmed) return;
+      await api.removeMissing(folder.id);
+      this.version++;
+      await this.refresh();
     });
 
   removeFolder = (folder: Folder) =>

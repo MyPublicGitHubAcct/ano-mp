@@ -7,6 +7,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
@@ -291,4 +292,50 @@ TEST_CASE ("C API Dock menu reports choices of enabled items", "[c-api][dock]")
     auto* again = anomp_dock_menu_create (nullptr, nullptr);
     CHECK (again != nullptr);
     anomp_dock_menu_destroy (again);
+}
+
+TEST_CASE ("C API volume watcher reports volumes through its callback", "[c-api][volumes]")
+{
+    CHECK (anomp_volume_watcher_start (nullptr, nullptr) == nullptr);
+    anomp_volume_watcher_notify (nullptr, 1, "/Volumes/Music");
+    anomp_volume_watcher_stop (nullptr);
+
+    struct Seen
+    {
+        std::vector<std::pair<int, std::string>> volumes;
+    } seen;
+    auto* watcher =
+        anomp_volume_watcher_start ([] (int mounted, const char* path, void* user)
+                                    { static_cast<Seen*> (user)->volumes.emplace_back (mounted, path); }, &seen);
+    REQUIRE (watcher != nullptr);
+    anomp_volume_watcher_notify (watcher, 1, "/Volumes/Música");
+    anomp_volume_watcher_notify (watcher, 0, nullptr);
+    CHECK (seen.volumes == std::vector<std::pair<int, std::string>> { { 1, "/Volumes/Música" }, { 0, "" } });
+    CHECK ((anomp_volume_watcher_supported() == 1) == (JUCE_MAC != 0));
+    anomp_volume_watcher_stop (watcher);
+}
+
+TEST_CASE ("C API log reaches its callback, with JUCE's Logger and failed assertions", "[c-api][log]")
+{
+    struct Seen
+    {
+        std::vector<std::pair<int, std::string>> messages;
+    } seen;
+    anomp_log_write (ANOMP_LOG_ERROR, "dropped: no callback yet");
+    anomp_set_log_callback ([] (int level, const char* message, void* user)
+                            { static_cast<Seen*> (user)->messages.emplace_back (level, message); }, &seen);
+    anomp_log_write (ANOMP_LOG_WARN, "a warning");
+    anomp_log_write (99, nullptr);
+    juce::Logger::writeToLog ("from JUCE");
+    juce::logAssertion ("Some/File.cpp", 42);
+    anomp_set_log_callback (nullptr, nullptr);
+    anomp_log_write (ANOMP_LOG_ERROR, "dropped again");
+
+    CHECK (seen.messages
+           == std::vector<std::pair<int, std::string>> {
+               { ANOMP_LOG_WARN, "a warning" },
+               { ANOMP_LOG_DEBUG, "" },
+               { ANOMP_LOG_INFO, "from JUCE" },
+               { ANOMP_LOG_ERROR, "JUCE Assertion failure in File.cpp:42" },
+           });
 }

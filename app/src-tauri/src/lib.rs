@@ -4,9 +4,11 @@ mod coded;
 mod collection;
 #[cfg(debug_assertions)]
 mod dev;
+mod diagnostics;
 mod features;
 mod history;
 mod library;
+mod logging;
 mod media;
 mod metadata;
 mod queue;
@@ -20,7 +22,11 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // First, so a panic anywhere after is written down (PLAN.md H9).
+    logging::install_panic_hook();
     tauri::Builder::default()
+        // First, so the other plugins' setup can log.
+        .plugin(logging::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(visualizer::VisualizerState::default())
@@ -30,39 +36,47 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            anomp::forward_core_log();
+            log::info!(
+                "ano-mp {} (core {}) starting",
+                env!("CARGO_PKG_VERSION"),
+                anomp::version()
+            );
             // The library first: the settings live in it, and name the
             // output device the engine opens.
             if let Err(error) = library::commands::init(app.handle()) {
-                eprintln!("[library] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = settings::init(app.handle()) {
-                eprintln!("[settings] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = audio::init(app.handle()) {
-                eprintln!("[audio] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = queue::init(app.handle()) {
-                eprintln!("[queue] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = media::init(app.handle()) {
-                eprintln!("[media] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = metadata::worker::init(app.handle()) {
-                eprintln!("[metadata] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = library::analysis::init(app.handle()) {
-                eprintln!("[analysis] {error}");
+                log::error!("{error}");
             }
             if let Err(error) = history::init(app.handle()) {
-                eprintln!("[history] {error}");
+                log::error!("{error}");
             }
             remote::init(app.handle());
             // After the queue: the menus and the Dock follow it.
             if let Err(error) = shell::init(app.handle()) {
-                eprintln!("[shell] {error}");
+                log::error!("{error}");
             }
-            // Last: a rescan at launch runs in the background (F9).
+            // Last: a rescan at launch runs in the background (F9), and the
+            // database is checked (H10).
             library::watch::init(app.handle());
+            library::commands::upkeep(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -121,10 +135,16 @@ pub fn run() {
             settings::settings_save,
             audio::player_set_volume,
             audio::player_status,
+            diagnostics::diagnostics_text,
+            diagnostics::diagnostics_show_logs,
+            library::commands::library_db_check,
+            library::commands::library_db_restore,
+            library::commands::library_db_rebuild,
             library::commands::library_folders,
             library::commands::library_add_folder,
             library::commands::library_locate_folder,
             library::commands::library_remove_folder,
+            library::commands::library_remove_missing,
             library::commands::library_scan,
             library::commands::library_browse,
             library::commands::library_node_track_ids,
@@ -236,10 +256,13 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             tauri::RunEvent::Exit => {
+                log::info!("quitting");
                 remote::shutdown(app);
                 library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
                 queue::shutdown(app);
+                library::commands::shutdown(app);
+                library::availability::shutdown();
                 shell::shutdown();
                 media::shutdown();
                 audio::shutdown();

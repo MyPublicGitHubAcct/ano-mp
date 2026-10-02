@@ -22,7 +22,7 @@ pub fn configure<R: Runtime>(app: &AppHandle<R>, window: &WindowSettings) {
     match (window.menu_bar_controls, tray.is_some()) {
         (true, false) => match build(app) {
             Ok(built) => *tray = Some(built),
-            Err(error) => eprintln!("[tray] {error}"),
+            Err(error) => log::warn!("{error}"),
         },
         (false, true) => {
             if let Some(tray) = tray.take() {

@@ -1,6 +1,7 @@
-//! Opening the library database and migrating its schema.
+//! Opening the library database and migrating its schema, with a copy of
+//! the database written before any migration (PLAN.md H10).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -21,16 +22,107 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/009_substring_search.sql"),
 ];
 
+/// How many copies `back_up` keeps: the newest two.
+const COPIES_KEPT: usize = 2;
+
 /// Opens (creating if needed) the library database at `path` and brings its
-/// schema up to date. Each thread that needs the database opens its own
-/// connection; WAL mode lets readers carry on while a scan writes.
+/// schema up to date, first writing a copy (`back_up`) when there are
+/// migrations to apply to an existing database. Each thread that needs the
+/// database opens its own connection; WAL mode lets readers carry on while
+/// a scan writes.
 pub fn open(path: &Path) -> Result<Connection, Error> {
     let mut conn = Connection::open(path)?;
     conn.pragma_update_and_check(None, "journal_mode", "wal", |row| row.get::<_, String>(0))?;
     conn.pragma_update(None, "synchronous", "normal")?;
     configure(&conn)?;
+    let applied = schema_version(&conn)?;
+    if applied > 0 && applied < MIGRATIONS.len() {
+        back_up(&conn, path, applied + 1)?;
+    }
     migrate(&mut conn)?;
     Ok(conn)
+}
+
+/// How many migrations the database has had.
+fn schema_version(conn: &Connection) -> Result<usize, Error> {
+    let applied: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    Ok(usize::try_from(applied).unwrap_or(usize::MAX))
+}
+
+/// A copy of the database written before migration `migration` was applied.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Copy {
+    pub path: PathBuf,
+    pub migration: usize,
+}
+
+/// Writes a copy of the database at `path` to `<path>.pre-<migration>`
+/// with `VACUUM INTO`, then deletes all but the newest `COPIES_KEPT`
+/// copies. A copy that can't be written stops the migration, so the
+/// database is left as it was.
+pub fn back_up(conn: &Connection, path: &Path, migration: usize) -> Result<Copy, Error> {
+    let target = copy_path(path, migration);
+    let partial = with_suffix(&target, ".partial");
+    let failed = |error: &dyn std::fmt::Display| {
+        Error::Invalid(format!(
+            "Cannot write a copy of the library database to {} before upgrading it: {error}",
+            target.display()
+        ))
+    };
+    if partial.exists() {
+        std::fs::remove_file(&partial).map_err(|e| failed(&e))?;
+    }
+    conn.execute("VACUUM INTO ?1", [partial.to_string_lossy()])
+        .map_err(|e| failed(&e))?;
+    std::fs::rename(&partial, &target).map_err(|e| failed(&e))?;
+    log::info!("copied the database before migration {migration}");
+    for old in copies(path).into_iter().skip(COPIES_KEPT) {
+        if let Err(error) = std::fs::remove_file(&old.path) {
+            log::warn!(
+                "cannot delete the copy from before migration {}: {error}",
+                old.migration
+            );
+        }
+    }
+    Ok(Copy {
+        path: target,
+        migration,
+    })
+}
+
+/// The copies `back_up` wrote of the database at `path`, newest first.
+pub fn copies(path: &Path) -> Vec<Copy> {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return Vec::new();
+    };
+    let prefix = format!("{}.pre-", name.to_string_lossy());
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut copies: Vec<Copy> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let file_name = entry.file_name();
+            let migration = file_name.to_str()?.strip_prefix(&prefix)?.parse().ok()?;
+            Some(Copy {
+                path: entry.path(),
+                migration,
+            })
+        })
+        .collect();
+    copies.sort_by_key(|copy| std::cmp::Reverse(copy.migration));
+    copies
+}
+
+fn copy_path(path: &Path, migration: usize) -> PathBuf {
+    with_suffix(path, &format!(".pre-{migration}"))
+}
+
+/// `path` with `suffix` added to its file name.
+pub fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
 }
 
 /// A migrated in-memory database, for tests.
@@ -65,8 +157,7 @@ fn configure(conn: &Connection) -> Result<(), Error> {
 }
 
 pub(super) fn migrate(conn: &mut Connection) -> Result<(), Error> {
-    let applied: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    let applied = usize::try_from(applied).unwrap_or(usize::MAX);
+    let applied = schema_version(conn)?;
     if applied > MIGRATIONS.len() {
         return Err(Error::Invalid(format!(
             "The library database is from a newer version of the app (schema {applied}, \
@@ -79,6 +170,7 @@ pub(super) fn migrate(conn: &mut Connection) -> Result<(), Error> {
         tx.execute_batch(sql)?;
         tx.pragma_update(None, "user_version", index as i64 + 1)?;
         tx.commit()?;
+        log::info!("applied migration {}", index + 1);
     }
     Ok(())
 }
@@ -269,6 +361,89 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    /// A database file at `path` with only the first `version` migrations.
+    fn file_at(path: &Path, version: usize) {
+        let conn = Connection::open(path).unwrap();
+        configure(&conn).unwrap();
+        for (index, sql) in MIGRATIONS.iter().take(version).enumerate() {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", index as i64 + 1)
+                .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('volume', '0.5')",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn copies_the_database_before_migrating_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 7);
+        open(&path).unwrap();
+        let copies = copies(&path);
+        assert_eq!(
+            copies,
+            [Copy {
+                path: dir.path().join("library.sqlite3.pre-8"),
+                migration: 8
+            }]
+        );
+        // The copy is the database as it was before migration 8.
+        let copy = Connection::open(&copies[0].path).unwrap();
+        assert_eq!(user_version(&copy), 7);
+        let volume: String = copy
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'volume'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(volume, "0.5");
+        // Opening it again, with nothing to migrate, writes no copy.
+        open(&path).unwrap();
+        assert_eq!(super::copies(&path).len(), 1);
+    }
+
+    #[test]
+    fn a_new_database_gets_no_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        open(&path).unwrap();
+        assert!(copies(&path).is_empty());
+    }
+
+    #[test]
+    fn keeps_the_newest_two_copies() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        for migration in [3, 5, 6] {
+            std::fs::write(copy_path(&path, migration), "old").unwrap();
+        }
+        // Another file whose name only starts the same way is left alone.
+        std::fs::write(dir.path().join("library.sqlite3.pre-x"), "").unwrap();
+        file_at(&path, 7);
+        open(&path).unwrap();
+        let kept: Vec<usize> = copies(&path).iter().map(|copy| copy.migration).collect();
+        assert_eq!(kept, [8, 6]);
+        assert!(dir.path().join("library.sqlite3.pre-x").exists());
+        assert!(!with_suffix(&copy_path(&path, 8), ".partial").exists());
+    }
+
+    #[test]
+    fn a_copy_that_cannot_be_written_stops_the_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 7);
+        // A directory where the copy would go.
+        std::fs::create_dir(copy_path(&path, 8)).unwrap();
+        let error = open(&path).unwrap_err().to_string();
+        assert!(error.contains("Cannot write a copy"), "{error}");
+        assert_eq!(user_version(&Connection::open(&path).unwrap()), 7);
     }
 
     #[test]
