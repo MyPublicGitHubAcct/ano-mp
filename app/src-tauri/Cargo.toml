@@ -65,7 +65,7 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "gzip"
 ring = "0.17"
 # Embedded pictures as data: URLs in Get Info (PLAN.md F16); already in the
 # dependency tree through Tauri.
-base64 = "0.22"
+base64 = "0.23"
 # Watching library folders while the app runs (PLAN.md F9): FSEvents on
 # macOS, inotify and ReadDirectoryChangesW in Phases 9 and 10.
 notify = "8"
