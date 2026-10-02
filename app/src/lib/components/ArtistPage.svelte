@@ -8,8 +8,9 @@
   // metadata worker names the artist in `metadata-changed`. Click an album
   // to open it in the browser, double-click to play it. The heart marks the
   // artist a favourite (PLAN.md F3).
+  import { webLink } from "$lib/links";
+  import { openLink } from "$lib/openLink";
   import { untrack } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import { library as api, marks, metadata, queue, type ArtistAlbum, type ArtistPage } from "$lib/api";
   import { lifeSpan } from "$lib/format";
   import { count, errorText, t } from "$lib/i18n";
@@ -168,11 +169,6 @@
   }
 
   /** Opens a web page in the browser rather than the app's window. */
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
 </script>
 
 {#snippet albumGrid(albums: ArtistAlbum[], showArtist: boolean)}
@@ -188,7 +184,11 @@
           <Art albumId={album.id} size="100%" />
           <span class="name" title={album.title}>{album.title}</span>
           <span class="muted small">
-            {[showArtist ? album.albumArtist : null, album.year, showArtist ? null : count("count.tracks", album.trackCount)]
+            {[
+              showArtist ? album.albumArtist : null,
+              album.year,
+              showArtist ? null : count("count.tracks", album.trackCount),
+            ]
               .filter((part) => part !== null)
               .join(" · ")}
           </span>
@@ -227,10 +227,12 @@
     <div class="actions">
       {#if page}<Heart on={hearted} label={page.name} onchange={heart} size="1.2rem" />{/if}
       <button class="primary" onclick={() => playAll(false)} disabled={!page || page.trackCount === 0}>
-        <Icon name="play" /> {t("menu.play")}
+        <Icon name="play" />
+        {t("menu.play")}
       </button>
       <button onclick={() => playAll(true)} disabled={!page || page.trackCount === 0}>
-        <Icon name="shuffle" /> {t("bar.shuffle")}
+        <Icon name="shuffle" />
+        {t("bar.shuffle")}
       </button>
       <button class="icon" title={t("header.back")} aria-label={t("header.back")} onclick={() => ui.back()}
         ><Icon name="close" /></button
@@ -250,19 +252,23 @@
           {#each paragraphs as paragraph, index (index)}<p>{paragraph}</p>{/each}
         </div>
         {#if biography.paragraphs.length > SHORT_BIOGRAPHY}
-          <button class="link" onclick={() => (expanded = !expanded)}>{t(expanded ? "album.showLess" : "album.readMore")}</button>
+          <button class="link" onclick={() => (expanded = !expanded)}
+            >{t(expanded ? "album.showLess" : "album.readMore")}</button
+          >
         {/if}
         <p class="credit muted small">
           {t("album.creditFrom", { source: biography.sourceName })}
-          <a href={biography.url} onclick={openLink}>“{biography.title}”</a>{t("album.creditUnder")}
-          <a href={biography.licenseUrl} onclick={openLink}>{biography.license}</a>.
+          <a href={webLink(biography.url)} onclick={openLink}>“{biography.title}”</a>{t("album.creditUnder")}
+          <a href={webLink(biography.licenseUrl)} onclick={openLink}>{biography.license}</a>.
         </p>
       {:else if status()}
         <p class="status muted" aria-live="polite">{status()}</p>
       {/if}
       <div class="links">
         {#if page.info.canLookUp && page.info.status === "review"}
-          <button class="primary" onclick={findArtist} disabled={busy}><Icon name="search" /> {t("artist.choose")}</button>
+          <button class="primary" onclick={findArtist} disabled={busy}
+            ><Icon name="search" /> {t("artist.choose")}</button
+          >
         {/if}
         {#if page.info.canLookUp && !biography && page.info.status !== "review"}
           <button onclick={lookUp} disabled={busy}>
@@ -275,7 +281,7 @@
             {t("artist.missingReleases")}
           </button>
           <a href="https://musicbrainz.org/artist/{mb.id}" onclick={openLink}>MusicBrainz</a>
-          {#if mb.homepage}<a href={mb.homepage} onclick={openLink}>{t("artist.website")}</a>{/if}
+          {#if mb.homepage}<a href={webLink(mb.homepage)} onclick={openLink}>{t("artist.website")}</a>{/if}
         {/if}
         {#if page.info.canLookUp && page.info.status !== "review"}
           <button class="link" onclick={findArtist}>

@@ -201,7 +201,9 @@
       step="0.5"
       value={playback.crossfade}
       disabled={appSettings.saving}
-      aria-valuetext={playback.crossfade === 0 ? t("playback.crossfadeOff") : t("playback.seconds", { count: playback.crossfade })}
+      aria-valuetext={playback.crossfade === 0
+        ? t("playback.crossfadeOff")
+        : t("playback.seconds", { count: playback.crossfade })}
       onchange={(event) => {
         const value = Number(event.currentTarget.value);
         appSettings.save((next) => (next.playback.crossfade = value));

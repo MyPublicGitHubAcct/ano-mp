@@ -2,6 +2,8 @@ mod anomp;
 mod audio;
 mod coded;
 mod collection;
+#[cfg(debug_assertions)]
+mod dev;
 mod features;
 mod history;
 mod library;
@@ -15,11 +17,6 @@ mod visualizer;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
-
-#[tauri::command]
-fn core_version() -> String {
-    anomp::version()
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -98,19 +95,30 @@ pub fn run() {
             },
         )
         .invoke_handler(tauri::generate_handler![
-            core_version,
-            audio::audio_device_name,
+            // The /dev page's (PLAN.md H2), in debug builds only.
+            #[cfg(debug_assertions)]
+            dev::core_version,
+            #[cfg(debug_assertions)]
+            dev::audio_device_name,
+            #[cfg(debug_assertions)]
+            dev::play_test_tone,
+            #[cfg(debug_assertions)]
+            dev::stop_test_tone,
+            #[cfg(debug_assertions)]
+            dev::player_load,
+            #[cfg(debug_assertions)]
+            dev::player_set_next,
+            #[cfg(debug_assertions)]
+            dev::player_play,
+            #[cfg(debug_assertions)]
+            dev::player_pause,
+            #[cfg(debug_assertions)]
+            dev::player_stop,
+            #[cfg(debug_assertions)]
+            dev::player_seek,
             audio::audio_output_status,
             settings::settings_get,
             settings::settings_save,
-            audio::play_test_tone,
-            audio::stop_test_tone,
-            audio::player_load,
-            audio::player_set_next,
-            audio::player_play,
-            audio::player_pause,
-            audio::player_stop,
-            audio::player_seek,
             audio::player_set_volume,
             audio::player_status,
             library::commands::library_folders,

@@ -61,7 +61,13 @@ function create(): Renderer {
       const { ctx, width, height, dt, frame } = scene;
       const rms = Math.max(frame.rms[0], frame.rms[1]);
       energy = approach(energy, rms, dt, 0.1, 0.8);
-      bass = approach(bass, frame.bands.slice(0, 8).reduce((a, b) => Math.max(a, b), 0), dt, 0.03, 0.25);
+      bass = approach(
+        bass,
+        frame.bands.slice(0, 8).reduce((a, b) => Math.max(a, b), 0),
+        dt,
+        0.03,
+        0.25,
+      );
       // Turning faster when loud; punching in on a beat and easing back.
       angle += dt * (scene.calm ? 0.02 : 0.04 + 0.35 * energy);
       zoom = scene.beat ? 1.12 : approach(zoom, 1 + (scene.calm ? 0 : 0.05 * bass), dt, 0.05, 0.6);
@@ -95,7 +101,14 @@ function create(): Renderer {
       ctx.restore();
 
       // A soft vignette.
-      const vignette = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.hypot(width, height) / 2);
+      const vignette = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        Math.min(width, height) * 0.3,
+        width / 2,
+        height / 2,
+        Math.hypot(width, height) / 2,
+      );
       vignette.addColorStop(0, "rgb(0 0 0 / 0)");
       vignette.addColorStop(1, "rgb(0 0 0 / 0.55)");
       ctx.fillStyle = vignette;

@@ -85,8 +85,10 @@ pub fn encode_histogram(bins: &[u32]) -> Vec<u8> {
 
 pub fn decode_histogram(bytes: &[u8]) -> Vec<u32> {
     bytes
-        .chunks_exact(2)
-        .map(|pair| u32::from(u16::from_le_bytes([pair[0], pair[1]])))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&pair| u32::from(u16::from_le_bytes(pair)))
         .collect()
 }
 

@@ -114,7 +114,23 @@
     if (sorted.files.length === 0 && sorted.folders.length === 0) toasts.show(t("drop.nothing"));
   }
 
-  const AUDIO = ["mp3", "flac", "m4a", "m4b", "aac", "ogg", "oga", "opus", "wav", "aif", "aiff", "aifc", "wma", "wv", "ape"];
+  const AUDIO = [
+    "mp3",
+    "flac",
+    "m4a",
+    "m4b",
+    "aac",
+    "ogg",
+    "oga",
+    "opus",
+    "wav",
+    "aif",
+    "aiff",
+    "aifc",
+    "wma",
+    "wv",
+    "ape",
+  ];
 
   /** Plays the current track's album, or the search box, and so on: the menu bar's page items. */
   async function onMenu(id: string) {

@@ -29,7 +29,10 @@ class FeaturesStore {
       on("history-changed", () => this.historyVersion++),
       on("library-prefs-changed", () => this.prefsVersion++),
     ]);
-    api.analysisStatus().then((progress) => (this.analysis = progress), () => {});
+    api.analysisStatus().then(
+      (progress) => (this.analysis = progress),
+      () => {},
+    );
     return stop;
   }
 

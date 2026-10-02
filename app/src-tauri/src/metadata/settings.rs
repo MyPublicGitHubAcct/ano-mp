@@ -584,8 +584,10 @@ mod tests {
 
     #[test]
     fn online_switch_and_dependencies_gate_sources() {
-        let mut settings = ServiceSettings::default();
-        settings.online = false;
+        let settings = ServiceSettings {
+            online: false,
+            ..ServiceSettings::default()
+        };
         assert_eq!(
             settings.sources_for(Kind::AlbumArt),
             [SourceId::Embedded, SourceId::Folder]

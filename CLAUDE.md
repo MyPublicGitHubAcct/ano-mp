@@ -19,7 +19,7 @@ Playing and media keys: `MediaControls` in the core, hosted by
 plays any supported file with gapless hand-off to a pre-opened next track;
 the Rust queue (`app/src-tauri/src/queue/`) keeps it armed across the whole
 queue. The Svelte UI is in `app/src/lib/` (`api.ts` has the payload types) and
-`app/src/routes/`; the old dev panels are at `/dev`.
+`app/src/routes/`; the old dev panels are at `/dev`, in debug builds only.
 The core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 (`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
 from it, and `library_browse` pages through it under configurable sort/grouping
@@ -98,8 +98,18 @@ scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 scripts/format-cpp.py     # clang-format core/ after editing it (--check: report only)
 scripts/format-python.py  # ruff format + ruff check scripts/*.py after editing them (--check: diff only)
-scripts/check-all.py      # every check, as CI runs it (--quick: formatters, repo checks, script tests)
+scripts/format-frontend.py # Prettier over app/ after editing the frontend (--check: report only)
+scripts/check-all.py      # every check, as CI runs it (--quick: formatters, repo checks, script tests, gitleaks)
+git config core.hooksPath scripts/hooks  # once per clone: the pre-commit hook (gitleaks, check-all --quick)
+
+cmake --workflow --preset asan  # configure, build and ctest under ASan + UBSan (build/asan)
+cmake --workflow --preset tsan  # the same under TSan (build/tsan; ~4.5 min)
 ```
+
+Tools beyond the build: `brew install uv gitleaks`, and `cargo install
+cargo-deny --version 0.20.2 --locked` (the version CI installs). Rust and
+Node are pinned by `rust-toolchain.toml` and `.nvmrc`; `app/.npmrc` makes
+npm refuse a Node outside `package.json`'s `engines`.
 
 CI (`.github/workflows/ci.yml`, macOS) runs `scripts/check-all.py` and nothing
 else, so a new check goes in that script, not in the workflow. The repo
@@ -108,12 +118,17 @@ function declared in `anomp.rs` with the same parameter count, apart from its
 `NOT_BOUND` list), `check-sources.py` (the core's CMake source lists) and
 `check-migrations.py`. Scripts use the standard library only; their tests are
 in `scripts/tests/` (pytest, run by `scripts/test-python.py`), each repo check
-with one test against the real tree.
+with one test against the real tree. The full run also runs clippy, `cargo
+deny`, ESLint and the sanitizer presets; `--quick` is what the pre-commit
+hook runs. Actions in the workflow are pinned by commit SHA (look a new one
+up with `git ls-remote`, never guess it), and Dependabot
+(`.github/dependabot.yml`) proposes updates monthly.
 
 The format scripts are Python so they run on every platform (on Windows, run them
 with `py`). The C++ and Python ones run a pinned formatter through `uvx` (`brew
 install uv`); `.clang-format` is JUCE style, `core/include/.clang-format` keeps
-`anomp.h` in C style.
+`anomp.h` in C style. `format-frontend.py` runs the Prettier pinned in
+`app/package.json` (`app/.prettierrc.json`); reformat in a commit of its own.
 
 FFmpeg is built by `scripts/build-ffmpeg.sh` (pinned version, LGPL, audio-only,
 shared) into `third_party/ffmpeg/<platform>/` (git-ignored). CMake refuses to
@@ -131,7 +146,8 @@ you regenerate. The script rewrites every fixture, but only the Vorbis ones chan
 (oggenc picks random stream serials): `git checkout` them unless you meant to change
 them. The two `tagged-*` fixtures carry the tags `TagReaderTests.cpp` expects.
 
-JUCE 9.0.2 and Catch2 v3.16.0 are pinned in the top-level `CMakeLists.txt`, TagLib
+JUCE 9.0.2 and Catch2 v3.16.0 are pinned by commit in the top-level `CMakeLists.txt`
+(GitHub's archive of the release's commit + SHA-256), TagLib
 2.3.2 (tarball + SHA-256) in `cmake/TagLib.cmake`, Signalsmith Stretch 1.4.0 and its
 FFT library (MIT, header-only, tarballs + SHA-256) in `cmake/Signalsmith.cmake`, all
 fetched by FetchContent into
@@ -155,11 +171,20 @@ The app (run from `app/`; `npm install` once):
 ```sh
 npm run tauri dev            # run the desktop app
 npm run check                # svelte-check / TypeScript
+npm run lint                 # ESLint (eslint.config.js)
 npm test                     # frontend unit tests (node --test tests/, plain .mjs)
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
+cargo clippy --all-targets -- -D warnings  # Rust lint, as check-all runs it
+cargo deny check             # advisories, licences, bans, sources (deny.toml)
 ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/settings.ts
 ../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```
+
+Clippy runs with `-D warnings` and the `[lints]` in `Cargo.toml`: every
+`unsafe` block has a `// SAFETY:` comment, and an unsafe fn's body still
+wraps its unsafe operations in blocks. Fix a new warning, or allow it at
+the site with the reason. A crate with a licence outside `deny.toml`'s list
+is an owner decision (`PLAN.md` §8.1).
 
 `app/src-tauri/build.rs` builds `anomp_core` with the `cmake` crate (Ninja, tests off)
 into Cargo's `target/` dir, separate from `build/<preset>`, so the first Cargo build
@@ -249,6 +274,19 @@ a literal in a component. Rust errors the UI shows are made with
 `crate::coded` (`{code, params, message}`), each code with an `error.<code>`
 message in `en.json` (`tests/i18n.test.mjs` checks), and the UI shows a
 command's error through `errorText`, never `String(error)`.
+
+The /dev page and its commands (`src/dev.rs`) exist in debug builds only
+(`PLAN.md` H2): the commands are registered under `#[cfg(debug_assertions)]`
+in `generate_handler!`, and the page is loaded only when the Vite constant
+`__DEV_TOOLS__` is true (`vite dev`, or a debug build from the Tauri CLI).
+Put anything that bypasses the queue or takes a raw path there.
+
+The webview runs under a strict CSP (`tauri.conf.json`; what it allows and
+why is in `PLAN.md` H1): no remote scripts, styles, images or connections,
+and images only from the app, `anomp-art:`, `data:` and `blob:`. The URL
+opener allows `https` only: open a web link with `openLink`/`openWebLink`
+(`lib/openLink.ts`), and pass any URL from service data through `webLink`
+(`lib/links.ts`) before it becomes an `href`.
 
 Each window gets only the commands it needs: `build.rs` reads the handlers in
 `lib.rs`'s `generate_handler!` and writes the main window's permission set, so

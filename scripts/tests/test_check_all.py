@@ -35,3 +35,9 @@ def test_every_script_step_exists(check_all):
         for part in step.command:
             if str(part).endswith(".py"):
                 assert (check_all.REPO_ROOT / "scripts" / part).exists(), part
+
+
+def test_the_pre_commit_hook_runs_the_quick_checks(check_all):
+    hook = check_all.REPO_ROOT / "scripts" / "hooks" / "pre-commit"
+    assert hook.stat().st_mode & 0o111, "executable"
+    assert "check-all.py" in hook.read_text()

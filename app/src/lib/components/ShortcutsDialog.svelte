@@ -21,7 +21,12 @@
     if (!mac) return [...parts.map((part) => (part === "CmdOrCtrl" ? "Ctrl" : part)), shown].join("+");
     const symbols: Record<string, string> = { Alt: "⌥", Shift: "⇧", CmdOrCtrl: "⌘", Ctrl: "⌃" };
     const order = ["Ctrl", "Alt", "Shift", "CmdOrCtrl"];
-    return parts.sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((part) => symbols[part] ?? part).join("") + shown;
+    return (
+      parts
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+        .map((part) => symbols[part] ?? part)
+        .join("") + shown
+    );
   }
 
   const PAGE: [MessageKey, string][] = [

@@ -6,13 +6,7 @@
   // metadata worker, so the window never contacts the service itself.
   import { onMount } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
-  import {
-    candidateArtUrl,
-    metadata,
-    type AlbumDetails,
-    type CoverCandidate,
-    type CoverChoices,
-  } from "$lib/api";
+  import { candidateArtUrl, metadata, type AlbumDetails, type CoverCandidate, type CoverChoices } from "$lib/api";
   import { errorText, t } from "$lib/i18n";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import type { AlbumRef } from "$lib/state/ui.svelte";
@@ -80,7 +74,8 @@
   function onload(event: Event, candidate: CoverCandidate) {
     const img = event.currentTarget as HTMLImageElement;
     // The archive's preview is a thumbnail; its size says nothing.
-    if (candidate.source !== "cover-art-archive") sizes.set(keyOf(candidate), t("cover.pixels", { width: img.naturalWidth, height: img.naturalHeight }));
+    if (candidate.source !== "cover-art-archive")
+      sizes.set(keyOf(candidate), t("cover.pixels", { width: img.naturalWidth, height: img.naturalHeight }));
   }
 
   async function act(action: () => Promise<unknown>, done: string) {
@@ -104,7 +99,8 @@
         t("cover.changed", { title: album.title }),
       );
   };
-  const automatic = () => act(() => metadata.useAutomaticCover(album.id), t("cover.automaticDone", { title: album.title }));
+  const automatic = () =>
+    act(() => metadata.useAutomaticCover(album.id), t("cover.automaticDone", { title: album.title }));
 </script>
 
 <Dialog title={t("album.chooseCoverFor", { title: album.title })} {onclose}>
@@ -146,13 +142,21 @@
               >
                 <span class="picture">
                   {#if state === "ready"}
-                    <img src={candidateArtUrl(album.id, candidate)} alt="" onload={(event) => onload(event, candidate)} />
+                    <img
+                      src={candidateArtUrl(album.id, candidate)}
+                      alt=""
+                      onload={(event) => onload(event, candidate)}
+                    />
                   {:else}
                     <span class="muted small">
-                      {t(state === "loading" ? "common.loading" : state === "missing" ? "cover.missing" : "cover.failed")}
+                      {t(
+                        state === "loading" ? "common.loading" : state === "missing" ? "cover.missing" : "cover.failed",
+                      )}
                     </span>
                   {/if}
-                  {#if isChosen(candidate)}<span class="badge"><Icon name="check" size="0.9rem" /> {t("cover.yourChoice")}</span>{/if}
+                  {#if isChosen(candidate)}<span class="badge"
+                      ><Icon name="check" size="0.9rem" /> {t("cover.yourChoice")}</span
+                    >{/if}
                 </span>
                 <span class="label" title={candidate.label}>{candidate.label}</span>
                 {#if candidate.detail || sizes.has(key)}

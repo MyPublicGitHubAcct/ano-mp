@@ -103,8 +103,8 @@ Why this split:
 | Item | Location |
 |---|---|
 | git repo, `.gitignore` | `/` |
-| Top-level CMake with JUCE 9.0.2 + Catch2 v3.16.0 via FetchContent | `CMakeLists.txt` |
-| Presets `debug` / `release` (Ninja) | `CMakePresets.json` |
+| Top-level CMake with JUCE 9.0.2 + Catch2 v3.16.0 via FetchContent, each pinned by commit (an archive of the commit plus its SHA-256) | `CMakeLists.txt` |
+| Presets `debug` / `release` (Ninja), and `asan` (Address and Undefined) / `tsan` sanitizer presets with workflow presets that build and run the Catch2 suite | `CMakePresets.json` |
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
@@ -114,8 +114,8 @@ Why this split:
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 99 passing Catch2 tests | `core/tests` |
-| Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) showing `anomp_version()` via the `core_version` command | `app/` |
+| 100 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
 | Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
@@ -131,15 +131,15 @@ Why this split:
 | Menus, Dock menu, menu-bar controls, mini player, files opened from the Finder, track-change notifications | `app/src-tauri/src/shell/`, `core/src/DockMenu*` |
 | Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
 | UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
-| 18 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast) | `app/tests/` |
+| 21 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links) | `app/tests/` |
 | 342 passing `cargo test` tests (playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
 | Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
-| Developer page: device name, test tone, loading typed paths straight into the engine, event log | `app/src/routes/dev/+page.svelte` |
+| Developer page (debug builds only, with its commands): device name, test tone, loading typed paths straight into the engine, event log | `app/src/lib/components/dev/DevPage.svelte`, `app/src-tauri/src/dev.rs` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' pytest tests (`test-python.py`), `ruff check`, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `.github/workflows/ci.yml` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 30 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
 
 Build and test:
 
@@ -162,6 +162,10 @@ installed on the dev machine as of 2026-09-25 (versions noted):
       npm `@tauri-apps/cli` (tauri-cli 2.11.5)
 - [x] FFmpeg build dependencies: `brew install nasm pkg-config` (nasm 3.02,
       pkgconf 3.0.7; the project builds its own FFmpeg; see Phase 1)
+- [x] Check tools (H7, 2026-10-02): `brew install gitleaks uv` (gitleaks
+      8.30.1) and `cargo install cargo-deny --version 0.20.2 --locked`.
+      Rust and Node are pinned by `rust-toolchain.toml` and `.nvmrc`
+      (rustup installs the pinned Rust by itself).
 
 Not needed until Phase 8 (iOS/iPadOS):
 
@@ -2698,7 +2702,16 @@ in order. Step 6 runs alongside all of them.
    - Add a GitHub Actions macOS job that runs only `check-all.py`.
    - This comes first because everything after it is hardening, and
      hardening without CI tends to slip back.
-2. **Quick P1 security and lint fixes (1–2 days).**
+2. **Quick P1 security and lint fixes (1–2 days). Done 2026-10-02.**
+   - Every suite passed on a clean tree: ctest 100 (also under the `asan`
+     and `tsan` presets), `cargo test` 342 (9 ignored), `npm test` 21,
+     `svelte-check` 0 errors, script tests 30. `check-all.py` has 21
+     steps; each item's entry below says what it added.
+   - The CI job still hasn't run: Step 1's commit isn't pushed yet.
+   - Left for the owner: turning on GitHub secret scanning with push
+     protection (and Dependabot security updates) in the repository's
+     settings, and installing the hook in each clone
+     (`git config core.hooksPath scripts/hooks`).
    - H1 (CSP), H2 (developer surface out of release builds).
    - H3's remaining half: the opener still allows `http://*`.
    - H8 (clippy, `[lints]`, toolchain pins), H7's remainder (SHA pins for
@@ -2783,6 +2796,28 @@ matches it.
   today (no `{@html}`; biographies are text), so this is defence in
   depth. It is needed before any richer remote content, Bandcamp (Phase
   11) or O14.
+  - **Done 2026-10-02.** `tauri.conf.json` has the policy above, plus
+    `script-src 'self'`, `font-src 'self'`, `base-uri 'none'` and
+    `form-action 'none'`. Tauri adds the hash of SvelteKit's inline boot
+    script to `script-src`.
+    - `dangerousDisableAssetCspModification: ["style-src"]`: otherwise
+      Tauri puts a nonce in `style-src`, and a nonce makes browsers
+      ignore `'unsafe-inline'`. That would block every `style` attribute
+      (Svelte's, and `app.html`'s).
+    - Checked in a built bundle with a temporary probe, run against a
+      scratch library of `core/tests/fixtures`:
+      - no violations;
+      - a cover from `anomp-art` drawn into a canvas and its pixels read;
+      - a `data:` image;
+      - 149 visualizer `Channel` frames in 2.5 s of playback;
+      - inline styles applied.
+      A remote image was blocked and reported, so the policy is
+      enforced.
+    - `devCsp` (the same policy, plus `ws:` for Vite's HMR) does nothing
+      on desktop: in `tauri dev`, Tauri loads Vite's URL directly and
+      sets no CSP there. It applies only where Tauri proxies the dev
+      server (iOS, Phase 8). The LAN remote's page (`remote/`) already
+      sends its own CSP.
 - **H2 Developer surface out of release builds.** Release builds
   register `player_load` and `player_set_next` (any typed path), the
   test-tone commands, and the `/dev` route.
@@ -2790,6 +2825,18 @@ matches it.
     `dev-tools` Cargo feature. Leave `/dev` out of the release frontend.
   - On Linux and Windows (Phases 9–10) there is no sandbox. There,
     `player_load` would hand any readable file to FFmpeg.
+  - **Done 2026-10-02.** The /dev page's ten commands (`core_version`,
+    `audio_device_name`, the test tone, `player_load`/`set_next`/`play`/
+    `pause`/`stop`/`seek`) are in `src/dev.rs`, compiled and registered
+    under `cfg(debug_assertions)` only. `build.rs` still lists them in the
+    main window's permission set, so that file is the same in every
+    profile; in a release build there is nothing to call.
+    - The page is `components/dev/DevPage.svelte`, imported by
+      `routes/dev/+page.ts` only when `__DEV_TOOLS__` (a Vite `define`)
+      is true: under `vite dev`, or in the Tauri CLI's debug builds
+      (`TAURI_ENV_DEBUG`). Otherwise the import is dead code and its chunk
+      isn't emitted; `/dev` redirects to `/`. A release frontend build
+      holds none of those command names.
 - **H3 URL opener and command permissions.**
   - `opener:allow-open-url` allows every `http://` and `https://` URL.
     The links come from MusicBrainz URL relations and Wikipedia, which
@@ -2803,9 +2850,18 @@ matches it.
     declares every app command in Tauri's app manifest and writes the
     main window's permission set (`permissions/main-window.toml`, from
     `generate_handler!` in `lib.rs`); the mini player's
-    (`permissions/mini-window.toml`) lists the commands it uses. The URL
-    opener's `https`-only rule is still to do: `capabilities/default.json`
-    still allows `http://*` (checked 2026-10-02).
+    (`permissions/mini-window.toml`) lists the commands it uses.
+  - **Done 2026-10-02 (the URL opener):** `capabilities/default.json`
+    allows `https://*` only.
+    - Every link goes through `lib/openLink.ts` (`openLink` for an `<a>`,
+      `openWebLink` for Get Info's MusicBrainz links). It opens only what
+      `lib/links.ts`'s `webLink` allows: https, with `http` upgraded.
+    - Every `href` built from service data (MusicBrainz homepages,
+      Wikipedia articles and licences, release pages, credits) is
+      `webLink(…)`. Any other scheme gives no `href`, so it shows as plain
+      text.
+    - Tested in `tests/links.test.mjs`. The six copies of `openLink` in
+      the components are now one.
 - **H4 Folder pictures on unsandboxed platforms.**
   `folder_art::is_relative_path` rejects `..` lexically, but a symlink
   inside a library folder can still point outside it. The macOS sandbox
@@ -2829,6 +2885,20 @@ matches it.
   Undefined) and `tsan` that build and run the Catch2 suite. `tsan`
   covers `SignalTap`, `AnalysisThread`, and the audio thread's hand-off
   and events. Both run in `check-all.py` (not `--quick`) and in CI.
+  - **Done 2026-10-02.** `CMakePresets.json` has `asan` (`-fsanitize=
+    address,undefined`, UBSan errors fatal) and `tsan`, each in its own
+    build directory. Workflow presets (`cmake --workflow --preset asan`)
+    configure, build and run ctest, with `ASAN_OPTIONS`/`UBSAN_OPTIONS`/
+    `TSAN_OPTIONS` set to stop at the first report.
+    - Both are steps in `check-all.py`. TSan takes about 4.5 min locally.
+    - Both found nothing (100 of 100 each).
+    - No test ran the engine on two threads: every `PlayerEngine` test
+      renders on the thread that calls it. "PlayerEngine hands off while
+      an audio thread renders" now renders on its own thread while the
+      message thread queues next tracks, seeks, changes gains and
+      dispatches events, for 20 hand-offs.
+    - A racy program built with the same flags is caught, so the presets
+      would report a real race.
 - **H7 Supply chain.**
   - Pin JUCE and Catch2 by commit SHA, not tag, since a tag can move
     (TagLib and FFmpeg are already pinned by SHA-256).
@@ -2848,8 +2918,37 @@ matches it.
     exactly in `package.json`. The loose `2` ranges had let `cargo`
     move `tauri` to 2.12 while npm kept `@tauri-apps/api` at 2.11,
     and `tauri build` refuses mismatched major.minor versions. Each
-    crate moves together with its npm package. The rest of H7 is still
-    to do.
+    crate moves together with its npm package.
+  - **Done 2026-10-02 (the rest):**
+    - JUCE and Catch2: `URL` GitHub's archive of the commit each release
+      tag names (JUCE `7278278`, Catch2 `317ac1e`, from `git ls-remote`),
+      plus its `URL_HASH`, as TagLib and Signalsmith are pinned. A
+      shallow git clone can't fetch a commit by hash, and a full clone of
+      JUCE is large. Each archive was hashed twice and matched the
+      previous git checkout file for file.
+    - Actions in `ci.yml` are pinned by commit with the release in a
+      comment: checkout v5.1.0, setup-node v5.0.0, cache v4.3.0. Newer
+      majors exist (v7, v7, v6); Dependabot's first run offers them.
+    - `app/src-tauri/deny.toml`: `cargo deny check` (cargo-deny 0.20.2,
+      installed `--locked` in CI) is a `check-all.py` step, not
+      `--quick`, since it fetches the advisory database.
+      - Licences: the permissive ones in the tree, plus MPL-2.0
+        (cssparser and selectors, through Tauri).
+      - Crates from crates.io only; wildcard versions denied; duplicate
+        versions only warn.
+      - It found RUSTSEC-2024-0370 (proc-macro-error unmaintained). That
+        is ignored with its reason: Linux only, through Tauri's gtk-rs
+        0.18. It also found a yanked `yoke-derive` 0.8.3, moved to 0.8.4.
+    - `.github/dependabot.yml`: Cargo, npm and Actions, monthly, one
+      grouped pull request each, with a 7-day cooldown. Tauri's crates
+      and npm packages get patch updates only, since the two sides must
+      move together by hand.
+    - Secrets: gitleaks is a quick `check-all.py` step over the history
+      (CI checks out every commit for it). `scripts/hooks/pre-commit`
+      runs gitleaks over the staged changes, then `check-all.py --quick`.
+      It is the pre-commit hook M4 describes, installed with
+      `git config core.hooksPath scripts/hooks`. GitHub secret scanning
+      with push protection is a repository setting the owner turns on.
 - **H8 Lint gates and pinned toolchains.**
   - `cargo clippy --all-targets -- -D warnings` runs in `check-all.py`.
   - A `[lints]` table in `Cargo.toml`, including `unsafe_op_in_unsafe_fn`
@@ -2859,6 +2958,31 @@ matches it.
     `engines` pins Node, so local and CI builds match. `doctor.py` (M4)
     reads them.
   - Move to Rust edition 2024 in one separate commit.
+  - **Done 2026-10-02 (all but the edition move and `doctor.py`):**
+    - `[lints]` in `Cargo.toml` sets `unsafe_op_in_unsafe_fn` and
+      `clippy::undocumented_unsafe_blocks` to warn, which `-D warnings`
+      makes errors. `check-all.py` runs `cargo clippy --all-targets -- -D
+      warnings`.
+    - Fixed: 13 unsafe operations in `anomp.rs`'s unsafe fns, now in
+      their own blocks with `SAFETY:` comments; a missing one on
+      `FolderAccess`'s `Sync`; and 11 small lints (slices from
+      references, `as_chunks`, `is_multiple_of`, `Range::contains`,
+      `sort_by_key`, …).
+    - Allowed:
+      - `clippy::type_complexity`, crate-wide: its 15 cases are SQL rows
+        read as tuples where they're queried.
+      - `drop_non_drop` at one statement in `remote/mod.rs`
+        (`drop(library)` on a `State`, which only marks the end of its
+        use); the code itself is unchanged.
+      - In release builds, `dead_code` on the four `Engine` wrappers
+        only the debug-only /dev commands call (H2).
+    - `rust-toolchain.toml` (repo root) pins Rust 1.98.1 with clippy and
+      rustfmt; CI runs `rustup toolchain install`.
+    - `.nvmrc` pins Node 26.10.0, which CI's setup-node reads.
+      `package.json` `engines` (`>=26.10.0 <27`) with `engine-strict` in
+      `app/.npmrc` makes npm refuse other versions.
+    - C++ lint is H21. `doctor.py` (M4) doesn't exist yet; it should read
+      both pins when written.
 - **H9 Logs, panics and diagnostics.** The Rust code reports problems
   with `eprintln!` (54 calls on 2026-10-02), which a bundled app sends nowhere. With
   `panic = "abort"` in the release profile, a panic leaves no trace.
@@ -2912,6 +3036,29 @@ matches it.
   - P1: ESLint (`eslint-plugin-svelte`, `typescript-eslint`) and
     Prettier (with its Svelte plugin), through a `format` script with a
     `--check` mode like the others.
+    - **Done 2026-10-02.** ESLint 10 (`app/eslint.config.js`: the
+      recommended sets of ESLint, typescript-eslint and
+      eslint-plugin-svelte, with eslint-config-prettier) and Prettier 3
+      (`app/.prettierrc.json`: width 120, the Svelte plugin), each pinned
+      exactly in `package.json`.
+    - `scripts/format-frontend.py [--check]` runs app/'s own Prettier
+      and is a quick `check-all.py` step. `npm run lint` is a full one.
+      The tree was reformatted once (77 files).
+    - ESLint found 25 problems:
+      - Fixed: a `$state` kept in step by an `$effect` became a writable
+        `$derived` (`PlaylistView`); an unused `svelte-ignore`
+        (`Dialog`).
+      - Allowed at each line, with the reason:
+        - `prefer-svelte-reactivity` (7): maps and sets that must not be
+          reactive (scratch, bookkeeping, copies into `$state.raw`, the
+          drop-target registry).
+        - `no-useless-mustaches` (2): `{" "}`, a space Svelte would trim
+          at the start of a block.
+      - Configured, for 13 links: `no-navigation-without-resolve` skips
+        links. They are web links that `openLink` opens, and the app has
+        no base path.
+    - Type-aware rules (`recommendedTypeChecked`) are not on; they would
+      need `svelte-kit sync` first and would find more.
   - P2: Vitest for the rune modules (`state/*.svelte.ts`), which plain
     `node --test` can't compile. IPC is faked with
     `@tauri-apps/api/mocks` (`mockIPC`), using payloads recorded from
@@ -3468,7 +3615,7 @@ shell everywhere (MSYS2 on Windows).
 
 | Item | When | What it involves | Script (§9.2) |
 |---|---|---|---|
-| Native dependency pins: JUCE and Catch2 (`CMakeLists.txt`), TagLib (tarball + SHA-256, `cmake/TagLib.cmake`), FFmpeg (version + SHA-256, checked against its GPG signature, in `build-ffmpeg.sh`) | Monthly check; at once for a security release | Find the new release, download it, hash it, rewrite the pin, rebuild, run every test suite. For FFmpeg, also re-check the configure output and `BUILD_INFO` | `check-pins.py`, `bump-pin.py` |
+| Native dependency pins: JUCE and Catch2 (commit archive + SHA-256, `CMakeLists.txt`), TagLib (tarball + SHA-256, `cmake/TagLib.cmake`), FFmpeg (version + SHA-256, checked against its GPG signature, in `build-ffmpeg.sh`) | Monthly check; at once for a security release | Find the new release, download it, hash it, rewrite the pin, rebuild, run every test suite. For FFmpeg, also re-check the configure output and `BUILD_INFO` | `check-pins.py`, `bump-pin.py` |
 | FFmpeg dylib names in `tauri.conf.json` (`bundle.macOS.frameworks`, later the Linux and Windows lists) | Each FFmpeg bump that changes a major version | The names must match what the build produced, or the bundle step fails | `sync-ffmpeg-frameworks.py` |
 | Formatter pins: clang-format (`format-cpp.py`), ruff (`format-python.py`) | A few times a year | Bump, reformat the tree in one separate commit | `check-pins.py`, `bump-pin.py` |
 | Rust crates and npm packages | Monthly | `cargo update` / `npm update`; read the changelogs of Tauri, Svelte, rusqlite (its bundled SQLite version), ureq/rustls; run all tests | `check-pins.py` (reports; updating stays manual) |
@@ -3552,7 +3699,8 @@ Steps:
     encoders changed (the Vorbis fixtures change once when this lands);
     add `--only NAME`; print each fixture's length for the tests' table.
 - [ ] M4 CI entry point (with Phase 7's CI). `check-all.py` is done
-  (2026-10-02), with `.github/workflows/ci.yml` running it:
+  (2026-10-02), with `.github/workflows/ci.yml` running it, and
+  `scripts/hooks/pre-commit` runs its `--quick` mode (H7):
   - `check-all.py`: runs every formatter in `--check` mode, the M2
     checks and the Python tests, then (unless `--quick`) the C++, Rust
     and frontend builds and tests. CI calls this and nothing else, so a

@@ -26,7 +26,11 @@
     --star: #a86800;
 
     color-scheme: light dark;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
     font-size: 15px;
     line-height: 1.35;
     color: var(--text);

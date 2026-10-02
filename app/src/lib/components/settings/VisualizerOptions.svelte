@@ -20,7 +20,10 @@
   const cycles = $derived(
     CYCLES.some(([seconds]) => seconds === settings.cycleSeconds)
       ? CYCLES
-      : [...CYCLES, [settings.cycleSeconds, t("vizOptions.everySeconds", { count: settings.cycleSeconds })] as [number, string]],
+      : [
+          ...CYCLES,
+          [settings.cycleSeconds, t("vizOptions.everySeconds", { count: settings.cycleSeconds })] as [number, string],
+        ],
   );
 
   const save = appSettings.save.bind(appSettings);

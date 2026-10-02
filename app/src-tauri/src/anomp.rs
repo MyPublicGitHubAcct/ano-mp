@@ -620,7 +620,13 @@ impl Tags {
     unsafe fn from_raw(raw: &RawTags) -> Tags {
         let text = |ptr: *const c_char| {
             (!ptr.is_null())
-                .then(|| CStr::from_ptr(ptr).to_string_lossy().into_owned())
+                .then(|| {
+                    // SAFETY: the core's non-null strings are NUL-terminated
+                    // and live as long as `raw`.
+                    unsafe { CStr::from_ptr(ptr) }
+                        .to_string_lossy()
+                        .into_owned()
+                })
                 .filter(|text| !text.is_empty())
         };
         let number = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
@@ -654,7 +660,8 @@ impl Tags {
             musicbrainz_album_artist_id: text(raw.musicbrainz_album_artist_id),
             picture: (!raw.picture.is_null() && raw.picture_size > 0).then(|| Picture {
                 mime_type: text(raw.picture_mime_type),
-                data: std::slice::from_raw_parts(raw.picture, raw.picture_size).to_vec(),
+                // SAFETY: a non-null picture holds `picture_size` bytes.
+                data: unsafe { std::slice::from_raw_parts(raw.picture, raw.picture_size) }.to_vec(),
             }),
             work: text(raw.work),
             movement_name: text(raw.movement_name),
@@ -669,7 +676,8 @@ impl Tags {
             cue_sheet: text(raw.cuesheet),
             chapters: match usize::try_from(raw.chapter_count) {
                 Ok(count) if !raw.chapters.is_null() && count > 0 => {
-                    std::slice::from_raw_parts(raw.chapters, count)
+                    // SAFETY: non-null chapters hold `chapter_count` items.
+                    unsafe { std::slice::from_raw_parts(raw.chapters, count) }
                         .iter()
                         .map(|chapter| Chapter {
                             start: chapter.start,
@@ -707,7 +715,10 @@ pub fn split_artists(text: &str) -> Vec<String> {
 /// A non-null `ptr` must point to `count` valid items that outlive the slice.
 unsafe fn slice_of<'a, T>(ptr: *const T, count: c_int) -> &'a [T] {
     match usize::try_from(count) {
-        Ok(count) if count > 0 && !ptr.is_null() => std::slice::from_raw_parts(ptr, count),
+        // SAFETY: the caller's guarantee, for a non-null `ptr`.
+        Ok(count) if count > 0 && !ptr.is_null() => unsafe {
+            std::slice::from_raw_parts(ptr, count)
+        },
         _ => &[],
     }
 }
@@ -771,16 +782,28 @@ impl FileInfo {
             if ptr.is_null() {
                 String::new()
             } else {
-                CStr::from_ptr(ptr).to_string_lossy().into_owned()
+                // SAFETY: the core's non-null strings are NUL-terminated and
+                // live as long as `raw`.
+                unsafe { CStr::from_ptr(ptr) }
+                    .to_string_lossy()
+                    .into_owned()
             }
         };
         let positive = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
+        // SAFETY: the core's arrays hold their counts' items and live as
+        // long as `raw`.
+        let (fields, pictures) = unsafe {
+            (
+                slice_of(raw.fields, raw.field_count),
+                slice_of(raw.pictures, raw.picture_count),
+            )
+        };
         FileInfo {
-            fields: slice_of(raw.fields, raw.field_count)
+            fields: fields
                 .iter()
                 .map(|field| (text(field.key), text(field.value)))
                 .collect(),
-            pictures: slice_of(raw.pictures, raw.picture_count)
+            pictures: pictures
                 .iter()
                 .map(|picture| FilePicture {
                     kind: text(picture.kind),
@@ -789,7 +812,8 @@ impl FileInfo {
                     data: if picture.data.is_null() {
                         Vec::new()
                     } else {
-                        std::slice::from_raw_parts(picture.data, picture.size).to_vec()
+                        // SAFETY: a non-null picture holds `size` bytes.
+                        unsafe { std::slice::from_raw_parts(picture.data, picture.size) }.to_vec()
                     },
                 })
                 .collect(),
@@ -886,7 +910,8 @@ impl FileAnalysis {
     /// `raw` must come from anomp_analyse_file and not yet be freed.
     unsafe fn from_raw(raw: &RawFileAnalysis) -> FileAnalysis {
         let floats = |data: *const f32, len: c_int| match usize::try_from(len) {
-            Ok(len) if !data.is_null() => std::slice::from_raw_parts(data, len).to_vec(),
+            // SAFETY: the core's non-null arrays hold their lengths' items.
+            Ok(len) if !data.is_null() => unsafe { std::slice::from_raw_parts(data, len) }.to_vec(),
             _ => Vec::new(),
         };
         let finite = |value: f64| value.is_finite().then_some(value);
@@ -898,7 +923,8 @@ impl FileAnalysis {
             true_peak: raw.true_peak,
             histogram: match usize::try_from(raw.histogram_count) {
                 Ok(len) if !raw.histogram.is_null() => {
-                    std::slice::from_raw_parts(raw.histogram, len).to_vec()
+                    // SAFETY: a non-null histogram holds `histogram_count` items.
+                    unsafe { std::slice::from_raw_parts(raw.histogram, len) }.to_vec()
                 }
                 _ => Vec::new(),
             },
@@ -950,6 +976,7 @@ pub struct FolderAccess {
 // SAFETY: the core's folder access may be used and stopped from any thread,
 // and this wrapper only reads it after construction.
 unsafe impl Send for FolderAccess {}
+// SAFETY: as for `Send`; nothing mutates it through a shared reference.
 unsafe impl Sync for FolderAccess {}
 
 impl FolderAccess {
@@ -1098,12 +1125,16 @@ impl AnalysisFrame<'_> {
     /// chroma for 12 values) while the result is used.
     unsafe fn from_raw(raw: &RawAnalysisFrame) -> AnalysisFrame<'_> {
         let slice = |data: *const f32, len: c_int| match usize::try_from(len) {
-            Ok(len) if !data.is_null() && len > 0 => std::slice::from_raw_parts(data, len),
+            // SAFETY: the caller's guarantee, for a non-null pointer.
+            Ok(len) if !data.is_null() && len > 0 => unsafe {
+                std::slice::from_raw_parts(data, len)
+            },
             _ => &[],
         };
         let mut chroma = [0.0; 12];
         if !raw.chroma.is_null() {
-            chroma.copy_from_slice(std::slice::from_raw_parts(raw.chroma, 12));
+            // SAFETY: the caller's guarantee: a non-null chroma holds 12 values.
+            chroma.copy_from_slice(unsafe { std::slice::from_raw_parts(raw.chroma, 12) });
         }
         AnalysisFrame {
             silent: raw.silent != 0,
@@ -1198,7 +1229,8 @@ impl SignalPath {
         let positive = |value: c_int| u32::try_from(value).ok().filter(|&n| n > 0);
         SignalPath {
             loaded: raw.loaded != 0,
-            codec: CStr::from_ptr(raw.codec.as_ptr())
+            // SAFETY: the caller's guarantee that `codec` holds a NUL.
+            codec: unsafe { CStr::from_ptr(raw.codec.as_ptr()) }
                 .to_string_lossy()
                 .into_owned(),
             lossless: raw.lossless != 0,
@@ -1361,6 +1393,8 @@ impl Engine {
     /// Opens `path` as the current track with its own linear `gain` (1
     /// leaves it as is; see `MAX_TRACK_GAIN`), clears the next track, and
     /// stops at the start. On failure nothing changes.
+    // Only the /dev page uses it, in debug builds (PLAN.md H2).
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub fn load(&mut self, path: &Path, gain: f64) -> Result<(), String> {
         let path = path_to_cstring(path)?;
         let raw = self.raw.as_ptr();
@@ -1373,6 +1407,8 @@ impl Engine {
     /// Opens `path` as the track that follows the current one gaplessly,
     /// with its own `gain` (as for `load`), or clears it with `None`. On
     /// failure the previous next track stays.
+    // Only the /dev page uses it, in debug builds (PLAN.md H2).
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub fn set_next(&mut self, next: Option<(&Path, f64)>) -> Result<(), String> {
         let path = next.map(|(path, _)| path_to_cstring(path)).transpose()?;
         let gain = next.map_or(1.0, |(_, gain)| gain);
@@ -1643,11 +1679,15 @@ impl Engine {
         !self.analysis.is_null()
     }
 
+    // Only the /dev page uses it, in debug builds (PLAN.md H2).
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub fn play_test_tone(&mut self, frequency_hz: f64) -> bool {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_play_test_tone(self.raw.as_ptr(), frequency_hz) != 0 }
     }
 
+    // Only the /dev page uses it, in debug builds (PLAN.md H2).
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub fn stop_test_tone(&mut self) {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_stop_test_tone(self.raw.as_ptr()) }

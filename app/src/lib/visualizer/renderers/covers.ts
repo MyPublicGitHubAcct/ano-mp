@@ -59,11 +59,7 @@ function create(): Renderer {
       const result = await api.coverWall(trackId, basis);
       if (disposed || key !== wallKey) return;
       setWall(result);
-      message = result
-        ? null
-        : basis === "year"
-          ? t("coverWall.noYear")
-          : t("coverWall.noArtist");
+      message = result ? null : basis === "year" ? t("coverWall.noYear") : t("coverWall.noArtist");
     } catch (error) {
       if (!disposed && key === wallKey) message = errorText(error);
     }

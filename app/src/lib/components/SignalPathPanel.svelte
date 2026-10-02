@@ -29,7 +29,12 @@
     const value = 20 * Math.log10(linear);
     return `${value > 0.05 ? "+" : value < -0.05 ? "−" : ""}${Math.abs(value).toFixed(1)} dB`;
   };
-  const CROSSFEED: MessageKey[] = ["signal.off", "signal.crossfeedLight", "signal.crossfeedMedium", "signal.crossfeedStrong"];
+  const CROSSFEED: MessageKey[] = [
+    "signal.off",
+    "signal.crossfeedLight",
+    "signal.crossfeedMedium",
+    "signal.crossfeedStrong",
+  ];
 </script>
 
 <Popover title={t("signal.title")} {onclose}>
@@ -87,7 +92,9 @@
         <span class="step">{t("signal.crossfeed")}</span>
         <span>
           {t(CROSSFEED[p.crossfeed] ?? "signal.off")}
-          {#if path.headphones !== null}<span class="muted">{t(path.headphones ? "signal.headphones" : "signal.notHeadphones")}</span>{/if}
+          {#if path.headphones !== null}<span class="muted"
+              >{t(path.headphones ? "signal.headphones" : "signal.notHeadphones")}</span
+            >{/if}
         </span>
       </li>
       <li>

@@ -5,14 +5,13 @@
   // (cached for a week; "Check again" asks anew), or only from the cache
   // while online services are off. Reloads after a scan, and when the
   // metadata worker names the artist in `metadata-changed`.
+  import { openLink } from "$lib/openLink";
   import { untrack } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import { metadata, type Discography, type ReleaseGroupEntry } from "$lib/api";
   import { formatDate } from "$lib/format";
   import { count, errorText, t } from "$lib/i18n";
   import { bySection, sectionName } from "$lib/releases";
   import { library } from "$lib/state/library.svelte";
-  import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
 
@@ -95,11 +94,6 @@
   }
 
   /** Opens a web page in the browser rather than the app's window. */
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
 </script>
 
 <section class="discography-page" aria-label={t("discography.label", { name: artist?.name ?? t("column.artist") })}>
@@ -117,9 +111,12 @@
     </div>
     <div class="actions">
       <button onclick={() => artist && load(artist.id, true)} disabled={loading || !artist}>
-        <Icon name="refresh" /> {t("discography.checkAgain")}
+        <Icon name="refresh" />
+        {t("discography.checkAgain")}
       </button>
-      <button class="icon" title={t("header.back")} aria-label={t("header.back")} onclick={() => ui.back()}><Icon name="close" /></button>
+      <button class="icon" title={t("header.back")} aria-label={t("header.back")} onclick={() => ui.back()}
+        ><Icon name="close" /></button
+      >
     </div>
   </header>
 
@@ -141,7 +138,10 @@
           <ul class="releases">
             {#each section.releases as entry (entry.id)}
               <li>
-                <span class="year muted" title={entry.firstReleaseDate ? formatDate(entry.firstReleaseDate) : t("discography.undated")}>
+                <span
+                  class="year muted"
+                  title={entry.firstReleaseDate ? formatDate(entry.firstReleaseDate) : t("discography.undated")}
+                >
                   {year(entry)}
                 </span>
                 <span class="what">

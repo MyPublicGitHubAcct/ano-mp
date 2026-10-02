@@ -62,7 +62,9 @@
   <div class="loop">
     <span class="label">{t("practice.loop")}</span>
     <button onclick={setA} disabled={!player.loaded}>{t("practice.setA")}</button>
-    <button onclick={setB} disabled={!player.loaded || (pendingStart === null && loop === null)}>{t("practice.setB")}</button>
+    <button onclick={setB} disabled={!player.loaded || (pendingStart === null && loop === null)}
+      >{t("practice.setB")}</button
+    >
     <button onclick={clearLoop} disabled={loop === null && pendingStart === null}>{t("practice.clear")}</button>
   </div>
   <p class="muted small" role="status">

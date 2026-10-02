@@ -102,8 +102,12 @@
             </span>
             <button
               onclick={() =>
-                library.showAlbum({ id: album.albumId, title: album.title, albumArtist: album.artist, albumArtistId: null })}
-              >{t("health.show")}</button
+                library.showAlbum({
+                  id: album.albumId,
+                  title: album.title,
+                  albumArtist: album.artist,
+                  albumArtistId: null,
+                })}>{t("health.show")}</button
             >
           </li>
         {/each}

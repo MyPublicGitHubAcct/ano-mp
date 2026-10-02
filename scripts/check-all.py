@@ -2,17 +2,21 @@
 """Runs every check the repo has: the one entry point for CI and for a local run.
 
 First the quick checks: each formatter in --check mode, the repo checks
-(check-c-api.py, check-sources.py, check-migrations.py) and the scripts'
-tests. Then, unless --quick, the builds and test suites: the core (CMake
-debug preset and ctest), the frontend (svelte-check, npm test and the
-build) and the Rust crate (cargo test). CI runs this and nothing else, so
+(check-c-api.py, check-sources.py, check-migrations.py), the scripts'
+tests and gitleaks over the history. Then, unless --quick, the builds and
+test suites: the core (CMake debug preset and ctest, then ctest again
+under ASan and UBSan, and under TSan), the frontend (svelte-check,
+ESLint, npm test and the build) and the Rust crate (clippy, cargo test,
+and cargo deny over its dependencies). CI runs this and nothing else, so
 a local run matches it; --quick suits a pre-commit hook.
 
 Every step runs even after one fails, and a summary at the end lists the
 failures. Exits non-zero if any step failed.
 
-Needs FFmpeg built (scripts/build-ffmpeg.sh) and `npm ci` (or `npm install`)
-run in app/ for the full run.
+Needs `npm ci` (or `npm install`) run in app/, also for --quick
+(Prettier), and gitleaks. The full run also needs FFmpeg built
+(scripts/build-ffmpeg.sh) and cargo-deny (`cargo install cargo-deny
+--locked`, at the version in .github/workflows/ci.yml).
 
 Usage: scripts/check-all.py [--quick] [--list]
 """
@@ -45,18 +49,39 @@ STEPS = [
     Step("format C++", script("format-cpp.py", "--check")),
     Step("format Python", script("format-python.py", "--check")),
     Step("format Rust", script("format-rust.py", "--check")),
+    Step("format frontend", script("format-frontend.py", "--check")),
     Step("C API bindings", script("check-c-api.py")),
     Step("core source lists", script("check-sources.py")),
     Step("DB migrations", script("check-migrations.py")),
     Step("script tests", script("test-python.py", "-q")),
+    # Every commit's changes; scripts/hooks/pre-commit checks the staged ones.
+    Step("secrets", ["gitleaks", "git", "--redact", "--no-banner", "--log-level", "warn"]),
     Step("core configure", ["cmake", "--preset", "debug"], quick=False),
     Step("core build", ["cmake", "--build", "--preset", "debug"], quick=False),
     Step("core tests", ["ctest", "--preset", "debug", "--output-on-failure"], quick=False),
+    # The core's tests again under the sanitizers (PLAN.md H6): configure,
+    # build and test each preset (CMakePresets.json's workflow presets).
+    Step("core tests (ASan, UBSan)", ["cmake", "--workflow", "--preset", "asan"], quick=False),
+    Step("core tests (TSan)", ["cmake", "--workflow", "--preset", "tsan"], quick=False),
     Step("frontend check", ["npm", "run", "check"], cwd=APP, quick=False),
+    Step("frontend lint", ["npm", "run", "lint"], cwd=APP, quick=False),
     Step("frontend tests", ["npm", "test"], cwd=APP, quick=False),
-    # Before the Rust tests: Tauri embeds app/build when the crate compiles.
+    # Before the Rust steps: Tauri embeds app/build when the crate compiles.
     Step("frontend build", ["npm", "run", "build"], cwd=APP, quick=False),
+    Step(
+        "Rust lint",
+        ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
+        cwd=APP / "src-tauri",
+        quick=False,
+    ),
     Step("Rust tests", ["cargo", "test"], cwd=APP / "src-tauri", quick=False),
+    # Advisories (fetched from RustSec), licences, bans and sources (deny.toml).
+    Step(
+        "Rust dependencies",
+        ["cargo", "deny", "check", "--hide-inclusion-graph"],
+        cwd=APP / "src-tauri",
+        quick=False,
+    ),
 ]
 
 

@@ -32,7 +32,7 @@
     const trackId = player.currentItem?.external ? null : (player.currentItem?.trackId ?? null);
     void collection.version;
     untrack(async () => {
-      hearted = trackId === null ? false : ((await marks.favouritesAmong("track", [trackId]).catch(() => [])).length > 0);
+      hearted = trackId === null ? false : (await marks.favouritesAmong("track", [trackId]).catch(() => [])).length > 0;
     });
   });
 
@@ -136,7 +136,13 @@
         aria-pressed={player.shuffle}
         onclick={player.toggleShuffle}><Icon name="shuffle" /></button
       >
-      <button class="icon" title={t("bar.previous")} aria-label={t("bar.previous")} disabled={!item} onclick={player.previous}>
+      <button
+        class="icon"
+        title={t("bar.previous")}
+        aria-label={t("bar.previous")}
+        disabled={!item}
+        onclick={player.previous}
+      >
         <Icon name="previous" />
       </button>
       <button
@@ -148,7 +154,13 @@
       >
         <Icon name={player.playing ? "pause" : "play"} size="1.5rem" />
       </button>
-      <button class="icon" title={t("bar.next")} aria-label={t("bar.next")} disabled={!player.hasNext} onclick={player.next}>
+      <button
+        class="icon"
+        title={t("bar.next")}
+        aria-label={t("bar.next")}
+        disabled={!player.hasNext}
+        onclick={player.next}
+      >
         <Icon name="next" />
       </button>
       <button

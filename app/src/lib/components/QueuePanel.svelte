@@ -224,7 +224,12 @@
           ui.showQueue();
         }}><Icon name="expand" /></button
       >
-      <button class="icon close" title={t("queue.hide")} aria-label={t("queue.hide")} onclick={() => (ui.queueOpen = false)}>
+      <button
+        class="icon close"
+        title={t("queue.hide")}
+        aria-label={t("queue.hide")}
+        onclick={() => (ui.queueOpen = false)}
+      >
         <Icon name="close" />
       </button>
     {/if}
@@ -270,7 +275,9 @@
               class:unavailable={player.unavailable.has(item.uid)}
               class:lifted={moving?.uids.includes(item.uid)}
               class:gap-before={moving !== null && moving.gap === index}
-              class:gap-after={moving !== null && moving.gap === player.items.length && index === player.items.length - 1}
+              class:gap-after={moving !== null &&
+                moving.gap === player.items.length &&
+                index === player.items.length - 1}
             >
               <button
                 class="handle icon"
@@ -283,10 +290,14 @@
               <Art albumId={item.albumId} trackId={item.trackId} size="2.25rem" />
               <div class="text">
                 <span class="name">{item.title}</span>
-                <span class="muted small" title={item.reason ? t("queue.radioReason", { reason: item.reason }) : undefined}>
-                  {#if item.reason}<span class="reason">{item.reason}</span> · {/if}{item.artist ?? ""}{item.skip
-                    ? ` · ${t("queue.skipped")}`
-                    : ""}{item.external ? ` · ${t("queue.external")}` : ""}
+                <span
+                  class="muted small"
+                  title={item.reason ? t("queue.radioReason", { reason: item.reason }) : undefined}
+                >
+                  {#if item.reason}<span class="reason">{item.reason}</span> ·
+                  {/if}{item.artist ?? ""}{item.skip ? ` · ${t("queue.skipped")}` : ""}{item.external
+                    ? ` · ${t("queue.external")}`
+                    : ""}
                 </span>
               </div>
               {#if player.stopAfter === item.uid}

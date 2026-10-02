@@ -37,7 +37,12 @@ function create(): Renderer {
       }
       ctx.stroke();
 
-      const trace = (samples: Float32Array, other: Float32Array | null, color: [number, number, number], alpha: number) => {
+      const trace = (
+        samples: Float32Array,
+        other: Float32Array | null,
+        color: [number, number, number],
+        alpha: number,
+      ) => {
         const count = samples.length;
         ctx.beginPath();
         for (let i = 0; i < count; i++) {

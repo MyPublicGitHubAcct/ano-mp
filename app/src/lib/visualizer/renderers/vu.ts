@@ -36,7 +36,9 @@ function create(): Renderer {
 
       // Side by side, or stacked in a tall window.
       const stacked = height > width * 0.9;
-      const faceWidth = stacked ? Math.min(width * 0.86, (height * 0.44) / 0.62) : Math.min(width * 0.44, height * 0.75 / 0.62);
+      const faceWidth = stacked
+        ? Math.min(width * 0.86, (height * 0.44) / 0.62)
+        : Math.min(width * 0.44, (height * 0.75) / 0.62);
       const faceHeight = faceWidth * 0.62;
       const gap = faceWidth * 0.08;
       for (let ch = 0; ch < 2; ch++) {

@@ -21,7 +21,8 @@ class MetadataStore {
     const { done, total, current, paused, unreachable } = this.progress;
     const names = unreachable.join(", ");
     if (paused) return t("metadataStatus.paused", { names });
-    if (total === 0) return unreachable.length > 0 ? t("metadataStatus.unreachable", { names }) : t("metadataStatus.upToDate");
+    if (total === 0)
+      return unreachable.length > 0 ? t("metadataStatus.unreachable", { names }) : t("metadataStatus.upToDate");
     const step = t("metadataStatus.step", { done: Math.min(done + 1, total), total });
     if (current === null) return step;
     return `${current.kind === "album" ? current.title : current.name}: ${step}`;

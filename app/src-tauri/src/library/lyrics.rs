@@ -74,7 +74,9 @@ fn parse_stamp(tag: &str) -> Option<f64> {
     let (minutes, seconds) = tag.split_once(':')?;
     let minutes: u32 = minutes.trim().parse().ok()?;
     let seconds: f64 = seconds.trim().parse().ok()?;
-    (seconds >= 0.0 && seconds < 60.0).then(|| f64::from(minutes) * 60.0 + seconds)
+    (0.0..60.0)
+        .contains(&seconds)
+        .then(|| f64::from(minutes) * 60.0 + seconds)
 }
 
 /// The `.lrc` next to `audio`: "Song.lrc", else "Song.flac.lrc".

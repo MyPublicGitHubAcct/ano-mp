@@ -31,7 +31,12 @@
       {#if genres.length > 1}
         <div class="chips" role="radiogroup" aria-label={t("column.genre")}>
           {#each genres as option (option)}
-            <button role="radio" aria-checked={option === genre} class:on={option === genre} onclick={() => (genre = option)}>
+            <button
+              role="radio"
+              aria-checked={option === genre}
+              class:on={option === genre}
+              onclick={() => (genre = option)}
+            >
               {option}
             </button>
           {/each}

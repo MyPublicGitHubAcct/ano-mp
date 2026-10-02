@@ -1,6 +1,7 @@
 # Runs scripts/check-all.py, the same command as a local run (PLAN.md §9.2,
 # M4). Steps before it only install tools and restore caches; any check
-# belongs in check-all.py, not here.
+# belongs in check-all.py, not here. Actions are pinned by commit, with the
+# release in a comment (PLAN.md H7); Dependabot moves them.
 name: CI
 
 on:
@@ -17,27 +18,30 @@ concurrency:
 jobs:
   macos:
     runs-on: macos-15
-    # The first run fetches JUCE twice (CMake and Cargo) and builds FFmpeg.
-    timeout-minutes: 120
+    # The first run builds FFmpeg, and JUCE four times (CMake's debug, asan
+    # and tsan presets, and Cargo's).
+    timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Every commit, for gitleaks.
+          fetch-depth: 0
 
+      # Rust and Node come from rust-toolchain.toml and .nvmrc (PLAN.md H8).
       - name: Install tools
         run: |
-          brew install ninja nasm pkg-config uv
-          rustup update stable
-          rustup default stable
-          rustup component add rustfmt
+          brew install ninja nasm pkg-config uv gitleaks
+          rustup toolchain install
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 26
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: app/package-lock.json
 
       # build-ffmpeg.sh skips the build when BUILD_INFO matches its pin.
       - name: Restore FFmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: third_party/ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
@@ -48,21 +52,31 @@ jobs:
       # FetchContent's sources and JUCE's objects, which keep their
       # timestamps; the repo's own files are rebuilt after checkout.
       - name: Restore core build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: build/debug
+          path: |
+            build/debug
+            build/asan
+            build/tsan
           key: core-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
           restore-keys: core-${{ runner.os }}-
 
       - name: Restore Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
             app/src-tauri/target
           key: cargo-${{ runner.os }}-${{ hashFiles('app/src-tauri/Cargo.lock', 'CMakeLists.txt', 'cmake/**') }}
           restore-keys: cargo-${{ runner.os }}-
+
+      # Skipped when the cache already has this version.
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version 0.20.2 --locked
 
       - name: Install npm packages
         working-directory: app

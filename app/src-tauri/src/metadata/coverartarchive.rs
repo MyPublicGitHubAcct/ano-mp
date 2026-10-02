@@ -547,7 +547,7 @@ mod tests {
             fetch_album_art(&client, &library.conn, &cache, 1).unwrap(),
             Fetched::Downloaded
         );
-        assert_eq!(transport.urls(), [chosen.clone()]);
+        assert_eq!(transport.urls(), std::slice::from_ref(&chosen));
         assert!(cache.contains(&chosen));
         assert_eq!(cover_check(&library.conn, 1).unwrap(), None, "not recorded");
 

@@ -45,4 +45,3 @@ test("dropping a block counts the rows it leaves", () => {
   assert.equal(dropIndex([6, 7], 2), 2);
   assert.equal(dropIndex([1, 7], 5), 4);
 });
-

@@ -21,7 +21,11 @@
       {#if item.artist && item.artistId !== null}
         {@const artist = { id: item.artistId, name: item.artist }}
         <p class="artist">
-          <button class="link" title={t("nowPlaying.showArtist", { name: artist.name })} onclick={() => ui.showArtist(artist)}>{artist.name}</button>
+          <button
+            class="link"
+            title={t("nowPlaying.showArtist", { name: artist.name })}
+            onclick={() => ui.showArtist(artist)}>{artist.name}</button
+          >
         </p>
       {:else if item.artist}
         <p class="artist">{item.artist}</p>
@@ -42,10 +46,12 @@
     {/if}
     <div class="actions">
       <button class="link" onclick={() => ui.showVisualizer()}>
-        <Icon name="wave" size="1rem" /> {t("bar.visualizer")}
+        <Icon name="wave" size="1rem" />
+        {t("bar.visualizer")}
       </button>
       <button class="link" onclick={() => ui.back()}>
-        <Icon name="close" size="1rem" /> {t("dialog.close")}
+        <Icon name="close" size="1rem" />
+        {t("dialog.close")}
       </button>
     </div>
   </div>

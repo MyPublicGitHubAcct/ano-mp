@@ -12,6 +12,19 @@ publish = false
 name = "ano_mp_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# CI denies every warning (`cargo clippy --all-targets -- -D warnings` in
+# scripts/check-all.py), so these fail the check (PLAN.md H8). Each unsafe
+# block says why it is sound, and an unsafe fn's body still marks its
+# unsafe operations.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"
+# Most are SQL rows read as tuples and destructured where they're read;
+# naming each tuple type would only move it away from its query.
+type_complexity = "allow"
+
 [build-dependencies]
 tauri-build = { version = "=2.7.0", features = [] }
 cmake = "0.1"

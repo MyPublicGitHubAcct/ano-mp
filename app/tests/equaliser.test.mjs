@@ -6,7 +6,10 @@ import { BANDS, MAX_GAIN, PRESETS, bandLabel, presetOf, safePreamp } from "../sr
 test("every preset has ten bands within range, and is found again", () => {
   for (const [id, gains] of Object.entries(PRESETS)) {
     assert.equal(gains.length, BANDS.length, id);
-    assert.ok(gains.every((gain) => Math.abs(gain) <= MAX_GAIN), id);
+    assert.ok(
+      gains.every((gain) => Math.abs(gain) <= MAX_GAIN),
+      id,
+    );
     assert.equal(presetOf(gains), id);
     assert.ok(safePreamp(gains) <= 0 && safePreamp(gains) >= -MAX_GAIN, id);
   }

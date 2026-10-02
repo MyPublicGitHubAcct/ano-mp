@@ -54,7 +54,12 @@ function create(): Renderer {
         gradient.addColorStop(1, rgba(color, 0.35 + 0.25 * flash));
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.roundRect(x, baseline - barHeight, barWidth, barHeight, [Math.min(barWidth / 2, 3), Math.min(barWidth / 2, 3), 0, 0]);
+        ctx.roundRect(x, baseline - barHeight, barWidth, barHeight, [
+          Math.min(barWidth / 2, 3),
+          Math.min(barWidth / 2, 3),
+          0,
+          0,
+        ]);
         ctx.fill();
 
         // The reflection, fading away below the baseline.

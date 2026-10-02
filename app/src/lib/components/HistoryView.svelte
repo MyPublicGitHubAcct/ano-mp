@@ -68,7 +68,10 @@
     attempt(() =>
       entry.album
         ? queue.playNode(albumRule, [entry.album.id], true)
-        : queue.play(entry.tracks.map((track) => track.trackId), 0),
+        : queue.play(
+            entry.tracks.map((track) => track.trackId),
+            0,
+          ),
     );
 
   const time = (seconds: number) =>
@@ -91,7 +94,12 @@
       <div class="controls">
         <div class="segmented" role="radiogroup" aria-label={t("history.whatToCount")}>
           {#each KINDS as option (option.id)}
-            <button role="radio" aria-checked={kind === option.id} class:on={kind === option.id} onclick={() => (kind = option.id)}>
+            <button
+              role="radio"
+              aria-checked={kind === option.id}
+              class:on={kind === option.id}
+              onclick={() => (kind = option.id)}
+            >
               {option.name}
             </button>
           {/each}
@@ -104,10 +112,23 @@
           <option value="year">{t("history.year")}</option>
           <option value="month">{t("history.month")}</option>
         </select>
-        <button class="icon" aria-label={t("history.earlier")} title={t("history.earlier")} disabled={!canStep(-1)} onclick={() => step(-1)}>‹</button>
-        <button class="icon" aria-label={t("history.later")} title={t("history.later")} disabled={!canStep(1)} onclick={() => step(1)}>›</button>
+        <button
+          class="icon"
+          aria-label={t("history.earlier")}
+          title={t("history.earlier")}
+          disabled={!canStep(-1)}
+          onclick={() => step(-1)}>‹</button
+        >
+        <button
+          class="icon"
+          aria-label={t("history.later")}
+          title={t("history.later")}
+          disabled={!canStep(1)}
+          onclick={() => step(1)}>›</button
+        >
         <button class="primary" disabled={!top || top.entries.length === 0} onclick={playThese}>
-          <Icon name="play" /> {t("history.playThese")}
+          <Icon name="play" />
+          {t("history.playThese")}
         </button>
       </div>
     </div>
@@ -115,7 +136,9 @@
       {#if top.entries.length === 0}
         <p class="muted">{t("history.nothingIn", { period: periodName })}</p>
       {:else}
-        <p class="muted small">{t("history.playsIn", { plays: count("count.plays", top.plays), period: periodName })}</p>
+        <p class="muted small">
+          {t("history.playsIn", { plays: count("count.plays", top.plays), period: periodName })}
+        </p>
         <ol class="top">
           {#each top.entries as entry, index (entry.id)}
             <li>
@@ -125,7 +148,12 @@
                 {#if entry.subtitle}<span class="muted small">{entry.subtitle}</span>{/if}
               </span>
               <span class="muted small">{count("count.plays", entry.plays)}</span>
-              <button class="icon" title={t("menu.play")} aria-label={t("library.playName", { name: entry.title })} onclick={() => attempt(() => queue.play(entry.trackIds, 0))}>
+              <button
+                class="icon"
+                title={t("menu.play")}
+                aria-label={t("library.playName", { name: entry.title })}
+                onclick={() => attempt(() => queue.play(entry.trackIds, 0))}
+              >
                 <Icon name="play" />
               </button>
             </li>
@@ -157,7 +185,12 @@
                 <span class="muted small">{entry.tracks[0].artist ?? ""}</span>
               {/if}
             </span>
-            <button class="icon" title={t("history.playAgain")} aria-label={t("history.playAgain")} onclick={() => playEntry(entry)}>
+            <button
+              class="icon"
+              title={t("history.playAgain")}
+              aria-label={t("history.playAgain")}
+              onclick={() => playEntry(entry)}
+            >
               <Icon name="play" />
             </button>
           </li>

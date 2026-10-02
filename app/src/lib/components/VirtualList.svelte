@@ -203,6 +203,8 @@
 
   /* The keyboard's row, while the list has the focus (F18). */
   .viewport:focus-visible .row.focus {
-    box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent);
+    box-shadow:
+      inset 3px 0 0 var(--accent),
+      inset 0 0 0 1px var(--accent);
   }
 </style>

@@ -68,7 +68,8 @@ class PlayerStore {
     this.radio = state.radio;
     this.stopAfter = state.stopAfter;
     this.sleep = state.sleep;
-    for (const skipped of state.skipped) toasts.show(t("queue.skippedTrack", { title: skipped.title, error: skipped.error }));
+    for (const skipped of state.skipped)
+      toasts.show(t("queue.skippedTrack", { title: skipped.title, error: skipped.error }));
   }
 
   /** Follows the backend; returns a function that stops. */

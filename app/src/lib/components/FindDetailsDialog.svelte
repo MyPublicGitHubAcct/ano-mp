@@ -6,8 +6,9 @@
   // either can be edited, and a MusicBrainz or Discogs release link is
   // looked up directly. A source's credit (Discogs') is shown with its
   // results, linked to its search and to the release selected.
+  import { webLink } from "$lib/links";
+  import { openLink } from "$lib/openLink";
   import { onMount } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     metadata,
     type AlbumDetails,
@@ -100,8 +101,7 @@
       .join(" · ");
   }
 
-  const isSelected = (source: SourceId, release: Release) =>
-    selected?.source === source && selected.id === release.id;
+  const isSelected = (source: SourceId, release: Release) => selected?.source === source && selected.id === release.id;
 
   const selectedCandidate = $derived.by(() => {
     const source = sources?.find((s) => s.source === selected?.source);
@@ -147,18 +147,19 @@
 
   const choose = () => {
     const pick = selected;
-    if (pick) act(() => metadata.chooseRelease(album.id, pick.source, pick.id), t("findDetails.updated", { title: album.title }));
+    if (pick)
+      act(
+        () => metadata.chooseRelease(album.id, pick.source, pick.id),
+        t("findDetails.updated", { title: album.title }),
+      );
   };
   const reject = (source: SourceId, name: string) =>
-    act(() => metadata.rejectRelease(album.id, source), t("findDetails.rejected", { title: album.title, source: name }));
+    act(
+      () => metadata.rejectRelease(album.id, source),
+      t("findDetails.rejected", { title: album.title, source: name }),
+    );
   const automatic = (source: SourceId) =>
     act(() => metadata.useAutomaticRelease(album.id, source), t("findDetails.again", { title: album.title }));
-
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
 </script>
 
 <Dialog title={t("findDetails.title", { title: album.title })} {onclose}>
@@ -177,7 +178,9 @@
       <span class="muted small">{t("column.artist")}</span>
       <input type="text" bind:value={artist} placeholder={t("findDetails.anyArtist")} />
     </label>
-    <button type="submit" disabled={searching || title.trim() === ""}><Icon name="search" /> {t("findArtist.search")}</button>
+    <button type="submit" disabled={searching || title.trim() === ""}
+      ><Icon name="search" /> {t("findArtist.search")}</button
+    >
   </form>
 
   {#if details && !details.canLookUp}
@@ -193,7 +196,7 @@
         <div class="heading">
           <h3>{source.sourceName}</h3>
           {#if source.credit && source.creditUrl}
-            <a class="small" href={source.creditUrl} onclick={openLink}>{source.credit}</a>
+            <a class="small" href={webLink(source.creditUrl)} onclick={openLink}>{source.credit}</a>
           {/if}
           <span class="spacer"></span>
           {#if sourceLink}
@@ -231,7 +234,9 @@
               >
                 <span class="line">
                   <span class="name">
-                    {release.title}{#if release.disambiguation}{" "}<span class="muted">({release.disambiguation})</span>{/if}
+                    <!-- eslint-disable-next-line svelte/no-useless-mustaches -- a space Svelte would trim at the block's start -->
+                    {release.title}{#if release.disambiguation}{" "}<span class="muted">({release.disambiguation})</span
+                      >{/if}
                   </span>
                   <span class="score" title={t(candidate.full ? "findDetails.scoreFull" : "findDetails.scorePartial")}>
                     {candidate.full ? "" : "~"}{percent(candidate.score)}
@@ -241,12 +246,15 @@
                 <span class="muted small">{describe(release)}</span>
                 <span class="badges">
                   {#if link?.externalId === release.id && link.status === "matched"}
-                    <span class="badge current">{t(link.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span>
+                    <span class="badge current">{t(link.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span
+                    >
                   {:else if link?.externalId === release.id && link.status === "review"}
                     <span class="badge">{t("findDetails.possible")}</span>
                   {/if}
                   {#if release.status && release.status !== "Official"}<span class="badge">{release.status}</span>{/if}
-                  {#if release.releaseType}<span class="badge">{[release.releaseType, ...release.secondaryTypes].join(" · ")}</span>{/if}
+                  {#if release.releaseType}<span class="badge"
+                      >{[release.releaseType, ...release.secondaryTypes].join(" · ")}</span
+                    >{/if}
                 </span>
               </button>
               {#if isSelected(source.source, release)}
@@ -269,7 +277,9 @@
                             <td class="time">{row.length === null ? "—" : formatTime(row.length)}</td>
                             <td class="time">
                               {#if row.ours === null}—{:else}{formatTime(row.ours)}{/if}
-                              {#if row.agrees}<span class="agrees" title={t("findDetails.agree")}><Icon name="check" size="0.9rem" /></span>{/if}
+                              {#if row.agrees}<span class="agrees" title={t("findDetails.agree")}
+                                  ><Icon name="check" size="0.9rem" /></span
+                                >{/if}
                             </td>
                           </tr>
                         {/each}
@@ -279,7 +289,7 @@
                     <p class="muted small">{t("findDetails.noTrackList")}</p>
                   {/if}
                   {#if candidate.pageUrl}
-                    <a class="small" href={candidate.pageUrl} onclick={openLink}>
+                    <a class="small" href={webLink(candidate.pageUrl)} onclick={openLink}>
                       {source.credit ?? t("findDetails.openOn", { source: source.sourceName })}
                     </a>
                   {/if}
@@ -295,7 +305,9 @@
   {#snippet actions()}
     <span class="spacer"></span>
     <button onclick={onclose} disabled={busy}>{t("dialog.cancel")}</button>
-    <button class="primary" onclick={choose} disabled={busy || !selected || alreadyChosen}>{t("findDetails.use")}</button>
+    <button class="primary" onclick={choose} disabled={busy || !selected || alreadyChosen}
+      >{t("findDetails.use")}</button
+    >
   {/snippet}
 </Dialog>
 

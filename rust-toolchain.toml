@@ -1,0 +1,6 @@
+# The Rust toolchain for app/src-tauri, here and in CI (PLAN.md §3, H8).
+# Move it with §9.1's toolchain updates, then fix any new clippy warnings.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

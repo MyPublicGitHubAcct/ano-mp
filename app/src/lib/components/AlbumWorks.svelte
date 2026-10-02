@@ -13,6 +13,7 @@
 
   /** Works in the order their first movement comes on the album. */
   const works = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- scratch, inside the derivation
     const byName = new Map<string, Work>();
     for (const track of tracks) {
       if (!track.work) continue;
@@ -47,7 +48,13 @@
     return result;
   };
 
-  const playWork = (work: Work) => attempt(() => queue.play(work.movements.map((track) => track.id), 0));
+  const playWork = (work: Work) =>
+    attempt(() =>
+      queue.play(
+        work.movements.map((track) => track.id),
+        0,
+      ),
+    );
 </script>
 
 {#if works.length > 0}
@@ -58,7 +65,9 @@
           <div>
             <h3>{work.name}</h3>
             <p class="muted small">
-              {[work.composer, work.conductor ? t("works.conductedBy", { name: work.conductor }) : null].filter(Boolean).join(" · ")}
+              {[work.composer, work.conductor ? t("works.conductedBy", { name: work.conductor }) : null]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
           <button onclick={() => playWork(work)}>{t("works.play")}</button>
@@ -66,8 +75,18 @@
         <ol>
           {#each work.movements as movement (movement.id)}
             <li>
-              <button class="link" onclick={() => attempt(() => queue.play(work.movements.map((m) => m.id), work.movements.indexOf(movement)))}>
-                {movement.movementNumber ? `${roman(movement.movementNumber)}. ` : ""}{movement.movementName ?? movement.title}
+              <button
+                class="link"
+                onclick={() =>
+                  attempt(() =>
+                    queue.play(
+                      work.movements.map((m) => m.id),
+                      work.movements.indexOf(movement),
+                    ),
+                  )}
+              >
+                {movement.movementNumber ? `${roman(movement.movementNumber)}. ` : ""}{movement.movementName ??
+                  movement.title}
               </button>
               <span class="muted small">{formatTime(movement.duration)}</span>
             </li>

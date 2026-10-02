@@ -277,7 +277,7 @@ pub fn decide<'a>(name: &str, hits: &'a [ArtistHit]) -> Decision<'a> {
         })
         .collect();
     // Stable, so MusicBrainz's order breaks ties.
-    named.sort_by(|a, b| b.score.cmp(&a.score));
+    named.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     let Some(best) = named.first() else {
         return Decision::NoMatch;
     };

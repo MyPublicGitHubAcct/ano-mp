@@ -1,0 +1,53 @@
+# cargo-deny's rules for the Rust crate (PLAN.md H7): RustSec advisories,
+# the licences we accept, banned crates, and where crates may come from.
+# `scripts/check-all.py` runs `cargo deny check`; an advisory published
+# after a push can fail the next one, which is the point. Fix it by moving
+# the crate, or ignore it below with the reason and a date to look again.
+
+[graph]
+# Every target, so Linux and Windows (Phases 9-10) are checked now too.
+all-features = true
+
+[advisories]
+ignore = [
+    # Unmaintained, no known vulnerability. Linux only: a proc macro of
+    # gtk-rs 0.18 (glib-macros), which Tauri's tray and dialogs pull in.
+    # It goes when Tauri moves to gtk4-rs; look again in Phase 9.
+    { id = "RUSTSEC-2024-0370", reason = "build-time proc macro, Linux only, through Tauri's gtk-rs 0.18" },
+]
+
+[licenses]
+# Permissive licences, plus MPL-2.0 (file-level copyleft, as for TagLib in
+# PLAN.md §4): cssparser and selectors come through Tauri. A new licence
+# is an owner decision (§8.1) and feeds THIRD_PARTY_NOTICES (M6).
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# ano-mp itself (publish = false) has no licence field.
+ignore = true
+
+[bans]
+# Tauri's tree has many duplicate versions (windows-sys, toml, …); they
+# cost build time, not correctness, so they only warn.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

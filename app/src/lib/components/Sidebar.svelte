@@ -53,7 +53,8 @@
       accepts: (payload) => payload.kind !== "queue",
       drop: (payload) =>
         attempt(async () => {
-          const ids = payload.kind === "tracks" ? await payload.trackIds() : payload.kind === "playlist" ? payload.trackIds : [];
+          const ids =
+            payload.kind === "tracks" ? await payload.trackIds() : payload.kind === "playlist" ? payload.trackIds : [];
           await queue.add(ids, false);
           ui.announce(t("queue.added", { count: ids.length }));
         }),
@@ -75,7 +76,9 @@
                 ? await payload.trackIds()
                 : payload.kind === "playlist"
                   ? payload.trackIds
-                  : player.items.filter((item) => payload.uids.includes(item.uid) && !item.external).map((item) => item.trackId);
+                  : player.items
+                      .filter((item) => payload.uids.includes(item.uid) && !item.external)
+                      .map((item) => item.trackId);
             await collection.addTo(playlist, ids);
           },
         }),
@@ -192,7 +195,10 @@
       <li>
         <button
           class="item"
-          class:active={ui.mainView === "library" && rule.id === library.ruleId && library.crumbs.length === 0 && library.query === ""}
+          class:active={ui.mainView === "library" &&
+            rule.id === library.ruleId &&
+            library.crumbs.length === 0 &&
+            library.query === ""}
           onclick={() => show(() => library.navigate(rule.id, []))}
         >
           {rule.name}
@@ -203,7 +209,12 @@
 
   <div class="section-heading">
     <h2>{t("sidebar.playlists")}</h2>
-    <button class="icon" title={t("sidebar.newPlaylistMenu")} aria-label={t("sidebar.newPlaylistMenu")} onclick={newMenu}>
+    <button
+      class="icon"
+      title={t("sidebar.newPlaylistMenu")}
+      aria-label={t("sidebar.newPlaylistMenu")}
+      onclick={newMenu}
+    >
       <Icon name="plus" />
     </button>
   </div>
@@ -321,7 +332,7 @@
     >
       <span class="with-icon"><Icon name="gear" size="1.1rem" /> {t("sidebar.settings")}</span>
     </button>
-    {#if import.meta.env.DEV}
+    {#if __DEV_TOOLS__}
       <a class="dev muted small" href="/dev">{t("sidebar.developerTools")}</a>
     {/if}
   </div>

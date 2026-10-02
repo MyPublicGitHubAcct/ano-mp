@@ -24,6 +24,7 @@ export type DropTarget = {
 /** Pixels the pointer moves before a press becomes a drag. */
 const THRESHOLD = 6;
 
+// eslint-disable-next-line svelte/prefer-svelte-reactivity -- a registry, read on drop
 export const dropTargets = new Map<string, DropTarget>();
 
 /** Registers a drop target while a component is mounted; returns the
@@ -37,9 +38,7 @@ export function registerDropTarget(id: string, target: DropTarget) {
 
 class Drag {
   /** The drag under way, with the pointer's position and the target under it. */
-  current = $state.raw<{ payload: DragPayload; label: string; x: number; y: number; over: string | null } | null>(
-    null,
-  );
+  current = $state.raw<{ payload: DragPayload; label: string; x: number; y: number; over: string | null } | null>(null);
   #pending: { payload: DragPayload; label: string; x: number; y: number; pointerId: number } | null = null;
   #overElement: HTMLElement | null = null;
 

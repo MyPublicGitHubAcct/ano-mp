@@ -5,8 +5,15 @@ import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
-export default defineConfig(() => ({
+export default defineConfig(({ command }) => ({
   plugins: [sveltekit()],
+
+  // The developer tools (/dev, PLAN.md H2) are in `vite dev` and in the
+  // Tauri CLI's debug builds, which also register their commands
+  // (`debug_assertions`); a release build leaves them out.
+  define: {
+    __DEV_TOOLS__: JSON.stringify(command === "serve" || process.env.TAURI_ENV_DEBUG === "true"),
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

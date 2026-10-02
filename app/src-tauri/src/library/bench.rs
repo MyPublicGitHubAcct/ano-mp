@@ -44,7 +44,7 @@ impl Words {
     }
 
     fn next(&mut self) -> String {
-        if self.random() % 10 == 0 {
+        if self.random().is_multiple_of(10) {
             return WORDS[self.random() % WORDS.len()].to_owned();
         }
         let n = self.random() % 8000;

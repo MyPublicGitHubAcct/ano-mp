@@ -5,7 +5,12 @@
 </script>
 
 {#if drag.current}
-  <div class="ghost" class:over={drag.current.over !== null} style:left="{drag.current.x + 14}px" style:top="{drag.current.y + 10}px">
+  <div
+    class="ghost"
+    class:over={drag.current.over !== null}
+    style:left="{drag.current.x + 14}px"
+    style:top="{drag.current.y + 10}px"
+  >
     <Icon name="note" size="1rem" />
     <span>{drag.current.label}</span>
   </div>

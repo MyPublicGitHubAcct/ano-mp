@@ -228,8 +228,7 @@ export const library = {
   /** Also asks for the artist to be looked up if needed; `metadata-changed` names them when done. */
   artist: (artistId: number) => invoke<ArtistPage>("library_artist", { artistId }),
   /** Null if the track has no year (or artist). */
-  coverWall: (trackId: number, basis: CoverBasis) =>
-    invoke<CoverWall | null>("library_cover_wall", { trackId, basis }),
+  coverWall: (trackId: number, basis: CoverBasis) => invoke<CoverWall | null>("library_cover_wall", { trackId, basis }),
   /** The tracks under a node, in the order it lists them. */
   nodeTrackIds: (rule: RuleSpec, path: BrowsePath, recursive: boolean, filter: BrowseFilter | null = null) =>
     invoke<number[]>("library_node_track_ids", { rule, path, recursive, filter }),
@@ -338,14 +337,12 @@ export const playlists = {
   /** How many tracks `rules` match now. */
   preview: (rules: SmartRules) => invoke<number>("playlists_preview", { rules }),
   rename: (playlistId: number, name: string) => invoke<Playlist>("playlists_rename", { playlistId, name }),
-  setRules: (playlistId: number, rules: SmartRules) =>
-    invoke<Playlist>("playlists_set_rules", { playlistId, rules }),
+  setRules: (playlistId: number, rules: SmartRules) => invoke<Playlist>("playlists_set_rules", { playlistId, rules }),
   remove: (playlistId: number) => invoke<void>("playlists_delete", { playlistId }),
   /** Before entry `at`, or at the end; resolves to how many were added. */
   add: (playlistId: number, trackIds: number[], at: number | null = null) =>
     invoke<number>("playlists_add", { playlistId, trackIds, at }),
-  removeItems: (playlistId: number, itemIds: number[]) =>
-    invoke<void>("playlists_remove", { playlistId, itemIds }),
+  removeItems: (playlistId: number, itemIds: number[]) => invoke<void>("playlists_remove", { playlistId, itemIds }),
   /** `to` is the index after the move. */
   move: (playlistId: number, itemIds: number[], to: number) =>
     invoke<void>("playlists_move", { playlistId, itemIds, to }),
@@ -588,8 +585,7 @@ export type Discography = {
 export const metadata = {
   settings: () => invoke<MetadataSettings>("metadata_settings"),
   /** Art may come from other sources afterwards; reload it. */
-  saveSettings: (settings: ServiceSettings) =>
-    invoke<MetadataSettings>("metadata_save_settings", { settings }),
+  saveSettings: (settings: ServiceSettings) => invoke<MetadataSettings>("metadata_save_settings", { settings }),
   /** Keys keep through a reset. */
   resetSettings: () => invoke<MetadataSettings>("metadata_reset_settings"),
   /** Saves a source's key in the keychain (turning the source on), or removes it with null. */
@@ -677,9 +673,7 @@ export type QueueItem = {
 
 /** A sleep timer (F13). `endsAt` is Unix seconds. */
 export type SleepTimer =
-  | { kind: "at"; endsAt: number; minutes: number }
-  | { kind: "endOfTrack" }
-  | { kind: "endOfAlbum" };
+  { kind: "at"; endsAt: number; minutes: number } | { kind: "endOfTrack" } | { kind: "endOfAlbum" };
 export type SleepRequest = { kind: "minutes"; minutes: number } | { kind: "endOfTrack" } | { kind: "endOfAlbum" };
 
 export type Skipped = { uid: number; trackId: number; title: string; error: string };
@@ -855,8 +849,7 @@ export const features = {
   clearHistory: () => invoke<void>("history_clear"),
   listenBrainzStatus: () => invoke<ListenBrainzStatus>("history_listenbrainz_status"),
   /** Checks the token with ListenBrainz and resolves to its user; null removes it. */
-  setListenBrainzToken: (token: string | null) =>
-    invoke<string | null>("history_set_listenbrainz_token", { token }),
+  setListenBrainzToken: (token: string | null) => invoke<string | null>("history_set_listenbrainz_token", { token }),
   recentlyAdded: (limit: number) => invoke<AlbumCard[]>("library_recently_added", { limit }),
   onThisDay: (date: Date) =>
     invoke<AlbumCard[]>("library_on_this_day", {

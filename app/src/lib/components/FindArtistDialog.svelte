@@ -4,12 +4,12 @@
   // none of them, or go back to automatic matching. The search starts with
   // the artist's own name; a MusicBrainz artist link or id is looked up
   // directly.
+  import { openLink } from "$lib/openLink";
   import { onMount } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import { metadata, type ArtistCandidate, type ArtistInfo } from "$lib/api";
   import { lifeSpan } from "$lib/format";
   import { errorText, t } from "$lib/i18n";
-  import { attempt, toasts } from "$lib/state/toasts.svelte";
+  import { toasts } from "$lib/state/toasts.svelte";
   import type { ArtistRef } from "$lib/state/ui.svelte";
   import Dialog from "./Dialog.svelte";
   import Icon from "./Icon.svelte";
@@ -69,12 +69,6 @@
     const mbid = selected;
     if (mbid) act(() => metadata.chooseArtist(artist.id, mbid), t("findArtist.updated", { name: artist.name }));
   };
-
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
 </script>
 
 <Dialog title={t("findArtist.title", { name: artist.name })} {onclose}>
@@ -89,7 +83,9 @@
       <span class="muted small">{t("findArtist.query")}</span>
       <input type="text" bind:value={name} />
     </label>
-    <button type="submit" disabled={searching || name.trim() === ""}><Icon name="search" /> {t("findArtist.search")}</button>
+    <button type="submit" disabled={searching || name.trim() === ""}
+      ><Icon name="search" /> {t("findArtist.search")}</button
+    >
   </form>
 
   {#if candidates === null}
@@ -109,17 +105,22 @@
           >
             <span class="line">
               <span class="name">
+                <!-- eslint-disable-next-line svelte/no-useless-mustaches -- a space Svelte would trim at the block's start -->
                 {found.name}{#if found.disambiguation}{" "}<span class="muted">({found.disambiguation})</span>{/if}
               </span>
               <span class="score muted" title={t("findArtist.score")}>{candidate.score}</span>
             </span>
             {#if describe(candidate)}<span class="muted small">{describe(candidate)}</span>{/if}
             {#if found.id === current}
-              <span class="badges"><span class="badge">{t(info.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span></span>
+              <span class="badges"
+                ><span class="badge">{t(info.chosenByUser ? "cover.yourChoice" : "findArtist.current")}</span></span
+              >
             {/if}
           </button>
           {#if selected === found.id}
-            <a class="small more" href="https://musicbrainz.org/artist/{found.id}" onclick={openLink}>{t("findArtist.open")}</a>
+            <a class="small more" href="https://musicbrainz.org/artist/{found.id}" onclick={openLink}
+              >{t("findArtist.open")}</a
+            >
           {/if}
         </li>
       {/each}

@@ -1,0 +1,49 @@
+# Version updates for Cargo, npm and the workflow's actions (PLAN.md H7),
+# one grouped pull request per ecosystem each month, for §9.1's monthly
+# update. The native pins (JUCE, Catch2, TagLib, Signalsmith, FFmpeg) and
+# the toolchains (rust-toolchain.toml, .nvmrc) stay manual.
+#
+# Tauri's crates and their npm packages must match in major.minor or
+# `tauri build` refuses to run, and Dependabot can't pair a Cargo pull
+# request with an npm one: it offers their patches only, and minor and
+# major moves are made by hand, both sides together (CLAUDE.md).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /app/src-tauri
+    schedule:
+      interval: monthly
+    # Let a release settle before proposing it.
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "tauri"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "tauri-build"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "tauri-plugin-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -29,7 +29,13 @@ function create(): Renderer {
       loudness = approach(loudness, Math.max(frame.rms[0], frame.rms[1]), dt, 0.05, 0.4);
       if (!frame.silent) {
         const weight = loudness;
-        memory = approachAll(memory, target.map((v) => v * weight), dt, KEY_MEMORY, KEY_MEMORY);
+        memory = approachAll(
+          memory,
+          target.map((v) => v * weight),
+          dt,
+          KEY_MEMORY,
+          KEY_MEMORY,
+        );
       }
       const key = estimateKey(memory);
       // The circle turns so the key's tonic drifts to the top.

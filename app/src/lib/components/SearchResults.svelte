@@ -110,9 +110,7 @@
 
   const playTrack = (track: Track) =>
     attempt(() =>
-      track.albumId !== null
-        ? queue.playNode(albumRule, [track.albumId], true, track.id)
-        : queue.play([track.id], 0),
+      track.albumId !== null ? queue.playNode(albumRule, [track.albumId], true, track.id) : queue.play([track.id], 0),
     );
 
   const selectedTracks = (index: number) =>
@@ -256,7 +254,11 @@
               <Art albumId={track.albumId} trackId={track.id} size="2.25rem" />
               <TrackText {track} />
             </button>
-            <Heart on={track.favourite} label={name} onchange={(on) => collection.setFavourite("track", [track.id], on)} />
+            <Heart
+              on={track.favourite}
+              label={name}
+              onchange={(on) => collection.setFavourite("track", [track.id], on)}
+            />
           </li>
         {/each}
       </ul>

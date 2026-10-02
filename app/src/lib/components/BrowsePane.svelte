@@ -52,6 +52,7 @@
   let pages = $state.raw(new Map<number, Entry[]>());
   let selection = $state<Selection>(emptySelection);
   let favouritesOnly = $state(loadPreference("favouritesOnly", false));
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, not shown
   let requested = new Set<number>();
   let request = 0;
 
@@ -116,6 +117,7 @@
       ...result.groups.map((group) => ({ kind: "group" as const, group })),
       ...result.tracks.map((track) => ({ kind: "track" as const, track })),
     ];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a copy, into $state.raw
     pages = new Map(pages).set(page, entries);
   }
 
@@ -224,7 +226,10 @@
     // Folders and files together: play or queue them all.
     const ids = () => trackIdsOf(entries);
     return [
-      { label: t("menu.playCount", { count: entries.length }), action: () => attempt(async () => queue.play(await ids(), 0)) },
+      {
+        label: t("menu.playCount", { count: entries.length }),
+        action: () => attempt(async () => queue.play(await ids(), 0)),
+      },
       { label: t("menu.addToQueue"), action: () => attempt(async () => queue.add(await ids(), false)) },
     ];
   }

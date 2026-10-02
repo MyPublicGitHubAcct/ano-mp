@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""The repo's pre-commit hook: gitleaks over the staged changes, then
+scripts/check-all.py --quick (PLAN.md H7, M4).
+
+Install it once per clone with:
+
+    git config core.hooksPath scripts/hooks
+
+Needs gitleaks (`brew install gitleaks`). `git commit --no-verify` skips it.
+"""
+
+import pathlib
+import subprocess
+import sys
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+
+COMMANDS = [
+    ["gitleaks", "git", "--staged", "--redact", "--no-banner", "--log-level", "warn"],
+    [sys.executable, str(REPO_ROOT / "scripts" / "check-all.py"), "--quick"],
+]
+
+
+def main():
+    for command in COMMANDS:
+        try:
+            if subprocess.run(command, cwd=REPO_ROOT, check=False).returncode != 0:
+                return 1
+        except FileNotFoundError as error:
+            print(f"pre-commit: {error}")
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

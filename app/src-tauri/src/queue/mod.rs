@@ -658,6 +658,7 @@ pub fn refresh_gains<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Something else was loaded into the engine (the dev page).
+#[cfg(debug_assertions)]
 pub fn detach<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     run(app, |queue, _| queue.detach())
 }

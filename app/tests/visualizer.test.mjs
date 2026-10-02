@@ -39,9 +39,18 @@ test("decodes the backend's frames", () => {
   close(frame.onset, 0.25);
   close(frame.chroma[9], 1);
   close(frame.chroma[0], 0.1, 0.01);
-  assert.deepEqual(Array.from(frame.bands, (v) => Math.round(v * 255)), [0, 128, 255, 255, 0]);
-  assert.deepEqual(Array.from(frame.left, (v) => Math.round(v * 100) / 100), [0, 1, -1]);
-  assert.deepEqual(Array.from(frame.right, (v) => Math.round(v * 100) / 100), [0.5, -0.5, 1]);
+  assert.deepEqual(
+    Array.from(frame.bands, (v) => Math.round(v * 255)),
+    [0, 128, 255, 255, 0],
+  );
+  assert.deepEqual(
+    Array.from(frame.left, (v) => Math.round(v * 100) / 100),
+    [0, 1, -1],
+  );
+  assert.deepEqual(
+    Array.from(frame.right, (v) => Math.round(v * 100) / 100),
+    [0.5, -0.5, 1],
+  );
 });
 
 test("reuses the frame's arrays when the sizes match", () => {

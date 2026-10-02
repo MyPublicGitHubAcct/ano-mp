@@ -607,7 +607,7 @@ fn level_groups(level: Level, album_order: AlbumOrder, from: &str, filter: &str)
                 match album_order {
                     AlbumOrder::Title => String::new(),
                     AlbumOrder::Year => format!("{ALBUM_MIN_YEAR} NULLS LAST, "),
-                    AlbumOrder::DateAdded => format!("max(t.added_at) DESC, "),
+                    AlbumOrder::DateAdded => "max(t.added_at) DESC, ".to_owned(),
                 }
             ),
             "Unknown album",
@@ -1642,10 +1642,10 @@ mod tests {
         );
         let composer = library.key(&rule, &[], "Beethoven");
         assert_eq!(
-            library.names(&rule, &[composer.clone()]),
+            library.names(&rule, std::slice::from_ref(&composer)),
             [("Symphony No. 5".to_owned(), 2)]
         );
-        let work = library.key(&rule, &[composer.clone()], "Symphony No. 5");
+        let work = library.key(&rule, std::slice::from_ref(&composer), "Symphony No. 5");
         assert_eq!(library.titles(&rule, &[composer, work]), ["II", "I"]);
         let unknown = library.page(&rule, &[None, None]);
         assert_eq!(titles(&unknown.tracks), ["Other"]);

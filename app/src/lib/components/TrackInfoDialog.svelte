@@ -4,7 +4,8 @@
   // where the file is (with Show in Finder), its MusicBrainz links, every
   // embedded picture, and every tag field TagLib reads.
   import { onMount } from "svelte";
-  import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { openWebLink } from "$lib/openLink";
   import { library, type TrackDetails } from "$lib/api";
   import { count, errorText, t } from "$lib/i18n";
   import { fileName, formatDay, formatTime } from "$lib/format";
@@ -53,7 +54,8 @@
       result.push({ label: t("info.mbReleaseGroup"), url: `${MUSICBRAINZ}/release-group/${ids.releaseGroup}` });
     for (const id of ids.artists) result.push({ label: t("info.mbArtist"), url: `${MUSICBRAINZ}/artist/${id}` });
     for (const id of ids.albumArtists)
-      if (!ids.artists.includes(id)) result.push({ label: t("info.mbAlbumArtist"), url: `${MUSICBRAINZ}/artist/${id}` });
+      if (!ids.artists.includes(id))
+        result.push({ label: t("info.mbAlbumArtist"), url: `${MUSICBRAINZ}/artist/${id}` });
     if (ids.work) result.push({ label: t("info.mbWork"), url: `${MUSICBRAINZ}/work/${ids.work}` });
     return result;
   });
@@ -100,18 +102,25 @@
         {details.file.codec.toUpperCase() || "—"}
         {details.file.lossless ? t("info.lossless") : ""}
       </dd>
-      {#if details.file.bitsPerSample}<dt>{t("info.bits")}</dt><dd>{details.file.bitsPerSample}</dd>{/if}
+      {#if details.file.bitsPerSample}<dt>{t("info.bits")}</dt>
+        <dd>{details.file.bitsPerSample}</dd>{/if}
       <dt>{t("info.sampleRate")}</dt>
       <dd>{t("info.kHz", { rate: numbers.format(details.file.sampleRate / 1000) })}</dd>
-      {#if details.file.channels > 0}<dt>{t("info.channelsLabel")}</dt><dd>{channels(details.file.channels)}</dd>{/if}
-      {#if details.file.bitrateKbps}<dt>{t("info.bitrate")}</dt><dd>{t("info.kbps", { rate: details.file.bitrateKbps })}</dd>{/if}
+      {#if details.file.channels > 0}<dt>{t("info.channelsLabel")}</dt>
+        <dd>{channels(details.file.channels)}</dd>{/if}
+      {#if details.file.bitrateKbps}<dt>{t("info.bitrate")}</dt>
+        <dd>{t("info.kbps", { rate: details.file.bitrateKbps })}</dd>{/if}
       <dt>{t("info.length")}</dt>
       <dd>{formatTime(track.duration)}</dd>
-      {#if details.file.fileSize > 0}<dt>{t("info.size")}</dt><dd>{size(details.file.fileSize)}</dd>{/if}
-      {#if details.file.tagTypes}<dt>{t("info.tags")}</dt><dd>{details.file.tagTypes}</dd>{/if}
+      {#if details.file.fileSize > 0}<dt>{t("info.size")}</dt>
+        <dd>{size(details.file.fileSize)}</dd>{/if}
+      {#if details.file.tagTypes}<dt>{t("info.tags")}</dt>
+        <dd>{details.file.tagTypes}</dd>{/if}
       {#if track.rangeStart > 0 || details.rangeEnd !== null}
         <dt>{t("info.part")}</dt>
-        <dd>{formatTime(track.rangeStart)} – {details.rangeEnd === null ? t("info.end") : formatTime(details.rangeEnd)}</dd>
+        <dd>
+          {formatTime(track.rangeStart)} – {details.rangeEnd === null ? t("info.end") : formatTime(details.rangeEnd)}
+        </dd>
       {/if}
       <dt>{t("info.added")}</dt>
       <dd>{track.addedAt > 0 ? formatDay(track.addedAt) : "—"}</dd>
@@ -132,7 +141,7 @@
       <h3>{t("info.musicbrainz")}</h3>
       <ul class="links">
         {#each links as link (link.url)}
-          <li><button class="link" onclick={() => attempt(() => openUrl(link.url))}>{link.label}</button></li>
+          <li><button class="link" onclick={() => openWebLink(link.url)}>{link.label}</button></li>
         {/each}
       </ul>
     {/if}

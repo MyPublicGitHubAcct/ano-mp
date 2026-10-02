@@ -296,7 +296,9 @@
           {/if}
         {/if}
         <p class="row">
-          <button onclick={() => ui.showView("history")} disabled={!f.listeningHistory}>{t("features.openHistory")}</button>
+          <button onclick={() => ui.showView("history")} disabled={!f.listeningHistory}
+            >{t("features.openHistory")}</button
+          >
           <button
             onclick={async () => {
               if (!confirm(t("features.clearHistoryConfirm"))) return;
@@ -384,7 +386,9 @@
           <strong>{remote.url ?? t("features.thisMac", { port: String(f.remotePort) })}</strong>
         </p>
         <p class="row">
-          <button onclick={async () => (remote = (await attempt(api.remoteNewCode)) ?? remote)}>{t("features.pair")}</button>
+          <button onclick={async () => (remote = (await attempt(api.remoteNewCode)) ?? remote)}
+            >{t("features.pair")}</button
+          >
           {#if remote.code}
             <span
               >{t("features.code")} <strong class="code">{remote.code}</strong>

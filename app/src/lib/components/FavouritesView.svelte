@@ -35,7 +35,13 @@
     favourites !== null && tracks.length === 0 && favourites.albums.length === 0 && favourites.artists.length === 0,
   );
 
-  const playFrom = (index: number) => attempt(() => queue.play(tracks.map((track) => track.id), index));
+  const playFrom = (index: number) =>
+    attempt(() =>
+      queue.play(
+        tracks.map((track) => track.id),
+        index,
+      ),
+    );
 
   function menu(index: number, event: MouseEvent) {
     const chosen = rowsFor(selection, index)
@@ -55,7 +61,10 @@
   }
 
   $effect(() => {
-    ui.selectedTracks = () => rowsFor(selection, selection.focus).map((row) => tracks[row]).filter(Boolean);
+    ui.selectedTracks = () =>
+      rowsFor(selection, selection.focus)
+        .map((row) => tracks[row])
+        .filter(Boolean);
     return () => (ui.selectedTracks = null);
   });
 </script>

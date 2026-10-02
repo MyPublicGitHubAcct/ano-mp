@@ -8,16 +8,10 @@
   // after a scan and when `metadata-changed` names the album. A source that
   // doesn't keep its releases (Discogs) is asked for the release each time
   // the album is shown, and its data carries the credit its terms require.
+  import { webLink } from "$lib/links";
+  import { openLink } from "$lib/openLink";
   import { untrack } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
-  import {
-    metadata,
-    type AlbumDetails,
-    type AlbumFact,
-    type AlbumLink,
-    type Release,
-    type SourceId,
-  } from "$lib/api";
+  import { metadata, type AlbumDetails, type AlbumFact, type AlbumLink, type Release, type SourceId } from "$lib/api";
   import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent } from "$lib/format";
   import { count, errorText, t } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
@@ -25,7 +19,6 @@
   import Heart from "./Heart.svelte";
   import { library } from "$lib/state/library.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
-  import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui, type AlbumRef } from "$lib/state/ui.svelte";
   import { features } from "$lib/state/features.svelte";
   import AlbumWorks from "./AlbumWorks.svelte";
@@ -41,7 +34,9 @@
 
   let details = $state.raw<AlbumDetails | null>(null);
   /** Releases fetched for links whose source doesn't keep them, by source and release id, or why they couldn't be. */
-  let fetched = $state.raw<Partial<Record<SourceId, { id: string; release: Release | null; error: string | null }>>>({});
+  let fetched = $state.raw<Partial<Record<SourceId, { id: string; release: Release | null; error: string | null }>>>(
+    {},
+  );
   let open = $state(loadPreference("albumDetailsOpen", false));
   let expanded = $state(false);
   let request = 0;
@@ -107,11 +102,7 @@
   const first = $derived(links[0] ?? null);
   const description = $derived(details?.description ?? null);
   const paragraphs = $derived(
-    description === null
-      ? []
-      : expanded
-        ? description.paragraphs
-        : description.paragraphs.slice(0, SHORT_DESCRIPTION),
+    description === null ? [] : expanded ? description.paragraphs : description.paragraphs.slice(0, SHORT_DESCRIPTION),
   );
   const genres = $derived.by(() => {
     const release = matched?.release;
@@ -192,7 +183,11 @@
       const release = link.release;
       const error = fetchedFor(link)?.error;
       if (!release && error && link.status !== "none") {
-        rows.push({ field: t("album.field.details"), value: t("album.notAvailable", { error }), source: link.sourceName });
+        rows.push({
+          field: t("album.field.details"),
+          value: t("album.notAvailable", { error }),
+          source: link.sourceName,
+        });
       }
       if (!release) continue;
       if (link.status === "review") {
@@ -251,12 +246,6 @@
     return rows;
   });
 
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
-
   /** The album's heart (PLAN.md F3). */
   let hearted = $state(false);
   $effect(() => {
@@ -288,7 +277,12 @@
     <div class="facts">
       {#if details}
         <p class="muted small">
-          {[details.albumArtist, details.year, count("count.tracks", details.tracks.length), formatTime(details.duration)]
+          {[
+            details.albumArtist,
+            details.year,
+            count("count.tracks", details.tracks.length),
+            formatTime(details.duration),
+          ]
             .filter((part) => part !== null)
             .join(" · ")}
         </p>
@@ -296,7 +290,7 @@
           <p class="summary">
             {summary}
             {#if matched.credit && matched.pageUrl}
-              <a class="source" href={matched.pageUrl} onclick={openLink}>{matched.credit}</a>
+              <a class="source" href={webLink(matched.pageUrl)} onclick={openLink}>{matched.credit}</a>
             {:else}
               <span class="source" title={t("album.from", { source: matched.sourceName })}>{matched.sourceName}</span>
             {/if}
@@ -337,8 +331,8 @@
       {/if}
       <p class="credit muted small">
         {t("album.creditFrom", { source: description.sourceName })}
-        <a href={description.url} onclick={openLink}>“{description.title}”</a>{t("album.creditUnder")}
-        <a href={description.licenseUrl} onclick={openLink}>{description.license}</a>.
+        <a href={webLink(description.url)} onclick={openLink}>“{description.title}”</a>{t("album.creditUnder")}
+        <a href={webLink(description.licenseUrl)} onclick={openLink}>{description.license}</a>.
       </p>
     </div>
   {/if}
@@ -362,7 +356,7 @@
               <td>{row.value}</td>
               <td>
                 {#if row.href}
-                  <a class="source" href={row.href} onclick={openLink}>{row.source}</a>
+                  <a class="source" href={webLink(row.href)} onclick={openLink}>{row.source}</a>
                 {:else}
                   <span class="source">{row.source}</span>
                 {/if}

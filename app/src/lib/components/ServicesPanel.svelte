@@ -5,10 +5,11 @@
   // require), and for each kind of data the order the sources are tried in.
   // Every change is saved at once; keys go to the keychain, never into the
   // settings. A section of the settings page (SettingsPage).
+  import { webLink } from "$lib/links";
+  import { openLink } from "$lib/openLink";
   import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     metadata,
     type MetadataKind,
@@ -143,16 +144,9 @@
 
   const kindNames = (info: SourceInfo) =>
     info.kinds.map((kind) => KINDS.find((k) => k.kind === kind)?.name ?? kind).join(", ");
-
-  function openLink(event: MouseEvent) {
-    event.preventDefault();
-    const href = (event.currentTarget as HTMLAnchorElement).href;
-    attempt(() => openUrl(href));
-  }
 </script>
 
 <div class="services">
-
   <div class="status" role="status">
     <Icon name="cloud" />
     <span>{metadataStatus.summary}</span>
@@ -208,13 +202,15 @@
                 <span class="title">
                   {info.name}
                   {#if info.homepage}
-                    <a class="small" href={info.homepage} onclick={openLink}>{new URL(info.homepage).host}</a>
+                    <a class="small" href={webLink(info.homepage)} onclick={openLink}>{new URL(info.homepage).host}</a>
                   {/if}
                 </span>
                 <span class="muted small">
                   {[
                     kindNames(info),
-                    info.requires ? t("services.usesMatches", { name: infoOf(info.requires)?.name ?? info.requires }) : null,
+                    info.requires
+                      ? t("services.usesMatches", { name: infoOf(info.requires)?.name ?? info.requires })
+                      : null,
                     info.online ? null : t("services.local"),
                     info.storesDetails ? null : t("services.notStored"),
                   ]
@@ -229,7 +225,9 @@
               {#if source?.hasKey}
                 <div class="key">
                   <span class="muted small">{t("services.keySaved", { key: keyName })}</span>
-                  <button class="link small" disabled={saving} onclick={() => removeKey(info)}>{t("services.remove")}</button>
+                  <button class="link small" disabled={saving} onclick={() => removeKey(info)}
+                    >{t("services.remove")}</button
+                  >
                 </div>
               {:else}
                 <form
@@ -246,7 +244,7 @@
                   </label>
                   <button type="submit" disabled={saving || !keys[info.id]?.trim()}>{t("dialog.save")}</button>
                   {#if info.keyUrl}
-                    <a class="small" href={info.keyUrl} onclick={openLink}>{t("services.getKey")}</a>
+                    <a class="small" href={webLink(info.keyUrl)} onclick={openLink}>{t("services.getKey")}</a>
                   {/if}
                 </form>
               {/if}
@@ -503,5 +501,4 @@
   .reset {
     margin-top: 1.5rem;
   }
-
 </style>

@@ -6,7 +6,14 @@
   import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { library as api, type AlbumOrder, type Level, type SortRule, type SortSettings, type TrackKey } from "$lib/api";
+  import {
+    library as api,
+    type AlbumOrder,
+    type Level,
+    type SortRule,
+    type SortSettings,
+    type TrackKey,
+  } from "$lib/api";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import Icon from "../Icon.svelte";
@@ -237,10 +244,14 @@
         <button type="submit" class="primary" disabled={busy || !dirty || draft.name.trim() === ""}>
           {isNew ? t("sort.addView") : t("dialog.save")}
         </button>
-        {#if dirty}<button type="button" onclick={revert} disabled={busy}>{isNew ? t("dialog.cancel") : t("sort.revert")}</button>{/if}
+        {#if dirty}<button type="button" onclick={revert} disabled={busy}
+            >{isNew ? t("dialog.cancel") : t("sort.revert")}</button
+          >{/if}
         {#if !isNew}
           <span class="spacer"></span>
-          <button type="button" onclick={remove} disabled={busy || data.rules.length <= 1}>{t("sort.removeView")}</button>
+          <button type="button" onclick={remove} disabled={busy || data.rules.length <= 1}
+            >{t("sort.removeView")}</button
+          >
         {/if}
       </div>
     </form>
@@ -249,8 +260,20 @@
   <h3>{t("sort.skipped")}</h3>
   <form class="field articles" onsubmit={saveArticles}>
     <span class="control">
-      <input type="text" bind:value={articles} placeholder={t("sort.skippedPlaceholder")} aria-label={t("sort.skippedLabel")} />
-      <button type="submit" disabled={busy || articles.split(/[\s,]+/).filter(Boolean).join(" ") === savedArticles}>
+      <input
+        type="text"
+        bind:value={articles}
+        placeholder={t("sort.skippedPlaceholder")}
+        aria-label={t("sort.skippedLabel")}
+      />
+      <button
+        type="submit"
+        disabled={busy ||
+          articles
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .join(" ") === savedArticles}
+      >
         {t("dialog.save")}
       </button>
     </span>

@@ -372,6 +372,9 @@ fn route<R: Runtime>(app: &AppHandle<R>, request: &Request, peer: IpAddr) -> Res
                 Ok(_) => return Response::error(401, "Pair this phone first"),
                 Err(error) => return Response::error(500, &error.to_string()),
             }
+            // Marks that the library isn't used past here; `State` is a
+            // reference, so this changes nothing at run time.
+            #[allow(clippy::drop_non_drop)]
             drop(library);
             api(app, method, path, request)
         }

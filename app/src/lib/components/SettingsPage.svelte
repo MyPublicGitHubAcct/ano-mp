@@ -54,7 +54,14 @@
   </header>
 
   <div class="layout">
-    <div class="tabs" role="tablist" aria-label={t("settings.sections")} aria-orientation="vertical" tabindex="-1" {onkeydown}>
+    <div
+      class="tabs"
+      role="tablist"
+      aria-label={t("settings.sections")}
+      aria-orientation="vertical"
+      tabindex="-1"
+      {onkeydown}
+    >
       {#each SECTIONS as candidate (candidate.id)}
         <button
           id="settings-tab-{candidate.id}"

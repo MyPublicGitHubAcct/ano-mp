@@ -9,9 +9,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1035,4 +1038,68 @@ TEST_CASE ("PlayerEngine equalises after the tap, with its preamp", "[player][eq
     REQUIRE (h.player.play());
     h.render (8192);
     CHECK (maxError (h.output, 4096, whole, 4096, 4096, 0.5f) < 1e-5f);
+}
+
+TEST_CASE ("PlayerEngine hands off while an audio thread renders", "[player][gapless][threads]")
+{
+    // As with a device: one thread renders while the message thread queues
+    // next tracks, seeks, changes gains and collects events. The rest of
+    // this file renders on the calling thread, so this is the test that
+    // lets TSan (the tsan preset, PLAN.md H6) see the two threads meet.
+    anomp::FormatRegistry registry;
+    juce::TimeSliceThread readAhead ("test read-ahead");
+    readAhead.startThread();
+    {
+        anomp::PlayerEngine player (registry.manager(), &readAhead);
+        player.prepareToPlay (blockSize, 44100.0);
+        int advanced = 0;
+        player.onTrackEnded = [&advanced] (bool next)
+        {
+            advanced += next ? 1 : 0;
+        };
+
+        const auto first = fixtureFile ("flac-44k.flac");
+        const auto second = fixtureFile ("wav-s16-44k.wav");
+        REQUIRE (player.load (first).isEmpty());
+        REQUIRE (player.play());
+
+        std::atomic<bool> running { true };
+        std::thread audio (
+            [&]
+            {
+                juce::AudioBuffer<float> block (2, blockSize);
+                while (running)
+                {
+                    block.clear();
+                    player.getNextAudioBlock (juce::AudioSourceChannelInfo (block));
+                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                }
+            });
+
+        // Each round queues a next track and seeks close to the current
+        // one's end, so the next takes over within a few blocks.
+        constexpr int rounds = 20;
+        for (int round = 0; round < rounds; ++round)
+        {
+            const auto advances = player.getAdvanceCount();
+            REQUIRE (player.setNext (round % 2 == 0 ? second : first, round % 3 == 0 ? 0.5f : 1.0f).isEmpty());
+            player.setVolume (round % 2 == 0 ? 0.5f : 1.0f);
+            player.setTrackGain (first, 0.75f);
+            REQUIRE (player.seek (player.getDurationSeconds() - 0.02));
+            for (int wait = 0; wait < 1000 && player.getAdvanceCount() == advances; ++wait)
+            {
+                player.dispatchEvents();
+                juce::Thread::sleep (2);
+            }
+            REQUIRE (player.getAdvanceCount() == advances + 1);
+        }
+
+        running = false;
+        audio.join();
+        player.dispatchEvents();
+        CHECK (player.getAdvanceCount() == rounds);
+        CHECK (advanced >= 1);
+        CHECK (player.getState() == State::playing);
+    }
+    readAhead.stopThread (1000);
 }

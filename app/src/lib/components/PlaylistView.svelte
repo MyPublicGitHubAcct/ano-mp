@@ -31,10 +31,12 @@
   let pages = $state.raw(new Map<number, PlaylistEntry[]>());
   let loaded = $state(false);
   let selection = $state<Selection>(emptySelection);
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping, not shown
   let requested = new Set<number>();
   let request = 0;
   let list = $state<VirtualList<PlaylistEntry>>();
-  let name = $state("");
+  // The playlist's name, edited in place until the playlist changes.
+  let name = $derived(playlist?.name ?? "");
   let nameInput = $state<HTMLInputElement>();
   let moving = $state<{ itemIds: number[]; rows: number[]; gap: number } | null>(null);
 
@@ -51,10 +53,6 @@
       selection = emptySelection;
       loadPage(0);
     });
-  });
-
-  $effect(() => {
-    name = playlist?.name ?? "";
   });
 
   // A playlist just made: its name is ready to type over.
@@ -77,6 +75,7 @@
       return;
     }
     loaded = true;
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- a copy, into $state.raw
     pages = new Map(pages).set(page, result.entries);
   }
 
@@ -117,7 +116,11 @@
         },
       },
     ];
-    if (smart) items.push({ label: t("playlist.editRules"), action: () => (ui.dialog = { kind: "smartPlaylist", playlist: current }) });
+    if (smart)
+      items.push({
+        label: t("playlist.editRules"),
+        action: () => (ui.dialog = { kind: "smartPlaylist", playlist: current }),
+      });
     items.push(
       { label: t("playlist.export"), action: () => collection.exportPlaylist(current) },
       { separator: true },

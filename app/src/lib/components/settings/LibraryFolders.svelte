@@ -50,7 +50,10 @@
             {:else if folder.lastScanAt === null}
               {t("folders.notScannedYet")}
             {:else}
-              {t("folders.scanned", { tracks: count("count.tracks", folder.trackCount), day: formatDay(folder.lastScanAt) })}
+              {t("folders.scanned", {
+                tracks: count("count.tracks", folder.trackCount),
+                day: formatDay(folder.lastScanAt),
+              })}
             {/if}
           </span>
         </span>

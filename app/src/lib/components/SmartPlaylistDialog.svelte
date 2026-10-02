@@ -183,7 +183,8 @@
           <select
             value={condition.value ? "yes" : "no"}
             aria-label={t("smart.value")}
-            onchange={(event) => condition.field === "favourite" && (condition.value = event.currentTarget.value === "yes")}
+            onchange={(event) =>
+              condition.field === "favourite" && (condition.value = event.currentTarget.value === "yes")}
           >
             <option value="yes">{t("smart.yes")}</option>
             <option value="no">{t("smart.no")}</option>
@@ -202,7 +203,8 @@
             min="0"
             value={condition.atLeast ?? ""}
             aria-label={t("smart.atLeast")}
-            oninput={(event) => condition.field === "playCount" && (condition.atLeast = number(event.currentTarget.value))}
+            oninput={(event) =>
+              condition.field === "playCount" && (condition.atLeast = number(event.currentTarget.value))}
           />
           <span class="muted">{t("smart.to")}</span>
           <input
@@ -211,7 +213,8 @@
             value={condition.atMost ?? ""}
             placeholder="∞"
             aria-label={t("smart.atMost")}
-            oninput={(event) => condition.field === "playCount" && (condition.atMost = number(event.currentTarget.value))}
+            oninput={(event) =>
+              condition.field === "playCount" && (condition.atMost = number(event.currentTarget.value))}
           />
           <button
             class="infinity"
@@ -256,7 +259,9 @@
 
   {#snippet actions()}
     <button onclick={onclose}>{t("dialog.cancel")}</button>
-    <button class="primary" disabled={saving || name.trim() === "" || incomplete} onclick={save}>{t("dialog.save")}</button>
+    <button class="primary" disabled={saving || name.trim() === "" || incomplete} onclick={save}
+      >{t("dialog.save")}</button
+    >
   {/snippet}
 </Dialog>
 

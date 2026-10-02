@@ -1,4 +1,5 @@
 # Formatted by scripts/format-python.py, which pins the ruff version.
 line-length = 100
-# Python files only, not the Python blocks in the Markdown docs.
-include = ["*.py", "*.pyi"]
+# Python files only, not the Python blocks in the Markdown docs; the git
+# hooks are Python without an extension.
+include = ["*.py", "*.pyi", "scripts/hooks/*"]

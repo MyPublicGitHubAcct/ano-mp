@@ -24,7 +24,10 @@ fn main() {
 }
 
 /// The commands lib.rs registers: the last path segment of each entry of
-/// its `generate_handler![…]`.
+/// its `generate_handler![…]`, skipping comments and attributes. A command
+/// under `#[cfg(debug_assertions)]` (the /dev page's, PLAN.md H2) is listed
+/// too: a release build doesn't register it, so there is nothing to call,
+/// and the permission set stays the same for every profile.
 fn app_commands() -> Vec<String> {
     println!("cargo:rerun-if-changed=src/lib.rs");
     let source = std::fs::read_to_string("src/lib.rs").expect("cannot read src/lib.rs");
@@ -33,16 +36,23 @@ fn app_commands() -> Vec<String> {
         .find(marker)
         .expect("lib.rs has no generate_handler!")
         + marker.len();
-    let end = start
-        + source[start..]
-            .find(']')
-            .expect("generate_handler! isn't closed");
-    source[start..end]
-        .split(',')
-        .map(str::trim)
-        .filter(|entry| !entry.is_empty())
-        .map(|entry| entry.rsplit("::").next().unwrap_or(entry).to_owned())
-        .collect()
+    let mut commands = Vec::new();
+    for line in source[start..].lines() {
+        let line = line.split("//").next().unwrap_or_default().trim();
+        if line.starts_with("#[") {
+            continue;
+        }
+        if line.starts_with(']') {
+            return commands;
+        }
+        commands.extend(
+            line.split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(|entry| entry.rsplit("::").next().unwrap_or(entry).to_owned()),
+        );
+    }
+    panic!("generate_handler! isn't closed");
 }
 
 /// A permission set of every command, for the main window.

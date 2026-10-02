@@ -974,7 +974,7 @@ mod tests {
         assert!(choose(&library, 99, None).is_err(), "no such album");
         assert_eq!(shown(&library).0, SourceId::Folder, "unchanged");
         choose(&library, album_id, None).unwrap();
-        assert_eq!(shown(&library).1, false);
+        assert!(!shown(&library).1);
         assert_eq!(chosen_art(&library.conn(), album_id).unwrap(), None);
     }
 

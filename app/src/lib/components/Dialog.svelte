@@ -28,12 +28,14 @@
     if (event.target !== dialog) return;
     const box = dialog.getBoundingClientRect();
     const inside =
-      event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+      event.clientX >= box.left &&
+      event.clientX <= box.right &&
+      event.clientY >= box.top &&
+      event.clientY <= box.bottom;
     if (!inside) dialog.close();
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <dialog bind:this={dialog} aria-labelledby={id} {onclose} {onclick}>
   <header>
     <h2 {id}>{title}</h2>

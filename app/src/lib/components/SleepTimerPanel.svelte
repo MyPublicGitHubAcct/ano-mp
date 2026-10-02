@@ -56,7 +56,12 @@
   </div>
   <div class="footer">
     <label>
-      <input type="checkbox" checked={stopsAfterCurrent} disabled={!player.currentItem} onchange={player.toggleStopAfter} />
+      <input
+        type="checkbox"
+        checked={stopsAfterCurrent}
+        disabled={!player.currentItem}
+        onchange={player.toggleStopAfter}
+      />
       {t("queue.stopAfter")}
     </label>
     <button disabled={sleep === null} onclick={() => player.setSleep(null)}>{t("sleep.cancel")}</button>

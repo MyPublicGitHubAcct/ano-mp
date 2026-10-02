@@ -62,7 +62,12 @@
   {#if appSettings.current.window.visualizerNoteSeen}
     <Visualizer id={chosen.id} />
   {:else}
-    <div class="note" role="alertdialog" aria-labelledby="visualizer-note-title" aria-describedby="visualizer-note-text">
+    <div
+      class="note"
+      role="alertdialog"
+      aria-labelledby="visualizer-note-title"
+      aria-describedby="visualizer-note-text"
+    >
       <h2 id="visualizer-note-title">{t("visualizer.noteTitle")}</h2>
       <p id="visualizer-note-text">{t("visualizer.noteText")}</p>
       <div class="note-actions">

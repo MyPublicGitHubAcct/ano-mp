@@ -8,7 +8,12 @@
 </script>
 
 <header class="header">
-  <button class="icon menu" title={t("library.title")} aria-label={t("header.showLibrary")} onclick={() => (ui.sidebarOpen = true)}>
+  <button
+    class="icon menu"
+    title={t("library.title")}
+    aria-label={t("header.showLibrary")}
+    onclick={() => (ui.sidebarOpen = true)}
+  >
     <Icon name="menu" />
   </button>
   <nav class="crumbs" aria-label={t("header.location")}>
