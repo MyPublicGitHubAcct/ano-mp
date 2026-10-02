@@ -165,3 +165,37 @@ library ("Running a bundle check safely" in `CLAUDE.md`).
 - [ ] CPU: Activity Monitor while each runs at Retina size, the wall with
   a large library.
 - [ ] The flash guard on a strobing track.
+
+## 5. Step 5: opening files off the main thread, cloud and network folders
+
+What Step 5 (`PLAN.md` H11, H12) changed that only real disks, shares and
+iCloud show. The probe checks wait for your go-ahead (a sandboxed bundle
+uses the real container).
+
+- [ ] **A folder held open while a file opens off the main thread**
+  (probe). In the sandboxed bundle, play a scratch library's tracks: the
+  bookmark is resolved on a blocking thread and held until the engine's
+  opening thread reports the file. Pass: every track plays, gapless
+  hand-offs included; nothing in the log says a file couldn't be opened.
+- [ ] **A sleeping disk** (you). A library folder on a USB hard disk (one
+  that spins down). Let it sleep, then play a track from it. Pass: the UI
+  and the media keys keep responding while it wakes; the now-playing bar
+  says "Opening…" after a moment, then plays. A disk that takes more than
+  20 s skips the track with "The file took more than 20 s to open".
+- [ ] **An SMB folder** (you). Add a folder on a network share and scan
+  it. Pass: it scans; tracks play (and hand off gaplessly) from it. With
+  the share's server switched off while it plays: the UI doesn't freeze,
+  the next track is skipped after 20 s, and the folder's tracks stay.
+  Ejecting the share during a scan keeps its tracks (H22).
+- [ ] **iCloud placeholders** (you). With iCloud Drive's "Optimize Mac
+  Storage" on, a library folder in iCloud Drive with some files evicted
+  (Finder › Remove Download). Scan it. Pass: the scan doesn't download
+  them (no download progress in the Finder); Settings › Library shows
+  "N in iCloud, not downloaded" for new ones; the log says "cloud
+  placeholders left unread". Play one: the bar says "Downloading from
+  iCloud…", then it plays. Rescan after it played: its tags show, and
+  the count goes down. Turn on file analysis: placeholders aren't
+  downloaded by it.
+- [ ] **Folder watching after a download** (you). After playing a
+  placeholder, note whether its tags appear without a manual rescan (the
+  watcher may or may not see a download as a change).

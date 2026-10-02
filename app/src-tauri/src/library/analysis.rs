@@ -246,9 +246,14 @@ pub const HISTOGRAM_STEP: f64 = 0.5;
 /// when they were tried (stored by earlier versions; see `run`).
 const NEEDS_ANALYSIS: &str = "FROM tracks t
      LEFT JOIN track_analysis a ON a.track_id = t.id
-     WHERE t.file_mtime_ns >= 0
+     WHERE t.file_mtime_ns >= 0 AND t.dataless = 0
        AND (a.track_id IS NULL OR a.file_size != t.file_size OR a.file_mtime_ns != t.file_mtime_ns
             OR a.error LIKE '{\"code\":\"folderUnavailable\"%')";
+
+/// What `analyse_track` gives for a cloud placeholder (H12), which it
+/// doesn't read, so as not to download it: nothing is stored, and the
+/// track is marked `dataless` until a scan finds it downloaded.
+const PLACEHOLDER: &str = "Placeholder";
 
 /// An analysis error that is a folder out of reach, not a failure.
 pub const NOT_FOLDER_ERROR: &str = "error NOT LIKE '{\"code\":\"folderUnavailable\"%'";
@@ -366,6 +371,10 @@ pub fn analyse_track(
         Ok(folder) => folder,
         Err(error) => return Ok(Err(error.to_string())),
     };
+    if anomp::file_is_dataless(&path) == Some(true) {
+        conn.execute("UPDATE tracks SET dataless = 1 WHERE id = ?1", [track_id])?;
+        return Ok(Err(PLACEHOLDER.into()));
+    }
     Ok(anomp::analyse_file(
         &path,
         start,
@@ -543,7 +552,7 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
         let mut analysed = Vec::new();
         for (id, result) in results {
             match result {
-                Ok(Err(error)) if error == "Cancelled" => {}
+                Ok(Err(error)) if error == "Cancelled" || error == PLACEHOLDER => {}
                 Ok(Err(error)) if FolderState::of_error(&error).is_some() => {
                     let folder: Option<i64> = conn
                         .query_row("SELECT folder_id FROM tracks WHERE id = ?1", [id], |row| {
@@ -682,6 +691,26 @@ mod tests {
             .unwrap();
         assert!(next_tracks(conn, 10, &[folder]).unwrap().is_empty());
         assert_eq!(next_tracks(conn, 10, &[folder + 1]).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_cloud_placeholder_waits_until_a_scan_finds_it_downloaded() {
+        let library = Library::new([track("a/1.flac"), track("a/2.flac")]);
+        let conn = &library.conn;
+        let ids = next_tracks(conn, 10, &[]).unwrap();
+        // As `analyse_track` marks one it found to be a placeholder (H12).
+        conn.execute("UPDATE tracks SET dataless = 1 WHERE id = ?1", [ids[0]])
+            .unwrap();
+        assert_eq!(next_tracks(conn, 10, &[]).unwrap(), [ids[1]]);
+        assert_eq!(
+            counts(conn).unwrap(),
+            (0, 1, 0),
+            "not counted as left to do"
+        );
+        // A scan that reads it clears the mark.
+        conn.execute("UPDATE tracks SET dataless = 0 WHERE id = ?1", [ids[0]])
+            .unwrap();
+        assert_eq!(next_tracks(conn, 10, &[]).unwrap().len(), 2);
     }
 
     #[test]

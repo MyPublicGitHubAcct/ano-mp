@@ -75,6 +75,9 @@ pub struct Folder {
     pub id: i64,
     pub path: String,
     pub track_count: u32,
+    /// Its tracks whose files were cloud placeholders when last seen, so
+    /// their tags weren't read (PLAN.md H12).
+    pub dataless_count: u32,
     /// Unix seconds; `None` until the first scan.
     pub last_scan_at: Option<i64>,
     /// Whether it can be read now, where checked (F8): `Some(false)` for a
@@ -90,7 +93,9 @@ pub struct Folder {
 pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
     let mut statement = conn.prepare(
         "SELECT id, path, last_scan_at,
-                (SELECT count(*) FROM tracks WHERE tracks.folder_id = folders.id)
+                (SELECT count(*) FROM tracks WHERE tracks.folder_id = folders.id),
+                (SELECT count(*) FROM tracks
+                 WHERE tracks.folder_id = folders.id AND tracks.dataless = 1)
          FROM folders ORDER BY path",
     )?;
     let rows = statement.query_map([], |row| {
@@ -99,6 +104,7 @@ pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
             path: row.get(1)?,
             last_scan_at: row.get(2)?,
             track_count: row.get(3)?,
+            dataless_count: row.get(4)?,
             available: None,
             status: None,
         })
@@ -145,6 +151,7 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
         id: conn.last_insert_rowid(),
         path: text.to_owned(),
         track_count: 0,
+        dataless_count: 0,
         last_scan_at: None,
         available: None,
         status: None,

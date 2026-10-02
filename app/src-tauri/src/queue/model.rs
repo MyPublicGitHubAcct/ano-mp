@@ -29,6 +29,17 @@
 //! nothing can be opened, nothing plays, the current item stays current and
 //! keeps its position, and the queue doesn't spin.
 //!
+//! Opening a file can take seconds (a disk waking, a network share, a cloud
+//! file downloading: PLAN.md H11), so the engine may open it on a thread of
+//! its own: `Player::load` and `Player::set_next` then return
+//! `Opening::Pending`, and the host reports the outcome with
+//! `load_finished`. Meanwhile the item is current and shown as loading
+//! (`QueueState::loading`), play, pause and seek apply to it when it's
+//! ready, and the engine plays on what it had. One that takes longer than
+//! `LOAD_TIMEOUT` (`check_loads`) fails with `open_timed_out` and is passed
+//! over as a file that can't be opened is. A cloud placeholder (H12), which
+//! the host says is `downloading`, gets `DOWNLOAD_TIMEOUT`.
+//!
 //! A long track (an audiobook, a DJ mix: over `LONG_TRACK` seconds) starts
 //! where it was left (F17): the host gives each its saved position
 //! (`TrackInfo::resume`), and the queue says where it left each one
@@ -58,6 +69,22 @@ const LONG_TRACK_MARGIN: f64 = 30.0;
 
 /// Seconds a sleep timer fades out over before it pauses.
 pub const SLEEP_FADE: f64 = 10.0;
+
+/// Seconds a track may take to open before it's passed over (a sleeping
+/// disk spins up within this).
+pub const LOAD_TIMEOUT: f64 = 20.0;
+
+/// Seconds a cloud placeholder may take to download and open (H12).
+pub const DOWNLOAD_TIMEOUT: f64 = 300.0;
+
+/// The error a track that took more than `seconds` to open fails with.
+pub fn open_timed_out(seconds: f64) -> String {
+    crate::coded::coded(
+        "openTimedOut",
+        &[("seconds", serde_json::json!(seconds))],
+        format!("The file took more than {seconds} s to open"),
+    )
+}
 
 /// What the queue shows about a track.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -146,14 +173,31 @@ pub struct Skipped {
     pub error: String,
 }
 
+/// Identifies a request to open a track (`Opening::Pending`).
+pub type Request = u64;
+
+/// What `Player::load` and `Player::set_next` did.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Opening {
+    /// Done at once: the track is in place, or it couldn't be opened.
+    Done(Result<(), String>),
+    /// Opening; the host reports it with `Queue::load_finished`.
+    Pending(Request),
+}
+
 /// The engine, as the queue drives it.
 pub trait Player {
     /// Opens a track as the current one, stopped at its start; this clears
-    /// the next track. On failure nothing changes.
-    fn load(&mut self, track_id: i64) -> Result<(), String>;
+    /// the next track. On failure nothing changes. While it's pending, the
+    /// engine keeps what it had.
+    fn load(&mut self, track_id: i64) -> Opening;
     /// Opens the track that follows the current one gaplessly (crossfading
-    /// into it if `crossfade`, as far as the settings say), or clears it.
-    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String>;
+    /// into it if `crossfade`, as far as the settings say), or clears it
+    /// (`None`, always done at once). A pending one clears the next track
+    /// until it's ready.
+    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Opening;
+    /// Gives up on a pending request; it isn't reported.
+    fn cancel(&mut self, request: Request);
     /// The volume, 0 to 1, which a sleep timer fades.
     fn volume(&self) -> f64;
     fn set_volume(&mut self, volume: f64);
@@ -190,8 +234,18 @@ pub struct QueueState {
     pub has_next: bool,
     pub has_previous: bool,
     /// Whether the engine has the current track open. If not (after a
-    /// relaunch), `resume_at` is where it will start, in seconds.
+    /// relaunch, or while it opens), `resume_at` is where it will start, in
+    /// seconds.
     pub loaded: bool,
+    /// The current item is being opened, to play if `playing` (H11).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub loading: bool,
+    /// While loading: whether it will play once it's open.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub playing: bool,
+    /// While loading: it's a cloud placeholder, downloading (H12).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub downloading: bool,
     pub resume_at: f64,
     /// Library radio keeps adding tracks as the queue runs out.
     pub radio: bool,
@@ -214,6 +268,34 @@ pub struct Saved {
     pub repeat: Repeat,
 }
 
+/// The current item being opened (`Opening::Pending`).
+#[derive(Debug, Clone, PartialEq)]
+struct Loading {
+    request: Request,
+    uid: Uid,
+    /// Plays once it's open.
+    play: bool,
+    /// When it was asked for, by the host's clock.
+    since: f64,
+    /// The item first asked for, and where: if nothing after it can be
+    /// opened either, it stays current there.
+    asked: Uid,
+    asked_resume_at: f64,
+    /// Whether the engine had the queue's track when this was asked for.
+    was_loaded: bool,
+    /// A cloud placeholder, downloading (`Queue::downloading`).
+    downloading: bool,
+}
+
+/// The item being opened as the engine's next track.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Arming {
+    request: Request,
+    uid: Uid,
+    since: f64,
+    downloading: bool,
+}
+
 pub struct Queue {
     items: Vec<Item>,
     /// With shuffle on, every item's uid in the order before shuffling.
@@ -227,6 +309,10 @@ pub struct Queue {
     loaded: bool,
     /// The item the engine will hand off to, if any.
     armed: Option<Uid>,
+    /// The current item, while it's being opened.
+    loading: Option<Loading>,
+    /// The item being opened as the next track.
+    arming: Option<Arming>,
     /// The engine's advance count the queue has accounted for.
     seen_advances: i64,
     resume_at: f64,
@@ -257,6 +343,8 @@ impl Queue {
             rng: seed | 1,
             loaded: false,
             armed: None,
+            loading: None,
+            arming: None,
             seen_advances: 0,
             resume_at: 0.0,
             unavailable: HashSet::new(),
@@ -459,6 +547,12 @@ impl Queue {
                     .is_some()
             }),
             loaded: self.loaded,
+            loading: self.loading.is_some(),
+            playing: self.loading.as_ref().is_some_and(|loading| loading.play),
+            downloading: self
+                .loading
+                .as_ref()
+                .is_some_and(|loading| loading.downloading),
             resume_at: if self.loaded { 0.0 } else { self.resume_at },
             radio: self.radio,
             stop_after: self.stop_after,
@@ -641,8 +735,8 @@ impl Queue {
         let following = kept_before < self.items.len();
         let index = kept_before.min(self.items.len() - 1);
         self.current = Some(index);
-        if self.loaded {
-            let play = following && p.state() == PlayerState::Playing;
+        if self.loaded || self.loading.is_some() {
+            let play = following && self.is_playing(p);
             self.start(p, index, play, 0.0);
         } else {
             self.resume_at = 0.0;
@@ -697,7 +791,9 @@ impl Queue {
         }
         self.end_sleep(p);
         self.stop_after = None;
-        if self.loaded {
+        let was_loaded = self.engine_has_queue();
+        self.cancel_opening(p);
+        if was_loaded {
             p.stop();
             let _ = p.set_next(None, false);
         }
@@ -786,6 +882,9 @@ impl Queue {
         }
         if self.loaded {
             p.play();
+        } else if let Some(loading) = &mut self.loading {
+            loading.play = true;
+            self.changed = true;
         } else if let Some(current) = self.current {
             let resume_at = self.resume_at;
             self.start(p, current, true, resume_at);
@@ -794,6 +893,14 @@ impl Queue {
 
     pub fn pause(&mut self, p: &mut impl Player) {
         self.reconcile(p);
+        if let Some(loading) = &mut self.loading {
+            loading.play = false;
+            self.changed = true;
+            // What played before it stops too.
+            if loading.was_loaded {
+                p.pause();
+            }
+        }
         if self.loaded {
             p.pause();
             if let Some(sleep) = &mut self.sleep {
@@ -808,7 +915,7 @@ impl Queue {
     }
 
     pub fn toggle(&mut self, p: &mut impl Player) {
-        if self.loaded && p.state() == PlayerState::Playing {
+        if self.is_playing(p) {
             self.pause(p);
         } else {
             self.play(p);
@@ -974,11 +1081,116 @@ impl Queue {
     /// Something other than the queue was loaded into the engine (the dev
     /// page's typed paths); the queue stops following it.
     pub fn detach(&mut self) {
+        // The engine cancelled what was opening when the other track loaded.
+        if self.loading.take().is_some() {
+            self.changed = true;
+        }
+        self.arming = None;
         if self.loaded {
             self.loaded = false;
             self.armed = None;
             self.resume_at = 0.0;
             self.changed = true;
+        }
+    }
+
+    /// The host reports a request `Player::load` or `Player::set_next`
+    /// left pending: on success the track is in place; on failure it is
+    /// passed over, as one that failed at once is. Requests the queue has
+    /// moved on from are ignored.
+    pub fn load_finished(
+        &mut self,
+        p: &mut impl Player,
+        request: Request,
+        result: Result<(), String>,
+    ) {
+        self.reconcile(p);
+        if self
+            .loading
+            .as_ref()
+            .is_some_and(|loading| loading.request == request)
+        {
+            let Some(loading) = self.loading.take() else {
+                return;
+            };
+            self.changed = true;
+            let Some(index) = self.index_of(loading.uid) else {
+                // Removed while it opened (which cancels it): never reported.
+                return;
+            };
+            match result {
+                Ok(()) => {
+                    let resume_at = self.resume_at;
+                    self.started(p, index, loading.play, resume_at);
+                }
+                Err(error) => {
+                    self.mark_unavailable(index, error);
+                    let candidate = self.find(index, true, self.repeat == Repeat::All);
+                    self.try_start(p, candidate, &loading);
+                }
+            }
+        } else if self.arming.is_some_and(|arming| arming.request == request) {
+            let Some(arming) = self.arming.take() else {
+                return;
+            };
+            match result {
+                Ok(()) => {
+                    self.armed = Some(arming.uid);
+                    self.changed = true;
+                }
+                Err(error) => {
+                    if let Some(index) = self.index_of(arming.uid) {
+                        self.mark_unavailable(index, error);
+                    }
+                    self.sync_next(p);
+                }
+            }
+        }
+    }
+
+    /// The host found request `request` to be a cloud placeholder (H12),
+    /// which opens only once downloaded: it is shown as downloading, and
+    /// given `DOWNLOAD_TIMEOUT`.
+    pub fn downloading(&mut self, request: Request) {
+        if let Some(loading) = self.loading.as_mut().filter(|l| l.request == request) {
+            loading.downloading = true;
+            self.changed = true;
+        }
+        if let Some(arming) = self.arming.as_mut().filter(|a| a.request == request) {
+            arming.downloading = true;
+        }
+    }
+
+    /// When a request still opening should be given up on (`check_loads`),
+    /// by the host's clock; `None` if nothing is opening.
+    pub fn load_deadline(&self) -> Option<f64> {
+        let loading = self
+            .loading
+            .as_ref()
+            .map(|l| l.since + timeout(l.downloading));
+        let arming = self.arming.map(|a| a.since + timeout(a.downloading));
+        loading.into_iter().chain(arming).reduce(f64::min)
+    }
+
+    /// Fails requests that have been opening for longer than their timeout
+    /// (`LOAD_TIMEOUT`, or `DOWNLOAD_TIMEOUT` for a placeholder), cancelling
+    /// them; `now` as for `set_clock`.
+    pub fn check_loads(&mut self, p: &mut impl Player, now: f64) {
+        self.clock = now;
+        let overdue =
+            |(_, since, downloading): &(Request, f64, bool)| now - since >= timeout(*downloading);
+        let loading = self
+            .loading
+            .as_ref()
+            .map(|l| (l.request, l.since, l.downloading));
+        if let Some((request, _, downloading)) = loading.filter(overdue) {
+            p.cancel(request);
+            self.load_finished(p, request, Err(open_timed_out(timeout(downloading))));
+        }
+        let arming = self.arming.map(|a| (a.request, a.since, a.downloading));
+        if let Some((request, _, downloading)) = arming.filter(overdue) {
+            p.cancel(request);
+            self.load_finished(p, request, Err(open_timed_out(timeout(downloading))));
         }
     }
 
@@ -1133,8 +1345,8 @@ impl Queue {
     /// loaded, otherwise just selected.
     fn go_to(&mut self, p: &mut impl Player, index: usize) {
         self.leave_current(p);
-        if self.loaded {
-            let play = p.state() == PlayerState::Playing;
+        if self.loaded || self.loading.is_some() {
+            let play = self.is_playing(p);
             self.start(p, index, play, 0.0);
         } else {
             self.current = Some(index);
@@ -1145,48 +1357,115 @@ impl Queue {
 
     /// Loads `index` (or, if it can't be opened, the next item that can),
     /// seeks to `resume_at`, plays if `play`, and arms the following item.
+    /// With a load pending, all that happens when it's done.
     fn start(&mut self, p: &mut impl Player, index: usize, play: bool, resume_at: f64) {
         self.changed = true;
-        let mut candidate = Some(index);
+        let was_loaded = self.engine_has_queue();
+        self.cancel_opening(p);
+        let asked = Loading {
+            request: 0,
+            uid: self.items[index].uid,
+            play,
+            since: self.clock,
+            asked: self.items[index].uid,
+            asked_resume_at: resume_at,
+            was_loaded,
+            downloading: false,
+        };
+        self.try_start(p, Some(index), &asked);
+    }
+
+    /// `start` from `candidate` on, for what `asked` asked for.
+    fn try_start(&mut self, p: &mut impl Player, mut candidate: Option<usize>, asked: &Loading) {
+        let play = asked.play;
         while let Some(index) = candidate {
             let item = &self.items[index];
             let uid = item.uid;
             // A long track carries on where it was left.
             let resume_at = match item.track.resume {
-                Some(saved) if resume_at <= 0.0 && item.track.is_long() => saved,
-                _ => resume_at,
+                Some(saved) if asked.asked_resume_at <= 0.0 && item.track.is_long() => saved,
+                _ => asked.asked_resume_at,
             };
             match p.load(item.track.track_id) {
-                Ok(()) => {
-                    self.current = Some(index);
-                    self.loaded = true;
-                    self.armed = None;
-                    self.seen_advances = p.advance_count();
-                    self.resume_at = 0.0;
-                    self.unavailable.remove(&uid);
-                    if resume_at > 0.0 {
-                        p.seek(resume_at);
-                    }
-                    if play {
-                        p.play();
-                    }
-                    self.sync_next(p);
-                    return;
-                }
-                Err(error) => {
+                Opening::Done(Ok(())) => return self.started(p, index, play, resume_at),
+                Opening::Done(Err(error)) => {
                     self.mark_unavailable(index, error);
                     candidate = self.find(index, true, self.repeat == Repeat::All);
+                }
+                Opening::Pending(request) => {
+                    self.current = Some(index);
+                    self.loaded = false;
+                    self.armed = None;
+                    self.resume_at = resume_at;
+                    self.loading = Some(Loading {
+                        request,
+                        uid,
+                        since: self.clock,
+                        downloading: false,
+                        ..asked.clone()
+                    });
+                    self.changed = true;
+                    return;
                 }
             }
         }
         // Nothing could be opened: it stays where it was asked to start.
-        if self.loaded {
+        if asked.was_loaded {
             p.stop();
         }
-        self.current = Some(index);
+        self.current = self.index_of(asked.asked).or(self.current);
         self.loaded = false;
         self.armed = None;
-        self.resume_at = resume_at;
+        self.resume_at = asked.asked_resume_at;
+        self.changed = true;
+    }
+
+    /// Item `index` is open in the engine: seeks to `resume_at`, plays if
+    /// `play`, and arms the following item.
+    fn started(&mut self, p: &mut impl Player, index: usize, play: bool, resume_at: f64) {
+        let uid = self.items[index].uid;
+        self.current = Some(index);
+        self.loaded = true;
+        self.armed = None;
+        self.seen_advances = p.advance_count();
+        self.resume_at = 0.0;
+        self.unavailable.remove(&uid);
+        self.changed = true;
+        if resume_at > 0.0 {
+            p.seek(resume_at);
+        }
+        if play {
+            p.play();
+        }
+        self.sync_next(p);
+    }
+
+    /// Whether the engine has a track of the queue's, or had one when the
+    /// load pending was asked for (it plays on until that's ready).
+    fn engine_has_queue(&self) -> bool {
+        self.loaded
+            || self
+                .loading
+                .as_ref()
+                .is_some_and(|loading| loading.was_loaded)
+    }
+
+    /// Whether the queue is playing, or will once its pending load is ready.
+    fn is_playing(&self, p: &impl Player) -> bool {
+        match &self.loading {
+            Some(loading) => loading.play,
+            None => self.loaded && p.state() == PlayerState::Playing,
+        }
+    }
+
+    /// Gives up on the requests still opening.
+    fn cancel_opening(&mut self, p: &mut impl Player) {
+        if let Some(loading) = self.loading.take() {
+            p.cancel(loading.request);
+        }
+        if let Some(arming) = self.arming.take() {
+            p.cancel(arming.request);
+        }
     }
 
     /// Arms the engine with the item that should follow the current one,
@@ -1201,21 +1480,44 @@ impl Queue {
         loop {
             let candidate = self.following(current).filter(|_| !stopping);
             let uid = candidate.map(|index| self.items[index].uid);
-            if uid == self.armed {
-                return;
+            match self.arming {
+                // Already being opened.
+                Some(arming) if Some(arming.uid) == uid => return,
+                Some(arming) => {
+                    self.arming = None;
+                    p.cancel(arming.request);
+                }
+                None if uid == self.armed => return,
+                None => {}
             }
             let track = candidate.map(|index| self.items[index].track.track_id);
             let crossfade = candidate.is_some_and(|index| {
                 crossfades(&self.items[current].track, &self.items[index].track)
             });
             match (p.set_next(track, crossfade), candidate) {
-                (Ok(()), _) => {
+                (Opening::Done(Ok(())), _) => {
                     self.armed = uid;
                     return;
                 }
-                (Err(error), Some(index)) => self.mark_unavailable(index, error),
-                (Err(_), None) => {
+                (Opening::Done(Err(error)), Some(index)) => self.mark_unavailable(index, error),
+                (Opening::Done(Err(_)), None) => {
                     // Clearing can't fail on a loaded engine; forget it.
+                    self.armed = None;
+                    return;
+                }
+                (Opening::Pending(request), Some(index)) => {
+                    self.armed = None;
+                    self.arming = Some(Arming {
+                        request,
+                        uid: self.items[index].uid,
+                        since: self.clock,
+                        downloading: false,
+                    });
+                    return;
+                }
+                (Opening::Pending(request), None) => {
+                    // Clearing is never pending.
+                    p.cancel(request);
                     self.armed = None;
                     return;
                 }
@@ -1300,6 +1602,15 @@ impl Queue {
     }
 }
 
+/// Seconds a request may take to open: longer for a cloud placeholder.
+fn timeout(downloading: bool) -> f64 {
+    if downloading {
+        DOWNLOAD_TIMEOUT
+    } else {
+        LOAD_TIMEOUT
+    }
+}
+
 /// Whether a hand-off from `from` to `to` may crossfade: not between
 /// tracks of one album, nor within a unit (a segue, a work), which stay
 /// gapless, nor into the same track again.
@@ -1327,6 +1638,12 @@ mod tests {
         loads: Vec<i64>,
         /// None until set: 1.
         volume: Option<f64>,
+        /// Opens on a thread of its own: requests wait in `requests` until
+        /// `complete` (H11).
+        pending: bool,
+        requests: Vec<(Request, i64, bool)>,
+        cancelled: Vec<Request>,
+        last_request: Request,
     }
 
     impl Fake {
@@ -1348,8 +1665,8 @@ mod tests {
         }
     }
 
-    impl Player for Fake {
-        fn load(&mut self, track_id: i64) -> Result<(), String> {
+    impl Fake {
+        fn open_now(&mut self, track_id: i64) -> Result<(), String> {
             if self.unreadable.contains(&track_id) {
                 return Err(format!("cannot open {track_id}"));
             }
@@ -1360,13 +1677,66 @@ mod tests {
             self.position = 0.0;
             Ok(())
         }
-        fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String> {
+
+        fn arm_now(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String> {
             if let Some(id) = track_id.filter(|id| self.unreadable.contains(id)) {
                 return Err(format!("cannot open {id}"));
             }
             self.next = track_id;
             self.crossfade = crossfade && track_id.is_some();
             Ok(())
+        }
+
+        fn ask(&mut self, track_id: i64, next: bool) -> Opening {
+            self.last_request += 1;
+            self.requests.push((self.last_request, track_id, next));
+            Opening::Pending(self.last_request)
+        }
+
+        /// Finishes the oldest request still opening, as the engine would
+        /// (the file opened, or not), and reports it; returns its track.
+        fn complete(&mut self, queue: &mut Queue) -> i64 {
+            let (request, track_id, next) = self.requests.remove(0);
+            let result = if next {
+                self.arm_now(Some(track_id), false)
+            } else {
+                self.open_now(track_id)
+            };
+            queue.load_finished(self, request, result);
+            track_id
+        }
+
+        /// The tracks still opening.
+        fn opening(&self) -> Vec<i64> {
+            self.requests
+                .iter()
+                .map(|&(_, track_id, _)| track_id)
+                .collect()
+        }
+    }
+
+    impl Player for Fake {
+        fn load(&mut self, track_id: i64) -> Opening {
+            if self.pending {
+                // A load supersedes every request before it, as the engine's does.
+                self.requests.clear();
+                return self.ask(track_id, false);
+            }
+            Opening::Done(self.open_now(track_id))
+        }
+        fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Opening {
+            match track_id {
+                Some(id) if self.pending => {
+                    self.next = None;
+                    self.requests.retain(|&(_, _, next)| !next);
+                    self.ask(id, true)
+                }
+                _ => Opening::Done(self.arm_now(track_id, crossfade)),
+            }
+        }
+        fn cancel(&mut self, request: Request) {
+            self.cancelled.push(request);
+            self.requests.retain(|&(r, _, _)| r != request);
         }
         fn volume(&self) -> f64 {
             self.volume.unwrap_or(1.0)
@@ -1851,6 +2221,221 @@ mod tests {
         assert_eq!(queue.state().skipped.len(), 2);
     }
 
+    fn pending() -> Fake {
+        Fake {
+            pending: true,
+            ..Fake::default()
+        }
+    }
+
+    #[test]
+    fn a_track_opening_shows_as_loading_and_plays_when_ready() {
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        let state = queue.take_state().unwrap();
+        assert!(state.loading && state.playing && !state.loaded);
+        assert_eq!(current_id(&queue), Some(1), "current while it opens");
+        assert_eq!(p.opening(), [1]);
+        assert_eq!(p.state(), PlayerState::Empty, "nothing in the engine yet");
+
+        assert_eq!(p.complete(&mut queue), 1);
+        let state = queue.take_state().unwrap();
+        assert!(state.loaded && !state.loading);
+        assert_eq!(p.state(), PlayerState::Playing);
+        assert_eq!(
+            p.opening(),
+            [2],
+            "the next track opens once the current one is in"
+        );
+        assert_eq!(p.next, None);
+
+        p.complete(&mut queue);
+        check(&queue, &p);
+        end_track(&mut queue, &mut p);
+        assert_eq!(current_id(&queue), Some(2));
+        assert_eq!(p.opening(), [3]);
+    }
+
+    #[test]
+    fn commands_while_a_track_opens_apply_when_it_is_ready() {
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+
+        // Paused and moved while opening: it starts there, paused.
+        queue.pause(&mut p);
+        queue.seek(&mut p, 12.5);
+        assert!(!queue.take_state().unwrap().playing);
+        p.complete(&mut queue);
+        assert_eq!(p.state(), PlayerState::Stopped);
+        assert_eq!(p.position, 12.5);
+        p.complete(&mut queue);
+
+        // Next while the next one opens: the first request is given up on.
+        queue.play(&mut p);
+        queue.next(&mut p);
+        let first = p.requests[0].0;
+        queue.next(&mut p);
+        assert!(p.cancelled.contains(&first));
+        assert_eq!(p.opening(), [3]);
+        assert_eq!(current_id(&queue), Some(3));
+        assert_eq!(p.current, Some(1), "the engine plays on until it's ready");
+
+        // A report for a request given up on changes nothing.
+        queue.load_finished(&mut p, first, Ok(()));
+        assert_eq!(current_id(&queue), Some(3));
+        assert_eq!(p.complete(&mut queue), 3);
+        assert_eq!(p.state(), PlayerState::Playing, "still playing, as it was");
+        assert!(queue.is_loaded());
+    }
+
+    #[test]
+    fn a_track_that_takes_too_long_to_open_is_skipped() {
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.set_clock(100.0);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        assert_eq!(queue.load_deadline(), Some(100.0 + LOAD_TIMEOUT));
+        let first = p.requests[0].0;
+
+        queue.check_loads(&mut p, 100.0 + LOAD_TIMEOUT - 1.0);
+        assert_eq!(p.opening(), [1], "not yet");
+
+        queue.check_loads(&mut p, 100.0 + LOAD_TIMEOUT);
+        assert!(p.cancelled.contains(&first));
+        let state = queue.take_state().unwrap();
+        assert_eq!(state.skipped.len(), 1);
+        assert_eq!(state.skipped[0].track_id, 1);
+        assert!(crate::coded::is(&state.skipped[0].error, "openTimedOut"));
+        assert_eq!(state.unavailable, [uid_of(&queue, 1)]);
+        assert_eq!(p.opening(), [2], "the next item is tried");
+        assert_eq!(current_id(&queue), Some(2));
+        assert_eq!(queue.load_deadline(), Some(100.0 + 2.0 * LOAD_TIMEOUT));
+
+        // The next track timing out is passed over as well.
+        p.complete(&mut queue);
+        assert_eq!(queue.load_deadline(), None, "nothing follows 2");
+        queue.add(&mut p, infos([3, 4]), false);
+        queue.check_loads(&mut p, 200.0 + LOAD_TIMEOUT);
+        assert_eq!(p.opening(), [4], "3 timed out as the next track");
+        assert_eq!(queue.take_state().unwrap().skipped[0].track_id, 3);
+    }
+
+    #[test]
+    fn a_cloud_placeholder_downloads_with_a_longer_timeout() {
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.set_clock(100.0);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        let request = p.requests[0].0;
+        queue.take_state();
+
+        queue.downloading(request);
+        let state = queue.take_state().unwrap();
+        assert!(state.loading && state.downloading);
+        assert_eq!(queue.load_deadline(), Some(100.0 + DOWNLOAD_TIMEOUT));
+        queue.check_loads(&mut p, 100.0 + LOAD_TIMEOUT);
+        assert_eq!(p.opening(), [1], "still downloading");
+
+        queue.check_loads(&mut p, 100.0 + DOWNLOAD_TIMEOUT);
+        let state = queue.take_state().unwrap();
+        assert_eq!(state.skipped[0].track_id, 1);
+        assert!(state.skipped[0]
+            .error
+            .contains(&DOWNLOAD_TIMEOUT.to_string()));
+        assert_eq!(p.opening(), [2]);
+        assert!(!state.downloading, "the next one isn't a placeholder");
+    }
+
+    #[test]
+    fn tracks_that_fail_to_open_are_skipped_until_one_opens() {
+        let mut p = Fake {
+            unreadable: [1, 2].into(),
+            ..pending()
+        };
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        p.complete(&mut queue);
+        assert_eq!(p.opening(), [2]);
+        p.complete(&mut queue);
+        assert_eq!(p.opening(), [3]);
+        assert_eq!(queue.take_state().unwrap().skipped.len(), 2);
+        p.complete(&mut queue);
+        assert_eq!(current_id(&queue), Some(3));
+        assert_eq!(p.state(), PlayerState::Playing);
+
+        // A next track that fails is passed over for the one after it.
+        let mut p = Fake {
+            unreadable: [2].into(),
+            ..pending()
+        };
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        p.complete(&mut queue);
+        p.complete(&mut queue);
+        assert_eq!(p.opening(), [3]);
+        p.complete(&mut queue);
+        check(&queue, &p);
+
+        // Nothing opens: it stays where it was asked to start, and doesn't spin.
+        let mut p = Fake {
+            unreadable: [1, 2].into(),
+            ..pending()
+        };
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        p.complete(&mut queue);
+        p.complete(&mut queue);
+        assert!(p.opening().is_empty());
+        let state = queue.state();
+        assert!(!state.loaded && !state.loading);
+        assert_eq!(current_id(&queue), Some(1));
+    }
+
+    #[test]
+    fn an_unavailable_folder_means_not_now() {
+        // A folder that can't be read (H22) fails the open; the item is
+        // passed over, and tried again once the folder is back.
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        let request = p.requests.remove(0).0;
+        let error = crate::coded::folder_unavailable("/Volumes/Music", "missing", None);
+        queue.load_finished(&mut p, request, Err(error));
+        assert_eq!(queue.take_state().unwrap().unavailable, [uid_of(&queue, 1)]);
+        assert_eq!(p.opening(), [2]);
+        p.complete(&mut queue);
+        assert!(
+            p.opening().is_empty(),
+            "1 isn't tried again as the next track"
+        );
+
+        queue.set_unavailable_tracks(&mut p, &HashSet::new());
+        assert!(queue.take_state().unwrap().unavailable.is_empty());
+        queue.jump(&mut p, uid_of(&queue, 1));
+        assert_eq!(p.complete(&mut queue), 1);
+        assert_eq!(current_id(&queue), Some(1));
+    }
+
+    #[test]
+    fn removing_or_clearing_a_track_that_opens_gives_it_up() {
+        let mut p = pending();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        let first = p.requests[0].0;
+        queue.remove(&mut p, &[uid_of(&queue, 1)]);
+        assert!(p.cancelled.contains(&first));
+        assert_eq!(p.opening(), [2], "the item after it takes its place");
+        assert!(queue.take_state().unwrap().playing);
+
+        let second = p.requests[0].0;
+        queue.clear(&mut p);
+        assert!(p.cancelled.contains(&second));
+        assert!(p.opening().is_empty());
+        assert!(!queue.state().loading);
+    }
+
     #[test]
     fn restores_paused_where_it_was() {
         let mut p = Fake::default();
@@ -1957,8 +2542,8 @@ mod tests {
         let mut queue = Queue::new(1);
         queue.replace(&mut p, infos([1, 2]), 0, true);
         queue.detach();
-        p.load(99).unwrap();
-        p.set_next(Some(98), false).unwrap();
+        assert_eq!(p.load(99), Opening::Done(Ok(())));
+        assert_eq!(p.set_next(Some(98), false), Opening::Done(Ok(())));
         end_track(&mut queue, &mut p);
         assert_eq!(current_id(&queue), Some(1));
         assert_eq!(p.next, None, "the queue didn't arm anything");

@@ -13,6 +13,11 @@ AudioEngine::AudioEngine()
     readAheadThread.startThread (juce::Thread::Priority::high);
     sourcePlayer.setSource (&playerEngine);
     deviceManager.addChangeListener (this);
+    // Called on an opening thread; the update runs on the main thread.
+    playerEngine.onLoadReady = [this]
+    {
+        triggerAsyncUpdate();
+    };
     startTimer (playerEventIntervalMs);
 }
 
@@ -20,6 +25,7 @@ AudioEngine::~AudioEngine()
 {
     analysis.reset();
     stopTimer();
+    cancelPendingUpdate();
     deviceManager.removeChangeListener (this);
     sourcePlayer.setSource (nullptr);
     deviceManager.removeAudioCallback (&sourcePlayer);
@@ -187,4 +193,6 @@ void AudioEngine::changeListenerCallback (juce::ChangeBroadcaster*)
 }
 
 void AudioEngine::timerCallback() { playerEngine.dispatchEvents(); }
+
+void AudioEngine::handleAsyncUpdate() { playerEngine.dispatchEvents(); }
 } // namespace anomp

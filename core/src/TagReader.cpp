@@ -307,6 +307,73 @@ void readPicture (const TagLib::FileRef& ref, TrackTags& result)
 }
 } // namespace
 
+juce::String readTags (TagLib::IOStream& stream, int parts, TrackTags& result)
+{
+    result = {};
+
+    try
+    {
+        // A stream (not a file name) keeps TagLib read-only; it detects the
+        // format from the stream's name, then the content.
+        const TagLib::FileRef ref (&stream, true, TagLib::AudioProperties::Average);
+
+        if (ref.isNull())
+            return stream.isOpen() ? juce::String() : juce::String ("Cannot open stream");
+
+        const auto properties = ref.properties();
+
+        result.title = joined (properties, "TITLE");
+        result.artist = joined (properties, "ARTIST");
+        result.album = joined (properties, "ALBUM");
+        result.albumArtist = joined (properties, "ALBUMARTIST");
+        result.genre = joined (properties, "GENRE");
+        numberAndTotal (properties, "TRACKNUMBER", { "TRACKTOTAL", "TOTALTRACKS" }, result.trackNumber,
+                        result.trackTotal);
+        numberAndTotal (properties, "DISCNUMBER", { "DISCTOTAL", "TOTALDISCS" }, result.discNumber, result.discTotal);
+        result.year = year (properties);
+        result.date = dateOf (properties, "DATE");
+        result.originalDate = dateOf (properties, "ORIGINALDATE");
+        readReplayGain (properties, result);
+        readWork (properties, result);
+
+        result.musicBrainzRecordingId = joined (properties, "MUSICBRAINZ_TRACKID");
+        result.musicBrainzReleaseId = joined (properties, "MUSICBRAINZ_ALBUMID");
+        result.musicBrainzReleaseGroupId = joined (properties, "MUSICBRAINZ_RELEASEGROUPID");
+        result.musicBrainzReleaseTrackId = joined (properties, "MUSICBRAINZ_RELEASETRACKID");
+        result.musicBrainzArtistId = joined (properties, "MUSICBRAINZ_ARTISTID");
+        result.musicBrainzAlbumArtistId = joined (properties, "MUSICBRAINZ_ALBUMARTISTID");
+        result.rating = ratingOf (ref.file(), properties);
+        result.compilation = isSet (first (properties, "COMPILATION"));
+        result.artists = joined (properties, "ARTISTS");
+
+        if ((parts & TagParts::picture) != 0)
+            readPicture (ref, result);
+
+        if ((parts & TagParts::lyrics) != 0)
+        {
+            result.lyrics = lyricsOf (properties);
+            result.syncedLyrics = syncedLyricsOf (ref.file());
+        }
+
+        if ((parts & TagParts::chapters) != 0)
+            result.cueSheet = first (properties, "CUESHEET");
+
+        if (const auto* audio = ref.audioProperties())
+        {
+            result.durationSeconds = audio->lengthInMilliseconds() / 1000.0;
+            result.sampleRate = audio->sampleRate();
+            result.channels = audio->channels();
+            result.bitrateKbps = audio->bitrate();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        return "Cannot read tags: " + juce::String (e.what());
+    }
+
+    return {};
+}
+
 juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManager& formats, TrackTags& result)
 {
     if (! file.existsAsFile())
@@ -315,75 +382,16 @@ juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManag
     result = {};
     const auto path = file.getFullPathName();
 
-    try
     {
 #if JUCE_WINDOWS
         TagLib::FileStream stream (path.toWideCharPointer(), true);
 #else
         TagLib::FileStream stream (path.toRawUTF8(), true);
 #endif
-
-        // The stream (not a file name) keeps TagLib read-only; it detects the
-        // format from the extension, then the content.
-        const TagLib::FileRef ref (&stream, true, TagLib::AudioProperties::Average);
-
-        if (! ref.isNull())
-        {
-            const auto properties = ref.properties();
-
-            result.title = joined (properties, "TITLE");
-            result.artist = joined (properties, "ARTIST");
-            result.album = joined (properties, "ALBUM");
-            result.albumArtist = joined (properties, "ALBUMARTIST");
-            result.genre = joined (properties, "GENRE");
-            numberAndTotal (properties, "TRACKNUMBER", { "TRACKTOTAL", "TOTALTRACKS" }, result.trackNumber,
-                            result.trackTotal);
-            numberAndTotal (properties, "DISCNUMBER", { "DISCTOTAL", "TOTALDISCS" }, result.discNumber,
-                            result.discTotal);
-            result.year = year (properties);
-            result.date = dateOf (properties, "DATE");
-            result.originalDate = dateOf (properties, "ORIGINALDATE");
-            readReplayGain (properties, result);
-            readWork (properties, result);
-
-            result.musicBrainzRecordingId = joined (properties, "MUSICBRAINZ_TRACKID");
-            result.musicBrainzReleaseId = joined (properties, "MUSICBRAINZ_ALBUMID");
-            result.musicBrainzReleaseGroupId = joined (properties, "MUSICBRAINZ_RELEASEGROUPID");
-            result.musicBrainzReleaseTrackId = joined (properties, "MUSICBRAINZ_RELEASETRACKID");
-            result.musicBrainzArtistId = joined (properties, "MUSICBRAINZ_ARTISTID");
-            result.musicBrainzAlbumArtistId = joined (properties, "MUSICBRAINZ_ALBUMARTISTID");
-            result.rating = ratingOf (ref.file(), properties);
-            result.compilation = isSet (first (properties, "COMPILATION"));
-            result.artists = joined (properties, "ARTISTS");
-
-            if ((parts & TagParts::picture) != 0)
-                readPicture (ref, result);
-
-            if ((parts & TagParts::lyrics) != 0)
-            {
-                result.lyrics = lyricsOf (properties);
-                result.syncedLyrics = syncedLyricsOf (ref.file());
-            }
-
-            if ((parts & TagParts::chapters) != 0)
-                result.cueSheet = first (properties, "CUESHEET");
-
-            if (const auto* audio = ref.audioProperties())
-            {
-                result.durationSeconds = audio->lengthInMilliseconds() / 1000.0;
-                result.sampleRate = audio->sampleRate();
-                result.channels = audio->channels();
-                result.bitrateKbps = audio->bitrate();
-            }
-        }
-        else if (! stream.isOpen())
-        {
+        if (! stream.isOpen())
             return "Cannot open file: " + path;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        return "Cannot read tags: " + juce::String (e.what());
+        if (const auto error = readTags (stream, parts, result); error.isNotEmpty())
+            return error;
     }
 
     if (result.durationSeconds <= 0.0 || result.sampleRate <= 0)
@@ -482,6 +490,64 @@ juce::StringArray tagTypesOf (TagLib::File* file)
 }
 } // namespace
 
+juce::String readFileInfo (TagLib::IOStream& stream, FileInfo& result, bool& tagged)
+{
+    tagged = false;
+
+    try
+    {
+        const TagLib::FileRef ref (&stream, true, TagLib::AudioProperties::Average);
+        if (ref.isNull())
+            return stream.isOpen() ? juce::String() : juce::String ("Cannot open stream");
+
+        tagged = true;
+        const auto properties = ref.properties();
+        for (const auto& [key, values] : properties)
+            for (const auto& value : values)
+                result.fields.emplace_back (toJuce (key), toJuce (value));
+
+        // What TagLib found but can't map to a field (e.g. POPM with its
+        // e-mail address, private frames), listed by name.
+        for (const auto& unsupported : properties.unsupportedData())
+            result.fields.emplace_back ("(unsupported)", toJuce (unsupported));
+
+        if (auto* tag = id3v2TagOf (ref.file()))
+            for (auto* frame : tag->frameList ("POPM"))
+                if (const auto* popm = dynamic_cast<const TagLib::ID3v2::PopularimeterFrame*> (frame))
+                    result.fields.emplace_back ("POPM", juce::String (popm->rating()) + "/255 " + toJuce (popm->email())
+                                                            + " (played " + juce::String (popm->counter()) + " times)");
+
+        for (const auto& picture : ref.complexProperties ("PICTURE"))
+        {
+            FileInfo::Picture info;
+            info.type = toJuce (picture.value ("pictureType").value<TagLib::String>());
+            info.mimeType = toJuce (picture.value ("mimeType").value<TagLib::String>()).trim().toLowerCase();
+            info.description = toJuce (picture.value ("description").value<TagLib::String>());
+            const auto data = picture.value ("data").value<TagLib::ByteVector>();
+            info.data.replaceAll (data.data(), data.size());
+            if (info.mimeType.isEmpty())
+                info.mimeType = sniffMimeType (info.data);
+            result.pictures.push_back (std::move (info));
+        }
+
+        result.tagTypes = tagTypesOf (ref.file());
+
+        if (const auto* audio = ref.audioProperties())
+        {
+            result.durationSeconds = audio->lengthInMilliseconds() / 1000.0;
+            result.sampleRate = audio->sampleRate();
+            result.channels = audio->channels();
+            result.bitrateKbps = audio->bitrate();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        return "Cannot read tags: " + juce::String (e.what());
+    }
+
+    return {};
+}
+
 juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& formats, FileInfo& result)
 {
     if (! file.existsAsFile())
@@ -492,65 +558,16 @@ juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& for
     const auto path = file.getFullPathName();
     bool tagged = false;
 
-    try
     {
 #if JUCE_WINDOWS
         TagLib::FileStream stream (path.toWideCharPointer(), true);
 #else
         TagLib::FileStream stream (path.toRawUTF8(), true);
 #endif
-        const TagLib::FileRef ref (&stream, true, TagLib::AudioProperties::Average);
-        if (! ref.isNull())
-        {
-            tagged = true;
-            const auto properties = ref.properties();
-            for (const auto& [key, values] : properties)
-                for (const auto& value : values)
-                    result.fields.emplace_back (toJuce (key), toJuce (value));
-
-            // What TagLib found but can't map to a field (e.g. POPM with its
-            // e-mail address, private frames), listed by name.
-            for (const auto& unsupported : properties.unsupportedData())
-                result.fields.emplace_back ("(unsupported)", toJuce (unsupported));
-
-            if (auto* tag = id3v2TagOf (ref.file()))
-                for (auto* frame : tag->frameList ("POPM"))
-                    if (const auto* popm = dynamic_cast<const TagLib::ID3v2::PopularimeterFrame*> (frame))
-                        result.fields.emplace_back ("POPM", juce::String (popm->rating()) + "/255 "
-                                                                + toJuce (popm->email()) + " (played "
-                                                                + juce::String (popm->counter()) + " times)");
-
-            for (const auto& picture : ref.complexProperties ("PICTURE"))
-            {
-                FileInfo::Picture info;
-                info.type = toJuce (picture.value ("pictureType").value<TagLib::String>());
-                info.mimeType = toJuce (picture.value ("mimeType").value<TagLib::String>()).trim().toLowerCase();
-                info.description = toJuce (picture.value ("description").value<TagLib::String>());
-                const auto data = picture.value ("data").value<TagLib::ByteVector>();
-                info.data.replaceAll (data.data(), data.size());
-                if (info.mimeType.isEmpty())
-                    info.mimeType = sniffMimeType (info.data);
-                result.pictures.push_back (std::move (info));
-            }
-
-            result.tagTypes = tagTypesOf (ref.file());
-
-            if (const auto* audio = ref.audioProperties())
-            {
-                result.durationSeconds = audio->lengthInMilliseconds() / 1000.0;
-                result.sampleRate = audio->sampleRate();
-                result.channels = audio->channels();
-                result.bitrateKbps = audio->bitrate();
-            }
-        }
-        else if (! stream.isOpen())
-        {
+        if (! stream.isOpen())
             return "Cannot open file: " + path;
-        }
-    }
-    catch (const std::exception& e)
-    {
-        return "Cannot read tags: " + juce::String (e.what());
+        if (const auto error = readFileInfo (stream, result, tagged); error.isNotEmpty())
+            return error;
     }
 
     // The decoder's view, which the player's signal path shows too.

@@ -6,6 +6,11 @@
 #include <utility>
 #include <vector>
 
+namespace TagLib
+{
+class IOStream;
+}
+
 namespace anomp
 {
 /** A file's tags and audio properties. Strings are empty and numbers 0 when
@@ -85,6 +90,12 @@ struct TagParts
     or an empty string on success (then `result` is filled). */
 juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManager& formats, TrackTags& result);
 
+/** TagLib's part of readTags, over any stream (the tag fuzzer's way in,
+    PLAN.md H5): the tags and TagLib's audio properties, with no fallback to
+    the decoder and no chapters from the container. A stream TagLib doesn't
+    recognise leaves `result` empty and isn't an error. */
+juce::String readTags (TagLib::IOStream& stream, int parts, TrackTags& result);
+
 /** Everything a file says about itself, for a "Get Info" view (PLAN.md
     F16): every tag field TagLib reads, every embedded picture, the kinds of
     tag it carries, and the format as the decoder sees it. */
@@ -117,4 +128,9 @@ struct FileInfo
     or an empty string on success. A file the decoder can't open still
     reports its tags. */
 juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& formats, FileInfo& result);
+
+/** TagLib's part of readFileInfo, over any stream: the fields, pictures, tag
+    types and TagLib's audio properties. `tagged` says whether TagLib
+    recognised the stream. */
+juce::String readFileInfo (TagLib::IOStream& stream, FileInfo& result, bool& tagged);
 } // namespace anomp

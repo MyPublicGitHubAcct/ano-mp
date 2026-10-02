@@ -30,6 +30,8 @@ export type Folder = {
   id: number;
   path: string;
   trackCount: number;
+  /** Tracks whose files were cloud placeholders when last seen, not read (H12). */
+  datalessCount: number;
   lastScanAt: number | null;
   /** Whether it can be read now (F8); false for an unplugged drive or a folder moved out of reach. */
   available?: boolean;
@@ -733,6 +735,11 @@ export type QueueState = {
   hasPrevious: boolean;
   /** False after a relaunch until playback starts; `resumeAt` is where it will. */
   loaded: boolean;
+  /** The current item's file is opening (PLAN.md H11), to play once open if `playing`. */
+  loading?: boolean;
+  playing?: boolean;
+  /** While loading: a cloud placeholder, downloading (H12). */
+  downloading?: boolean;
   resumeAt: number;
   /** Library radio keeps adding tracks (O9). */
   radio: boolean;

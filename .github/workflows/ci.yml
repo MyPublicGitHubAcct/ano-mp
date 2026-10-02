@@ -18,8 +18,9 @@ concurrency:
 jobs:
   macos:
     runs-on: macos-15
-    # The first run builds FFmpeg, and JUCE four times (CMake's debug, asan
-    # and tsan presets, and Cargo's).
+    # The first run builds FFmpeg twice (the app's and the fuzzers'), and
+    # JUCE five times (CMake's debug, asan, tsan and fuzz presets, and
+    # Cargo's).
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -30,7 +31,8 @@ jobs:
       # Rust and Node come from rust-toolchain.toml and .nvmrc (PLAN.md H8).
       - name: Install tools
         run: |
-          brew install ninja nasm pkg-config uv gitleaks
+          # llvm@22: the fuzzers' compiler (Apple's clang has no libFuzzer).
+          brew install ninja nasm pkg-config uv gitleaks llvm@22
           rustup toolchain install
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -58,6 +60,7 @@ jobs:
             build/debug
             build/asan
             build/tsan
+            build/fuzz
           key: core-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
           restore-keys: core-${{ runner.os }}-
 

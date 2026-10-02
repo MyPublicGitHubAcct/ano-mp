@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(ANOMP_BUILD_TESTS "Build the Catch2 test suite" ON)
+# The `fuzz` preset turns this on (PLAN.md H5; core/fuzz/CMakeLists.txt).
+option(ANOMP_BUILD_FUZZERS "Build the libFuzzer targets against FFmpeg's fuzz build" OFF)
 
 include(FetchContent)
 
@@ -39,4 +41,8 @@ if(ANOMP_BUILD_TESTS)
 
     enable_testing()
     add_subdirectory(core/tests)
+endif()
+
+if(ANOMP_BUILD_FUZZERS)
+    add_subdirectory(core/fuzz)
 endif()

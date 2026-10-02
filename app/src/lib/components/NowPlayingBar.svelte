@@ -64,6 +64,18 @@
 
   const togglePanel = (which: "signal" | "practice" | "sleep") => (panel = panel === which ? null : which);
 
+  /** Says the track is opening once that has taken a while (most open
+      within milliseconds, and a flash at every change would distract). */
+  let slowOpen = $state(false);
+  $effect(() => {
+    if (!player.loading) {
+      slowOpen = false;
+      return;
+    }
+    const timer = setTimeout(() => (slowOpen = true), 300);
+    return () => clearTimeout(timer);
+  });
+
   const item = $derived(player.currentItem);
   const repeatLabel = $derived(
     { off: t("bar.repeatOff"), all: t("bar.repeatAll"), one: t("bar.repeatOne") }[player.repeat],
@@ -115,7 +127,13 @@
       <span class="text">
         {#if item}
           <span class="title">{item.title}</span>
-          <span class="muted small">{[item.artist, item.album].filter(Boolean).join(" · ")}</span>
+          {#if slowOpen}
+            <span class="muted small" role="status">
+              {player.downloading ? t("bar.downloading") : t("bar.opening")}
+            </span>
+          {:else}
+            <span class="muted small">{[item.artist, item.album].filter(Boolean).join(" · ")}</span>
+          {/if}
         {:else}
           <span class="muted">{t("bar.notPlaying")}</span>
         {/if}

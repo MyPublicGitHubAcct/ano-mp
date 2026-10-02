@@ -63,7 +63,8 @@
               {t("folders.scanned", {
                 tracks: count("count.tracks", folder.trackCount),
                 day: formatDay(folder.lastScanAt),
-              })}
+              })}{#if folder.datalessCount > 0}
+                · {t("folders.dataless", { count: folder.datalessCount })}{/if}
             {/if}
           </span>
         </span>

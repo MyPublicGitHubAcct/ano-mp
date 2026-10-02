@@ -1,11 +1,17 @@
 #include "PlayerEngine.h"
 #include "FFmpegAudioFormat.h"
+#include "Log.h"
 
 #include <signalsmith-stretch/signalsmith-stretch.h>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
+#include <thread>
 #include <utility>
 
 namespace anomp
@@ -29,6 +35,10 @@ constexpr int readBlockSizeHint = 4096;
 constexpr int maxResampleRatio = 8;
 
 juce::int64 toSamples (double seconds, double rate) { return static_cast<juce::int64> (std::llround (seconds * rate)); }
+
+// How long the player, as it goes, waits for files still opening (a disk
+// asleep, a network share) before letting their threads finish alone.
+constexpr auto openersExitTimeout = std::chrono::seconds (2);
 } // namespace
 
 //==============================================================================
@@ -130,6 +140,32 @@ struct PlayerEngine::Track
     juce::int64 position = 0;
     juce::int64 skipFrom = -1, skipTo = -1; // Within the track; -1 when there's nothing (left) to skip.
     float gain, appliedGain;                // Changed under the player's lock.
+};
+
+//==============================================================================
+/** One asynchronous request's work, shared between the engine and the
+    thread opening it: the thread fills `track` or `error`, then sets `done`. */
+struct PlayerEngine::Opening
+{
+    Opening (const juce::File& fileToOpen, const TrackOptions& trackOptions) : file (fileToOpen), options (trackOptions)
+    {
+    }
+
+    const juce::File file;
+    const TrackOptions options;
+    std::atomic<bool> cancelled { false }, done { false };
+    TrackPtr track; // Written before `done` is set, read after.
+    juce::String error;
+};
+
+/** What the opening threads share with the engine, which they may outlive
+    (a read stuck on a disk that went away). */
+struct PlayerEngine::Openers
+{
+    std::mutex mutex;
+    std::condition_variable idle;
+    int running = 0;
+    std::function<void()> notify; // onLoadReady, cleared as the engine goes.
 };
 
 //==============================================================================
@@ -270,11 +306,26 @@ PlayerEngine::PlayerEngine (juce::AudioFormatManager& formatsToUse, juce::TimeSl
 {
 }
 
-PlayerEngine::~PlayerEngine() = default;
+PlayerEngine::~PlayerEngine()
+{
+    if (openers == nullptr)
+        return;
 
-PlayerEngine::TrackPtr PlayerEngine::openTrack (const juce::File& file,
+    for (auto& pending : requests)
+        pending.opening->cancelled = true;
+
+    std::unique_lock<std::mutex> guard (openers->mutex);
+    openers->notify = nullptr;
+    if (! openers->idle.wait_for (guard, openersExitTimeout, [this] { return openers->running == 0; }))
+        log::warn ("A file was still opening as the player closed");
+}
+
+PlayerEngine::TrackPtr PlayerEngine::openTrack (juce::AudioFormatManager& formatsToUse,
+                                                juce::TimeSliceThread* thread,
+                                                const juce::File& file,
                                                 const TrackOptions& options,
-                                                juce::String& error) const
+                                                juce::String& error,
+                                                const std::atomic<bool>* cancelled)
 {
     if (! file.existsAsFile())
     {
@@ -282,7 +333,12 @@ PlayerEngine::TrackPtr PlayerEngine::openTrack (const juce::File& file,
         return nullptr;
     }
 
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    std::unique_ptr<juce::AudioFormatReader> reader (formatsToUse.createReaderFor (file));
+
+    // Opening can take seconds (a disk waking, a download); the engine may
+    // have moved on, or be gone, by then.
+    if (cancelled != nullptr && cancelled->load())
+        return nullptr;
 
     if (reader == nullptr)
     {
@@ -312,17 +368,24 @@ PlayerEngine::TrackPtr PlayerEngine::openTrack (const juce::File& file,
         return nullptr;
     }
 
-    return std::make_unique<Track> (file, std::move (reader), readAheadThread, options, first, last - first);
+    return std::make_unique<Track> (file, std::move (reader), thread, options, first, last - first);
 }
 
 //==============================================================================
 juce::String PlayerEngine::load (const juce::File& file, const TrackOptions& options)
 {
+    cancelRequests (true, true);
     juce::String error;
-    auto track = openTrack (file, options, error);
+    auto track = openTrack (formats, readAheadThread, file, options, error, nullptr);
     if (track == nullptr)
         return error;
 
+    install (std::move (track));
+    return {};
+}
+
+void PlayerEngine::install (TrackPtr track)
+{
     // Freed after the lock is released.
     TrackPtr oldCurrent, oldNext, oldLoop;
     std::array<TrackPtr, 4> oldRetired;
@@ -341,18 +404,26 @@ juce::String PlayerEngine::load (const juce::File& file, const TrackOptions& opt
         configureRate();
         publishPosition();
     }
-    return {};
 }
 
 juce::String PlayerEngine::setNext (const juce::File& file, const TrackOptions& options)
 {
+    cancelRequests (false, true);
     if (getState() == State::empty)
         return "No track is loaded";
 
     juce::String error;
-    auto track = openTrack (file, options, error);
+    auto track = openTrack (formats, readAheadThread, file, options, error, nullptr);
     if (track == nullptr)
         return error;
+
+    return installNext (std::move (track));
+}
+
+juce::String PlayerEngine::installNext (TrackPtr track)
+{
+    if (getState() == State::empty)
+        return "No track is loaded";
 
     TrackPtr oldNext;
     std::array<TrackPtr, 4> oldRetired;
@@ -364,6 +435,138 @@ juce::String PlayerEngine::setNext (const juce::File& file, const TrackOptions& 
         fadeLength = 0;
     }
     return {};
+}
+
+//==============================================================================
+PlayerEngine::LoadId PlayerEngine::loadAsync (const juce::File& file, const TrackOptions& options)
+{
+    cancelRequests (true, true);
+    return request (file, options, false);
+}
+
+PlayerEngine::LoadId PlayerEngine::setNextAsync (const juce::File& file, const TrackOptions& options)
+{
+    cancelRequests (false, true);
+    clearNext();
+    return request (file, options, true);
+}
+
+PlayerEngine::LoadId PlayerEngine::request (const juce::File& file, const TrackOptions& options, bool asNext)
+{
+    if (openers == nullptr)
+        openers = std::make_shared<Openers>();
+
+    auto opening = std::make_shared<Opening> (file, options);
+    const auto id = ++lastLoadId;
+    requests.push_back ({ id, asNext, opening });
+
+    {
+        const std::lock_guard<std::mutex> guard (openers->mutex);
+        openers->notify = onLoadReady;
+        ++openers->running;
+    }
+
+    // A thread per request, so one stuck on a disk that went away doesn't
+    // hold up the next. It owns what it shares; `formats` and the read-ahead
+    // thread outlive it unless it is still stuck as the engine goes, and it
+    // gives up before using them once it is cancelled.
+    std::thread (
+        [shared = openers, opening, &formatsToUse = formats, thread = readAheadThread]
+        {
+            juce::String error;
+            auto track = openTrack (formatsToUse, thread, opening->file, opening->options, error, &opening->cancelled);
+            opening->track = std::move (track);
+            opening->error = error;
+            opening->done = true;
+
+            const std::lock_guard<std::mutex> guard (shared->mutex);
+            if (shared->notify)
+                shared->notify();
+            --shared->running;
+            shared->idle.notify_all();
+        })
+        .detach();
+
+    return id;
+}
+
+void PlayerEngine::cancelLoad (LoadId id)
+{
+    for (auto& pending : requests)
+    {
+        if (pending.id == id)
+        {
+            pending.cancelled = true;
+            pending.opening->cancelled = true;
+        }
+    }
+}
+
+bool PlayerEngine::isLoading (LoadId id) const
+{
+    return std::any_of (requests.begin(), requests.end(), [id] (const Request& pending) { return pending.id == id; });
+}
+
+bool PlayerEngine::waitForLoads (int timeoutMs) const
+{
+    if (openers == nullptr)
+        return true;
+    std::unique_lock<std::mutex> guard (openers->mutex);
+    return openers->idle.wait_for (guard, std::chrono::milliseconds (timeoutMs),
+                                   [this] { return openers->running == 0; });
+}
+
+void PlayerEngine::cancelRequests (bool loads, bool nexts)
+{
+    for (auto& pending : requests)
+    {
+        if (pending.asNext ? nexts : loads)
+        {
+            pending.cancelled = true;
+            pending.opening->cancelled = true;
+        }
+    }
+}
+
+std::vector<std::tuple<PlayerEngine::LoadId, PlayerEngine::LoadResult, juce::String>> PlayerEngine::takeFinishedLoads()
+{
+    std::vector<std::tuple<LoadId, LoadResult, juce::String>> finished;
+    bool loadOpening = false; // A next waits for a load requested before it.
+
+    for (auto it = requests.begin(); it != requests.end();)
+    {
+        if (it->cancelled)
+        {
+            finished.emplace_back (it->id, LoadResult::cancelled, juce::String());
+            it = requests.erase (it);
+            continue;
+        }
+
+        if (! it->opening->done.load() || (it->asNext && loadOpening))
+        {
+            loadOpening = loadOpening || ! it->asNext;
+            ++it;
+            continue;
+        }
+
+        const auto id = it->id;
+        const auto asNext = it->asNext;
+        const auto opening = std::move (it->opening);
+        it = requests.erase (it);
+
+        auto error = opening->error;
+        if (opening->track == nullptr)
+            finished.emplace_back (id, LoadResult::failed, error);
+        else if (asNext && (error = installNext (std::move (opening->track))).isNotEmpty())
+            finished.emplace_back (id, LoadResult::failed, error);
+        else
+        {
+            if (! asNext)
+                install (std::move (opening->track));
+            finished.emplace_back (id, LoadResult::loaded, juce::String());
+        }
+    }
+    return finished;
 }
 
 int PlayerEngine::setTrackGain (const juce::File& file, float gain)
@@ -402,6 +605,7 @@ int PlayerEngine::setTrackGainAt (const juce::File& file, double start, float ga
 
 void PlayerEngine::clearNext()
 {
+    cancelRequests (false, true);
     TrackPtr oldNext;
     std::array<TrackPtr, 4> oldRetired;
     {
@@ -482,7 +686,7 @@ juce::String PlayerEngine::setLoop (double start, double end)
     // The waiting reader never skips; the loop decides where it plays.
     options.skipFrom = options.skipTo = -1.0;
     juce::String error;
-    auto spare = openTrack (file, options, error);
+    auto spare = openTrack (formats, readAheadThread, file, options, error, nullptr);
     if (spare == nullptr)
         return error;
 
@@ -617,6 +821,10 @@ PlayerEngine::SignalInfo PlayerEngine::getSignalInfo() const
 //==============================================================================
 void PlayerEngine::dispatchEvents()
 {
+    // Tracks opened since the last dispatch take their places first, so
+    // what follows reports the state after them.
+    const auto finishedLoads = takeFinishedLoads();
+
     int advances = 0;
     bool ended = false;
     std::array<TrackPtr, 4> oldRetired;
@@ -641,6 +849,10 @@ void PlayerEngine::dispatchEvents()
 
     if (ended && onTrackEnded)
         onTrackEnded (false);
+
+    for (const auto& [id, result, error] : finishedLoads)
+        if (onLoadFinished)
+            onLoadFinished (id, result, error);
 
     if (const auto newState = getState(); newState != reportedState)
     {

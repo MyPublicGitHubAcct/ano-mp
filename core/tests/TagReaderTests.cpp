@@ -3,6 +3,8 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include "anomp/anomp.h"
+#include "FormatRegistry.h"
+#include "TagReader.h"
 
 #include <juce_core/juce_core.h>
 
@@ -13,6 +15,7 @@
 #include <mpegfile.h>
 #include <popularimeterframe.h>
 #include <synchronizedlyricsframe.h>
+#include <tbytevectorstream.h>
 #include <textidentificationframe.h>
 #include <tpropertymap.h>
 
@@ -667,4 +670,45 @@ TEST_CASE ("File info lists every field, the pictures and the format", "[tags][i
     CHECK (std::string_view (error).starts_with ("File not found"));
     CHECK (anomp_read_file_info ("relative.flac", error, sizeof (error)) == nullptr);
     anomp_file_info_free (nullptr);
+}
+
+TEST_CASE ("Tags from a stream in memory match the file's", "[tags][fuzz]")
+{
+    // The fuzzer reads tags this way (PLAN.md H5), so it must be the path
+    // the file goes through.
+    const auto name = GENERATE ("tagged-id3v23.mp3", "tagged-vorbis.flac", "aac-44k.m4a", "opus-48k.opus");
+    CAPTURE (name);
+    const auto file = fixtureFile (name);
+    anomp::FormatRegistry registry;
+
+    anomp::TrackTags fromFile, fromMemory;
+    const auto parts = anomp::TagParts::picture | anomp::TagParts::lyrics;
+    REQUIRE (anomp::readTags (file, parts, registry.manager(), fromFile).isEmpty());
+
+    juce::MemoryBlock data;
+    REQUIRE (file.loadFileAsData (data));
+    TagLib::ByteVectorStream stream (
+        TagLib::ByteVector (static_cast<const char*> (data.getData()), static_cast<unsigned int> (data.getSize())));
+    REQUIRE (anomp::readTags (stream, parts, fromMemory).isEmpty());
+
+    CHECK (fromMemory.title == fromFile.title);
+    CHECK (fromMemory.artist == fromFile.artist);
+    CHECK (fromMemory.album == fromFile.album);
+    CHECK (fromMemory.trackNumber == fromFile.trackNumber);
+    CHECK (fromMemory.picture == fromFile.picture);
+    CHECK (fromMemory.sampleRate == fromFile.sampleRate);
+    CHECK (fromMemory.durationSeconds == Catch::Approx (fromFile.durationSeconds).margin (0.05));
+
+    anomp::FileInfo info;
+    bool tagged = false;
+    TagLib::ByteVectorStream again (
+        TagLib::ByteVector (static_cast<const char*> (data.getData()), static_cast<unsigned int> (data.getSize())));
+    REQUIRE (anomp::readFileInfo (again, info, tagged).isEmpty());
+    CHECK (tagged);
+
+    // Nothing TagLib knows: no tags, and no error.
+    TagLib::ByteVectorStream junk (TagLib::ByteVector ("not audio at all"));
+    anomp::TrackTags none;
+    CHECK (anomp::readTags (junk, parts, none).isEmpty());
+    CHECK (none.title.isEmpty());
 }

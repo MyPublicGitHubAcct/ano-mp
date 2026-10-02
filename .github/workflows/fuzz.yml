@@ -1,0 +1,66 @@
+# The weekly long fuzzing run (PLAN.md H5): each libFuzzer target for 30
+# minutes, where CI's check-all.py runs each for one. The corpus carries over
+# from run to run in the cache, and is uploaded with any failing inputs.
+# Actions are pinned by commit, with the release in a comment (PLAN.md H7).
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: macos-15
+    # Building FFmpeg's and JUCE's instrumented builds, then 2 x 30 min.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # llvm@22: the fuzzers' compiler (Apple's clang has no libFuzzer).
+      - name: Install tools
+        run: brew install ninja nasm pkg-config llvm@22
+
+      # The same cache as CI's; build-ffmpeg.sh --fuzz skips the build when
+      # BUILD_INFO matches.
+      - name: Restore FFmpeg
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Restore fuzz build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/fuzz
+          key: fuzz-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: fuzz-build-${{ runner.os }}-
+
+      # A new key each run saves the grown corpus; the newest one is restored.
+      - name: Restore corpus
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/fuzz/corpus
+          key: fuzz-corpus-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ runner.os }}-
+
+      - name: Fuzz
+        run: scripts/run-fuzzers.py --seconds 1800
+
+      - name: Upload corpus and failing inputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-${{ github.run_id }}
+          path: |
+            build/fuzz/corpus
+            build/fuzz/crashes
+          if-no-files-found: ignore
+          retention-days: 30

@@ -300,6 +300,14 @@ int anomp_folder_access_is_stale(const anomp_folder_access* access);
 /** Stops accessing the folder and frees `access`. Null is ignored. */
 void anomp_folder_access_stop(anomp_folder_access* access);
 
+/** Whether `path` (absolute, UTF-8) is a cloud placeholder (PLAN.md H12):
+    a dataless file, listed with its full size but downloaded only when
+    something reads it (iCloud Drive with "Optimize Mac Storage"). Checking
+    doesn't download it; reading its tags or audio would. Returns 1 if it is
+    one, 0 if not (or the platform has none), -1 if it can't be checked (it
+    doesn't exist, or a null `path`). The folder must be accessible. */
+int anomp_file_is_dataless(const char* path);
+
 /* ---- Logging -------------------------------------------------------------
    The core's log messages, JUCE's Logger and failed assertions (in every
    build) included, for the host to write with its own (PLAN.md H9). */
@@ -372,7 +380,16 @@ enum
     ANOMP_EVENT_DEVICE_CHANGED = 1, /**< Device list or open output device changed. */
     ANOMP_EVENT_STATE_CHANGED = 2,  /**< Player state changed; see `state`. */
     ANOMP_EVENT_POSITION = 3,       /**< Position or duration changed; see `position`, `duration`. */
-    ANOMP_EVENT_TRACK_ENDED = 4     /**< The current track played to its end; see `advanced`. */
+    ANOMP_EVENT_TRACK_ENDED = 4,    /**< The current track played to its end; see `advanced`. */
+    ANOMP_EVENT_LOAD_FINISHED = 5   /**< An asynchronous load is done; see `request`, `result`, `error`. */
+};
+
+/** How an asynchronous load (anomp_engine_load_track_async) ended. */
+enum
+{
+    ANOMP_LOAD_LOADED = 0,   /**< The track took its place. */
+    ANOMP_LOAD_FAILED = 1,   /**< It couldn't be opened, and nothing changed; see `error`. */
+    ANOMP_LOAD_CANCELLED = 2 /**< anomp_engine_cancel_load, or superseded by a later request. */
 };
 
 /** Player states. */
@@ -386,12 +403,15 @@ enum
 
 typedef struct anomp_event
 {
-    int type;        /**< One of the ANOMP_EVENT_* values. */
-    int state;       /**< STATE_CHANGED: the new ANOMP_STATE_* value. */
-    int advanced;    /**< TRACK_ENDED: 1 if the next track took over gaplessly,
-                          0 if playback stopped (a STATE_CHANGED follows). */
-    double position; /**< POSITION: seconds into the current track. */
-    double duration; /**< POSITION: length of the current track in seconds. */
+    int type;          /**< One of the ANOMP_EVENT_* values. */
+    int state;         /**< STATE_CHANGED: the new ANOMP_STATE_* value. */
+    int advanced;      /**< TRACK_ENDED: 1 if the next track took over gaplessly,
+                            0 if playback stopped (a STATE_CHANGED follows). */
+    double position;   /**< POSITION: seconds into the current track. */
+    double duration;   /**< POSITION: length of the current track in seconds. */
+    long long request; /**< LOAD_FINISHED: the id the request returned. */
+    int result;        /**< LOAD_FINISHED: one of the ANOMP_LOAD_* values. */
+    const char* error; /**< LOAD_FINISHED: why it failed (UTF-8), else ""; never null. */
 } anomp_event;
 
 /** `event` is only valid for the duration of the call. */
@@ -530,6 +550,43 @@ int anomp_engine_set_next_track(anomp_engine* engine,
                                 const anomp_track_options* options,
                                 char* error,
                                 size_t error_size);
+
+/* Asynchronous loads (PLAN.md H11). Opening a file can take seconds (a disk
+   waking, a network share, a cloud file downloading), so these open it, and
+   fill its read-ahead, on a thread of their own, then hand it over on the
+   main thread at an event dispatch, soon after it is ready. Each returns a
+   request id (> 0), reported exactly once by ANOMP_EVENT_LOAD_FINISHED,
+   after any TRACK_ENDED of the same dispatch and before its STATE_CHANGED
+   and POSITION. Requests take effect in the order they were made. The host
+   must keep the file's folder accessible (anomp_folder_access) until its
+   request is reported. */
+
+/** anomp_engine_load_track on a thread of its own. Until it is reported,
+    nothing changes and the current track plays on. Cancels every request
+    made before it. Returns 0, writing the error, if the request can't be
+    made (a null engine, a path that isn't absolute). */
+long long anomp_engine_load_track_async(anomp_engine* engine,
+                                        const char* path,
+                                        const anomp_track_options* options,
+                                        char* error,
+                                        size_t error_size);
+
+/** anomp_engine_set_next_track on a thread of its own. Clears the next track
+    at once, so the current one can't hand off to the track being replaced,
+    and cancels earlier next requests. One made after a load still opening
+    waits for it. With no track loaded when it is ready, it fails. Returns
+    0 as anomp_engine_load_track_async does. */
+long long anomp_engine_set_next_track_async(anomp_engine* engine,
+                                            const char* path,
+                                            const anomp_track_options* options,
+                                            char* error,
+                                            size_t error_size);
+
+/** Cancels a request not yet reported (the next dispatch reports it
+    cancelled); does nothing otherwise. A file still opening is opened to
+    the end on its thread, then let go. The synchronous load and next-track
+    functions cancel requests as their asynchronous forms would. */
+void anomp_engine_cancel_load(anomp_engine* engine, long long request);
 
 /** anomp_engine_set_track_gain for the track opened from `path` whose
     options started at `start` seconds, telling two parts of one file

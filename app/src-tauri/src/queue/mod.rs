@@ -19,8 +19,14 @@
 //!
 //! Files opened from outside the library (F5, `library::external`) are
 //! queue items with negative track ids, played from their path.
+//!
+//! Tracks are opened off the main thread (`opening`, PLAN.md H11): the
+//! queue shows one as loading until the engine reports it, and gives up on
+//! it after `model::LOAD_TIMEOUT` (`check_loads`, which a timer thread runs
+//! at the queue's `load_deadline`).
 
 pub mod model;
+mod opening;
 pub mod radio;
 
 use std::cell::RefCell;
@@ -33,7 +39,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::anomp::{Engine, PlayerState, TrackOptions};
+use crate::anomp::{Engine, PlayerState};
 use crate::audio;
 use crate::library::browse::{self, Filter, GroupKey, RuleSpec};
 use crate::library::commands::{on_library, LibraryState};
@@ -41,7 +47,9 @@ use crate::library::external;
 use crate::library::playback::TrackPlay;
 use crate::library::Error;
 use crate::settings::{self, FeatureSettings, PlaybackSettings};
-use model::{Player, Queue, QueueState, Repeat, Saved, SleepTimer, TrackInfo, Uid};
+use model::{
+    Opening, Player, Queue, QueueState, Repeat, Request, Saved, SleepTimer, TrackInfo, Uid,
+};
 
 thread_local! {
     static QUEUE: RefCell<Option<Queue>> = const { RefCell::new(None) };
@@ -63,43 +71,20 @@ struct SavedPlayer {
 
 /// The engine as the queue drives it, opening library files through their
 /// folder's bookmark (`library::access`), each as `library::playback`
-/// says: its part of the file, its gain, what to skip.
-pub struct EnginePlayer<'a> {
+/// says: its part of the file, its gain, what to skip. Files open off the
+/// main thread (`opening`).
+pub struct EnginePlayer<'a, R: Runtime> {
+    app: &'a AppHandle<R>,
     engine: &'a mut Engine,
     library: &'a LibraryState,
     playback: PlaybackSettings,
     features: FeatureSettings,
 }
 
-impl EnginePlayer<'_> {
-    /// How to play track `track_id`: a library track as `library::playback`
-    /// says, or a file opened from outside the library, whole.
+impl<R: Runtime> EnginePlayer<'_, R> {
+    /// How to play track `track_id`.
     fn track_play(&self, track_id: i64) -> Result<TrackPlay, String> {
-        if track_id < 0 {
-            let file = external::file(track_id).ok_or("The file is no longer open to the app")?;
-            return Ok(TrackPlay {
-                path: file.path,
-                start: 0.0,
-                end: None,
-                replay_gain: file.replay_gain,
-                gain_offset_db: 0.0,
-                skip: None,
-                sample_rate: file.sample_rate,
-            });
-        }
-        self.library.track_play(track_id, &self.features)
-    }
-
-    /// Resolves the track's folder and holds it open until `open` has
-    /// opened the file (see `library::access`).
-    fn open(
-        &mut self,
-        track_id: i64,
-        open: impl FnOnce(&mut Engine, &TrackPlay, &TrackOptions) -> Result<(), String>,
-    ) -> Result<(), String> {
-        let play = self.track_play(track_id)?;
-        let _folder = self.library.open_folder_of(&play.path)?;
-        open(self.engine, &play, &play.options(&self.playback))
+        opening::track_play(self.library, track_id, &self.features)
     }
 
     /// Gives the engine's copy of the track its gain under the current
@@ -110,9 +95,22 @@ impl EnginePlayer<'_> {
         self.engine.set_track_gain_at(&play.path, play.start, gain);
         Ok(())
     }
+
+    fn ask(&self, track_id: i64, next: bool, crossfade: f64) -> Opening {
+        Opening::Pending(opening::ask(
+            self.app,
+            opening::Ask {
+                track_id,
+                next,
+                crossfade,
+                playback: self.playback.clone(),
+                features: self.features.clone(),
+            },
+        ))
+    }
 }
 
-impl EnginePlayer<'_> {
+impl<R: Runtime> EnginePlayer<'_, R> {
     /// Practice mode (O12): loops the current track between two points, or
     /// clears the loop. The engine opens the file again for the jump, so
     /// its folder is held open meanwhile.
@@ -132,36 +130,23 @@ impl EnginePlayer<'_> {
     }
 }
 
-impl Player for EnginePlayer<'_> {
-    fn load(&mut self, track_id: i64) -> Result<(), String> {
-        let match_rate = self.features.match_sample_rate;
-        let features = self.features.clone();
-        self.open(track_id, |engine, play, options| {
-            // Only here, not at a gapless hand-off: switching interrupts output.
-            if match_rate && play.sample_rate > 0 {
-                engine.set_device_sample_rate(f64::from(play.sample_rate));
-            }
-            // Headphones may have been plugged in since the last track.
-            audio::apply_crossfeed(engine, &features);
-            engine.load_track(&play.path, options)
-        })
+impl<R: Runtime> Player for EnginePlayer<'_, R> {
+    fn load(&mut self, track_id: i64) -> Opening {
+        self.ask(track_id, false, 0.0)
     }
-    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Result<(), String> {
+    fn set_next(&mut self, track_id: Option<i64>, crossfade: bool) -> Opening {
         let seconds = if crossfade {
             self.playback.crossfade
         } else {
             0.0
         };
         match track_id {
-            Some(id) => self.open(id, |engine, play, options| {
-                let options = TrackOptions {
-                    crossfade: seconds,
-                    ..*options
-                };
-                engine.set_next_track(Some((&play.path, &options)))
-            }),
-            None => self.engine.set_next_track(None),
+            Some(id) => self.ask(id, true, seconds),
+            None => Opening::Done(self.engine.set_next_track(None)),
         }
+    }
+    fn cancel(&mut self, request: Request) {
+        opening::cancel(self.engine, request);
     }
     fn volume(&self) -> f64 {
         self.engine.volume()
@@ -240,12 +225,13 @@ pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
 struct Position(f64);
 
 impl Player for Position {
-    fn load(&mut self, _: i64) -> Result<(), String> {
-        Err("not a player".into())
+    fn load(&mut self, _: i64) -> Opening {
+        Opening::Done(Err("not a player".into()))
     }
-    fn set_next(&mut self, _: Option<i64>, _: bool) -> Result<(), String> {
-        Ok(())
+    fn set_next(&mut self, _: Option<i64>, _: bool) -> Opening {
+        Opening::Done(Ok(()))
     }
+    fn cancel(&mut self, _: Request) {}
     fn volume(&self) -> f64 {
         1.0
     }
@@ -316,7 +302,7 @@ fn clock() -> f64 {
 /// and saves the queue if it changed.
 fn run<R, T>(
     app: &AppHandle<R>,
-    f: impl FnOnce(&mut Queue, &mut EnginePlayer) -> T + Send + 'static,
+    f: impl FnOnce(&mut Queue, &mut EnginePlayer<R>) -> T + Send + 'static,
 ) -> Result<T, String>
 where
     R: Runtime,
@@ -335,6 +321,7 @@ where
             queue.set_clock(clock());
             let result = audio::engine_mut(|engine| {
                 let mut player = EnginePlayer {
+                    app: &app,
                     engine,
                     library: &library,
                     playback,
@@ -343,10 +330,69 @@ where
                 f(queue, &mut player)
             })?;
             save_positions(&app, queue);
+            schedule_load_check(&app, queue.load_deadline());
             publish(&app, queue);
             Ok(result)
         })
     })?
+}
+
+thread_local! {
+    /// The deadline a timer thread will check the queue's loads at.
+    static LOAD_CHECK: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+}
+
+/// Makes sure the queue's loads are checked at `deadline` (H11): a load
+/// still opening then fails. Main thread.
+fn schedule_load_check<R: Runtime>(app: &AppHandle<R>, deadline: Option<f64>) {
+    let Some(deadline) = deadline else {
+        return;
+    };
+    if LOAD_CHECK.get() == Some(deadline) {
+        return;
+    }
+    LOAD_CHECK.set(Some(deadline));
+    let wait = std::time::Duration::from_secs_f64((deadline - clock()).max(0.0) + 0.05);
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("anomp-load-timeout".into())
+        .spawn(move || {
+            std::thread::sleep(wait);
+            if let Err(error) = run(&app, |queue, player| queue.check_loads(player, clock())) {
+                log::warn!("{error}");
+            }
+        });
+    if let Err(error) = spawned {
+        log::warn!("cannot time a load: {error}");
+    }
+}
+
+/// A track the queue asked to open is open, or failed (`opening`). Main
+/// thread.
+fn load_finished<R: Runtime>(app: &AppHandle<R>, request: Request, result: Result<(), String>) {
+    if let Err(error) = run(app, move |queue, player| {
+        queue.load_finished(player, request, result)
+    }) {
+        log::warn!("{error}");
+    }
+}
+
+/// A track the queue asked to open is a cloud placeholder, downloading
+/// (`opening`, H12). Main thread.
+fn downloading<R: Runtime>(app: &AppHandle<R>, request: Request) {
+    log::info!("downloading a cloud placeholder to play it");
+    if let Err(error) = run(app, move |queue, _| queue.downloading(request)) {
+        log::warn!("{error}");
+    }
+}
+
+/// The engine reported an asynchronous load. Main thread.
+pub fn on_load_finished<R: Runtime>(
+    app: &AppHandle<R>,
+    id: crate::anomp::LoadRequest,
+    result: crate::anomp::LoadResult,
+) {
+    opening::engine_finished(app, id, result);
 }
 
 /// Emits and saves the queue's state if it changed.

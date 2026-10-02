@@ -78,7 +78,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let app_for_init = app.clone();
     let app = app.clone();
     engine.set_event_handler(move |event| {
-        crate::media::player_event(event);
+        crate::media::player_event(&event);
         let _ = match event {
             Event::DeviceChanged => {
                 log::info!("device changed");
@@ -108,6 +108,10 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 // event dispatch, which the core allows (anomp.h).
                 crate::queue::on_track_ended(&app, advanced);
                 app.emit(PLAYER_TRACK_ENDED_EVENT, TrackEndedPayload { advanced })
+            }
+            Event::LoadFinished { request, result } => {
+                crate::queue::on_load_finished(&app, request, result);
+                Ok(())
             }
         };
     });

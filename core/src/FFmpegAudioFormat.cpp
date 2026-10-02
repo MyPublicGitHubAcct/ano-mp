@@ -617,6 +617,8 @@ std::unique_ptr<juce::AudioFormatWriter> FFmpegAudioFormat::createWriterFor (std
     return nullptr;
 }
 
+void FFmpegAudioFormat::silenceLog() { av_log_set_level (AV_LOG_QUIET); }
+
 juce::String FFmpegAudioFormat::readChapters (const juce::File& file, juce::Array<Chapter>& chapters)
 {
     chapters.clear();

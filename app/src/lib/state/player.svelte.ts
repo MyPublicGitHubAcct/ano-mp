@@ -14,7 +14,7 @@ import {
   type SleepRequest,
   type SleepTimer,
 } from "$lib/api";
-import { t } from "$lib/i18n";
+import { errorText, t } from "$lib/i18n";
 import { playback } from "./position.svelte";
 import { attempt, toasts } from "./toasts.svelte";
 
@@ -31,6 +31,9 @@ class PlayerStore {
   hasNext = $state(false);
   hasPrevious = $state(false);
   loaded = $state(false);
+  /** The current item's file is opening (PLAN.md H11); `downloading`, a cloud placeholder (H12). */
+  loading = $state(false);
+  downloading = $state(false);
   resumeAt = $state(0);
   /** Library radio keeps adding tracks (O9). */
   radio = $state(false);
@@ -64,12 +67,14 @@ class PlayerStore {
     this.hasNext = state.hasNext;
     this.hasPrevious = state.hasPrevious;
     this.loaded = state.loaded;
+    this.loading = state.loading ?? false;
+    this.downloading = state.downloading ?? false;
     this.resumeAt = state.resumeAt;
     this.radio = state.radio;
     this.stopAfter = state.stopAfter;
     this.sleep = state.sleep;
     for (const skipped of state.skipped)
-      toasts.show(t("queue.skippedTrack", { title: skipped.title, error: skipped.error }));
+      toasts.show(t("queue.skippedTrack", { title: skipped.title, error: errorText(skipped.error) }));
   }
 
   /** Follows the backend; returns a function that stops. */

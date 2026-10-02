@@ -26,6 +26,7 @@ namespace
 {
 using Channels = std::array<std::vector<float>, 2>;
 using State = anomp::PlayerEngine::State;
+using Result = anomp::PlayerEngine::LoadResult;
 
 constexpr int blockSize = 512;
 
@@ -107,6 +108,18 @@ struct Harness
         {
             events.push_back ("state " + std::to_string (static_cast<int> (state)));
         };
+        player.onLoadFinished = [this] (anomp::PlayerEngine::LoadId id, Result result, const juce::String& error)
+        {
+            const auto* name = result == Result::loaded   ? "loaded "
+                               : result == Result::failed ? "failed "
+                                                          : "cancelled ";
+            events.push_back (name + std::to_string (id));
+            loadErrors.push_back (error);
+        };
+        player.onLoadReady = [this]
+        {
+            ++loadsReady;
+        };
     }
 
     void renderBlock()
@@ -144,11 +157,20 @@ struct Harness
         return std::exchange (events, {});
     }
 
+    /** Waits for every file still opening, then dispatches. */
+    std::vector<std::string> finishLoads()
+    {
+        REQUIRE (player.waitForLoads (10000));
+        return takeEvents();
+    }
+
     anomp::FormatRegistry registry;
     std::unique_ptr<juce::TimeSliceThread> thread;
     anomp::PlayerEngine player; // Declared after the thread: freed before it stops.
     Channels output;
     std::vector<std::string> events;
+    std::vector<juce::String> loadErrors;
+    std::atomic<int> loadsReady { 0 }; // onLoadReady runs on the opening threads.
 };
 
 const std::string stateStopped = "state " + std::to_string (static_cast<int> (State::stopped));
@@ -1102,4 +1124,239 @@ TEST_CASE ("PlayerEngine hands off while an audio thread renders", "[player][gap
         CHECK (player.getState() == State::playing);
     }
     readAhead.stopThread (1000);
+}
+
+TEST_CASE ("PlayerEngine opens a track on another thread and hands it over at a dispatch", "[player][async]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+    Harness h (44100.0, readAhead);
+    const auto expected = decode ("flac-44k.flac");
+
+    const auto id = h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+    CHECK (id > 0);
+    CHECK (h.player.isLoading (id));
+    CHECK (h.player.getState() == State::empty); // Nothing changes until it is handed over.
+
+    REQUIRE (h.player.waitForLoads (10000));
+    CHECK (h.loadsReady == 1);
+    CHECK (h.player.getState() == State::empty);
+    CHECK (h.takeEvents() == std::vector<std::string> { "loaded 1", stateStopped });
+    CHECK_FALSE (h.player.isLoading (id));
+    CHECK (h.loadErrors == std::vector<juce::String> { {} });
+
+    REQUIRE (h.player.play());
+    const auto stoppedAt = h.renderUntilStopped (200000);
+    CHECK (stoppedAt == (length (expected) / blockSize + 1) * blockSize);
+    // After the first block's fade in, the output is the file.
+    CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) == 0.0f);
+}
+
+TEST_CASE ("PlayerEngine plays on while the next file opens", "[player][async]")
+{
+    Harness h (44100.0, true);
+    const auto first = decode ("flac-44k.flac");
+
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.play());
+    h.takeEvents();
+
+    h.player.loadAsync (fixtureFile ("wav-s16-44k.wav"), {});
+    REQUIRE (h.player.waitForLoads (10000));
+    h.render (blockSize * 4); // Not handed over without a dispatch (the first block fades in).
+    CHECK (maxError (h.output, blockSize, first, blockSize, blockSize * 3) == 0.0f);
+
+    // Handed over: stopped at the start of the new track, as load() leaves it.
+    CHECK (h.takeEvents() == std::vector<std::string> { "loaded 1", stateStopped });
+    CHECK (h.player.getPositionSeconds() == 0.0);
+    CHECK (h.player.getDurationSeconds() == Catch::Approx (length (decode ("wav-s16-44k.wav")) / 44100.0));
+}
+
+TEST_CASE ("PlayerEngine reports a load that fails, changing nothing", "[player][async]")
+{
+    Harness h (44100.0, false);
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    h.takeEvents();
+
+    h.player.loadAsync (fixtureFile ("missing.flac"), {});
+    CHECK (h.finishLoads() == std::vector<std::string> { "failed 1" });
+    REQUIRE (h.loadErrors.size() == 1);
+    CHECK (h.loadErrors[0].startsWith ("File not found"));
+    CHECK (h.player.getState() == State::stopped);
+    CHECK (h.player.getDurationSeconds() == Catch::Approx (length (decode ("flac-44k.flac")) / 44100.0));
+
+    // A next track needs a current one.
+    Harness empty (44100.0, false);
+    empty.player.setNextAsync (fixtureFile ("flac-44k.flac"), {});
+    CHECK (empty.finishLoads() == std::vector<std::string> { "failed 1" });
+    CHECK (empty.loadErrors == std::vector<juce::String> { "No track is loaded" });
+}
+
+TEST_CASE ("PlayerEngine cancels a load, and a later request supersedes an earlier one", "[player][async]")
+{
+    Harness h (44100.0, true);
+
+    SECTION ("cancelled")
+    {
+        const auto id = h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+        h.player.cancelLoad (id);
+        CHECK (h.finishLoads() == std::vector<std::string> { "cancelled 1" });
+        CHECK (h.player.getState() == State::empty);
+        h.player.cancelLoad (id); // Already reported: nothing happens.
+        CHECK (h.finishLoads().empty());
+    }
+
+    SECTION ("a load supersedes every earlier request")
+    {
+        h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+        h.player.setNextAsync (fixtureFile ("mp3-44k.mp3"), {});
+        h.player.loadAsync (fixtureFile ("wav-s16-44k.wav"), {});
+        CHECK (h.finishLoads() == std::vector<std::string> { "cancelled 1", "cancelled 2", "loaded 3", stateStopped });
+        CHECK (h.player.getDurationSeconds() == Catch::Approx (length (decode ("wav-s16-44k.wav")) / 44100.0));
+        CHECK_FALSE (h.player.hasNext());
+    }
+
+    SECTION ("a next supersedes an earlier next, not the load before it")
+    {
+        h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+        h.player.setNextAsync (fixtureFile ("mp3-44k.mp3"), {});
+        h.player.setNextAsync (fixtureFile ("wav-s16-44k.wav"), {});
+        // Reported in the order they were requested.
+        CHECK (h.finishLoads() == std::vector<std::string> { "loaded 1", "cancelled 2", "loaded 3", stateStopped });
+        CHECK (h.player.hasNext());
+    }
+
+    SECTION ("the synchronous commands supersede requests too")
+    {
+        h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+        REQUIRE (h.player.load (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+        h.player.setNextAsync (fixtureFile ("mp3-44k.mp3"), {});
+        h.player.clearNext();
+        CHECK (h.finishLoads() == std::vector<std::string> { "cancelled 1", "cancelled 2", stateStopped });
+        CHECK (h.player.getDurationSeconds() == Catch::Approx (length (decode ("wav-s16-44k.wav")) / 44100.0));
+        CHECK_FALSE (h.player.hasNext());
+    }
+}
+
+TEST_CASE ("PlayerEngine hands off gaplessly to a next track opened on another thread", "[player][async][gapless]")
+{
+    const auto readAhead = GENERATE (false, true);
+    CAPTURE (readAhead);
+    Harness h (44100.0, readAhead);
+    const auto first = decode ("mp3-44k.mp3");
+    const auto expected = concat (first, decode ("mp3-vbr-44k.mp3"));
+
+    SECTION ("requested while the current track plays")
+    {
+        REQUIRE (h.player.load (fixtureFile ("mp3-44k.mp3")).isEmpty());
+        REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+        REQUIRE (h.player.play());
+        h.takeEvents();
+
+        // The track it replaces is cleared at once, so it can't take over.
+        h.player.setNextAsync (fixtureFile ("mp3-vbr-44k.mp3"), {});
+        CHECK_FALSE (h.player.hasNext());
+        CHECK (h.finishLoads() == std::vector<std::string> { "loaded 1" });
+        CHECK (h.player.hasNext());
+    }
+
+    SECTION ("requested after a load still opening, which it waits for")
+    {
+        h.player.loadAsync (fixtureFile ("mp3-44k.mp3"), {});
+        h.player.setNextAsync (fixtureFile ("mp3-vbr-44k.mp3"), {});
+        CHECK (h.finishLoads() == std::vector<std::string> { "loaded 1", "loaded 2", stateStopped });
+        REQUIRE (h.player.play());
+        h.takeEvents();
+    }
+
+    h.render (length (first) + 1);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+    const auto stoppedAt = h.renderUntilStopped (400000);
+    CHECK (h.takeEvents() == std::vector<std::string> { "ended", stateStopped });
+    CHECK (maxError (h.output, blockSize, expected, blockSize, stoppedAt - blockSize) == 0.0f);
+}
+
+TEST_CASE ("PlayerEngine callbacks may request loads", "[player][async]")
+{
+    // The host's queue starts the next item from onLoadFinished.
+    Harness h (44100.0, true);
+    h.player.onLoadFinished = [&h] (anomp::PlayerEngine::LoadId id, Result result, const juce::String&)
+    {
+        h.events.push_back ((result == Result::loaded ? "loaded " : "other ") + std::to_string (id));
+        if (id == 1)
+            h.player.setNextAsync (fixtureFile ("wav-s16-44k.wav"), {});
+    };
+
+    h.player.loadAsync (fixtureFile ("flac-44k.flac"), {});
+    CHECK (h.finishLoads() == std::vector<std::string> { "loaded 1", stateStopped });
+    CHECK (h.finishLoads() == std::vector<std::string> { "loaded 2" });
+    CHECK (h.player.hasNext());
+}
+
+TEST_CASE ("PlayerEngine can go while files are opening", "[player][async]")
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        Harness h (44100.0, true);
+        h.player.loadAsync (fixtureFile ("flac-long-48k-mono.flac"), {});
+        h.player.setNextAsync (fixtureFile ("opus-long-48k.opus"), {});
+        // Destroyed at once: the threads give up and let go of what they opened.
+    }
+    SUCCEED();
+}
+
+TEST_CASE ("PlayerEngine open time", "[.][benchmark]")
+{
+    // Hidden: run with "[benchmark]". ANOMP_BENCH_FILE names the file to open
+    // (PLAN.md H11 measured a 5-minute VBR MP3); else the long MP3 fixture.
+    const auto named = juce::SystemStats::getEnvironmentVariable ("ANOMP_BENCH_FILE", {});
+    const auto file = named.isNotEmpty() ? juce::File (named) : fixtureFile ("mp3-vbr-long-44k.mp3");
+    REQUIRE (file.existsAsFile());
+
+    anomp::FormatRegistry registry;
+    juce::TimeSliceThread thread ("bench read-ahead");
+    thread.startThread();
+    anomp::PlayerEngine player (registry.manager(), &thread);
+    player.prepareToPlay (blockSize, 48000.0);
+
+    constexpr int runs = 20;
+    double total = 0.0, slowest = 0.0;
+    for (int i = 0; i < runs; ++i)
+    {
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        REQUIRE (player.load (file).isEmpty());
+        const auto elapsed = juce::Time::getMillisecondCounterHiRes() - started;
+        total += elapsed;
+        slowest = juce::jmax (slowest, elapsed);
+    }
+    WARN ("load() on the calling thread: " << total / runs << " ms on average, " << slowest << " ms at most, over "
+                                           << runs << " opens of " << file.getFileName());
+
+    // loadAsync(): the main thread only asks, then installs the ready track
+    // at a dispatch (PLAN.md H11). AudioEngine dispatches when onLoadReady
+    // fires; here the test waits for it.
+    juce::WaitableEvent ready;
+    player.onLoadReady = [&ready]
+    {
+        ready.signal();
+    };
+    double mainThread = 0.0, slowestMain = 0.0, endToEnd = 0.0;
+    for (int i = 0; i < runs; ++i)
+    {
+        ready.reset();
+        const auto started = juce::Time::getMillisecondCounterHiRes();
+        player.loadAsync (file, {});
+        const auto asked = juce::Time::getMillisecondCounterHiRes();
+        REQUIRE (ready.wait (10000));
+        const auto dispatchStarted = juce::Time::getMillisecondCounterHiRes();
+        player.dispatchEvents();
+        const auto finished = juce::Time::getMillisecondCounterHiRes();
+        const auto onMain = (asked - started) + (finished - dispatchStarted);
+        mainThread += onMain;
+        slowestMain = juce::jmax (slowestMain, onMain);
+        endToEnd += finished - started;
+    }
+    REQUIRE (player.getState() == State::stopped);
+    WARN ("loadAsync(): " << mainThread / runs << " ms on the calling thread on average (" << slowestMain
+                          << " ms at most), " << endToEnd / runs << " ms from asking to loaded");
 }

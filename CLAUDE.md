@@ -94,7 +94,9 @@ are done (CI baseline, quick security fixes, and H10, H22 and H9: the
 library DB's copies and launch check, missing folders, and logs). Step 4,
 the exit checks in a sandboxed bundle, has its checklist in
 `docs/step4-checklist.md`: the probe checks are done, the owner's (by
-hand, by ear, by eye) wait. Step 5 is H5, H11 and H12.
+hand, by ear, by eye) wait. Step 5 is done: H5 (fuzzing, `core/fuzz/`),
+H11 (files opened off the main thread) and H12 (cloud placeholders); its
+owner's checks are § 5 of the checklist.
 `docs/` holds the Step 4 checklist.
 
 ## Build & test
@@ -110,9 +112,20 @@ git config core.hooksPath scripts/hooks  # once per clone: the pre-commit hook (
 
 cmake --workflow --preset asan  # configure, build and ctest under ASan + UBSan (build/asan)
 cmake --workflow --preset tsan  # the same under TSan (build/tsan; ~4.5 min)
+scripts/run-fuzzers.py          # build and run each libFuzzer target 60 s (--seconds N, --target decoder|tags)
+scripts/run-fuzzers.py --target tags build/fuzz/crashes/tags-crash-…  # reproduce one input
 ```
 
-Tools beyond the build: `brew install uv gitleaks`, and `cargo install
+The fuzz targets (PLAN.md H5) need Homebrew's `llvm@22` (`brew install
+llvm@22`): Apple's clang has no libFuzzer runtime, and LLVM 21's ASan hangs
+at start-up on macOS 26. The `fuzz` preset (build/fuzz) compiles everything
+with it under ASan and UBSan and links FFmpeg's instrumented static build
+(`scripts/build-ffmpeg.sh --fuzz`, which `run-fuzzers.py` runs). A crash
+found becomes a regression test with a committed fixture; a new target goes
+in `core/fuzz/CMakeLists.txt` and `run-fuzzers.py`'s `TARGETS`.
+`.github/workflows/fuzz.yml` runs each target for 30 min weekly.
+
+Tools beyond the build: `brew install uv gitleaks llvm@22`, and `cargo install
 cargo-deny --version 0.20.2 --locked` (the version CI installs). Rust and
 Node are pinned by `rust-toolchain.toml` and `.nvmrc`; `app/.npmrc` makes
 npm refuse a Node outside `package.json`'s `engines`.
@@ -289,7 +302,20 @@ goes in `queue/model.rs` behind the `Player` trait, tested against a fake engine
 The media controls (`anomp_media_controls_*`) are main-thread only too, and
 `media.rs` decides what to publish in `NowPlaying`, behind a `Publisher` trait.
 `run_on_main_thread` called on the main thread runs the closure at once; it
-doesn't defer it. Engine event callbacks may call the engine (the queue arms
+doesn't defer it.
+
+The queue opens files off the main thread (PLAN.md H11): `Player::load`
+and `set_next` may return `Opening::Pending`, and the host reports the
+outcome with `Queue::load_finished` (`queue/opening.rs`: the row and the
+bookmark on a blocking thread, then `Engine::load_track_async` on the
+main thread, holding the folder open until the engine's
+`Event::LoadFinished`). The core opens and prefills the track on a thread
+of its own and hands it over in `dispatchEvents`; every request is
+reported once, in request order; a later load supersedes earlier
+requests. Never open a library file synchronously on the main thread for
+playback; the synchronous `load_track` stays for the core's tests and the
+dev page. A request still opening after `LOAD_TIMEOUT` fails with
+`openTimedOut` (a cloud placeholder gets `DOWNLOAD_TIMEOUT`). Engine event callbacks may call the engine (the queue arms
 the next track from `TrackEnded`); `anomp.h` states the rule.
 
 The settings' TypeScript types (`app/src/lib/generated/settings.ts`) are
@@ -301,6 +327,14 @@ setting goes in `AppSettings` with a default and a `validate` rule; stored
 values are read leniently, so no migration is needed. Track gains
 (ReplayGain) are computed in Rust (`PlaybackSettings::gain`) and passed to
 the engine with each track.
+
+Cloud placeholders (PLAN.md H12): with "Optimize Mac Storage" a file can
+be dataless, downloaded by any read. Never read a library file's tags or
+audio in the background (scans, workers, art) without checking
+`anomp::file_is_dataless` first (`stat()`, which doesn't download): the
+scanner records a placeholder unread and marks it `tracks.dataless`, the
+analysis worker marks and leaves one, and every scan checks marked ones
+again. Reads the user asks for (playing, Get Info) may download.
 
 A track is a part of a file: `tracks` is unique on (folder, path,
 `range_start`), with `range_end` NULL for the end of the file (migration

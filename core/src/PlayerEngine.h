@@ -10,6 +10,8 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <tuple>
+#include <vector>
 
 namespace anomp
 {
@@ -43,8 +45,11 @@ namespace anomp
     within an album).
 
     Threading: commands and dispatchEvents() run on the message thread; the
-    status getters are safe on any thread. Tracks are opened and freed on the
-    message thread, never on the audio thread.
+    status getters are safe on any thread. load() and setNext() open the
+    file on the message thread; loadAsync() and setNextAsync() open it, and
+    fill its read-ahead, on a thread of their own (PLAN.md H11), and
+    dispatchEvents() hands the ready track over on the message thread.
+    Tracks are never opened or freed on the audio thread.
 */
 class PlayerEngine final : public juce::AudioSource
 {
@@ -117,6 +122,48 @@ public:
     int setTrackGainAt (const juce::File& file, double start, float gain);
 
     void clearNext();
+
+    //==============================================================================
+    /** Identifies an asynchronous load; 0 is none. */
+    using LoadId = juce::int64;
+
+    enum class LoadResult
+    {
+        loaded,   ///< The track took its place.
+        failed,   ///< It couldn't be opened; nothing changed. See the error.
+        cancelled ///< cancelLoad(), or superseded by a later request.
+    };
+
+    /** load() on a thread of its own: opens `file` and fills its read-ahead
+        there, then, at a dispatchEvents() after it is ready, replaces the
+        current track as load() does. Until then nothing changes, and the
+        current track (if any) plays on. Cancels every asynchronous request
+        made before it. Every request is reported once, by onLoadFinished. */
+    LoadId loadAsync (const juce::File& file, const TrackOptions& options);
+
+    /** setNext() on a thread of its own, reported as loadAsync() is. Clears
+        the next track at once, so the current one can't hand off to a track
+        that is about to be replaced; cancels any earlier asynchronous next.
+        A next requested after a loadAsync() still opening waits for it, then
+        follows the track it loaded (or, if it failed, the one before). */
+    LoadId setNextAsync (const juce::File& file, const TrackOptions& options);
+
+    /** Cancels a request still opening; the next dispatchEvents() reports it
+        cancelled. Does nothing for one already reported. A file still being
+        opened is opened to the end on its thread, then let go. */
+    void cancelLoad (LoadId id);
+
+    /** Whether a request is still waiting to be reported. */
+    bool isLoading (LoadId id) const;
+
+    /** For tests: waits until no request is still opening (its thread has
+        finished). Returns false on timeout. */
+    bool waitForLoads (int timeoutMs) const;
+
+    /** Called on the thread that opened a file, when it is ready to be
+        handed over (or failed): the host should call dispatchEvents() soon.
+        Set it before the first request. */
+    std::function<void()> onLoadReady;
 
     /** Starts or resumes playback. Returns false if no track is loaded. */
     bool play();
@@ -207,6 +254,9 @@ public:
     std::function<void (bool advanced)> onTrackEnded;
     std::function<void (State)> onStateChanged;
     std::function<void (double positionSeconds, double durationSeconds)> onPositionChanged;
+    /** An asynchronous request is done; `error` is empty unless it failed.
+        Reported after the hand-offs and ends, before the state and position. */
+    std::function<void (LoadId, LoadResult, const juce::String& error)> onLoadFinished;
 
     /** For offline rendering with a read-ahead thread: waits until the
         current track's next `numSamples` source samples are buffered (and
@@ -225,7 +275,29 @@ private:
     class Stretcher;
     using TrackPtr = std::unique_ptr<Track>;
 
-    TrackPtr openTrack (const juce::File& file, const TrackOptions& options, juce::String& error) const;
+    struct Opening;
+    struct Openers;
+
+    /** Opens a track: on the message thread for load() and setNext(), on an
+        opening thread for the asynchronous requests. Gives up after the
+        reader is open if `cancelled` is set. */
+    static TrackPtr openTrack (juce::AudioFormatManager& formats,
+                               juce::TimeSliceThread* readAheadThread,
+                               const juce::File& file,
+                               const TrackOptions& options,
+                               juce::String& error,
+                               const std::atomic<bool>* cancelled);
+
+    /** Makes `track` the current one, as load() does. */
+    void install (TrackPtr track);
+    /** Makes `track` the next one, as setNext() does; an error if none is loaded. */
+    juce::String installNext (TrackPtr track);
+    LoadId request (const juce::File& file, const TrackOptions& options, bool asNext);
+    /** Marks the asynchronous loads (current, next, or both) not yet
+        reported as cancelled. */
+    void cancelRequests (bool loads, bool nexts);
+    /** Hands over the requests that are ready, in order; returns what to report. */
+    std::vector<std::tuple<LoadId, LoadResult, juce::String>> takeFinishedLoads();
 
     // All below run with `lock` held.
     void renderChunk (float* const* output, int numSamples);
@@ -280,6 +352,19 @@ private:
     std::atomic<double> positionSeconds { 0.0 }, durationSeconds { 0.0 };
     std::atomic<float> volume { 1.0f };
     std::atomic<juce::int64> advanceCount { 0 };
+
+    // Asynchronous requests not yet reported, in the order they were made
+    // (message thread only), and what their threads share with the engine.
+    struct Request
+    {
+        LoadId id;
+        bool asNext;
+        std::shared_ptr<Opening> opening;
+        bool cancelled = false;
+    };
+    std::vector<Request> requests;
+    std::shared_ptr<Openers> openers;
+    LoadId lastLoadId = 0;
 
     // Message thread only: what dispatchEvents() last reported.
     State reportedState = State::empty;

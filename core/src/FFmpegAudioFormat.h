@@ -58,6 +58,10 @@ public:
         on success (with no chapters if it has none). */
     static juce::String readChapters (const juce::File& file, juce::Array<Chapter>& chapters);
 
+    /** Stops FFmpeg logging even its errors (it logs to stderr), for the
+        decoder fuzzer, whose inputs are mostly broken. */
+    static void silenceLog();
+
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FFmpegAudioFormat)
 };

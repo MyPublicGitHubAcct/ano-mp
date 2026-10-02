@@ -25,7 +25,10 @@ struct JuceRuntime
     starts JUCE's message loop integration there, and device-change and
     player notifications are delivered on that thread.
 */
-class AudioEngine final : private JuceRuntime, private juce::ChangeListener, private juce::Timer
+class AudioEngine final : private JuceRuntime,
+                          private juce::ChangeListener,
+                          private juce::Timer,
+                          private juce::AsyncUpdater
 {
 public:
     AudioEngine();
@@ -69,7 +72,8 @@ public:
     /** Whether the open device plays through headphones (OutputRoute). */
     OutputRoute::Headphones outputIsHeadphones() const;
 
-    /** The player's events are dispatched from a timer on the main thread. */
+    /** The player's events are dispatched from a timer on the main thread,
+        and at once when a file opened asynchronously is ready. */
     PlayerEngine& player() noexcept { return playerEngine; }
 
     /** Pauses the player and plays a sine tone at the given frequency on the
@@ -99,6 +103,7 @@ private:
 
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
+    void handleAsyncUpdate() override;
 
     FormatRegistry formats;
     juce::TimeSliceThread readAheadThread { "anomp read-ahead" };

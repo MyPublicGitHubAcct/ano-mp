@@ -113,13 +113,13 @@ pub fn queue_changed<R: Runtime>(app: &AppHandle<R>, state: &QueueState) {
 }
 
 /// An engine event. Main thread.
-pub fn player_event(event: Event) {
+pub fn player_event(event: &Event) {
     with_media(|now_playing, controls, now| match event {
-        Event::StateChanged(state) => now_playing.player_state(controls, state, now),
+        Event::StateChanged(state) => now_playing.player_state(controls, *state, now),
         Event::Position { position, duration } => {
-            now_playing.position(controls, position, duration, now)
+            now_playing.position(controls, *position, *duration, now)
         }
-        Event::DeviceChanged | Event::TrackEnded { .. } => {}
+        Event::DeviceChanged | Event::TrackEnded { .. } | Event::LoadFinished { .. } => {}
     });
 }
 
@@ -486,6 +486,9 @@ mod tests {
             has_next,
             has_previous,
             loaded,
+            loading: false,
+            playing: false,
+            downloading: false,
             resume_at: 0.0,
             radio: false,
             stop_after: None,

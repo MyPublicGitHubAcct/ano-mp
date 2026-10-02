@@ -18,8 +18,8 @@ add_library(anomp_core STATIC
 
 # Platform code, one implementation per OS (PLAN.md §5).
 if(APPLE)
-    target_sources(anomp_core PRIVATE src/DockMenu_apple.mm src/FolderAccess_apple.mm src/MediaControls_apple.mm
-        src/OutputRoute_apple.mm src/VolumeWatcher_apple.mm)
+    target_sources(anomp_core PRIVATE src/DockMenu_apple.mm src/FileStatus_apple.cpp src/FolderAccess_apple.mm
+        src/MediaControls_apple.mm src/OutputRoute_apple.mm src/VolumeWatcher_apple.mm)
     set_source_files_properties(src/DockMenu_apple.mm src/FolderAccess_apple.mm src/MediaControls_apple.mm
         src/OutputRoute_apple.mm src/VolumeWatcher_apple.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
     # Hosts that link the core by hand (app/src-tauri/build.rs) list these too.
@@ -30,8 +30,8 @@ if(APPLE)
         target_link_libraries(anomp_core PRIVATE "-framework AppKit")
     endif()
 else()
-    target_sources(anomp_core PRIVATE src/DockMenu_none.cpp src/FolderAccess_unsandboxed.cpp src/MediaControls_none.cpp
-        src/OutputRoute_none.cpp src/VolumeWatcher_none.cpp)
+    target_sources(anomp_core PRIVATE src/DockMenu_none.cpp src/FileStatus_none.cpp src/FolderAccess_unsandboxed.cpp
+        src/MediaControls_none.cpp src/OutputRoute_none.cpp src/VolumeWatcher_none.cpp)
 endif()
 
 target_include_directories(anomp_core

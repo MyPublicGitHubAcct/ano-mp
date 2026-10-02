@@ -1,7 +1,7 @@
 //! Safe wrappers over the anomp_core C API (core/include/anomp/anomp.h).
 //! All `unsafe` FFI stays in this module.
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_longlong, c_void, CStr, CString};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
@@ -20,6 +20,9 @@ struct RawEvent {
     advanced: c_int,
     position: f64,
     duration: f64,
+    request: c_longlong,
+    result: c_int,
+    error: *const c_char,
 }
 
 #[repr(C)]
@@ -275,6 +278,10 @@ const ANOMP_EVENT_DEVICE_CHANGED: c_int = 1;
 const ANOMP_EVENT_STATE_CHANGED: c_int = 2;
 const ANOMP_EVENT_POSITION: c_int = 3;
 const ANOMP_EVENT_TRACK_ENDED: c_int = 4;
+const ANOMP_EVENT_LOAD_FINISHED: c_int = 5;
+
+const ANOMP_LOAD_LOADED: c_int = 0;
+const ANOMP_LOAD_FAILED: c_int = 1;
 
 const ANOMP_STATE_EMPTY: c_int = 0;
 const ANOMP_STATE_STOPPED: c_int = 1;
@@ -323,6 +330,7 @@ extern "C" {
     fn anomp_folder_access_path(access: *const RawFolderAccess) -> *const c_char;
     fn anomp_folder_access_is_stale(access: *const RawFolderAccess) -> c_int;
     fn anomp_folder_access_stop(access: *mut RawFolderAccess);
+    fn anomp_file_is_dataless(path: *const c_char) -> c_int;
     fn anomp_set_log_callback(callback: Option<RawLogCallback>, user_data: *mut c_void);
     #[cfg(test)]
     fn anomp_log_write(level: c_int, message: *const c_char);
@@ -389,6 +397,7 @@ extern "C" {
     ) -> c_int;
     fn anomp_engine_set_track_gain(engine: *mut RawEngine, path: *const c_char, gain: f64)
         -> c_int;
+    #[allow(dead_code)] // Behind `Engine::load_track`, which nothing calls now.
     fn anomp_engine_load_track(
         engine: *mut RawEngine,
         path: *const c_char,
@@ -403,6 +412,21 @@ extern "C" {
         error: *mut c_char,
         error_size: usize,
     ) -> c_int;
+    fn anomp_engine_load_track_async(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        options: *const RawTrackOptions,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_longlong;
+    fn anomp_engine_set_next_track_async(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        options: *const RawTrackOptions,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_longlong;
+    fn anomp_engine_cancel_load(engine: *mut RawEngine, request: c_longlong);
     fn anomp_engine_set_track_gain_at(
         engine: *mut RawEngine,
         path: *const c_char,
@@ -493,6 +517,19 @@ pub fn version() -> String {
 }
 
 /// Whether the core can decode files with the given extension ("flac", ".mp3").
+/// Whether the file at `path` is a cloud placeholder (PLAN.md H12): its
+/// contents download when something reads it. Checking doesn't. `None` if
+/// it can't be checked (it isn't there). Its folder must be accessible.
+pub fn file_is_dataless(path: &Path) -> Option<bool> {
+    let path = path_to_cstring(path).ok()?;
+    // SAFETY: `path` is a valid C string for the call.
+    match unsafe { anomp_file_is_dataless(path.as_ptr()) } {
+        1 => Some(true),
+        0 => Some(false),
+        _ => None,
+    }
+}
+
 pub fn can_decode_extension(extension: &str) -> bool {
     let Ok(extension) = CString::new(extension) else {
         return false;
@@ -1086,10 +1123,24 @@ impl PlayerState {
     }
 }
 
+/// How an asynchronous load (`Engine::load_track_async`) ended.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadResult {
+    /// The track took its place.
+    Loaded,
+    /// It couldn't be opened, and nothing changed.
+    Failed(String),
+    /// Cancelled, or superseded by a later request.
+    Cancelled,
+}
+
+/// Identifies an asynchronous load; never 0.
+pub type LoadRequest = i64;
+
 /// Events the core reports through the engine's event callback. Player
 /// events arrive about every 50 ms, never from inside an engine call; the
 /// handler may call the engine.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     /// The device list or the open output device changed.
     DeviceChanged,
@@ -1104,6 +1155,12 @@ pub enum Event {
     /// otherwise playback stopped.
     TrackEnded {
         advanced: bool,
+    },
+    /// An asynchronous load is done, soon after the file was opened (each
+    /// request is reported once).
+    LoadFinished {
+        request: LoadRequest,
+        result: LoadResult,
     },
 }
 
@@ -1460,7 +1517,8 @@ impl Engine {
     }
 
     /// Opens part of `path` (see `TrackOptions`) as the current track, like
-    /// `load`.
+    /// `load`. Unused: the queue opens tracks with `load_track_async`.
+    #[allow(dead_code)]
     pub fn load_track(&mut self, path: &Path, options: &TrackOptions) -> Result<(), String> {
         let path = path_to_cstring(path)?;
         let raw = self.raw.as_ptr();
@@ -1484,6 +1542,46 @@ impl Engine {
         with_error(|error, size| unsafe {
             anomp_engine_set_next_track(raw, path_ptr, options_ptr, error, size)
         })
+    }
+
+    /// `load_track` on a thread of the core's own (PLAN.md H11): returns at
+    /// once, and `Event::LoadFinished` reports the request once the file is
+    /// open and handed over. Until then the current track plays on. The
+    /// file's folder must stay accessible until it is reported.
+    pub fn load_track_async(
+        &mut self,
+        path: &Path,
+        options: &TrackOptions,
+    ) -> Result<LoadRequest, String> {
+        let path = path_to_cstring(path)?;
+        let options = options.to_raw();
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; `path` and `options` are valid for the call.
+        with_request(|error, size| unsafe {
+            anomp_engine_load_track_async(raw, path.as_ptr(), &options, error, size)
+        })
+    }
+
+    /// `set_next_track` as `load_track_async` does `load_track`; clears the
+    /// next track at once.
+    pub fn set_next_track_async(
+        &mut self,
+        path: &Path,
+        options: &TrackOptions,
+    ) -> Result<LoadRequest, String> {
+        let path = path_to_cstring(path)?;
+        let options = options.to_raw();
+        let raw = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; `path` and `options` are valid for the call.
+        with_request(|error, size| unsafe {
+            anomp_engine_set_next_track_async(raw, path.as_ptr(), &options, error, size)
+        })
+    }
+
+    /// Cancels a request not yet reported; it is reported as cancelled.
+    pub fn cancel_load(&mut self, request: LoadRequest) {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_cancel_load(self.raw.as_ptr(), request) }
     }
 
     /// `set_track_gain` for the track opened from `path` starting at
@@ -2132,6 +2230,21 @@ fn with_error(call: impl FnOnce(*mut c_char, usize) -> c_int) -> Result<(), Stri
         .into_owned())
 }
 
+/// Like `with_error`, for a call returning a request id (0 on failure).
+fn with_request(
+    call: impl FnOnce(*mut c_char, usize) -> c_longlong,
+) -> Result<LoadRequest, String> {
+    let mut error = [0 as c_char; 1024];
+    let request = call(error.as_mut_ptr(), error.len());
+    if request != 0 {
+        return Ok(request);
+    }
+    // SAFETY: the core always NUL-terminates a non-empty buffer.
+    Err(unsafe { CStr::from_ptr(error.as_ptr()) }
+        .to_string_lossy()
+        .into_owned())
+}
+
 /// The C API takes UTF-8 paths.
 fn path_to_cstring(path: &Path) -> Result<CString, String> {
     let text = path
@@ -2153,6 +2266,22 @@ extern "C" fn on_event(event: *const RawEvent, user_data: *mut c_void) {
         },
         ANOMP_EVENT_TRACK_ENDED => Event::TrackEnded {
             advanced: event.advanced != 0,
+        },
+        ANOMP_EVENT_LOAD_FINISHED => Event::LoadFinished {
+            request: event.request,
+            result: match event.result {
+                ANOMP_LOAD_LOADED => LoadResult::Loaded,
+                ANOMP_LOAD_FAILED => LoadResult::Failed(if event.error.is_null() {
+                    String::new()
+                } else {
+                    // SAFETY: a non-null `error` is a NUL-terminated string,
+                    // valid for the duration of the call.
+                    unsafe { CStr::from_ptr(event.error) }
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+                _ => LoadResult::Cancelled,
+            },
         },
         _ => return,
     };

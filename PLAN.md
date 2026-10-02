@@ -52,7 +52,8 @@ them in the app. On 2026-10-02 the order of the remaining work was set
 3. the P1 items that protect user data, including H22 (handling library
    folders that can't be found at launch);
 4. the exit checks in a sandboxed bundle;
-5. the larger core items;
+5. the larger core items (done 2026-10-02: fuzzing, opening files off
+   the main thread, cloud placeholders);
 6. alongside all of these, the owner's §8.1 decisions.
 
 ## 1. Architecture
@@ -108,13 +109,15 @@ Why this split:
 | `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, events, advance count), `anomp_media_controls_*`, `anomp_set_log_callback`, `anomp_volume_watcher_*` | `core/include/anomp/anomp.h` |
+| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, asynchronous loads, events, advance count), `anomp_file_is_dataless`, `anomp_media_controls_*`, `anomp_set_log_callback`, `anomp_volume_watcher_*` | `core/include/anomp/anomp.h` |
 | TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 104 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| 114 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| Fuzzing (H5): libFuzzer targets for the decoder and the tag reader, the `fuzz` preset (Homebrew `llvm@22`, ASan, UBSan, an instrumented static FFmpeg), 60 s each in `check-all.py`, 30 min weekly in CI | `core/fuzz/`, `scripts/run-fuzzers.py`, `.github/workflows/fuzz.yml` |
+| Files opened off the main thread (H11): asynchronous loads in the engine and the C API, the queue's loading state and timeout; cloud placeholders (H12) recorded unread by scans, left by the analysis, downloaded when played | `core/src/PlayerEngine.*`, `app/src-tauri/src/queue/opening.rs`, `core/src/FileStatus*`, `app/src-tauri/src/library/scanner.rs` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -135,14 +138,14 @@ Why this split:
 | Missing folders (H22): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned, unreadable folders' tracks dimmed in lists and left out of radio, smart playlists' play and Home's suggestions | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte`, `app/src/lib/folders.ts` |
 | Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
 | 25 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links, unreadable folders) | `app/tests/` |
-| 387 passing `cargo test` tests (database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 398 passing `cargo test` tests (files opened off the main thread: loading, timeouts and skips; cloud placeholders in scans and the analysis; a drive unmounted mid-scan; database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
 | Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
 | Developer page (debug builds only, with its commands): device name, test tone, loading typed paths straight into the engine, event log | `app/src/lib/components/dev/DevPage.svelte`, `app/src-tauri/src/dev.rs` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 30 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 33 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
 
 Build and test:
 
@@ -1113,7 +1116,8 @@ Rules from the start, so the later ports stay cheap:
   - Known limits: the resampler's ~100-sample latency and its last few
     input samples are dropped when the last track ends (about 2 ms). Files
     with more than two channels play their first two. Opens are
-    synchronous on the main thread (7 ms for a 5-minute VBR MP3).
+    synchronous on the main thread (7 ms for a 5-minute VBR MP3). H11
+    (Phase 7) moved the queue's opens to threads of their own.
 - [x] **Tests:** decode every format in §4.3 from small fixture files (checking
   sample rate, channels, length and a checksum of the decoded samples), plus
   state transitions, seek accuracy, and the gapless handoff, run
@@ -2801,7 +2805,21 @@ in order. Step 6 runs alongside all of them.
        probe).
      - The database repair offer: restore and rebuild, each restarting
        the app (a damaged copy of a scratch library).
-5. **The larger core P1 items (about 1 week).**
+5. **The larger core P1 items (about 1 week). Done 2026-10-02; the
+   owner's checks are § 5 of `docs/step4-checklist.md`.**
+   - Every suite passed on a clean tree after each part: ctest 114 (also
+     under `asan` and `tsan`), `cargo test` 398 (9 ignored), `npm test`
+     25, `svelte-check` 0 errors, script tests 33, `check-all.py` all 22
+     steps (the new one: "core fuzzing", each target for 60 s).
+   - The owner's answers that shaped it: Steps 3 and 4 pushed (the Actions
+     runs' results not yet seen here); none of Step 4's owner checks known
+     to have failed; Homebrew LLVM for the fuzzers (`llvm@22`), with
+     FFmpeg instrumented too; the CI cache and the weekly fuzzing job; the
+     wording "Opening…", "The file took more than {seconds} s to open",
+     "Downloading from iCloud…" and "{count} in iCloud, not downloaded".
+   - No bundle check was run in Step 5: H11 holding a folder open while
+     another thread opens the file, and H12's placeholders, are in the
+     checklist's § 5 (one probe, the rest the owner's).
    - H5 (fuzzing).
    - H11 (opening files off the main thread). This is the riskiest
      change to the engine, so fuzzing and the sanitizers come first.
@@ -2948,6 +2966,39 @@ matches it.
   - CI runs each target for 60 s on every push. A weekly job runs them
     for longer and keeps the corpus as an artifact.
   - Each crash found becomes a regression test with a committed fixture.
+  - **Done 2026-10-02 (the P1 targets and the CI run; the weekly long run
+    is set up, its results to come).**
+    - Toolchain: Apple's clang has no libFuzzer runtime
+      (`libclang_rt.fuzzer_osx.a`), so the `fuzz` preset compiles
+      everything with Homebrew's `llvm@22` (`brew install llvm@22`, also
+      in CI). LLVM 21's ASan hangs at start-up on macOS 26 (Darwin 25):
+      `get_dyld_hdr` mallocs while ASan initialises. LLVM 22 and 23 work.
+    - `core/fuzz/`: `DecoderFuzzer` opens the input from a
+      `juce::MemoryInputStream`, reads its start and four positions the
+      input picks (from its last bytes, so a seed loses little);
+      `TagReaderFuzzer` runs `readTags` and `readFileInfo` over a
+      `TagLib::ByteVectorStream`, through new overloads taking a
+      `TagLib::IOStream` (`TagReader.h` forward-declares it, so no TagLib
+      header leaks). The file overloads now go through them, and a test
+      checks a stream gives the file's tags.
+      `FFmpegAudioFormat::silenceLog` quiets FFmpeg's stderr for the
+      decoder target, which includes no FFmpeg header.
+    - FFmpeg is instrumented too: `build-ffmpeg.sh --fuzz` builds the same
+      pin and formats as static arm64 libraries with libFuzzer coverage,
+      ASan and UBSan into `third_party/ffmpeg/macos-arm64-fuzz/`, which
+      `cmake/FFmpeg.cmake` imports when `ANOMP_BUILD_FUZZERS` is on.
+      Without it libFuzzer would get no coverage from inside FFmpeg.
+    - `scripts/run-fuzzers.py` builds both and runs each target (60 s by
+      default) over `build/fuzz/corpus/<target>`, seeded from
+      `core/tests/fixtures/`; failing inputs land in `build/fuzz/crashes/`.
+      `check-all.py` runs it as "core fuzzing" (not `--quick`), so CI does.
+      CI caches `build/fuzz`. `.github/workflows/fuzz.yml` runs each target
+      for 30 min on Mondays (and by hand), keeping the corpus in the cache
+      and uploading it with any failing inputs.
+    - Found: no crashes, leaks, hangs or UBSan reports, in 10 min per
+      target locally (32,681 decoder and 276,768 tag runs, 2,444 and 4,749
+      new corpus units) and in every 60 s run since. One slow tag input
+      (a passing stall; 0.12 s when run alone) was not a failure.
 - **H6 Sanitizer presets.** Add CMake presets `asan` (Address and
   Undefined) and `tsan` that build and run the Catch2 suite. `tsan`
   covers `SignalTap`, `AnalysisThread`, and the audio thread's hand-off
@@ -3182,6 +3233,51 @@ matches it.
   - The C API gets an asynchronous load with a completion event. The UI
     shows the track as loading, and a timeout fails it with a reason
     that the queue skips as it skips a missing file.
+  - **Done 2026-10-02.**
+    - Core: `PlayerEngine::loadAsync`/`setNextAsync` open the reader and
+      build the track, its read-ahead prefilled, on a thread of their own
+      (one per request, so one stuck on a disk that went away doesn't
+      hold up the next); `dispatchEvents` hands ready tracks over on the
+      message thread, in request order, and reports each request once
+      (`onLoadFinished`: loaded, failed or cancelled). A load supersedes
+      earlier requests; a next waits for an earlier load; `setNextAsync`
+      clears the next track at once, so the current one can't hand off to
+      the track being replaced; the synchronous commands cancel requests
+      too. `AudioEngine` dispatches as soon as a track is ready
+      (`AsyncUpdater`), not at the next 50 ms tick. The engine stays
+      main-thread only. As it goes, it waits 2 s for opening threads, then
+      lets them finish alone; they own what they share and give up once
+      cancelled.
+    - C API: `anomp_engine_load_track_async`,
+      `anomp_engine_set_next_track_async`, `anomp_engine_cancel_load`, and
+      `ANOMP_EVENT_LOAD_FINISHED` (`request`, `result`, `error`, the event's
+      new fields). Bound in `anomp.rs` (`Event::LoadFinished`).
+    - Rust: `queue/opening.rs` reads the track's row and resolves its
+      folder's bookmark on a blocking thread, asks the engine on the main
+      thread, holds the folder (`open_folder`) until the engine reports,
+      and passes the outcome to the queue. The queue (`model.rs`) gets
+      `Opening::Pending` from `Player::load`/`set_next`: the item is
+      current and shown as loading (`QueueState::loading`), play, pause and
+      seek apply when it's ready, the engine plays on what it had, and
+      `check_loads` fails one still opening after `LOAD_TIMEOUT` (20 s)
+      with `openTimedOut`, skipped as a missing file is. A
+      `folderUnavailable` failure is still "not now". The UI says
+      "Opening…" once an open has taken 300 ms.
+    - Fixed on the way: the skipped-track toast showed a coded error as
+      JSON; it goes through `errorText` now.
+    - Tests: Catch2 for the async load with and without read-ahead, a
+      failure, cancellation, supersession, the gapless hand-off to a next
+      track opened on another thread, callbacks requesting loads, and the
+      engine going with files opening (all under ASan and TSan too); the C
+      API's requests and events; queue tests for loading, commands while
+      loading, the timeout, skips, a folder out of reach, and removing or
+      clearing a track as it opens.
+    - Open time, 5-minute VBR MP3, 20 opens: `load()` took 21.5–22.2 ms on
+      the main thread (Debug and Release alike; most of it the read-ahead
+      prefill, which polls in 5 ms sleeps, beyond the reader's 7 ms open).
+      `loadAsync()` takes 0.06 ms there (Release; 0.12 ms Debug), and
+      21.6 ms from asking to loaded: no slower end to end. The benchmark
+      is the hidden test "PlayerEngine open time" (`ANOMP_BENCH_FILE`).
 - **H12 Cloud, network and removable folders.**
   - With "Optimize Mac Storage", iCloud Drive keeps dataless placeholder
     files. Reading their tags downloads them, so one scan could download
@@ -3195,6 +3291,31 @@ matches it.
   - Test SMB folders, and a drive unmounted in the middle of a scan. A
     missing folder keeps its tracks, and so do an empty mount point and
     files that go during a scan (H22).
+  - **Done 2026-10-02 (SMB and real placeholders are the owner's checks,
+    `docs/step4-checklist.md` § 5).**
+    - Core: `FileStatus::isDataless` (`stat()`'s `SF_DATALESS`, which
+      doesn't download), next to `FolderAccess`, one file per platform;
+      `anomp_file_is_dataless` in the C API.
+    - Migration 010: `tracks.dataless`, a file that was a placeholder when
+      last seen. The scanner checks new and changed files only: a
+      placeholder is recorded without reading it (a track with no tags) or,
+      if known, keeps its rows; either is marked and counted in the scan
+      report (`dataless`). Every scan checks marked ones again and reads
+      them once downloaded, which changes neither size nor time; reading a
+      file clears the mark. `ScanOptions::placeholders` lets tests fake the
+      check.
+    - The analysis worker and embedded art check before reading: the
+      worker marks a placeholder and leaves it until a scan finds it
+      downloaded; art tries the album's other files and sources.
+    - Playing one downloads it through H11's open: `opening` sees the file
+      is a placeholder, and the queue shows "Downloading from iCloud…" and
+      allows `DOWNLOAD_TIMEOUT` (5 min). Settings › Library shows "N in
+      iCloud, not downloaded" per folder.
+    - Tests: the scanner with a fake check (recorded unread, checked again,
+      read once downloaded; a changed placeholder keeping its tags); a
+      drive unmounted between the walk and the reads keeping every track
+      (and adding nothing), then catching up; the analysis leaving a
+      marked track; the queue's longer timeout; the C API's check.
 - **H13 Frontend lint, format and tests.** The frontend has
   `svelte-check` and 5 tests of pure modules. There is no linter or
   formatter.

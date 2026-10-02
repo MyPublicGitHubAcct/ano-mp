@@ -1,8 +1,12 @@
 # Imported targets for the FFmpeg built by scripts/build-ffmpeg.sh:
 # FFmpeg::avformat, FFmpeg::avcodec, FFmpeg::swresample, FFmpeg::avutil.
-# Shared libraries with @rpath install names; see PLAN.md §4.3.
+# Shared libraries with @rpath install names; see PLAN.md §4.3. With
+# ANOMP_BUILD_FUZZERS, the static libraries of build-ffmpeg.sh --fuzz
+# instead, instrumented for libFuzzer, ASan and UBSan (PLAN.md H5).
 
-if(APPLE AND NOT IOS)
+if(APPLE AND NOT IOS AND ANOMP_BUILD_FUZZERS)
+    set(_anomp_ffmpeg_platform macos-arm64-fuzz)
+elseif(APPLE AND NOT IOS)
     set(_anomp_ffmpeg_platform macos-universal)
 else()
     message(FATAL_ERROR "No FFmpeg build for this platform yet (PLAN.md Phases 8-10)")
@@ -14,13 +18,22 @@ set(ANOMP_FFMPEG_DIR "${PROJECT_SOURCE_DIR}/third_party/ffmpeg/${_anomp_ffmpeg_p
 if(NOT EXISTS "${ANOMP_FFMPEG_DIR}/BUILD_INFO")
     message(FATAL_ERROR
         "FFmpeg not found in ${ANOMP_FFMPEG_DIR}.\n"
-        "Run scripts/build-ffmpeg.sh from the repository root first.")
+        "Run scripts/build-ffmpeg.sh from the repository root first "
+        "(with --fuzz for the fuzz preset).")
 endif()
 
 # Rebuilding FFmpeg rewrites BUILD_INFO, which re-runs this configure step.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ANOMP_FFMPEG_DIR}/BUILD_INFO")
 
 function(_anomp_ffmpeg_import name)
+    if(ANOMP_BUILD_FUZZERS)
+        add_library(FFmpeg::${name} STATIC IMPORTED GLOBAL)
+        set_target_properties(FFmpeg::${name} PROPERTIES
+            IMPORTED_LOCATION "${ANOMP_FFMPEG_DIR}/lib/lib${name}.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${ANOMP_FFMPEG_DIR}/include")
+        return()
+    endif()
+
     # The major-versioned symlink (libavcodec.63.dylib) is the install name.
     file(GLOB _candidates "${ANOMP_FFMPEG_DIR}/lib/lib${name}.[0-9]*.dylib")
     set(_soname "")

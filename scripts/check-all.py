@@ -5,7 +5,8 @@ First the quick checks: each formatter in --check mode, the repo checks
 (check-c-api.py, check-sources.py, check-migrations.py), the scripts'
 tests and gitleaks over the history. Then, unless --quick, the builds and
 test suites: the core (CMake debug preset and ctest, then ctest again
-under ASan and UBSan, and under TSan), the frontend (svelte-check,
+under ASan and UBSan, and under TSan, then each fuzz target for a
+minute), the frontend (svelte-check,
 ESLint, npm test and the build) and the Rust crate (clippy, cargo test,
 and cargo deny over its dependencies). CI runs this and nothing else, so
 a local run matches it; --quick suits a pre-commit hook.
@@ -15,7 +16,7 @@ failures. Exits non-zero if any step failed.
 
 Needs `npm ci` (or `npm install`) run in app/, also for --quick
 (Prettier), and gitleaks. The full run also needs FFmpeg built
-(scripts/build-ffmpeg.sh) and cargo-deny (`cargo install cargo-deny
+(scripts/build-ffmpeg.sh), Homebrew's llvm@22 for the fuzzers, and cargo-deny (`cargo install cargo-deny
 --locked`, at the version in .github/workflows/ci.yml).
 
 Usage: scripts/check-all.py [--quick] [--list]
@@ -63,6 +64,8 @@ STEPS = [
     # build and test each preset (CMakePresets.json's workflow presets).
     Step("core tests (ASan, UBSan)", ["cmake", "--workflow", "--preset", "asan"], quick=False),
     Step("core tests (TSan)", ["cmake", "--workflow", "--preset", "tsan"], quick=False),
+    # Each libFuzzer target for 60 s (PLAN.md H5), built with llvm@22.
+    Step("core fuzzing", script("run-fuzzers.py"), quick=False),
     Step("frontend check", ["npm", "run", "check"], cwd=APP, quick=False),
     Step("frontend lint", ["npm", "run", "lint"], cwd=APP, quick=False),
     Step("frontend tests", ["npm", "test"], cwd=APP, quick=False),

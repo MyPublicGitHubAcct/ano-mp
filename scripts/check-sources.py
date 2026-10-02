@@ -3,9 +3,9 @@
 
 The core's CMakeLists.txt files list their sources by hand (no globbing), so
 a new file that isn't listed is silently left out of the build. Every .cpp
-and .mm under core/src and core/tests must be listed in that directory's
-owning CMakeLists.txt, and every file listed must exist. Lists every problem
-it finds and exits non-zero if there are any. Changes nothing.
+and .mm under core/src, core/tests and core/fuzz must be listed in that
+directory's owning CMakeLists.txt, and every file listed must exist. Lists
+every problem it finds and exits non-zero if there are any. Changes nothing.
 
 Usage: scripts/check-sources.py
 """
@@ -22,6 +22,7 @@ SOURCE_EXTENSIONS = {".cpp", ".mm"}
 SOURCE_LISTS = [
     ("core/CMakeLists.txt", "core/src"),
     ("core/tests/CMakeLists.txt", "core/tests"),
+    ("core/fuzz/CMakeLists.txt", "core/fuzz"),
 ]
 
 

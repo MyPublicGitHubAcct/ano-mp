@@ -26,6 +26,16 @@
 //! A file that fails to read because it has gone (a drive unmounted during
 //! the scan) keeps its tracks too.
 //!
+//! Cloud placeholders (PLAN.md H12): with "Optimize Mac Storage", iCloud
+//! Drive keeps dataless files, downloaded only when something reads them,
+//! so reading the tags of a new or changed one would download it, and a
+//! scan could download a whole library. Such a file is recorded without
+//! reading it (a track with no tags, its file name for a title), and an
+//! existing one keeps its rows; either is marked `dataless`, counted in the
+//! report's `dataless`, and checked again by every scan until it has been
+//! downloaded (which changes neither its size nor its time), when its tags
+//! are read as a changed file's are.
+//!
 //! Artists (PLAN.md F11): an artist tag that credits several artists ("A; B",
 //! or a multi-valued ARTISTS tag) lists each in `track_artists`, the first
 //! as the track's artist, keeping the tag's text as its credit. A file
@@ -84,6 +94,42 @@ pub struct ScanOptions {
     /// Remove missing tracks even when `holds` would keep them: the user
     /// said to.
     pub remove_missing: bool,
+    /// How cloud placeholders are told (H12).
+    pub placeholders: Placeholders,
+}
+
+/// How a scan tells cloud placeholders (PLAN.md H12).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum Placeholders {
+    /// Ask the file system (`anomp::file_is_dataless`), which doesn't
+    /// download anything.
+    #[default]
+    System,
+    /// Tests: the paths in this thread's `testing::DATALESS`.
+    #[cfg(test)]
+    Listed,
+}
+
+impl Placeholders {
+    fn is_dataless(self, path: &Path) -> bool {
+        match self {
+            Placeholders::System => anomp::file_is_dataless(path) == Some(true),
+            #[cfg(test)]
+            Placeholders::Listed => testing::DATALESS.with_borrow(|paths| paths.contains(path)),
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod testing {
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    thread_local! {
+        /// The files `Placeholders::Listed` takes for cloud placeholders.
+        pub static DATALESS: RefCell<HashSet<PathBuf>> = RefCell::new(HashSet::new());
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -103,6 +149,9 @@ pub struct ScanReport {
     /// Files and folders that couldn't be read. Such files are left out of
     /// the library; tracks under such folders are kept.
     pub failed: Vec<ScanFailure>,
+    /// Cloud placeholders found (H12): files left unread, so as not to
+    /// download them. Their tracks count as added or unchanged too.
+    pub dataless: usize,
     /// Set when the folder couldn't be scanned, or the scan kept tracks it
     /// didn't find (PLAN.md H22): why.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -132,6 +181,8 @@ struct Known {
     id: i64,
     size: i64,
     mtime_ns: i64,
+    /// A cloud placeholder when last seen, checked again by every scan.
+    dataless: bool,
 }
 
 /// A new or changed file whose tags need reading.
@@ -144,6 +195,8 @@ struct Pending {
     known: Vec<Known>,
     /// The `.cue` next to it that splits it, if any.
     cue: Option<PathBuf>,
+    /// A cloud placeholder: recorded, not read.
+    dataless: bool,
 }
 
 /// What reading a file gave: its tags, and the parts it plays as.
@@ -223,6 +276,7 @@ pub fn scan_folders(
 
     let mut pool = MissingPool::load(conn, missing)?;
     for (_, scan) in &mut scans {
+        record_placeholders(conn, scan, &mut pool)?;
         read_and_write(conn, scan, options, &mut pool, &mut progress)?;
     }
 
@@ -282,6 +336,8 @@ struct FolderScan {
     _open: OpenFolder,
     report: ScanReport,
     pending: Vec<Pending>,
+    /// New and changed files that are cloud placeholders, not to be read.
+    placeholders: Vec<Pending>,
     /// Tracks the folder had before the scan.
     known: usize,
     /// Audio files the walk found.
@@ -328,6 +384,7 @@ fn walk_folder(
         .into_iter()
         .partition(|(relative, _)| under_unreadable(relative));
     report.unchanged += kept.iter().map(|(_, parts)| parts.len()).sum::<usize>();
+    let (placeholders, pending) = pending.into_iter().partition(|file| file.dataless);
 
     Ok((
         FolderScan {
@@ -336,11 +393,70 @@ fn walk_folder(
             _open: folder,
             report,
             pending,
+            placeholders,
             known: known_count,
             found,
         },
         missing,
     ))
+}
+
+/// Records the folder's new and changed files that are cloud placeholders
+/// without reading them (see the module's notes): a new one as a track
+/// without tags (or, if it matches a missing file by size and time, taking
+/// over its rows), a changed one keeping its rows; both marked `dataless`.
+fn record_placeholders(
+    conn: &mut Connection,
+    scan: &mut FolderScan,
+    pool: &mut MissingPool,
+) -> Result<(), Error> {
+    if scan.placeholders.is_empty() {
+        return Ok(());
+    }
+    let folder_id = scan.folder_id;
+    let unread = ReadFile {
+        tags: Tags::default(),
+        parts: vec![Part::whole()],
+    };
+    let tx = conn.transaction()?;
+    let now = unix_now();
+    for file in &scan.placeholders {
+        scan.report.dataless += 1;
+        let parts = if file.known.is_empty() {
+            pool.take_match(file, &unread.tags)
+        } else {
+            Some(file.known.clone())
+        };
+        match parts {
+            Some(parts) => {
+                for part in &parts {
+                    tx.prepare_cached(
+                        "UPDATE tracks SET folder_id = ?1, relative_path = ?2, dataless = 1
+                         WHERE id = ?3",
+                    )?
+                    .execute(params![folder_id, file.relative, part.id])?;
+                }
+                if file.known.is_empty() {
+                    scan.report.moved += parts.len();
+                } else {
+                    scan.report.unchanged += parts.len();
+                }
+            }
+            None => {
+                write_file(&tx, folder_id, file, &[], &unread, now, &mut scan.report)?;
+                tx.prepare_cached(
+                    "UPDATE tracks SET dataless = 1 WHERE folder_id = ?1 AND relative_path = ?2",
+                )?
+                .execute(params![folder_id, file.relative])?;
+            }
+        }
+    }
+    tx.commit()?;
+    log::info!(
+        "folder {folder_id}: {} cloud placeholders left unread",
+        scan.placeholders.len()
+    );
+    Ok(())
 }
 
 /// Reads the folder's new and changed files a batch at a time and writes
@@ -563,7 +679,7 @@ fn known_tracks(
     folder_id: i64,
 ) -> rusqlite::Result<HashMap<String, Vec<Known>>> {
     let mut statement = conn.prepare(
-        "SELECT relative_path, id, file_size, file_mtime_ns FROM tracks
+        "SELECT relative_path, id, file_size, file_mtime_ns, dataless FROM tracks
          WHERE folder_id = ?1 ORDER BY relative_path, range_start",
     )?;
     let rows = statement.query_map([folder_id], |row| {
@@ -573,6 +689,7 @@ fn known_tracks(
                 id: row.get(1)?,
                 size: row.get(2)?,
                 mtime_ns: row.get(3)?,
+                dataless: row.get(4)?,
             },
         ))
     })?;
@@ -687,13 +804,16 @@ fn walk(
         };
         let previous = known.remove(&file.relative).unwrap_or_default();
         if !previous.is_empty()
-            && previous
-                .iter()
-                .all(|track| track.size == file.size && track.mtime_ns == mtime_ns)
+            && previous.iter().all(|track| {
+                track.size == file.size && track.mtime_ns == mtime_ns && !track.dataless
+            })
         {
             report.unchanged += previous.len();
             continue;
         }
+        // Only new and changed files are checked: one evicted since its tags
+        // were read changed neither its size nor its time, and needn't be.
+        let dataless = options.placeholders.is_dataless(&file.path);
         pending.push(Pending {
             relative: file.relative,
             path: file.path,
@@ -701,6 +821,7 @@ fn walk(
             mtime_ns,
             known: previous,
             cue: cue.map(|(path, _)| path),
+            dataless,
         });
     }
     (pending, unreadable)
@@ -1047,6 +1168,8 @@ fn write_track(
                  ?34, ?35, ?36, ?37)
          ON CONFLICT (folder_id, relative_path, range_start) DO UPDATE SET
              range_end = excluded.range_end,
+             -- Read now, so downloaded (H12).
+             dataless = 0,
              file_size = excluded.file_size,
              file_mtime_ns = excluded.file_mtime_ns,
              title = excluded.title,
@@ -1531,6 +1654,7 @@ mod tests {
         parts: true,
         background: false,
         remove_missing: false,
+        placeholders: Placeholders::Listed,
     };
 
     fn sample_library() -> Library {
@@ -1555,6 +1679,127 @@ mod tests {
             .unwrap()
             .set_modified(later)
             .unwrap();
+    }
+
+    fn dataless_flags(library: &Library) -> Vec<(String, bool)> {
+        let mut statement = library
+            .conn
+            .prepare("SELECT relative_path, dataless FROM tracks ORDER BY relative_path")
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn set_dataless(path: PathBuf, dataless: bool) {
+        testing::DATALESS.with_borrow_mut(|paths| {
+            if dataless {
+                paths.insert(path);
+            } else {
+                paths.remove(&path);
+            }
+        });
+    }
+
+    #[test]
+    fn a_cloud_placeholder_is_recorded_without_reading_it_until_downloaded() {
+        let mut library = sample_library();
+        let placeholder = format!("{ALBUM_DIR}/03 Café.flac");
+        set_dataless(library.path(&placeholder), true);
+
+        let report = library.scan();
+        assert_eq!(report.dataless, 1);
+        assert_eq!(report.added, 3, "recorded as a track all the same");
+        let track = library
+            .tracks()
+            .into_iter()
+            .find(|track| track.path.ends_with("03 Café.flac"))
+            .unwrap();
+        assert_eq!(track.title, None, "its tags weren't read");
+        assert!(dataless_flags(&library).contains(&(placeholder.clone(), true)));
+
+        // Still a placeholder: checked again, still not read.
+        let report = library.scan();
+        assert_eq!(
+            (report.dataless, report.unchanged, report.updated),
+            (1, 3, 0)
+        );
+
+        // Downloaded (its size and time unchanged): read as a changed file.
+        set_dataless(library.path(&placeholder), false);
+        let report = library.scan();
+        assert_eq!(
+            (report.dataless, report.updated, report.unchanged),
+            (0, 1, 2)
+        );
+        let track = library
+            .tracks()
+            .into_iter()
+            .find(|track| track.path.ends_with("03 Café.flac"))
+            .unwrap();
+        assert!(track.title.is_some(), "its tags are read now");
+        assert!(dataless_flags(&library)
+            .iter()
+            .all(|(_, dataless)| !dataless));
+        assert_eq!(library.scan().unchanged, 3);
+    }
+
+    #[test]
+    fn a_changed_file_that_is_a_placeholder_keeps_its_tags() {
+        let mut library = sample_library();
+        library.scan();
+        let before = library.tracks();
+
+        let path = library.path("Loose/untitled.wav");
+        touch(&path);
+        set_dataless(path.clone(), true);
+        let report = library.scan();
+        assert_eq!(
+            (report.dataless, report.unchanged, report.updated),
+            (1, 3, 0)
+        );
+        assert_eq!(library.tracks(), before, "kept as it was");
+        assert!(dataless_flags(&library).contains(&("Loose/untitled.wav".to_string(), true)));
+
+        set_dataless(path, false);
+        let report = library.scan();
+        assert_eq!((report.dataless, report.updated), (0, 1));
+    }
+
+    #[test]
+    fn a_drive_unmounted_during_a_scan_keeps_its_tracks() {
+        // The walk finds every file; then the drive goes before they're read.
+        let mut library = sample_library();
+        library.scan();
+        let before = library.tracks();
+        for relative in library.relative_paths() {
+            touch(&library.path(&relative));
+        }
+        library.copy("flac-44k.flac", "Loose/new.flac");
+
+        let root = library.root.clone();
+        let away = root.with_file_name("Music (unmounted)");
+        let mut unmounted = false;
+        let report = scan_folder(&mut library.conn, library.folder_id, PARTS, |_| {
+            if !unmounted {
+                fs::rename(&root, &away).unwrap();
+                unmounted = true;
+            }
+        })
+        .unwrap();
+        assert!(unmounted);
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.added, 0, "the new file couldn't be read either");
+        assert_eq!(report.unchanged, 3);
+        assert_eq!(report.failed.len(), 4);
+        assert_eq!(library.tracks(), before, "every track kept as it was");
+
+        // Mounted again: the next scan catches up.
+        fs::rename(&away, &root).unwrap();
+        let report = library.scan();
+        assert_eq!((report.added, report.updated, report.removed), (1, 3, 0));
     }
 
     #[test]
@@ -2178,6 +2423,7 @@ mod tests {
             mtime_ns: 1,
             known: Vec::new(),
             cue: None,
+            dataless: false,
         };
         let tx = library.conn.transaction().unwrap();
         let id = write_track(&tx, library.folder_id, &file, tags, &Part::whole(), 0).unwrap();

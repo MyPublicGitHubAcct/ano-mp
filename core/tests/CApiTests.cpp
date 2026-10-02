@@ -5,6 +5,11 @@
 
 #include <juce_core/juce_core.h>
 
+#if JUCE_MAC
+#include <CoreFoundation/CoreFoundation.h>
+#endif
+
+#include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -13,6 +18,18 @@
 namespace
 {
 std::string fixturePath (const char* name) { return std::string (ANOMP_TEST_FIXTURES_DIR) + "/" + name; }
+
+/** Runs the main run loop, where the engine delivers its events, until
+    `done` returns true; false after a timeout. */
+bool runEventsUntil (const std::function<bool()>& done)
+{
+#if JUCE_MAC
+    const auto deadline = juce::Time::getMillisecondCounterHiRes() + 10000.0;
+    while (! done() && juce::Time::getMillisecondCounterHiRes() < deadline)
+        CFRunLoopRunInMode (kCFRunLoopDefaultMode, 0.01, true);
+#endif
+    return done();
+}
 } // namespace
 
 TEST_CASE ("C API reports a version", "[c-api]")
@@ -368,4 +385,83 @@ TEST_CASE ("C API engine shuts JUCE down after its timer", "[c-api][engine][log]
     anomp_set_log_callback (nullptr, nullptr);
     for (const auto& message : logged)
         CHECK_FALSE (std::string_view (message).starts_with ("JUCE Assertion failure"));
+}
+
+TEST_CASE ("C API loads asynchronously, reporting each request once", "[c-api][engine][async]")
+{
+#if ! JUCE_MAC
+    SKIP ("The test runs the macOS main run loop");
+#endif
+    char error[256] = "unchanged";
+    CHECK (anomp_engine_load_track_async (nullptr, "/a.flac", nullptr, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "Null engine");
+    CHECK (anomp_engine_set_next_track_async (nullptr, "/a.flac", nullptr, error, sizeof (error)) == 0);
+    anomp_engine_cancel_load (nullptr, 1);
+
+    auto* engine = anomp_engine_create();
+    REQUIRE (engine != nullptr);
+
+    struct Finished
+    {
+        long long request;
+        int result;
+        std::string error;
+    };
+    std::vector<Finished> finished;
+    anomp_engine_set_event_callback (
+        engine,
+        [] (const anomp_event* event, void* userData)
+        {
+            REQUIRE (event->error != nullptr); // Never null, whatever the event.
+            if (event->type == ANOMP_EVENT_LOAD_FINISHED)
+                static_cast<std::vector<Finished>*> (userData)->push_back (
+                    { event->request, event->result, event->error });
+        },
+        &finished);
+
+    CHECK (anomp_engine_load_track_async (engine, nullptr, nullptr, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "Null path");
+    CHECK (anomp_engine_load_track_async (engine, "flac-44k.flac", nullptr, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error).starts_with ("Path is not absolute"));
+
+    const auto load =
+        anomp_engine_load_track_async (engine, fixturePath ("flac-44k.flac").c_str(), nullptr, error, sizeof (error));
+    CHECK (load > 0);
+    CHECK (std::string_view (error).empty());
+    CHECK (anomp_engine_state (engine) == ANOMP_STATE_EMPTY); // Not handed over yet.
+    REQUIRE (runEventsUntil ([&] { return ! finished.empty(); }));
+    REQUIRE (finished.size() == 1);
+    CHECK (finished[0].request == load);
+    CHECK (finished[0].result == ANOMP_LOAD_LOADED);
+    CHECK (finished[0].error.empty());
+    CHECK (anomp_engine_state (engine) == ANOMP_STATE_STOPPED);
+    CHECK (anomp_engine_duration (engine) == Catch::Approx (22371 / 44100.0));
+
+    // A next superseded by a load, which fails; then a load cancelled.
+    finished.clear();
+    const auto next = anomp_engine_set_next_track_async (engine, fixturePath ("wav-s16-44k.wav").c_str(), nullptr,
+                                                         error, sizeof (error));
+    const auto missing =
+        anomp_engine_load_track_async (engine, fixturePath ("missing.flac").c_str(), nullptr, error, sizeof (error));
+    const auto cancelled =
+        anomp_engine_load_track_async (engine, fixturePath ("wav-s16-44k.wav").c_str(), nullptr, error, sizeof (error));
+    anomp_engine_cancel_load (engine, cancelled);
+    REQUIRE (runEventsUntil ([&] { return finished.size() == 3; }));
+    CHECK (finished[0].request == next);
+    CHECK (finished[0].result == ANOMP_LOAD_CANCELLED);
+    CHECK (finished[1].request == missing);
+    CHECK (finished[1].result == ANOMP_LOAD_CANCELLED); // Superseded by the one cancelled after it.
+    CHECK (finished[2].request == cancelled);
+    CHECK (finished[2].result == ANOMP_LOAD_CANCELLED);
+    CHECK (anomp_engine_duration (engine) == Catch::Approx (22371 / 44100.0)); // Unchanged.
+
+    finished.clear();
+    const auto failing =
+        anomp_engine_load_track_async (engine, fixturePath ("missing.flac").c_str(), nullptr, error, sizeof (error));
+    REQUIRE (runEventsUntil ([&] { return finished.size() == 1; }));
+    CHECK (finished[0].request == failing);
+    CHECK (finished[0].result == ANOMP_LOAD_FAILED);
+    CHECK (std::string_view (finished[0].error).starts_with ("File not found"));
+
+    anomp_engine_destroy (engine);
 }

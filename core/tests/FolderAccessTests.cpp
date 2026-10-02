@@ -148,3 +148,14 @@ TEST_CASE ("Folder access functions accept null", "[folder-access][c-api]")
     anomp_folder_access_stop (nullptr);
     anomp_bookmark_free (nullptr);
 }
+
+TEST_CASE ("C API tells a cloud placeholder from a file that's here", "[folders][dataless]")
+{
+    // A real placeholder needs a file provider (iCloud Drive); the owner
+    // checks one in the app (docs/step4-checklist.md, Step 5).
+    const auto fixture = juce::File (ANOMP_TEST_FIXTURES_DIR).getChildFile ("flac-44k.flac");
+    CHECK (anomp_file_is_dataless (fixture.getFullPathName().toRawUTF8()) == 0);
+    CHECK (anomp_file_is_dataless (fixture.getSiblingFile ("missing.flac").getFullPathName().toRawUTF8()) == -1);
+    CHECK (anomp_file_is_dataless ("flac-44k.flac") == -1);
+    CHECK (anomp_file_is_dataless (nullptr) == -1);
+}

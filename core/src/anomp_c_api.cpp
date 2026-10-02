@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "DockMenu.h"
 #include "FileAnalyser.h"
+#include "FileStatus.h"
 #include "FolderAccess.h"
 #include "FormatRegistry.h"
 #include "Log.h"
@@ -497,6 +498,22 @@ extern "C" anomp_folder_access* anomp_folder_access_start (const unsigned char* 
     }
 }
 
+extern "C" int anomp_file_is_dataless (const char* path)
+{
+    if (path == nullptr)
+        return -1;
+    const auto text = juce::String::fromUTF8 (path);
+    if (! juce::File::isAbsolutePath (text))
+        return -1;
+    switch (anomp::FileStatus::isDataless (juce::File (text)))
+    {
+        case anomp::FileStatus::Dataless::yes:     return 1;
+        case anomp::FileStatus::Dataless::no:      return 0;
+        case anomp::FileStatus::Dataless::unknown: break;
+    }
+    return -1;
+}
+
 extern "C" const char* anomp_folder_access_path (const anomp_folder_access* access)
 {
     return access != nullptr ? access->path.c_str() : "";
@@ -562,19 +579,27 @@ extern "C" anomp_engine* anomp_engine_create (void)
 
         handle->engine.onDeviceChanged = [handle]
         {
-            emit (handle, anomp_event { ANOMP_EVENT_DEVICE_CHANGED, 0, 0, 0.0, 0.0 });
+            emit (handle, anomp_event { ANOMP_EVENT_DEVICE_CHANGED, 0, 0, 0.0, 0.0, 0, 0, "" });
         };
         player.onStateChanged = [handle] (anomp::PlayerEngine::State state)
         {
-            emit (handle, anomp_event { ANOMP_EVENT_STATE_CHANGED, toCState (state), 0, 0.0, 0.0 });
+            emit (handle, anomp_event { ANOMP_EVENT_STATE_CHANGED, toCState (state), 0, 0.0, 0.0, 0, 0, "" });
         };
         player.onPositionChanged = [handle] (double position, double duration)
         {
-            emit (handle, anomp_event { ANOMP_EVENT_POSITION, 0, 0, position, duration });
+            emit (handle, anomp_event { ANOMP_EVENT_POSITION, 0, 0, position, duration, 0, 0, "" });
         };
         player.onTrackEnded = [handle] (bool advanced)
         {
-            emit (handle, anomp_event { ANOMP_EVENT_TRACK_ENDED, 0, advanced ? 1 : 0, 0.0, 0.0 });
+            emit (handle, anomp_event { ANOMP_EVENT_TRACK_ENDED, 0, advanced ? 1 : 0, 0.0, 0.0, 0, 0, "" });
+        };
+        player.onLoadFinished =
+            [handle] (anomp::PlayerEngine::LoadId id, anomp::PlayerEngine::LoadResult result, const juce::String& error)
+        {
+            const auto code = result == anomp::PlayerEngine::LoadResult::loaded   ? ANOMP_LOAD_LOADED
+                              : result == anomp::PlayerEngine::LoadResult::failed ? ANOMP_LOAD_FAILED
+                                                                                  : ANOMP_LOAD_CANCELLED;
+            emit (handle, anomp_event { ANOMP_EVENT_LOAD_FINISHED, 0, 0, 0.0, 0.0, id, code, error.toRawUTF8() });
         };
         return handle;
     }
@@ -742,6 +767,55 @@ extern "C" int anomp_engine_set_next_track (anomp_engine* engine,
     return withPath (engine, path, error, errorSize,
                      [&trackOptions] (anomp::PlayerEngine& player, const juce::File& file)
                      { return player.setNext (file, trackOptions); });
+}
+
+namespace
+{
+/** Starts an asynchronous request for an absolute `path`; 0 and the error if it can't. */
+template <typename Request>
+long long withAsyncPath (anomp_engine* engine, const char* path, char* error, size_t errorSize, Request&& request)
+{
+    juce::String message;
+    if (engine == nullptr)
+        message = "Null engine";
+    else if (path == nullptr)
+        message = "Null path";
+    else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
+        message = "Path is not absolute: " + text;
+
+    copyUtf8 (message, error, errorSize);
+    return message.isEmpty() ? request (engine->engine.player(), juce::File (juce::String::fromUTF8 (path))) : 0;
+}
+} // namespace
+
+extern "C" long long anomp_engine_load_track_async (anomp_engine* engine,
+                                                    const char* path,
+                                                    const anomp_track_options* options,
+                                                    char* error,
+                                                    size_t errorSize)
+{
+    const auto trackOptions = toTrackOptions (options);
+    return withAsyncPath (engine, path, error, errorSize,
+                          [&trackOptions] (anomp::PlayerEngine& player, const juce::File& file)
+                          { return player.loadAsync (file, trackOptions); });
+}
+
+extern "C" long long anomp_engine_set_next_track_async (anomp_engine* engine,
+                                                        const char* path,
+                                                        const anomp_track_options* options,
+                                                        char* error,
+                                                        size_t errorSize)
+{
+    const auto trackOptions = toTrackOptions (options);
+    return withAsyncPath (engine, path, error, errorSize,
+                          [&trackOptions] (anomp::PlayerEngine& player, const juce::File& file)
+                          { return player.setNextAsync (file, trackOptions); });
+}
+
+extern "C" void anomp_engine_cancel_load (anomp_engine* engine, long long request)
+{
+    if (engine != nullptr)
+        engine->engine.player().cancelLoad (request);
 }
 
 extern "C" int anomp_engine_set_track_gain_at (anomp_engine* engine, const char* path, double start, double gain)

@@ -20,6 +20,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/007_user_data.sql"),
     include_str!("migrations/008_credits.sql"),
     include_str!("migrations/009_substring_search.sql"),
+    include_str!("migrations/010_dataless.sql"),
 ];
 
 /// How many copies `back_up` keeps: the newest two.

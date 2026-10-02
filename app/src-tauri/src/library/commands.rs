@@ -587,6 +587,7 @@ async fn run_scan_with<R: Runtime>(
         parts: crate::settings::current(app).features.cue_sheets,
         background,
         remove_missing,
+        ..ScanOptions::default()
     };
     let reports = tauri::async_runtime::spawn_blocking(move || {
         if background {

@@ -270,6 +270,11 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
     match source {
         SourceId::Embedded => files.iter().find_map(|file| {
             let path = track_path(folders.root(file.folder_id)?, &file.relative);
+            // Reading a cloud placeholder would download it (H12): another
+            // of the album's files, or another source, may have the picture.
+            if anomp::file_is_dataless(&path) == Some(true) {
+                return None;
+            }
             let picture = anomp::read_tags(&path, true).ok()?.picture?;
             Some(Art {
                 mime_type: picture

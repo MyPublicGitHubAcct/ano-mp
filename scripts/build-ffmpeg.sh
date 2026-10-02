@@ -4,9 +4,12 @@
 #
 # Output: third_party/ffmpeg/<platform>/{include,lib,BUILD_INFO}
 #   macos-universal   arm64 + x86_64 merged with lipo
+#   macos-arm64-fuzz  with --fuzz: static, arm64 only, compiled by Homebrew's
+#                     llvm@22 with libFuzzer coverage, ASan and UBSan, for the
+#                     CMake `fuzz` preset (PLAN.md H5); the same pin and formats
 # Phases 8-10 add iOS, Linux and Windows.
 #
-# Usage: scripts/build-ffmpeg.sh [--force]
+# Usage: scripts/build-ffmpeg.sh [--force] [--fuzz]
 # Skips the build when BUILD_INFO already matches this script's version and
 # flags; --force rebuilds anyway. CI caches the output keyed on BUILD_INFO.
 
@@ -52,8 +55,20 @@ WORK_DIR="$REPO_ROOT/build/ffmpeg"
 OUT_ROOT="$REPO_ROOT/third_party/ffmpeg"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 
+# The fuzz build's compiler (Apple's clang has no libFuzzer runtime) and
+# flags. The fuzz preset in CMakePresets.json names the same compiler.
+FUZZ_LLVM="/opt/homebrew/opt/llvm@22"
+FUZZ_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g"
+
 FORCE=0
-[[ "${1:-}" == "--force" ]] && FORCE=1
+FUZZ=0
+for arg in "$@"; do
+    case "$arg" in
+        --force) FORCE=1 ;;
+        --fuzz) FUZZ=1 ;;
+        *) printf 'usage: %s [--force] [--fuzz]\n' "$0" >&2; exit 2 ;;
+    esac
+done
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -61,6 +76,9 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 build_info() {
     printf 'ffmpeg %s\nsha256 %s\nplatform %s\nmin_os %s\nconfigure %s\n' \
         "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$1" "$MACOS_MIN" "${CONFIGURE_FLAGS[*]}"
+    if [[ "$1" == *-fuzz ]]; then
+        printf 'compiler %s\nfuzz %s\n' "$("$FUZZ_LLVM/bin/clang" --version | head -1)" "$FUZZ_FLAGS"
+    fi
 }
 
 fetch_source() {
@@ -153,7 +171,52 @@ build_macos() {
     lipo -info "$out"/lib/libavcodec.*.*.*.dylib
 }
 
+# Static libraries, so libFuzzer's coverage hooks resolve when a fuzz target
+# links them; the host architecture only, since fuzzers run where they build.
+build_macos_fuzz() {
+    local out="$OUT_ROOT/macos-arm64-fuzz"
+    local build_dir="$WORK_DIR/build-macos-arm64-fuzz"
+    local info
+    [[ -x "$FUZZ_LLVM/bin/clang" ]] || die "$FUZZ_LLVM/bin/clang not found: brew install llvm@22"
+    [[ "$(uname -m)" == arm64 ]] || die "the fuzz build is arm64 only"
+    info="$(build_info macos-arm64-fuzz)"
+
+    if [[ $FORCE -eq 0 && -f "$out/BUILD_INFO" && "$(cat "$out/BUILD_INFO")" == "$info" ]]; then
+        log "FFmpeg $FFMPEG_VERSION fuzz build is up to date ($out)"
+        return
+    fi
+
+    fetch_source
+    local flags="-arch arm64 -mmacosx-version-min=$MACOS_MIN -isysroot $(xcrun --show-sdk-path)"
+
+    log "Configuring FFmpeg's fuzz build"
+    rm -rf "$build_dir" "$out"
+    mkdir -p "$build_dir"
+    (
+        cd "$build_dir"
+        "$SRC_DIR/configure" \
+            --prefix="$out" \
+            --cc="$FUZZ_LLVM/bin/clang" \
+            --extra-cflags="$flags $FUZZ_FLAGS" \
+            --extra-ldflags="$flags $FUZZ_FLAGS" \
+            "${CONFIGURE_FLAGS[@]}" \
+            --disable-shared \
+            --enable-static \
+            --disable-stripping > configure.log \
+            || { tail -30 configure.log; die "configure failed (see $build_dir/configure.log)"; }
+
+        grep -q '^License: LGPL' configure.log || die "the fuzz build would not be LGPL; check the configure flags"
+
+        log "Building FFmpeg's fuzz build"
+        make -j"$JOBS" > build.log 2>&1 || { tail -30 build.log; die "build failed"; }
+        make install > install.log 2>&1 || { tail -30 install.log; die "install failed"; }
+    )
+
+    echo "$info" > "$out/BUILD_INFO"
+    log "Done: $out"
+}
+
 case "$(uname -s)" in
-    Darwin) build_macos ;;
+    Darwin) if [[ $FUZZ -eq 1 ]]; then build_macos_fuzz; else build_macos; fi ;;
     *) die "unsupported host $(uname -s); Linux and Windows arrive in Phases 9-10" ;;
 esac
