@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Formats the Python code in the repo (scripts/) with ruff, using ruff.toml.
+"""Formats and lints the Python code in the repo (scripts/) with ruff, using ruff.toml.
 
-Run it after editing Python; it rewrites files in place. With --check it
+Run it after editing Python; it rewrites files in place, then runs `ruff
+check`, which reports lint problems without fixing them. With --check it
 changes nothing: it prints the diff and exits non-zero when any file is not
-formatted (for CI or a pre-commit hook).
+formatted or has a lint problem (for CI or a pre-commit hook).
 
 The ruff version is pinned and run through uvx (https://docs.astral.sh/uv/),
 so everyone formats the same way whatever ruff is on PATH.
@@ -32,10 +33,13 @@ def main():
         sys.exit("error: uvx not found; install uv: https://docs.astral.sh/uv/")
 
     # ruff skips .gitignore'd paths (build/, node_modules/, third_party/ffmpeg/).
-    command = [uvx, f"ruff@{RUFF_VERSION}", "format"]
+    ruff = [uvx, f"ruff@{RUFF_VERSION}"]
+    command = [*ruff, "format"]
     if args.check:
         command += ["--check", "--diff"]
-    return subprocess.run([*command, "."], cwd=REPO_ROOT, check=False).returncode
+    status = subprocess.run([*command, "."], cwd=REPO_ROOT, check=False).returncode
+    lint = subprocess.run([*ruff, "check", "."], cwd=REPO_ROOT, check=False).returncode
+    return status or lint
 
 
 if __name__ == "__main__":

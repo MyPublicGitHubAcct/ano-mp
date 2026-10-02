@@ -1,0 +1,72 @@
+# Runs scripts/check-all.py, the same command as a local run (PLAN.md §9.2,
+# M4). Steps before it only install tools and restore caches; any check
+# belongs in check-all.py, not here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-15
+    # The first run fetches JUCE twice (CMake and Cargo) and builds FFmpeg.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          brew install ninja nasm pkg-config uv
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # build-ffmpeg.sh skips the build when BUILD_INFO matches its pin.
+      - name: Restore FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Build FFmpeg
+        run: scripts/build-ffmpeg.sh
+
+      # FetchContent's sources and JUCE's objects, which keep their
+      # timestamps; the repo's own files are rebuilt after checkout.
+      - name: Restore core build
+        uses: actions/cache@v4
+        with:
+          path: build/debug
+          key: core-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+          restore-keys: core-${{ runner.os }}-
+
+      - name: Restore Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('app/src-tauri/Cargo.lock', 'CMakeLists.txt', 'cmake/**') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install npm packages
+        working-directory: app
+        run: npm ci
+
+      - name: Check
+        run: scripts/check-all.py

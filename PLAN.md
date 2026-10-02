@@ -44,7 +44,16 @@ library player that the app lacks (F1–F21, §4.7), and hardening for
 security, robustness and maintenance (H1–H21, Phase 7). Their P1 items
 are part of Phase 7's exit. All of F1–F21 were built the same day (Phase
 6c), with H3's command permissions; what remains of them is checking
-them in the app.
+them in the app. On 2026-10-02 the order of the remaining work was set
+(Phase 7, "Order of work"):
+1. a CI baseline (done 2026-10-02: `scripts/check-all.py` and a GitHub
+   Actions macOS job);
+2. the quick P1 security fixes;
+3. the P1 items that protect user data, including H22 (handling library
+   folders that can't be found at launch);
+4. the exit checks in a sandboxed bundle;
+5. the larger core items;
+6. alongside all of these, the owner's §8.1 decisions.
 
 ## 1. Architecture
 
@@ -123,13 +132,14 @@ Why this split:
 | Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
 | UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
 | 18 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast) | `app/tests/` |
-| 343 passing `cargo test` tests (playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 342 passing `cargo test` tests (playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
 | Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
 | Developer page: device name, test tone, loading typed paths straight into the engine, event log | `app/src/routes/dev/+page.svelte` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' pytest tests (`test-python.py`), `ruff check`, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `.github/workflows/ci.yml` |
 
 Build and test:
 
@@ -242,7 +252,7 @@ sets priorities rather than open questions.
 7. **Expected features and hardening: prioritised 2026-09-27.** F1–F21
    (§4.7) are what users expect of any library player and this one lacks
    (playlists, favourites, multi-select, menus, accessibility and so on),
-   unlike O1–O19, which few players have. H1–H21 (Phase 7) make the app
+   unlike O1–O19, which few players have. H1–H22 (Phase 7) make the app
    and its development more secure, robust and efficient. Both use one
    scale:
    - **P1**: before the first public release. Part of Phase 7's exit.
@@ -2662,7 +2672,73 @@ lives in the library DB, keyed by ids that rescans and moves keep.
 - Performance: library of 50k+ tracks; scan time; memory use.
 - Robustness: corrupt/truncated files, missing files on disk, unplugged
   output devices, offline services.
-- Hardening items H1–H21 below, and the P1 features of §4.7.
+- Hardening items H1–H22 below, and the P1 features of §4.7.
+
+**Order of work** (set 2026-10-02). Phases 0–6c are built, but the exit
+checks of Phases 4, 5, 6, 6b and 6c are not done yet, and only part of
+H3 and H7 among the P1 hardening items is done. Work through these steps
+in order. Step 6 runs alongside all of them.
+
+1. **A repeatable baseline (about 1 day). Done 2026-10-02.**
+   - Every suite passed on a clean tree: ctest 99, `cargo test` 342 (9
+     ignored), `npm test` 18, `svelte-check` 0 errors.
+   - `check-all.py` runs them, after the formatters, the three M2 checks
+     and the scripts' tests. It also builds the frontend before
+     `cargo test`, since Tauri embeds `app/build` when the crate compiles
+     and a fresh clone has none.
+   - `check-c-api.py` found two C functions Rust doesn't bind
+     (`anomp_track_options_default`, `anomp_media_controls_perform`);
+     both are deliberate and listed in its `NOT_BOUND`.
+   - The CI job (`macos-15`) hasn't run yet: it runs on the first push.
+   - Run every suite (ctest, `cargo test`, `npm test`, `npm run check`)
+     to confirm they pass.
+   - Write `check-all.py` (M4), with the M1 pytest harness and the cheap
+     M2 checks (`check-c-api.py`, `check-sources.py`,
+     `check-migrations.py`).
+   - Add a GitHub Actions macOS job that runs only `check-all.py`.
+   - This comes first because everything after it is hardening, and
+     hardening without CI tends to slip back.
+2. **Quick P1 security and lint fixes (1–2 days).**
+   - H1 (CSP), H2 (developer surface out of release builds).
+   - H3's remaining half: the opener still allows `http://*`.
+   - H8 (clippy, `[lints]`, toolchain pins), H7's remainder (SHA pins for
+     JUCE and Catch2, `cargo deny`, the update bot, secret scanning).
+   - H13's P1 part (ESLint and Prettier), H6 (sanitizer presets).
+3. **P1 items that protect user data (3–5 days).**
+   - H10 (DB backups and checks): the DB now holds playlists, ratings,
+     history and picks that a rescan can't recreate.
+   - H22 (missing folders at launch): a folder whose path exists but is
+     empty is emptied by the launch rescan today.
+   - H9 (logs, panics, diagnostics): release builds abort on a panic and
+     leave no trace.
+4. **Exit checks in a sandboxed bundle.**
+   - Merge the exit lists of Phases 4, 5, 6, 6b and 6c into one
+     checklist, ordered by risk:
+     - sandbox-only behaviour first (folder drops, Open With, the LAN
+       remote's local-network prompt, missing folders);
+     - then gapless playback and cue sheets, crossfade, the equaliser and
+       ReplayGain by ear;
+     - the visualizers last.
+   - This comes after H9 so that failures leave logs. Each failure
+     becomes a fix with a test.
+5. **The larger core P1 items (about 1 week).**
+   - H5 (fuzzing).
+   - H11 (opening files off the main thread). This is the riskiest
+     change to the engine, so fuzzing and the sanitizers come first.
+   - H12 (cloud placeholders), which builds on H11.
+6. **Owner decisions (§8.1), alongside steps 1–5.** These block the
+   first release however far the engineering gets:
+   - the name and trademark check, then the bundle identifier, which
+     can't change after the first release and which signing needs;
+   - the JUCE licence;
+   - the AAC opinion;
+   - the privacy policy and support URL;
+   - the MetaBrainz plan and a real `User-Agent` contact;
+   - whether to have crash reporting.
+
+Then §8.2 and §8.3 (the first macOS release), then Phase 8. H20 (design
+records out of this file) is P2, but it can be pulled forward whenever
+this file gets in the way.
 
 **Hardening items** (from the 2026-09-27 review; priorities as in
 §4.7). CI runs each check through `check-all.py` (M4), so a local run
@@ -2691,6 +2767,7 @@ matches it.
 | H19 | Split the largest modules | maintenance | S each | P3, as touched |
 | H20 | Move design records out of `PLAN.md` | maintenance | S | P2 |
 | H21 | C++ static analysis | maintenance | S | P3 |
+| H22 | Missing folders at launch | robustness | M | P1 |
 
 - **H1 Content Security Policy.** `tauri.conf.json` has `"csp": null`.
   Set a strict policy:
@@ -2727,7 +2804,8 @@ matches it.
     main window's permission set (`permissions/main-window.toml`, from
     `generate_handler!` in `lib.rs`); the mini player's
     (`permissions/mini-window.toml`) lists the commands it uses. The URL
-    opener's `https`-only rule is still to do.
+    opener's `https`-only rule is still to do: `capabilities/default.json`
+    still allows `http://*` (checked 2026-10-02).
 - **H4 Folder pictures on unsandboxed platforms.**
   `folder_art::is_relative_path` rejects `..` lexically, but a symlink
   inside a library folder can still point outside it. The macOS sandbox
@@ -2782,7 +2860,7 @@ matches it.
     reads them.
   - Move to Rust edition 2024 in one separate commit.
 - **H9 Logs, panics and diagnostics.** The Rust code reports problems
-  with `eprintln!` (27 calls), which a bundled app sends nowhere. With
+  with `eprintln!` (54 calls on 2026-10-02), which a bundled app sends nowhere. With
   `panic = "abort"` in the release profile, a panic leaves no trace.
   - Use the `log` facade with `tauri-plugin-log`, writing a rotating file
     of a few MB in the app's log directory.
@@ -2826,7 +2904,8 @@ matches it.
     - The check lives behind a small core interface next to
       `FolderAccess`.
   - Test SMB folders, and a drive unmounted in the middle of a scan. A
-    missing folder already keeps its tracks.
+    missing folder already keeps its tracks, but an empty mount point
+    doesn't (H22).
 - **H13 Frontend lint, format and tests.** The frontend has
   `svelte-check` and 5 tests of pure modules. There is no linter or
   formatter.
@@ -2888,14 +2967,102 @@ matches it.
   and grows with every step. It mixes the roadmap with finished design
   notes. Move each finished phase's design and known limits to
   `docs/design/phase-<n>-<name>.md` (`docs/` is empty). Keep status,
-  decisions, open steps, the backlogs (§4.6–§4.7, H1–H21) and links
+  decisions, open steps, the backlogs (§4.6–§4.7, H1–H22) and links
   here. `check-docs.py` (M2) checks the links.
 - **H21 C++ static analysis.** `clang-tidy` with a small set of checks
   (`bugprone-*`, `performance-*`, `concurrency-*`) over `core/src`, in
   `check-all.py` but not `--quick`.
+- **H22 Missing folders at launch.**
+  - **Today:**
+    - F8 marks a folder whose bookmark doesn't resolve as unavailable in
+      the sidebar and settings, with "Locate…".
+    - The launch rescan (F9) fails that folder alone. The failure goes
+      into the scan report and `eprintln!`, so nothing tells the user
+      at launch.
+  - **Gaps:**
+    - **A folder that exists but is empty is emptied.**
+      - The path of an unmounted network share, or a mount point left
+        under `/Volumes`, can still be a directory.
+      - `walk_folder` checks only `is_dir()`, so the rescan finds no
+        files and removes every track in the folder.
+      - That loses everything keyed by those tracks: plays, ratings,
+        playlist entries, analysis. `kept_albums` keeps only album and
+        artist picks.
+    - **A folder moved to the Trash is followed there.** The bookmark
+      resolves to its new place, and `open_folder` quietly records the
+      Trash path.
+    - **The restored queue and resume position** (F17, Phase 3) can
+      point at tracks in a missing folder. It isn't defined what plays,
+      or how the queue skips, when every item is unavailable.
+    - **Nothing re-checks a folder when its drive returns.** The watcher
+      leaves out folders that are unavailable at launch and doesn't pick
+      them up until the settings change or the app restarts.
+    - **The workers can treat missing files as failures.** The
+      analysis worker, metadata worker and health view may record a
+      missing file as unreadable or broken.
+  - **Do:**
+    - **Check every folder before the rescan, off the main thread.**
+      Classify each as:
+      - available;
+      - missing (the bookmark doesn't resolve, or the path is gone);
+      - empty where it had tracks;
+      - in the Trash;
+      - permission lost (including the ad-hoc-signing bookmark error in
+        `CLAUDE.md`).
+
+      Record the state and its reason with the folder, through
+      `library_folders`.
+    - **Never let a scan empty a folder.**
+      - When a folder that had tracks reads as empty, or would lose most
+        of its tracks in one scan, keep the tracks and mark the folder
+        "empty, possibly not mounted".
+      - Ask before removing them. Test it with a fake empty directory.
+    - **Ask about a folder in the Trash.** Offer to locate it again or
+      remove it, rather than following it there.
+    - **Show it once at launch.** One message that isn't a dialog:
+      - "N folders can't be found";
+      - each folder's reason;
+      - "Locate…", "Remove" and "Keep" buttons.
+
+      It must not block playback of the other folders. When every folder
+      is missing (a library on an external drive that isn't plugged in),
+      show this in the main view in place of an empty library.
+    - **Missing tracks in lists.**
+      - Tracks of an unavailable folder stay in browse, search,
+        playlists and history, shown as unavailable.
+      - Radio, shuffle refills, smart playlists' "play" and Home's
+        suggestions skip them.
+    - **The queue at launch.**
+      - A restored current track that can't be opened becomes "not
+        available" with its position kept, and nothing plays by itself.
+      - When playing, the queue skips unavailable items, as H11's
+        timeout does, without spinning when all of them are unavailable.
+      - Media keys and Now Playing show the stopped state.
+    - **When drives come back.**
+      - Watch for volumes mounting and unmounting (`NSWorkspace`
+        notifications behind a core interface next to `FolderAccess`, or
+        FSEvents on `/Volumes`).
+      - A folder that becomes available is rescanned and watched, and
+        the sidebar updates without a restart.
+    - **Workers.** Analysis, metadata and health treat tracks of an
+      unavailable folder as "not now", not "failed". They retry when the
+      folder returns.
+    - **Errors.** Use coded errors (`folder_unavailable` with a reason
+      code) and `en.json` messages for each state. H9 logs each state
+      change.
+  - **Tests:**
+    - unit tests over the folder states with a fake `FolderAccess`;
+    - a scanner test where a folder that had tracks is now an empty
+      directory, and keeps them;
+    - queue tests for a restored queue with all items unavailable.
+  - **In the step 4 checklist:**
+    - launch with a USB drive unplugged, then plug it in;
+    - an SMB share that isn't mounted;
+    - a folder moved to the Trash;
+    - a folder deleted.
 
 - **Exit:** the macOS app is ready for the first release in §8.3, with
-  the P1 items of §4.7 and of H1–H21 done.
+  the P1 items of §4.7 and of H1–H22 done.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account
@@ -3342,14 +3509,16 @@ Conventions, following the existing scripts:
   which must pass.
 
 Steps:
-- [ ] M1 Test harness. `scripts/test-python.py` runs a pinned pytest
+- [x] M1 Test harness (2026-10-02). `scripts/test-python.py` runs a pinned pytest
   through uvx (`uvx --from pytest==<version> pytest scripts/tests`), and
   `format-python.py` gains `ruff check` (lint) next to `ruff format`. Add
   tests for the existing scripts' pure logic (`format-cpp.py`'s file
   selection and batching; `make-test-fixtures.py`'s signal matching
   `TestSignal.h`'s constants).
 - [ ] M2 Repo checks, each a read-only script that lists every problem it
-  finds:
+  finds. `check-c-api.py`, `check-sources.py` and `check-migrations.py`
+  are done (2026-10-02); the FTS warning covers migrations after 009,
+  and a `-- fts:` comment acknowledges one that needs no trigger change.
   - `check-c-api.py`: parses the functions declared in `anomp.h` and the
     `extern "C"` block in `anomp.rs`; fails on any function missing from
     either side, and on declarations whose parameter counts differ.
@@ -3382,7 +3551,8 @@ Steps:
     (`--serial`), so regenerating changes no file unless the signal or
     encoders changed (the Vorbis fixtures change once when this lands);
     add `--only NAME`; print each fixture's length for the tests' table.
-- [ ] M4 CI entry point (with Phase 7's CI):
+- [ ] M4 CI entry point (with Phase 7's CI). `check-all.py` is done
+  (2026-10-02), with `.github/workflows/ci.yml` running it:
   - `check-all.py`: runs every formatter in `--check` mode, the M2
     checks and the Python tests, then (unless `--quick`) the C++, Rust
     and frontend builds and tests. CI calls this and nothing else, so a

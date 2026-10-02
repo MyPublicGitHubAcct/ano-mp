@@ -29,6 +29,20 @@ EXTENSIONS = {".h", ".cpp", ".mm"}
 BATCH_SIZE = 100
 
 
+def source_files(directory, root):
+    """The C++ files under `directory`, relative to `root`, sorted."""
+    return sorted(
+        str(path.relative_to(root))
+        for path in directory.rglob("*")
+        if path.suffix in EXTENSIONS and path.is_file()
+    )
+
+
+def batches(files, size=BATCH_SIZE):
+    """`files` in consecutive lists of at most `size`."""
+    return [files[start : start + size] for start in range(0, len(files), size)]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Format the core's C++ code with clang-format.")
     parser.add_argument("--check", action="store_true", help="report only, change nothing")
@@ -38,17 +52,11 @@ def main():
     if uvx is None:
         sys.exit("error: uvx not found; install uv: https://docs.astral.sh/uv/")
 
-    files = sorted(
-        str(path.relative_to(REPO_ROOT))
-        for path in CORE.rglob("*")
-        if path.suffix in EXTENSIONS and path.is_file()
-    )
     options = ["--dry-run", "--Werror"] if args.check else ["-i"]
     command = [uvx, f"clang-format@{CLANG_FORMAT_VERSION}", "--style=file", *options]
 
     status = 0
-    for start in range(0, len(files), BATCH_SIZE):
-        batch = files[start : start + BATCH_SIZE]
+    for batch in batches(source_files(CORE, REPO_ROOT)):
         status = subprocess.run([*command, *batch], cwd=REPO_ROOT, check=False).returncode or status
     return status
 

@@ -97,8 +97,18 @@ remains is checking them in the app (Phase 6c's exit).
 scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 scripts/format-cpp.py     # clang-format core/ after editing it (--check: report only)
-scripts/format-python.py  # ruff format scripts/*.py after editing them (--check: diff only)
+scripts/format-python.py  # ruff format + ruff check scripts/*.py after editing them (--check: diff only)
+scripts/check-all.py      # every check, as CI runs it (--quick: formatters, repo checks, script tests)
 ```
+
+CI (`.github/workflows/ci.yml`, macOS) runs `scripts/check-all.py` and nothing
+else, so a new check goes in that script, not in the workflow. The repo
+checks it runs are read-only scripts: `check-c-api.py` (each `anomp.h`
+function declared in `anomp.rs` with the same parameter count, apart from its
+`NOT_BOUND` list), `check-sources.py` (the core's CMake source lists) and
+`check-migrations.py`. Scripts use the standard library only; their tests are
+in `scripts/tests/` (pytest, run by `scripts/test-python.py`), each repo check
+with one test against the real tree.
 
 The format scripts are Python so they run on every platform (on Windows, run them
 with `py`). The C++ and Python ones run a pinned formatter through `uvx` (`brew

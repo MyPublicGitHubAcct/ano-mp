@@ -46,7 +46,7 @@ def sample(channel, n, sample_rate, seconds):
 
 
 def to_int16(x):
-    return int(math.floor(x * 32767.0 + 0.5))
+    return math.floor(x * 32767.0 + 0.5)
 
 
 def write_source_wav(path, sample_rate, channels, seconds):
