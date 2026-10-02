@@ -97,16 +97,16 @@ pub fn track_details(library: &LibraryState, track_id: i64) -> Result<Option<Tra
     let row = {
         let conn = library.conn();
         conn.query_row(
-            &format!(
-                "SELECT {TRACK_COLUMNS}, t.folder_id, t.range_end {TRACKS_FROM} WHERE t.id = ?1"
-            ),
+            &format!("SELECT {TRACK_COLUMNS}, t.range_end {TRACKS_FROM} WHERE t.id = ?1"),
             [track_id],
             |row| {
+                let track = track_from_row(row)?;
+                let folder_id = track.folder_id;
                 Ok((
-                    track_from_row(row)?,
+                    track,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, i64>(27)?,
+                    folder_id,
                     row.get::<_, Option<f64>>(28)?,
                 ))
             },

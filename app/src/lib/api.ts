@@ -71,6 +71,8 @@ export type Track = {
   /** The user's heart and stars (F3). */
   favourite: boolean;
   rating: number | null;
+  /** Its library folder: the track is unavailable while that can't be read (H22b, `lib/folders.ts`). */
+  folderId: number;
 };
 
 /** An artist, album or library folder id, or a year; a genre or folder name. */
@@ -815,7 +817,7 @@ export type AlbumCard = {
 export type RecentEntry = {
   playedAt: number;
   album: AlbumCard | null;
-  tracks: { trackId: number; title: string; artist: string | null }[];
+  tracks: { trackId: number; title: string; artist: string | null; folderId: number }[];
 };
 export type TopKind = "tracks" | "albums" | "artists";
 export type TopEntry = {
@@ -825,6 +827,8 @@ export type TopEntry = {
   albumId: number | null;
   plays: number;
   trackIds: number[];
+  /** The folders of `trackIds` (H22b). */
+  folderIds: number[];
 };
 export type TopPlayed = { entries: TopEntry[]; plays: number; years: [number, number] | null };
 export type Highlights = {

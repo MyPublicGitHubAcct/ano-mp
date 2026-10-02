@@ -106,7 +106,11 @@ pub async fn history_highlights<R: Runtime>(app: AppHandle<R>) -> Result<Highlig
         |f| f.listening_history,
         ("listeningHistory", "The listening history"),
     )?;
-    on_library(&app, |library| views::highlights(&library.conn())).await
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        views::highlights(&library.conn(), &unreadable)
+    })
+    .await
 }
 
 /// Forgets every play (not what's waiting for ListenBrainz).
@@ -170,8 +174,9 @@ pub async fn library_recently_added<R: Runtime>(
         |f| f.recently_added,
         ("recentlyAdded", "Recently added"),
     )?;
+    let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
-        discover::recently_added(&library.conn(), limit.min(1000))
+        discover::recently_added(&library.conn(), limit.min(1000), &unreadable)
     })
     .await
 }
@@ -189,8 +194,9 @@ pub async fn library_on_this_day<R: Runtime>(
         |f| f.on_this_day,
         ("onThisDay", "Released on this day"),
     )?;
+    let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
-        discover::on_this_day(&library.conn(), year, month, day)
+        discover::on_this_day(&library.conn(), year, month, day, &unreadable)
     })
     .await
 }
@@ -207,8 +213,9 @@ pub async fn library_more_in_genre<R: Runtime>(
         |f| f.more_in_genre,
         ("moreInGenre", "More in this genre"),
     )?;
+    let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
-        discover::more_in_genre(&library.conn(), album_id, &genre, seed, 5)
+        discover::more_in_genre(&library.conn(), album_id, &genre, seed, 5, &unreadable)
     })
     .await
 }

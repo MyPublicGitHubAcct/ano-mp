@@ -5,6 +5,7 @@
   // together, each playable again (O16).
   import { untrack } from "svelte";
   import { features as api, queue, type RecentEntry, type TopKind, type TopPlayed } from "$lib/api";
+  import { FOLDER_SHORT, unavailableEntryState } from "$lib/folders";
   import { formatDay } from "$lib/format";
   import { count, t } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
@@ -141,7 +142,8 @@
         </p>
         <ol class="top">
           {#each top.entries as entry, index (entry.id)}
-            <li>
+            {@const unavailable = unavailableEntryState(library.unreadable, entry.folderIds)}
+            <li class:unavailable title={unavailable ? t(FOLDER_SHORT[unavailable]) : undefined}>
               <span class="rank">{index + 1}</span>
               <span class="text">
                 <span class="name">{entry.title}</span>
@@ -170,7 +172,11 @@
     {:else}
       <ul class="recent">
         {#each recent as entry (entry.playedAt)}
-          <li>
+          {@const unavailable = unavailableEntryState(
+            library.unreadable,
+            entry.tracks.map((track) => track.folderId),
+          )}
+          <li class:unavailable title={unavailable ? t(FOLDER_SHORT[unavailable]) : undefined}>
             <span class="when muted small">{formatDay(entry.playedAt)} {time(entry.playedAt)}</span>
             <span class="text">
               {#if entry.album}
@@ -201,6 +207,10 @@
 </section>
 
 <style>
+  .unavailable {
+    opacity: 0.45;
+  }
+
   .history {
     height: 100%;
     overflow-y: auto;

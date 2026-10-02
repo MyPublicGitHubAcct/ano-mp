@@ -188,8 +188,9 @@ pub async fn playlists_track_ids<R: Runtime>(
     app: AppHandle<R>,
     playlist_id: i64,
 ) -> Result<Vec<i64>, String> {
+    let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
-        playlists::track_ids(&library.conn(), playlist_id)
+        playlists::track_ids(&library.conn(), playlist_id, &unreadable)
     })
     .await
 }

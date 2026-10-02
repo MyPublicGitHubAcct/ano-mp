@@ -6,6 +6,7 @@
   import { t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { features as api, type AlbumCard } from "$lib/api";
+  import { library } from "$lib/state/library.svelte";
   import AlbumCards from "./AlbumCards.svelte";
 
   let { albumId, genres }: { albumId: number; genres: string[] } = $props();
@@ -16,6 +17,8 @@
 
   $effect(() => {
     const [id, chosen, draw] = [albumId, genre, seed];
+    // Folders coming and going change which albums can be drawn (H22b).
+    void library.unreadableKey;
     untrack(async () => {
       if (!chosen) return;
       const drawn = await api.moreInGenre(id, chosen, draw).catch(() => []);

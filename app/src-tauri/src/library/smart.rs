@@ -9,6 +9,7 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
+use super::availability::json_ids;
 use super::marks::FAVOURITE_FILTER;
 use super::{track_from_row, unix_now, Error, TrackSummary, TRACKS_FROM, TRACK_COLUMNS};
 use crate::coded::coded;
@@ -246,16 +247,27 @@ fn query<T>(
     Ok(result)
 }
 
-/// The ids of the tracks matching `rules`, in its order, up to its limit.
-pub fn track_ids(conn: &Connection, rules: &SmartRules) -> Result<Vec<i64>, Error> {
+/// The ids of the tracks matching `rules` outside the folders `unreadable`,
+/// in its order, up to its limit: what "play" queues (PLAN.md H22b), so a
+/// limited playlist plays its limit of tracks that can be opened.
+pub fn track_ids(
+    conn: &Connection,
+    rules: &SmartRules,
+    unreadable: &[i64],
+) -> Result<Vec<i64>, Error> {
     rules.validate()?;
     let mut params = Params(Vec::new());
     let filter = filter(rules, &mut params);
+    let folders = params.bind(json_ids(unreadable));
     let order = order_by(rules, &mut params);
     let limit = params.bind(i64::from(rules.limit.unwrap_or(u32::MAX)));
     query(
         conn,
-        &format!("SELECT t.id {TRACKS_FROM} WHERE {filter} ORDER BY {order} LIMIT {limit}"),
+        &format!(
+            "SELECT t.id {TRACKS_FROM}
+             WHERE ({filter}) AND t.folder_id NOT IN (SELECT value FROM json_each({folders}))
+             ORDER BY {order} LIMIT {limit}"
+        ),
         &params,
         |row| row.get(0),
     )
@@ -460,7 +472,56 @@ mod tests {
         assert_eq!(matching(&library, &any)[0], "Rock 94");
         any.limit = Some(2);
         assert_eq!(summary(conn, &any).unwrap().0, 2);
-        assert_eq!(track_ids(conn, &any).unwrap().len(), 2);
+        assert_eq!(track_ids(conn, &any, &[]).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn play_leaves_out_tracks_of_unreadable_folders() {
+        let library = Library::new([
+            track("1.flac").title("Here 1").genre("Jazz"),
+            track("2.flac").title("Here 2").genre("Jazz"),
+        ]);
+        let away = library.add_folder("/Volumes/Away");
+        library.add(away, track("0.flac").title("Away").genre("Jazz"));
+        library.add(away, track("3.flac").title("Away rock").genre("Rock"));
+        let mut rules = rules(
+            vec![
+                Condition::Genre {
+                    value: "Jazz".into(),
+                },
+                Condition::Year {
+                    from: Some(3000),
+                    to: None,
+                },
+            ],
+            SmartOrder::Title,
+        );
+        rules.match_all = false;
+        rules.limit = Some(2);
+        let titles_of = |ids: Vec<i64>| -> Vec<String> {
+            ids.into_iter()
+                .map(|id| {
+                    library
+                        .conn
+                        .query_row("SELECT title FROM tracks WHERE id = ?1", [id], |row| {
+                            row.get(0)
+                        })
+                        .unwrap()
+                })
+                .collect()
+        };
+        // The list still shows the unavailable track.
+        assert_eq!(matching(&library, &rules), ["Away", "Here 1"]);
+        assert_eq!(
+            titles_of(track_ids(&library.conn, &rules, &[]).unwrap()),
+            ["Away", "Here 1"]
+        );
+        // "Play" fills the limit from the folders that can be read; the
+        // conditions joined by OR still need the folder too.
+        assert_eq!(
+            titles_of(track_ids(&library.conn, &rules, &[away]).unwrap()),
+            ["Here 1", "Here 2"]
+        );
     }
 
     #[test]

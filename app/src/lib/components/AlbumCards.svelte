@@ -3,14 +3,18 @@
   // views and "More in this genre" list them: click to open the album,
   // the play button to play it, right-click for more.
   import { t } from "$lib/i18n";
-  import { queue, type AlbumCard } from "$lib/api";
+  import { queue, type AlbumCard, type FolderState } from "$lib/api";
+  import { FOLDER_SHORT } from "$lib/folders";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
 
-  let { albums, wrap = false, label }: { albums: AlbumCard[]; wrap?: boolean; label: string } = $props();
+  /** An album none of whose tracks can be opened now, with its folder's state (H22b), is dimmed. */
+  type Card = AlbumCard & { unavailable?: FolderState | null };
+
+  let { albums, wrap = false, label }: { albums: Card[]; wrap?: boolean; label: string } = $props();
 
   const albumRule = adHocRule(["album"]);
 
@@ -46,7 +50,14 @@
 <ul class="cards" class:wrap aria-label={label}>
   {#each albums as album (album.id)}
     <li>
-      <div class="card" role="group" aria-label={album.title} oncontextmenu={(event) => menu(event, album)}>
+      <div
+        class="card"
+        class:unavailable={album.unavailable}
+        role="group"
+        aria-label={album.title}
+        title={album.unavailable ? t(FOLDER_SHORT[album.unavailable]) : undefined}
+        oncontextmenu={(event) => menu(event, album)}
+      >
         <div class="art">
           <button class="cover" title={t("library.openName", { name: album.title })} onclick={() => open(album)}>
             <Art albumId={album.id} size="100%" />
@@ -82,6 +93,10 @@
     grid-auto-flow: row;
     grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
     overflow-x: visible;
+  }
+
+  .card.unavailable {
+    opacity: 0.45;
   }
 
   .card {

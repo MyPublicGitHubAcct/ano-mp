@@ -308,6 +308,9 @@ pub struct TrackSummary {
     /// The user's heart and stars (F3).
     pub favourite: bool,
     pub rating: Option<u8>,
+    /// Its library folder, so the UI can show it as unavailable while the
+    /// folder is (PLAN.md H22b).
+    pub folder_id: i64,
 }
 
 /// The columns `track_from_row` reads, from `TRACKS_FROM`. The features'
@@ -325,7 +328,7 @@ pub(super) const TRACK_COLUMNS: &str =
      (SELECT name FROM artists WHERE artists.id = t.composer_id),
      t.work, t.movement_name, t.movement_number, t.range_start,
      EXISTS (SELECT 1 FROM track_favourites tf WHERE tf.track_id = t.id),
-     (SELECT rating FROM track_ratings tr WHERE tr.track_id = t.id)";
+     (SELECT rating FROM track_ratings tr WHERE tr.track_id = t.id), t.folder_id";
 
 /// Tracks `t` with their folder `f`, `artist`, `album` and `album_artist`.
 pub(super) const TRACKS_FROM: &str = "FROM tracks t
@@ -366,6 +369,7 @@ fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
         range_start: row.get(24)?,
         favourite: row.get(25)?,
         rating: row.get(26)?,
+        folder_id: row.get(27)?,
     })
 }
 

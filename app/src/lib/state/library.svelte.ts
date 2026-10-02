@@ -18,6 +18,7 @@ import {
   type ScanProgress,
   type SortRule,
 } from "$lib/api";
+import { unreadableFolders } from "$lib/folders";
 import { errorText, t, type MessageKey } from "$lib/i18n";
 import { attempt, toasts } from "./toasts.svelte";
 import { loadPreference, savePreference, ui } from "./ui.svelte";
@@ -201,6 +202,11 @@ class LibraryStore {
   get unavailable(): Folder[] {
     return this.folders.filter((folder) => folder.available === false);
   }
+
+  /** Folders none of whose tracks can be opened now, with why: lists show their tracks as unavailable (H22b). */
+  unreadable = $derived(unreadableFolders(this.folders));
+  /** Changes only when the set of unreadable folders does: views whose suggestions leave them out reload on it. */
+  unreadableKey = $derived([...this.unreadable.keys()].join(","));
 
   /** Rescans `folder`, removing the tracks it doesn't find, after asking (H22). */
   removeMissing = (folder: Folder) =>

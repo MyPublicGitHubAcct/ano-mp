@@ -339,3 +339,33 @@ TEST_CASE ("C API log reaches its callback, with JUCE's Logger and failed assert
                { ANOMP_LOG_ERROR, "JUCE Assertion failure in File.cpp:42" },
            });
 }
+
+namespace
+{
+std::vector<std::string> loggedAtExit;
+}
+
+TEST_CASE ("C API log may stay set when the process exits", "[c-api][log]")
+{
+    // The host never clears its callback: the core's logger is destroyed
+    // with the process's statics, while it's still JUCE's current logger
+    // unless it steps down first. Each test runs in its own process, so
+    // this one fails by aborting at exit (a pure virtual call).
+    anomp_set_log_callback ([] (int, const char* message, void*) { loggedAtExit.emplace_back (message); }, nullptr);
+    juce::Logger::writeToLog ("still set");
+    CHECK (loggedAtExit == std::vector<std::string> { "still set" });
+}
+
+TEST_CASE ("C API engine shuts JUCE down after its timer", "[c-api][engine][log]")
+{
+    // JUCE's runtime must outlive everything else in the engine, its timer
+    // included, or the timer's thread outlives the message manager.
+    static std::vector<std::string> logged;
+    anomp_set_log_callback ([] (int, const char* message, void*) { logged.emplace_back (message); }, nullptr);
+    auto* engine = anomp_engine_create();
+    REQUIRE (engine != nullptr);
+    anomp_engine_destroy (engine);
+    anomp_set_log_callback (nullptr, nullptr);
+    for (const auto& message : logged)
+        CHECK_FALSE (std::string_view (message).starts_with ("JUCE Assertion failure"));
+}

@@ -6,10 +6,16 @@
   // the row's to show.
   import type { Track } from "$lib/api";
   import { columnText, isShortColumn, textColumns } from "$lib/columns";
+  import { FOLDER_SHORT, unavailableState } from "$lib/folders";
   import { fileName } from "$lib/format";
+  import { t } from "$lib/i18n";
+  import { library } from "$lib/state/library.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
 
   let { track }: { track: Track } = $props();
+
+  /** Its folder can't be read now (H22b): dimmed, with the folder's reason. */
+  const unavailable = $derived(unavailableState(library.unreadable, track.folderId));
 
   const columns = $derived(textColumns(appSettings.display.trackColumns));
   const showLength = $derived(appSettings.display.trackColumns.includes("duration"));
@@ -21,16 +27,20 @@
   );
 </script>
 
-<span class="text">
+<span class="text" class:unavailable title={unavailable ? t(FOLDER_SHORT[unavailable]) : undefined}>
   <span class="name">{track.title ?? fileName(track.path)}</span>
   {#if under}<span class="muted small under">{under}</span>{/if}
 </span>
 {#each columns as column (column)}
-  <span class="column muted" class:short={isShortColumn(column)}>{columnText(column, track)}</span>
+  <span class="column muted" class:short={isShortColumn(column)} class:unavailable>{columnText(column, track)}</span>
 {/each}
-{#if showLength}<span class="muted time">{columnText("duration", track)}</span>{/if}
+{#if showLength}<span class="muted time" class:unavailable>{columnText("duration", track)}</span>{/if}
 
 <style>
+  .unavailable {
+    opacity: 0.45;
+  }
+
   .text {
     display: flex;
     flex-direction: column;

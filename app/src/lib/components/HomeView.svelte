@@ -8,6 +8,7 @@
   import { count, t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { features as api, queue, type AlbumCard, type Highlights, type RecentEntry } from "$lib/api";
+  import { FOLDER_SHORT, unavailableEntryState, unavailableState } from "$lib/folders";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -25,7 +26,16 @@
   const quiet = <T,>(promise: Promise<T>) => promise.catch(() => null);
 
   $effect(() => {
-    void [library.version, features.historyVersion, f.onThisDay, f.recentlyPlayed, f.recentlyAdded, f.listeningHistory];
+    // Folders coming and going change which albums are suggested (H22b).
+    void [
+      library.version,
+      library.unreadableKey,
+      features.historyVersion,
+      f.onThisDay,
+      f.recentlyPlayed,
+      f.recentlyAdded,
+      f.listeningHistory,
+    ];
     untrack(async () => {
       [onThisDay, recent, added, highlights] = await Promise.all([
         f.onThisDay ? quiet(api.onThisDay(new Date())) : null,
@@ -58,6 +68,10 @@
       .map((entry) => ({
         ...entry.album!,
         note: entry.tracks.length > 1 ? count("count.tracks", entry.tracks.length) : (entry.tracks[0]?.title ?? null),
+        unavailable: unavailableEntryState(
+          library.unreadable,
+          entry.tracks.map((track) => track.folderId),
+        ),
       })),
   );
   const recentTracks = $derived((recent ?? []).filter((entry) => entry.album === null));
@@ -92,7 +106,8 @@
       <ul class="tracks">
         {#each recentTracks as entry (entry.playedAt)}
           {@const track = entry.tracks[0]}
-          <li>
+          {@const unavailable = unavailableState(library.unreadable, track.folderId)}
+          <li class:unavailable title={unavailable ? t(FOLDER_SHORT[unavailable]) : undefined}>
             <button class="link" onclick={() => attempt(() => queue.play([track.trackId], 0))}>
               <Icon name="play" size="0.9rem" />
               {track.title}
@@ -126,6 +141,10 @@
 </section>
 
 <style>
+  .unavailable {
+    opacity: 0.45;
+  }
+
   .home {
     height: 100%;
     overflow-y: auto;

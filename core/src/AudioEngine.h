@@ -11,13 +11,21 @@
 
 namespace anomp
 {
+/** JUCE's runtime, as AudioEngine's first base: bases are destroyed after
+    members and in reverse order, so it is shut down after everything else
+    in the engine, the Timer and ChangeListener bases included. */
+struct JuceRuntime
+{
+    juce::ScopedJuceInitialiser_GUI juceInitialiser;
+};
+
 /** Owns JUCE's runtime, the audio output device and the player.
 
     Must be created, used and destroyed on the main thread: the constructor
     starts JUCE's message loop integration there, and device-change and
     player notifications are delivered on that thread.
 */
-class AudioEngine final : private juce::ChangeListener, private juce::Timer
+class AudioEngine final : private JuceRuntime, private juce::ChangeListener, private juce::Timer
 {
 public:
     AudioEngine();
@@ -92,9 +100,6 @@ private:
     void changeListenerCallback (juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
 
-    // Declared first so JUCE is initialised before, and shut down after,
-    // everything else here.
-    juce::ScopedJuceInitialiser_GUI juceInitialiser;
     FormatRegistry formats;
     juce::TimeSliceThread readAheadThread { "anomp read-ahead" };
     PlayerEngine playerEngine { formats.manager(), &readAheadThread }; // Freed before the thread stops.

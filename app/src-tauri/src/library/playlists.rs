@@ -335,7 +335,7 @@ pub fn page(conn: &Connection, id: i64, offset: u32, limit: u32) -> Result<Playl
             .query_map(params![id, limit, offset], |row| {
                 Ok(PlaylistEntry {
                     track: track_from_row(row)?,
-                    item_id: Some(row.get(27)?),
+                    item_id: Some(row.get(28)?),
                 })
             })?
             .collect::<Result<_, _>>()?,
@@ -343,11 +343,13 @@ pub fn page(conn: &Connection, id: i64, offset: u32, limit: u32) -> Result<Playl
     Ok(PlaylistPage { playlist, entries })
 }
 
-/// The playlist's tracks in order, to play.
-pub fn track_ids(conn: &Connection, id: i64) -> Result<Vec<i64>, Error> {
+/// The playlist's tracks in order, to play. A smart playlist leaves out
+/// those in the folders `unreadable` (PLAN.md H22b); a list keeps them, and
+/// the queue passes over them.
+pub fn track_ids(conn: &Connection, id: i64, unreadable: &[i64]) -> Result<Vec<i64>, Error> {
     let playlist = require(conn, id)?;
     match &playlist.rules {
-        Some(rules) => smart::track_ids(conn, rules),
+        Some(rules) => smart::track_ids(conn, rules, unreadable),
         None => Ok(conn
             .prepare_cached(
                 "SELECT track_id FROM playlist_items WHERE playlist_id = ?1 ORDER BY position, id",
@@ -533,7 +535,7 @@ fn lexical_clean(path: &Path) -> PathBuf {
 /// more than the root of the disk, else absolute. Returns the tracks
 /// written. A part of a file (a cue sheet's track) is written as its file.
 pub fn export_m3u(conn: &Connection, id: i64, file: &Path) -> Result<usize, Error> {
-    let tracks = track_ids(conn, id)?;
+    let tracks = track_ids(conn, id, &[])?;
     let base = file.parent().unwrap_or(Path::new("/"));
     let mut text = String::from("#EXTM3U\n");
     let mut written = 0;
@@ -664,7 +666,7 @@ mod tests {
         remove(&mut library.conn, list.id, &[items[1]]).unwrap();
         assert_eq!(listed(&library, list.id), ["Two", "One", "Three"]);
         assert_eq!(
-            track_ids(&library.conn, list.id).unwrap(),
+            track_ids(&library.conn, list.id, &[]).unwrap(),
             [t[1], t[0], t[2]]
         );
 

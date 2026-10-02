@@ -233,17 +233,25 @@ pub fn open_folder_with(
     })
 }
 
-/// Why a folder whose bookmark doesn't resolve can't be opened: missing,
-/// unless its path is still a folder (which a sandboxed app may not be
-/// allowed to see), or the bookmark was made by another build.
+/// Why a folder whose bookmark doesn't resolve can't be opened, going by
+/// its stored path first: nothing there is missing; a folder there, or a
+/// path the sandbox won't let the app look at, is no permission. Only
+/// otherwise does the bookmark's error decide: "isn't in the correct
+/// format" is a bookmark made by another build. Under the sandbox a deleted
+/// folder's bookmark fails with those words too.
 fn unresolved(stored: &str, error: &str) -> FolderState {
-    if error.contains("isn’t in the correct format")
-        || error.contains("isn't in the correct format")
-        || Path::new(stored).is_dir()
-    {
-        FolderState::NoPermission
-    } else {
-        FolderState::Missing
+    match std::fs::metadata(stored) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => FolderState::Missing,
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            FolderState::NoPermission
+        }
+        Ok(metadata) if metadata.is_dir() => FolderState::NoPermission,
+        _ if error.contains("isn’t in the correct format")
+            || error.contains("isn't in the correct format") =>
+        {
+            FolderState::NoPermission
+        }
+        _ => FolderState::Missing,
     }
 }
 
@@ -620,6 +628,21 @@ mod tests {
             ..FakeBookmarks::default()
         };
         assert_eq!(state(&conn, id, &bookmarks), FolderState::NoPermission);
+
+        // A deleted folder's bookmark fails with the same words under the
+        // sandbox (seen in a bundle, Step 4): nothing at its path is
+        // missing, whatever the bookmark says.
+        let gone = dir.path().join("Gone");
+        let gone_id = fake_folder(&conn, &gone, 1);
+        let bookmarks = FakeBookmarks {
+            fail: [(
+                gone.clone(),
+                "The file couldn’t be opened because it isn’t in the correct format.".into(),
+            )]
+            .into(),
+            ..FakeBookmarks::default()
+        };
+        assert_eq!(state(&conn, gone_id, &bookmarks), FolderState::Missing);
 
         // A folder that can't be listed.
         #[cfg(unix)]

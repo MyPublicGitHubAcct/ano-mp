@@ -38,6 +38,7 @@
     rangeStart: 0,
     favourite: true,
     rating: 4,
+    folderId: 0,
   };
 
   const preview = $derived(

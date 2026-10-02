@@ -114,7 +114,7 @@ Why this split:
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 102 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| 104 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
 | `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
 | Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
@@ -132,10 +132,10 @@ Why this split:
 | Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
 | UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
 | Library DB safety (H10): a copy before each migration, a check at launch with the restore or rebuild offer, `PRAGMA optimize` at exit, the response cache pruned | `app/src-tauri/src/library/db.rs`, `app/src-tauri/src/library/recovery.rs`, `app/src/lib/components/DbRepairDialog.svelte` |
-| Missing folders (H22a): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte` |
+| Missing folders (H22): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned, unreadable folders' tracks dimmed in lists and left out of radio, smart playlists' play and Home's suggestions | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte`, `app/src/lib/folders.ts` |
 | Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
-| 21 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links) | `app/tests/` |
-| 383 passing `cargo test` tests (database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 25 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links, unreadable folders) | `app/tests/` |
+| 387 passing `cargo test` tests (database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -2720,8 +2720,8 @@ in order. Step 6 runs alongside all of them.
    - H8 (clippy, `[lints]`, toolchain pins), H7's remainder (SHA pins for
      JUCE and Catch2, `cargo deny`, the update bot, secret scanning).
    - H13's P1 part (ESLint and Prettier), H6 (sanitizer presets).
-3. **P1 items that protect user data (3–5 days). Done 2026-10-02,
-   apart from H22b.**
+3. **P1 items that protect user data (3–5 days). Done 2026-10-02
+   (H22b with Step 4).**
    - Every suite passed on a clean tree: ctest 102 (also under the `asan`
      and `tsan` presets), `cargo test` 383 (9 ignored), `npm test` 21,
      `svelte-check` 0 errors, script tests 30. `check-all.py` (still 21
@@ -2741,7 +2741,38 @@ in order. Step 6 runs alongside all of them.
      `error.folderUnavailable.*` in `en.json`), the database repair offer
      (`dbRepair.*`) and Settings › About (`about.*`).
    - What only a sandboxed bundle shows is in Step 4's list.
-4. **Exit checks in a sandboxed bundle.**
+4. **Exit checks in a sandboxed bundle. Probe checks done 2026-10-02;
+   the owner's checks wait.**
+   - H22b came first (H22's entry). After it every suite passed:
+     ctest 102 (also under `asan` and `tsan`), `cargo test` 387 (9
+     ignored), `npm test` 25, `svelte-check` 0 errors, script tests 30,
+     `check-all.py` all 21 steps.
+   - The checklist is `docs/step4-checklist.md`, ordered by risk, each
+     entry saying how to check it, what passing looks like, and who.
+   - The real container was protected by moving the app's own files out
+     of it and back (macOS won't let another process move or fully copy
+     a container); see "Running a bundle check safely" in `CLAUDE.md`.
+   - A temporary probe, compiled into the bundle and removed afterwards,
+     ran stages against a scratch library of `core/tests/fixtures`
+     written into the container:
+     - scan, bookmark and covers in the sandbox, a gapless hand-off, the
+       diagnostics without paths: passed;
+     - folder states with real bookmarks (empty and kept through a
+       scan, in a Trash and not followed, deleted, back), H22b, a queue of
+       unreadable tracks not spinning: passed after a fix (H22);
+     - the log in the container (format, no paths): passed;
+     - a panic in a release build: passed;
+     - the database repair, restore and rebuild: passed (the dialog is the
+       owner's to see).
+   - Found: every quit crashed (H9's entry), a deleted folder read as "no
+     access" (H22's entry). Each fixed with a test; after the fixes every
+     suite passed: ctest 104 (also under `asan` and `tsan`), `cargo test`
+     387 (9 ignored), `npm test` 25, `check-all.py` all 21 steps.
+   - Left for the owner (the checklist's unticked entries): Finder drops,
+     Open With, USB, SMB, the Trash and deletion outside the container, a
+     rebuilt bundle's folders, "Show logs", "Copy diagnostics", the repair
+     dialog, the local-network prompt, the keychain, playback by ear, the
+     rest of the app, and the visualizers.
    - Merge the exit lists of Phases 4, 5, 6, 6b and 6c into one
      checklist, ordered by risk:
      - sandbox-only behaviour first (folder drops, Open With, the LAN
@@ -3079,6 +3110,22 @@ matches it.
     - Tests: redaction, scrubbing, levels, timestamps, the log's last
       lines, the panic hook, the diagnostics' text, switches and counts,
       and the core's callback (Catch2 and Rust).
+    - **Fixed 2026-10-02 (Step 4): every quit crashed.** In a bundle, each
+      quit logged "JUCE Assertion failure in juce_Timer.cpp:99", then
+      aborted about 16 s later with a crash report (a pure virtual call in
+      `juce::Logger::~Logger` from `exit`).
+      - The core's logger (`Log.cpp`'s forwarder, a static) was destroyed
+        with the process's statics while still JUCE's current logger; the
+        host never clears its callback. JUCE's destructor asserted, and
+        logged that through the half-destroyed logger. The forwarder now
+        stops being the current logger first.
+      - The assertion itself: `AudioEngine`'s JUCE runtime was a member, so
+        it shut JUCE down before the engine's `Timer` base let go of JUCE's
+        timer thread. The runtime is now the engine's first base
+        (`JuceRuntime`).
+      - Tests: "C API log may stay set when the process exits" (aborted at
+        exit before the fix) and "C API engine shuts JUCE down after its
+        timer" (no assertion logged).
     - Left: readable release backtraces need symbols (`strip =
       "debuginfo"`, or a saved dSYM), a size question for §8.2. FFmpeg's
       own log (`av_log`) isn't routed; it would be noisy on damaged files.
@@ -3391,10 +3438,49 @@ matches it.
         going while playing is passed over);
       - Now Playing showing it stopped;
       - the volume watcher (Catch2 and Rust).
-  - **Left (H22b, P1):** tracks of unavailable folders shown as such in
-    browse, search, playlists and history, and left out by radio, shuffle
-    refills, smart playlists' "play" and Home's suggestions. Playback
-    already passes over them, since the queue skips what it can't open.
+  - **Fixed 2026-10-02 (Step 4): a deleted folder read as "no access".**
+    Under the sandbox, a deleted folder's security-scoped bookmark fails
+    with "isn't in the correct format", the words `access::unresolved`
+    took for a rebuilt bundle's bookmark. It now goes by the stored path
+    first: nothing there is `missing`; a folder there, or a path the
+    sandbox won't stat, is `noPermission`; only otherwise does the error's
+    text decide. Test: the case in `a_folder_the_app_may_not_read_has_no_permission`.
+    Checked in the bundle for a folder inside the container; one outside
+    it is in the owner's list.
+  - **Done 2026-10-02 (H22b):** tracks of unavailable folders shown as
+    such in browse, search, playlists and history, and left out by radio
+    (and its refills, which is what "shuffle refills" meant: shuffle only
+    reorders the queue), smart playlists' "play" and Home's suggestions.
+    - Which folders: `FolderStates::unreadable()` (every unavailable state
+      but `mostlyGone`, whose remaining files still play), through
+      `availability::unreadable(app)`. Their ids are bound as JSON and read
+      with `json_each` (`availability::json_ids`), never formatted in.
+    - Left out:
+      - `radio::picks` (start radio and the refills);
+      - `smart::track_ids`, which `playlists_track_ids` (play, add to queue)
+        uses: a limited smart playlist plays its limit of tracks that open.
+        Lists of tracks keep them; the queue passes over them. M3U export
+        keeps them;
+      - Home: recently added, released on this day, the highlights
+        (forgotten, a year ago, never played) and "More in this genre"
+        leave out albums none of whose tracks can be opened
+        (`discover::playable_album`). Recently added dates an album by
+        its readable tracks. Home and "More in this genre" reload when the
+        set of unreadable folders changes (`library.unreadableKey`).
+    - Shown: `TrackSummary` has `folder_id` (so browse, search, playlists
+      and favourites have it), recently played's tracks `folder_id`, and a
+      top entry its tracks' `folder_ids`. The UI works out the unreadable
+      folders from `library.folders` (`lib/folders.ts`, the same rule as
+      Rust) and dims a track (`TrackText`), a history entry or a Home
+      card whose folders are all unreadable, with the folder's short reason
+      (`folderShort.*`, the owner's choice: no new wording) as its tooltip.
+      Hearts and stars stay usable. The sidebar's map of short reasons
+      moved to `lib/folders.ts` (`FOLDER_SHORT`).
+    - Tests: radio, a smart playlist's play (the limit filled from readable
+      folders, and conditions joined by OR still needing the folder),
+      recently added, on this day and more in genre, the highlights, the
+      history's folder ids (`cargo test`, 4 new), and `tests/folders.test.mjs`
+      (4).
 
 - **Exit:** the macOS app is ready for the first release in §8.3, with
   the P1 items of §4.7 and of H1–H22 done.

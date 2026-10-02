@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::library::availability::json_ids;
 use crate::library::genres;
 use crate::library::sort_key::fold;
 use crate::library::{unix_now, Error};
@@ -51,12 +52,14 @@ struct Seed {
 }
 
 /// Up to `count` tracks to follow `seed_track_id`, none of them in
-/// `exclude`, at most one per album and two per artist, the best first.
-/// `random` varies the picks between calls.
+/// `exclude` or in the folders `unreadable` (PLAN.md H22b), at most one per
+/// album and two per artist, the best first. `random` varies the picks
+/// between calls.
 pub fn picks(
     conn: &Connection,
     seed_track_id: i64,
     exclude: &HashSet<i64>,
+    unreadable: &[i64],
     count: usize,
     random: u64,
 ) -> Result<Vec<Pick>, Error> {
@@ -74,7 +77,7 @@ pub fn picks(
     };
 
     let mut scored: Vec<(f64, Pick, Option<i64>, Option<i64>)> = Vec::new();
-    for track in tracks(conn)? {
+    for track in tracks(conn, unreadable)? {
         // Radio moves away from the seed's album; the queue has the rest of it.
         if track.id == seed.track_id
             || exclude.contains(&track.id)
@@ -170,13 +173,15 @@ pub fn picks(
     Ok(chosen)
 }
 
-fn tracks(conn: &Connection) -> Result<Vec<TrackRow>, Error> {
+/// Every track outside the folders `unreadable`.
+fn tracks(conn: &Connection, unreadable: &[i64]) -> Result<Vec<TrackRow>, Error> {
     let mut statement = conn.prepare_cached(
         "SELECT t.id, t.artist_id, t.album_id, t.genre,
                 IFNULL((SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id), t.year)
-         FROM tracks t",
+         FROM tracks t
+         WHERE t.folder_id NOT IN (SELECT value FROM json_each(?1))",
     )?;
-    let rows = statement.query_map([], |row| {
+    let rows = statement.query_map([json_ids(unreadable)], |row| {
         let genre: Option<String> = row.get(3)?;
         Ok(TrackRow {
             id: row.get(0)?,
@@ -390,7 +395,7 @@ mod tests {
                 .year(1980),
         ]);
         let seed = id(&library, "seed.flac");
-        let picks = picks(&library.conn, seed, &HashSet::new(), 10, 1).unwrap();
+        let picks = picks(&library.conn, seed, &HashSet::new(), &[], 10, 1).unwrap();
         let by_id: HashMap<i64, &str> = picks
             .iter()
             .map(|p| (p.track_id, p.reason.as_str()))
@@ -407,10 +412,10 @@ mod tests {
 
         // Excluded tracks and the count.
         let excluded: HashSet<i64> = [id(&library, "jazz94.flac")].into();
-        let fewer = super::picks(&library.conn, seed, &excluded, 1, 1).unwrap();
+        let fewer = super::picks(&library.conn, seed, &excluded, &[], 1, 1).unwrap();
         assert_eq!(fewer.len(), 1);
         assert_ne!(fewer[0].track_id, id(&library, "jazz94.flac"));
-        assert!(super::picks(&library.conn, 999, &HashSet::new(), 5, 1)
+        assert!(super::picks(&library.conn, 999, &HashSet::new(), &[], 5, 1)
             .unwrap()
             .is_empty());
     }
@@ -440,7 +445,7 @@ mod tests {
             )
             .unwrap();
         let seed = id(&library, "seed.flac");
-        let picks = picks(&library.conn, seed, &HashSet::new(), 10, 3).unwrap();
+        let picks = picks(&library.conn, seed, &HashSet::new(), &[], 10, 3).unwrap();
         let by_id: HashMap<i64, &str> = picks
             .iter()
             .map(|p| (p.track_id, p.reason.as_str()))
@@ -463,6 +468,7 @@ mod tests {
                 &library.conn,
                 id(&library, "seed.flac"),
                 &HashSet::new(),
+                &[],
                 2,
                 random,
             )
@@ -472,5 +478,25 @@ mod tests {
             }
         }
         assert_eq!(first_a, 0, "0.3 of the score never beats the random 0.6..1");
+    }
+
+    #[test]
+    fn leaves_out_tracks_of_unreadable_folders() {
+        let library = Library::new([
+            track("seed.flac").album("S").genre("Jazz"),
+            track("here.flac").album("H").genre("Jazz"),
+        ]);
+        let away = library.add_folder("/Volumes/Away");
+        library.add(away, track("away.flac").album("A").genre("Jazz"));
+        let seed = id(&library, "seed.flac");
+        let picked = |unreadable: &[i64]| -> Vec<i64> {
+            picks(&library.conn, seed, &HashSet::new(), unreadable, 10, 1)
+                .unwrap()
+                .into_iter()
+                .map(|pick| pick.track_id)
+                .collect()
+        };
+        assert_eq!(picked(&[]).len(), 2);
+        assert_eq!(picked(&[away]), [id(&library, "here.flac")]);
     }
 }

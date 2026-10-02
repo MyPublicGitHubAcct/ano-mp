@@ -409,11 +409,19 @@ fn fill_radio<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
         return;
     }
     let exclude: HashSet<i64> = queue.track_ids().into_iter().collect();
+    let unreadable = crate::library::availability::unreadable(app);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let result = on_library(&app, move |library| {
             let conn = library.conn();
-            let picks = radio::picks(&conn, seed, &exclude, radio::BATCH, seed_random())?;
+            let picks = radio::picks(
+                &conn,
+                seed,
+                &exclude,
+                &unreadable,
+                radio::BATCH,
+                seed_random(),
+            )?;
             with_reasons(&conn, picks, &features)
         })
         .await;
@@ -908,12 +916,14 @@ pub async fn queue_start_radio<R: Runtime>(app: AppHandle<R>, track_id: i64) -> 
     if !features.library_radio {
         return Err(crate::coded::feature_off("libraryRadio", "Library radio"));
     }
+    let unreadable = crate::library::availability::unreadable(&app);
     let tracks = on_library(&app, move |library| {
         let conn = library.conn();
         let picks = radio::picks(
             &conn,
             track_id,
             &HashSet::from([track_id]),
+            &unreadable,
             radio::BATCH,
             seed_random(),
         )?;

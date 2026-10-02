@@ -6,7 +6,8 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-use crate::library::discover::AlbumCard;
+use crate::library::availability::json_ids;
+use crate::library::discover::{playable_album, AlbumCard};
 use crate::library::{unix_now, Error};
 
 /// One row of recently played: a run of plays from one album collapsed
@@ -27,6 +28,8 @@ pub struct RecentTrack {
     pub track_id: i64,
     pub title: String,
     pub artist: Option<String>,
+    /// So the UI can show it as unavailable while its folder is (H22b).
+    pub folder_id: i64,
 }
 
 /// Plays looked at for recently played; enough for many screens of it.
@@ -38,7 +41,7 @@ pub fn recently_played(conn: &Connection, limit: usize) -> Result<Vec<RecentEntr
         "SELECT p.played_at, t.id, IFNULL(t.title, t.relative_path),
                 IFNULL(t.artist_credit, artist.name), t.album_id,
                 al.title, album_artist.name, al.artist_id,
-                (SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id)
+                (SELECT min(y.year) FROM tracks y WHERE y.album_id = t.album_id), t.folder_id
          FROM plays p JOIN tracks t ON t.id = p.track_id
          LEFT JOIN artists artist ON artist.id = t.artist_id
          LEFT JOIN albums al ON al.id = t.album_id
@@ -67,6 +70,7 @@ pub fn recently_played(conn: &Connection, limit: usize) -> Result<Vec<RecentEntr
                 track_id: row.get(1)?,
                 title: title.rsplit('/').next().unwrap_or(&title).to_owned(),
                 artist: row.get(3)?,
+                folder_id: row.get(9)?,
             },
         ))
     })?;
@@ -113,6 +117,9 @@ pub struct TopEntry {
     /// What "Play these" queues for it: the track, the album's tracks, or
     /// the artist's most played track of the period.
     pub track_ids: Vec<i64>,
+    /// The folders of those tracks, so the UI can show the entry as
+    /// unavailable while none of them can be read (H22b).
+    pub folder_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -197,6 +204,7 @@ pub fn top_played(
             subtitle,
             album_id,
             plays,
+            folder_ids: folders_of(conn, &track_ids)?,
             track_ids,
         });
     }
@@ -227,6 +235,18 @@ fn period(conn: &Connection, year: i32, month: Option<u32>) -> Result<(i64, i64)
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     Ok(bounds)
+}
+
+/// The folders holding `track_ids`, each once, in id order.
+fn folders_of(conn: &Connection, track_ids: &[i64]) -> Result<Vec<i64>, Error> {
+    let mut statement = conn.prepare_cached(
+        "SELECT DISTINCT folder_id FROM tracks
+         WHERE id IN (SELECT value FROM json_each(?1)) ORDER BY folder_id",
+    )?;
+    let ids = statement
+        .query_map([json_ids(track_ids)], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
 }
 
 fn album_tracks(conn: &Connection, album_id: i64) -> Result<Vec<i64>, Error> {
@@ -271,9 +291,12 @@ pub struct Highlights {
 
 const HIGHLIGHTS: u32 = 12;
 
-pub fn highlights(conn: &Connection) -> Result<Highlights, Error> {
+/// The highlights, leaving out albums only in the folders `unreadable`
+/// (PLAN.md H22b).
+pub fn highlights(conn: &Connection, unreadable: &[i64]) -> Result<Highlights, Error> {
     let now = unix_now();
     let year_ago = now - 365 * 86400;
+    let folders = json_ids(unreadable);
     let card_columns = "al.id, al.title, ar.name, al.artist_id,
          (SELECT min(y.year) FROM tracks y WHERE y.album_id = al.id)";
     let cards = |sql: &str,
@@ -300,10 +323,12 @@ pub fn highlights(conn: &Connection) -> Result<Highlights, Error> {
             "SELECT {card_columns}, count(*) AS n
              FROM plays p JOIN tracks t ON t.id = p.track_id JOIN albums al ON al.id = t.album_id
              LEFT JOIN artists ar ON ar.id = al.artist_id
+             WHERE {playable}
              GROUP BY al.id HAVING n >= 5 AND max(p.played_at) < ?1
-             ORDER BY n DESC LIMIT ?2"
+             ORDER BY n DESC LIMIT ?2",
+            playable = playable_album(3)
         ),
-        &[&year_ago, &HIGHLIGHTS],
+        &[&year_ago, &HIGHLIGHTS, &folders],
         &|n| Some(format!("{n} plays")),
     )?;
     let a_year_ago = cards(
@@ -313,9 +338,11 @@ pub fn highlights(conn: &Connection) -> Result<Highlights, Error> {
              LEFT JOIN artists ar ON ar.id = al.artist_id
              WHERE date(p.played_at, 'unixepoch', 'localtime') =
                    date(?1, 'unixepoch', 'localtime', '-1 year')
-             GROUP BY al.id ORDER BY min(p.played_at) LIMIT ?2"
+               AND {playable}
+             GROUP BY al.id ORDER BY min(p.played_at) LIMIT ?2",
+            playable = playable_album(3)
         ),
-        &[&now, &HIGHLIGHTS],
+        &[&now, &HIGHLIGHTS, &folders],
         &|_| None,
     )?;
     let never_played = cards(
@@ -323,9 +350,11 @@ pub fn highlights(conn: &Connection) -> Result<Highlights, Error> {
             "SELECT {card_columns}, 0 FROM albums al LEFT JOIN artists ar ON ar.id = al.artist_id
              WHERE NOT EXISTS (SELECT 1 FROM plays p JOIN tracks t ON t.id = p.track_id
                                WHERE t.album_id = al.id)
-             ORDER BY random() LIMIT ?1"
+               AND {playable}
+             ORDER BY random() LIMIT ?1",
+            playable = playable_album(2)
         ),
-        &[&HIGHLIGHTS],
+        &[&HIGHLIGHTS, &folders],
         &|_| None,
     )?;
     let total_plays = conn.query_row("SELECT count(*) FROM plays", [], |row| row.get(0))?;
@@ -454,7 +483,7 @@ mod tests {
             )
             .unwrap();
         record(conn, 3, a_year_ago, 60.0).unwrap();
-        let highlights = highlights(conn).unwrap();
+        let highlights = highlights(conn, &[]).unwrap();
         assert_eq!(highlights.forgotten.len(), 1);
         assert_eq!(highlights.forgotten[0].title, "Alpha");
         assert_eq!(highlights.forgotten[0].note.as_deref(), Some("5 plays"));
@@ -464,8 +493,44 @@ mod tests {
         assert_eq!(highlights.total_plays, 6);
 
         clear(conn).unwrap();
-        let empty = super::highlights(conn).unwrap();
+        let empty = super::highlights(conn, &[]).unwrap();
         assert_eq!(empty.never_played.len(), 2);
         assert_eq!(empty.total_plays, 0);
+    }
+
+    #[test]
+    fn highlights_leave_out_albums_of_unreadable_folders() {
+        let library = library();
+        let conn = &library.conn;
+        let away = library.add_folder("/Volumes/Away");
+        conn.execute(
+            "UPDATE tracks SET folder_id = ?1 WHERE relative_path = 'b/1.flac'",
+            [away],
+        )
+        .unwrap();
+        let long_ago = unix_now() - 400 * 86400;
+        for i in 0..5 {
+            record(conn, 3, long_ago + i, 60.0).unwrap();
+        }
+        assert_eq!(highlights(conn, &[]).unwrap().forgotten[0].title, "Beta");
+        let left = highlights(conn, &[away]).unwrap();
+        assert!(left.forgotten.is_empty());
+        let never: Vec<&str> = left.never_played.iter().map(|a| a.title.as_str()).collect();
+        assert_eq!(never, ["Alpha"]);
+        assert_eq!(left.total_plays, 5);
+
+        // History itself keeps them, with their folders.
+        let recent = recently_played(conn, 10).unwrap();
+        assert_eq!(recent[0].tracks[0].folder_id, away);
+        let year: i32 = conn
+            .query_row(
+                "SELECT CAST(strftime('%Y', ?1, 'unixepoch', 'localtime') AS INTEGER)",
+                [long_ago],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let top = top_played(conn, TopKind::Albums, year, None).unwrap();
+        assert_eq!(top.entries[0].title, "Beta");
+        assert_eq!(top.entries[0].folder_ids, [away]);
     }
 }

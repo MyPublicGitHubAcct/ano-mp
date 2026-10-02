@@ -869,7 +869,8 @@ mod tests {
         assert!(report.missing.is_empty());
         let three = ids(&to.conn, "SELECT id FROM tracks WHERE title = 'Three'")[0];
         let listed =
-            playlists::track_ids(&to.conn, playlists::playlists(&to.conn).unwrap()[0].id).unwrap();
+            playlists::track_ids(&to.conn, playlists::playlists(&to.conn).unwrap()[0].id, &[])
+                .unwrap();
         assert_eq!(listed[0], three);
 
         // Importing again adds nothing twice.

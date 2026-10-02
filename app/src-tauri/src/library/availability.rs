@@ -188,6 +188,22 @@ pub fn changed<R: Runtime>(app: &AppHandle<R>, changes: Changes, rescan: bool) {
     });
 }
 
+/// The folders none of whose files can be opened now (`unreadable`), or
+/// none before the library is set up. Lists that pick tracks to play
+/// (radio, smart playlists' "play", Home's suggestions) leave their tracks
+/// out (H22b).
+pub fn unreadable<R: Runtime>(app: &AppHandle<R>) -> Vec<i64> {
+    app.try_state::<FolderStates>()
+        .map(|states| states.unreadable())
+        .unwrap_or_default()
+}
+
+/// `ids` as a JSON array, to bind where a query reads it with `json_each`
+/// (never formatted into the SQL).
+pub fn json_ids(ids: &[i64]) -> String {
+    serde_json::to_string(ids).unwrap_or_else(|_| "[]".into())
+}
+
 /// Which of `track_ids` are in the folders `folder_ids`.
 pub fn tracks_in(
     conn: &Connection,
@@ -203,13 +219,9 @@ pub fn tracks_in(
            AND folder_id IN (SELECT value FROM json_each(?2))",
     )?;
     let ids = statement
-        .query_map(
-            [
-                serde_json::to_string(track_ids).unwrap_or_default(),
-                serde_json::to_string(folder_ids).unwrap_or_default(),
-            ],
-            |row| row.get(0),
-        )?
+        .query_map([json_ids(track_ids), json_ids(folder_ids)], |row| {
+            row.get(0)
+        })?
         .collect::<Result<_, _>>()?;
     Ok(ids)
 }
