@@ -160,7 +160,7 @@ Why this split:
 | One version number: CMake's `project(VERSION)`, compiled into `anomp_version()`, the other copies set and checked by `version.py` | `CMakeLists.txt`, `scripts/version.py` |
 | Third-party notices, generated and checked, in the bundle and in Settings › About | `THIRD_PARTY_NOTICES`, `scripts/make-notices.py`, `scripts/licenses/`, `app/src/lib/components/NoticesDialog.svelte` |
 | Release tooling (unsigned until the Developer ID exists): the tag-triggered workflow, the universal build, the bundle check, notarization, checksums and notes from `CHANGELOG.md`, certificate expiry | `.github/workflows/release.yml`, `scripts/{build-app,check-bundle,notarize,release,check-signing}.py`, `CHANGELOG.md` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 132 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (by hand, and called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 133 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (by hand, and called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
 | The sandboxed bundle's self-test (H14): `--self-test` behind the `self-test` feature (scan, bookmark, covers, decoding and a gapless hand-off in the sandbox), built and run by `self-test-bundle.py` from `check-all.py` on CI | `app/src-tauri/src/self_test.rs`, `scripts/self-test-bundle.py` |
 | The clean-Mac smoke test for each release (§8.3, §8.7 step 6), with H18's owner checks | `docs/release-smoke-test.md` |
 | Finished phases' design notes and known limits (H20), the docs' paths, links and §2's counts checked (`check-docs.py`) | `docs/design/`, `scripts/check-docs.py` |
@@ -1450,8 +1450,8 @@ in order. Step 6 runs alongside all of them.
      awaited, and the fix comes first once it is in. Meanwhile the owner
      set CI to run by hand and through `release.yml` only (`ci.yml`,
      README's "When GitHub Actions run"), so a push no longer runs it.
-   - Done: `scripts/__pycache__` and `scripts/tests/__pycache__` (17
-     committed `.pyc` files) untracked and ignored.
+   - Done: the `__pycache__` folders in `scripts/` and `scripts/tests/`
+     (17 committed `.pyc` files) untracked and ignored.
    - Done: Part 4's checklist, `docs/release-smoke-test.md`: checksums,
      Gatekeeper on the DMG and at first launch, import and relaunch, MP3,
      FLAC and AAC, seeking, a gapless album, media keys, a MusicBrainz
@@ -1465,22 +1465,33 @@ in order. Step 6 runs alongside all of them.
      ignored), `npm test` 25, `svelte-check` 0 errors, script tests 79,
      `check-all.py` all 25 steps (new: "bundle self-test", which skips
      itself outside CI).
-   - Waiting on the owner, in the order they block the first public
-     release:
+   - Waiting on the owner, in the order the owner takes them (set
+     2026-10-03: the name moved last):
      1. ~~the CI log of run #9 (and #6)~~ fixed 2026-10-03 (below);
         CI on `main` itself waits for the owner to push the fix and run
         it;
-     2. the name, bundle identifier and publisher (Part 0's rename, then
-        the icon set from the artwork);
-     3. the distribution channel and where releases are hosted (Part 1,
-        the updater, if a direct download);
-     4. the Developer Program and the Developer ID certificate (Part 2),
+     2. the distribution channel and where releases are hosted (Part 1,
+        the updater, if a direct download). The owner made the
+        repository public on 2026-10-03, so its GitHub Releases can host
+        downloads and Actions minutes are free; the channel is still
+        open, and iPhone and iPad wait for the last steps;
+     3. the Developer Program and the Developer ID certificate (Part 2),
         then the App Store Connect API key and the six secrets (Part 3);
-     5. the JUCE licence, the AAC opinion, the privacy policy and support
+     4. the JUCE licence, the AAC opinion, the privacy policy and support
         URL, the `User-Agent` contact and MetaBrainz plan, crash
         reporting;
-     6. the checklist's owner entries (`docs/step4-checklist.md`) and,
-        per release, `docs/release-smoke-test.md`.
+     5. the checklist's owner entries (`docs/step4-checklist.md`) and,
+        per release, `docs/release-smoke-test.md`;
+     6. the name, bundle identifier and publisher (Part 0's rename, then
+        the icon set from the artwork). Still blocks the first signed
+        release (the identifier is in the signature and the container)
+        and an App Store record. Asked 2026-10-03: the trademark,
+        domain and App Store checks not done, the account type
+        undecided, no artwork. Checked then: no DNS records for
+        `anotracks`, `anotone` or `anotraks` under .com, .app or .dev;
+        WHOIS "No match" for the three .com names; .app and .dev have no
+        WHOIS server any more (IANA lists none; Google's registry
+        answers RDAP only), so a registrar's search settles those.
    - **Part 5 done 2026-10-03:** the CI fix first, then `bench.py` (M4)
      and H18's budgets, H20 (with `check-docs.py`, M2), H15, H16 and H17,
      each in its entry. After each part `check-all.py` ran in full; after

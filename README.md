@@ -140,8 +140,7 @@ it doesn't run on every push. It runs:
   scripts/version.py 0.2.0      # set the version everywhere, then commit
   git tag v0.2.0 && git push origin v0.2.0
   ```
-- **By hand,** on any branch: `gh workflow run ci.yml --ref <branch>`, or
-  Actions › CI › Run workflow on GitHub.
+- **By hand,** on any branch (see [Running CI by hand](#running-ci-by-hand)).
 
 The weekly fuzzing run ([fuzz.yml](.github/workflows/fuzz.yml)) runs on its
 own schedule, Mondays at 06:00 UTC. Between releases, the pre-commit hook
@@ -150,6 +149,38 @@ on every commit, and `scripts/check-all.py` runs the full set locally.
 
 Dependabot's monthly pull requests don't get CI automatically. Run CI by hand
 on their branch, or run `scripts/check-all.py` locally, before you merge them.
+
+### Running CI by hand
+
+CI runs on what is pushed to GitHub, so push the branch first. Run it on
+`main` after pushing work that matters, and on a Dependabot branch before
+merging its pull request.
+
+On GitHub:
+
+1. Open the repository's **Actions** tab and choose **CI** in the list of
+   workflows on the left.
+2. Click **Run workflow** (top right of the list of runs), pick the branch
+   under **Use workflow from**, and click the green **Run workflow** button.
+3. The run appears at the top of the list after a few seconds. Open it to
+   follow the log; the **Check** step is `scripts/check-all.py`, and its last
+   lines name any step that failed.
+
+With the [GitHub CLI](https://cli.github.com) (`brew install gh`, then
+`gh auth login` once):
+
+```sh
+gh workflow run ci.yml --ref main   # start CI on a branch (main here)
+gh run list --workflow ci.yml       # recent runs and their results
+gh run watch                        # follow a run until it finishes (pick one)
+gh run view --log-failed            # the log of a failed run's failed step
+gh pr list                          # open pull requests, with their branches
+gh workflow run ci.yml --ref dependabot/cargo/app/src-tauri/cargo-…  # a Dependabot branch
+```
+
+A run takes about 25 minutes, longer when it has to build FFmpeg and JUCE
+from scratch (the first run, or after a pin or the toolchain changes). Starting a second run on the same branch cancels
+the first.
 
 ### Other ways to set the triggers
 

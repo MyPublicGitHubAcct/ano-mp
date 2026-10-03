@@ -65,9 +65,11 @@ can wait for their phases.
   downloads; the Mac App Store forbids it. I'll ask before adding it, once
   this is decided. Its signing key, once made, must be backed up offline:
   losing it strands every install.
-- Where releases are hosted: the repository is private, so its GitHub
-  Releases can't serve public downloads or an update manifest. Either the
-  repository (or a separate public one) hosts them, or a website does.
+- Where releases are hosted: the repository was made public on
+  2026-10-03 (owner), so its GitHub Releases can serve public downloads
+  and an update manifest, and its Actions minutes are free. A separate
+  public repository or a website remain options; whichever URL the
+  updater uses is compiled into every build.
 - The Mac App Store needs its own certificates and provisioning, App Store
   Connect's privacy answers (see 6), and review notes; the app is already
   sandboxed, which the store requires.
@@ -150,8 +152,9 @@ and the stores.
 **To decide:**
 - The contact in the `User-Agent` MusicBrainz receives: an email address
   or a public web page where MetaBrainz can reach you. Today it's
-  `https://github.com/MyPublicGitHubAcct/ano-mp`, a private repository, so
-  it reaches no one (`metadata/http.rs`, `CONTACT`, marked as a
+  `https://github.com/MyPublicGitHubAcct/ano-mp`, public since 2026-10-03
+  (it reached no one while the repository was private), though still
+  marked as a placeholder (`metadata/http.rs`, `CONTACT`, marked as a
   placeholder). MusicBrainz throttles clients it can't identify.
 - Whether to become a MetaBrainz supporter: they ask commercial users of
   MusicBrainz's data to support them (Phase 4's sources table), so this

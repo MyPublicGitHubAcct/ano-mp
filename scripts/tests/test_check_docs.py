@@ -32,8 +32,8 @@ def tree(tmp_path):
 
 
 def problems(docs, tree, text, doc="PLAN.md"):
-    root, known = tree
-    return docs.check_text(doc, text, root, known, docs.tails(known))
+    _, known = tree
+    return docs.check_text(doc, text, known, docs.tails(known))
 
 
 @pytest.mark.parametrize(
@@ -87,6 +87,19 @@ def test_a_missing_path_is_reported_with_its_line(docs, tree):
     assert problems(docs, tree, text) == ["PLAN.md:3: `scripts/gone.py` isn't in the repo"]
 
 
+def test_files_only_on_disk_are_not_in_the_repo(docs, tree):
+    # An ignored file here (CI's run of 2026-10-03 failed on a
+    # `scripts/__pycache__` that existed only on this Mac).
+    root, _ = tree
+    (root / "scripts/__pycache__").mkdir()
+    (root / "docs/design/ignored.md").write_text("")
+    text = "`scripts/__pycache__`\n[x](design/ignored.md)\n"
+    assert problems(docs, tree, text, doc="docs/index.md") == [
+        "docs/index.md:1: `scripts/__pycache__` isn't in the repo",
+        "docs/index.md:2: links to design/ignored.md, which doesn't exist",
+    ]
+
+
 def test_fenced_code_is_skipped(docs, tree):
     text = "```sh\nscripts/gone.py `scripts/gone.py`\n```\nafter\n"
     assert problems(docs, tree, text) == []
@@ -98,6 +111,7 @@ def test_relative_links_resolve_from_the_doc(docs, tree):
         "docs/index.md:1: links to design/gone.md, which doesn't exist"
     ]
     assert problems(docs, tree, "[engine](docs/design/phase-1-engine.md#exit)") == []
+    assert problems(docs, tree, "[up](../scripts/bench.py) [root](../)", doc="docs/index.md") == []
 
 
 def test_stated_counts_come_from_section_2(docs):

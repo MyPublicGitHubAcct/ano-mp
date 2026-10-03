@@ -17,7 +17,8 @@ lives outside the repo or is built (IGNORED_PREFIXES: build/, target/,
 the app bundle's and the container's insides, and so on), and the names
 in NOT_IN_REPO (scripts §9.2 plans, files in fetched dependencies or
 written at run time). The repo's files are what `git ls-files` lists,
-untracked ones included unless ignored.
+untracked ones included unless ignored; a file that is only on disk
+(ignored, or built) doesn't count, as CI's clean checkout lacks it.
 
 With --counts, also compares the test counts PLAN.md §2 states with the
 suites: `ctest --preset debug -N`, `cargo test -- --list` (less its
@@ -33,6 +34,7 @@ Usage: scripts/check-docs.py [--counts]
 
 import argparse
 import pathlib
+import posixpath
 import re
 import subprocess
 import sys
@@ -178,41 +180,43 @@ def tails(paths):
     return result
 
 
-def path_exists(path, doc_dir, root, known, known_tails):
+def in_repo(path, known):
+    """Whether a repo-relative path is a tracked file or folder. Only git's
+    list counts, never the disk: an ignored file here (`__pycache__`, a
+    build's output) is missing from CI's clean checkout."""
+    path = posixpath.normpath(path)
+    return path == "." or path in known
+
+
+def path_exists(path, doc_dir, known, known_tails):
     """Whether a backquoted path names something in the repo."""
-    if path in known_tails:
-        return True
-    for base in (root, root / doc_dir):
-        if (base / path).exists():
-            return True
-    return False
+    return path in known_tails or in_repo(posixpath.join(doc_dir, path), known)
 
 
-def link_problem(target, doc, root):
+def link_problem(target, doc, known):
     """A problem with a relative link's target, or None."""
     if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
         return None
     path = target.split("#")[0]
     if not path:
         return None
-    resolved = (root / doc).parent / path
-    if not resolved.exists():
+    if not in_repo(posixpath.join(posixpath.dirname(doc), path), known):
         return f"links to {target}, which doesn't exist"
     return None
 
 
-def check_text(doc, text, root, known, known_tails):
+def check_text(doc, text, known, known_tails):
     """Problems in one doc, each `doc:line: message`."""
     problems = []
-    doc_dir = pathlib.PurePosixPath(doc).parent
+    doc_dir = posixpath.dirname(doc)
     for number, line in enumerate(strip_fences(text), start=1):
         for match in LINK.finditer(line):
-            problem = link_problem(match.group(1), doc, root)
+            problem = link_problem(match.group(1), doc, known)
             if problem:
                 problems.append(f"{doc}:{number}: {problem}")
         for match in INLINE_CODE.finditer(line):
             path = candidate_path(match.group(1))
-            if path and not path_exists(path, doc_dir, root, known, known_tails):
+            if path and not path_exists(path, doc_dir, known, known_tails):
                 problems.append(f"{doc}:{number}: `{match.group(1)}` isn't in the repo")
     return problems
 
@@ -229,7 +233,7 @@ def check(root=REPO_ROOT, known=None):
     problems = []
     for doc in docs(root):
         text = (root / doc).read_text(encoding="utf-8")
-        problems += check_text(doc, text, root, known, known_tails)
+        problems += check_text(doc, text, known, known_tails)
     return problems
 
 
