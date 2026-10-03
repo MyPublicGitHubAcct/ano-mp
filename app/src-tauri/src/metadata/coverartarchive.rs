@@ -442,12 +442,9 @@ mod tests {
             ]
         );
         // MusicBrainz says the release has no front cover: only the group's.
-        link(
-            &library,
-            "matched",
-            id,
-            &json.replace(r#""front":true"#, r#""front":false"#),
-        );
+        let mut no_front: serde_json::Value = serde_json::from_str(json).unwrap();
+        no_front["cover-art-archive"]["front"] = false.into();
+        link(&library, "matched", id, &no_front.to_string());
         assert_eq!(
             cover_urls(&library.conn, 1).unwrap(),
             [release_group_front_url(RELEASE_GROUP)]

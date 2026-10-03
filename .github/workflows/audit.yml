@@ -1,0 +1,61 @@
+# The weekly dependency check (PLAN.md §9.1, §9.2 M5): advisories for the
+# crates, the npm packages and the FFmpeg pin (scripts/audit-deps.py, which
+# fails the run), then which pins have newer releases (scripts/check-pins.py,
+# a report in the run's summary). Steps before them only install tools; the
+# checks belong in the scripts, not here. Actions are pinned by commit, with
+# the release in a comment (PLAN.md H7); Dependabot moves them.
+name: Audit
+
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays, 05:00 UTC, before the fuzzing run.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    # Nothing here is macOS-specific, and a Linux runner starts sooner.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Rust and Node come from rust-toolchain.toml and .nvmrc (PLAN.md H8).
+      - name: Install Rust
+        run: rustup toolchain install
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Restore cargo-deny
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+          key: cargo-deny-${{ runner.os }}-0.20.2
+
+      # The version ci.yml installs; skipped when the cache has it.
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version 0.20.2 --locked
+
+      # For npm outdated, which compares the installed packages.
+      - name: Install npm packages
+        working-directory: app
+        run: npm ci
+
+      - name: Check pins
+        run: scripts/check-pins.py --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Audit
+        run: scripts/audit-deps.py

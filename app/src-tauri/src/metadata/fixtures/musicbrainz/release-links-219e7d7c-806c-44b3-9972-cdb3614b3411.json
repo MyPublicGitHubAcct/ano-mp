@@ -1,27 +1,27 @@
 {
   "id": "219e7d7c-806c-44b3-9972-cdb3614b3411",
-  "title": "In Rainbows",
   "status": "Official",
-  "country": "US",
-  "date": "2008-01-01",
   "relations": [
     {
-      "target-type": "url",
-      "attribute-values": {},
-      "type-id": "4a78823c-1c53-4176-a5f3-58026c76f2bc",
+      "target-credit": "",
+      "source-credit": "",
+      "attributes": [],
       "attribute-ids": {},
       "ended": false,
-      "target-credit": "",
-      "begin": null,
-      "direction": "forward",
+      "type": "discogs",
+      "attribute-values": {},
       "url": {
         "id": "8835bd12-2b78-4be9-8ffc-daa4f26a8bfa",
         "resource": "https://www.discogs.com/release/1187003"
       },
-      "attributes": [],
+      "type-id": "4a78823c-1c53-4176-a5f3-58026c76f2bc",
+      "begin": null,
       "end": null,
-      "source-credit": "",
-      "type": "discogs"
+      "target-type": "url",
+      "direction": "forward"
     }
-  ]
+  ],
+  "date": "2008-01-01",
+  "title": "In Rainbows",
+  "country": "US"
 }

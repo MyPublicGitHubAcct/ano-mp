@@ -1,146 +1,146 @@
 {
-  "end-area": null,
-  "begin-area": {
-    "type-id": null,
-    "type": null,
-    "sort-name": "Abingdon-on-Thames",
-    "disambiguation": "",
-    "id": "d840d4b3-8987-4626-928b-398de760cc24",
-    "name": "Abingdon-on-Thames"
-  },
-  "type": "Group",
-  "ipis": [],
-  "country": "GB",
+  "name": "Radiohead",
   "life-span": {
     "end": null,
     "begin": "1991",
     "ended": false
   },
-  "name": "Radiohead",
   "disambiguation": "",
-  "gender": null,
-  "sort-name": "Radiohead",
-  "gender-id": null,
-  "genres": [
-    {
-      "count": 43,
-      "name": "alternative rock",
-      "id": "ceeaa283-5d7b-4202-8d1d-e25d116b2a18",
-      "disambiguation": ""
-    },
-    {
-      "count": 30,
-      "name": "art rock",
-      "id": "b7ef058e-6d83-4ca4-8123-9724bff4648b",
-      "disambiguation": ""
-    },
-    {
-      "disambiguation": "",
-      "name": "rock",
-      "id": "0e3fc579-2d24-4f20-9dae-736e1ec78798",
-      "count": 19
-    },
-    {
-      "id": "89255676-1f14-4dd8-bbad-fca839d6aff4",
-      "name": "electronic",
-      "disambiguation": "",
-      "count": 14
-    },
-    {
-      "name": "experimental rock",
-      "id": "65c97e89-b42b-45c2-a70e-0eca1b8f0ff7",
-      "disambiguation": "",
-      "count": 14
-    }
+  "country": "GB",
+  "ipis": [],
+  "end-area": null,
+  "begin-area": {
+    "type-id": null,
+    "type": null,
+    "sort-name": "Abingdon-on-Thames",
+    "id": "d840d4b3-8987-4626-928b-398de760cc24",
+    "name": "Abingdon-on-Thames",
+    "disambiguation": ""
+  },
+  "type": "Group",
+  "isnis": [
+    "0000000115475162"
   ],
-  "type-id": "e431f5f6-b5d2-343d-8b36-72607fffb74b",
+  "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
   "relations": [
     {
-      "type": "discogs",
-      "direction": "forward",
-      "source-credit": "",
       "attributes": [],
+      "source-credit": "",
+      "direction": "forward",
+      "type": "discogs",
+      "attribute-values": {},
+      "target-type": "url",
+      "attribute-ids": {},
+      "ended": false,
+      "begin": null,
+      "type-id": "04a5b104-a4c2-4bac-99a1-7b837c37d9e4",
+      "end": null,
+      "target-credit": "",
       "url": {
         "id": "f49de6eb-d9db-4474-9406-f3b02ec95b42",
         "resource": "https://www.discogs.com/artist/3840"
-      },
-      "type-id": "04a5b104-a4c2-4bac-99a1-7b837c37d9e4",
-      "begin": null,
-      "target-credit": "",
-      "end": null,
-      "target-type": "url",
-      "attribute-ids": {},
-      "ended": false,
-      "attribute-values": {}
+      }
     },
     {
-      "source-credit": "",
-      "attributes": [],
-      "type": "free streaming",
-      "direction": "forward",
-      "attribute-ids": {},
-      "ended": false,
-      "target-type": "url",
       "attribute-values": {},
+      "ended": false,
+      "attribute-ids": {},
+      "target-type": "url",
+      "target-credit": "",
+      "end": null,
+      "type-id": "769085a1-c2f7-4c24-a532-2375a77693bd",
+      "begin": null,
       "url": {
         "id": "6e039c97-4476-4ddc-ab54-d226e8db5fb4",
         "resource": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb"
       },
-      "target-credit": "",
-      "end": null,
-      "type-id": "769085a1-c2f7-4c24-a532-2375a77693bd",
-      "begin": null
-    },
-    {
-      "target-type": "url",
-      "ended": false,
-      "attribute-ids": {},
-      "attribute-values": {},
-      "url": {
-        "resource": "http://www.radiohead.com/",
-        "id": "3731db81-d717-4658-a7b1-f2ef13c3033b"
-      },
-      "begin": null,
-      "type-id": "fe33d22f-c3b0-4d68-bd53-a856badf2b15",
-      "end": null,
-      "target-credit": "",
-      "source-credit": "",
       "attributes": [],
-      "type": "official homepage",
-      "direction": "forward"
+      "source-credit": "",
+      "direction": "forward",
+      "type": "free streaming"
     },
     {
       "direction": "forward",
-      "type": "wikidata",
+      "type": "official homepage",
       "attributes": [],
       "source-credit": "",
+      "type-id": "fe33d22f-c3b0-4d68-bd53-a856badf2b15",
       "begin": null,
-      "type-id": "689870a4-a1e4-4912-b17f-7b2664215698",
-      "end": null,
       "target-credit": "",
+      "end": null,
       "url": {
-        "id": "0d8cb250-f92f-4481-bb00-a0b40391912b",
-        "resource": "https://www.wikidata.org/wiki/Q44190"
+        "id": "3731db81-d717-4658-a7b1-f2ef13c3033b",
+        "resource": "http://www.radiohead.com/"
       },
       "attribute-values": {},
       "target-type": "url",
       "ended": false,
       "attribute-ids": {}
+    },
+    {
+      "url": {
+        "id": "0d8cb250-f92f-4481-bb00-a0b40391912b",
+        "resource": "https://www.wikidata.org/wiki/Q44190"
+      },
+      "type-id": "689870a4-a1e4-4912-b17f-7b2664215698",
+      "begin": null,
+      "target-credit": "",
+      "end": null,
+      "target-type": "url",
+      "ended": false,
+      "attribute-ids": {},
+      "attribute-values": {},
+      "type": "wikidata",
+      "direction": "forward",
+      "source-credit": "",
+      "attributes": []
     }
   ],
-  "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
-  "isnis": [
-    "0000000115475162"
-  ],
   "area": {
+    "disambiguation": "",
+    "id": "8a754a16-0027-3a29-b6d7-2b40ea0481ed",
+    "name": "United Kingdom",
     "type-id": null,
-    "sort-name": "United Kingdom",
+    "type": null,
     "iso-3166-1-codes": [
       "GB"
     ],
-    "type": null,
-    "name": "United Kingdom",
-    "id": "8a754a16-0027-3a29-b6d7-2b40ea0481ed",
-    "disambiguation": ""
-  }
+    "sort-name": "United Kingdom"
+  },
+  "gender-id": null,
+  "type-id": "e431f5f6-b5d2-343d-8b36-72607fffb74b",
+  "genres": [
+    {
+      "id": "ceeaa283-5d7b-4202-8d1d-e25d116b2a18",
+      "name": "alternative rock",
+      "disambiguation": "",
+      "count": 43
+    },
+    {
+      "name": "art rock",
+      "id": "b7ef058e-6d83-4ca4-8123-9724bff4648b",
+      "disambiguation": "",
+      "count": 30
+    },
+    {
+      "count": 19,
+      "id": "0e3fc579-2d24-4f20-9dae-736e1ec78798",
+      "name": "rock",
+      "disambiguation": ""
+    },
+    {
+      "name": "electronic",
+      "id": "89255676-1f14-4dd8-bbad-fca839d6aff4",
+      "disambiguation": "",
+      "count": 14
+    },
+    {
+      "count": 14,
+      "disambiguation": "",
+      "id": "65c97e89-b42b-45c2-a70e-0eca1b8f0ff7",
+      "name": "experimental rock"
+    }
+  ],
+  "gender": null,
+  "sort-name": "Radiohead"
 }

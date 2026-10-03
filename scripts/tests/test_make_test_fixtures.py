@@ -49,3 +49,48 @@ def test_signal_is_a_linear_chirp(fixtures_script):
     phase = 2.0 * math.pi * (200.0 * t + 4800.0 * t * t / (2.0 * duration))
     assert fixtures_script.sample(0, n, rate, seconds) == pytest.approx(0.5 * math.sin(phase))
     assert fixtures_script.sample(0, 0, rate, seconds) == 0.0
+
+
+def test_vorbis_files_get_a_fixed_serial_from_their_name(fixtures_script):
+    serial = fixtures_script.serial("/tmp/x/vorbis-44k.ogg")
+    assert serial == fixtures_script.serial("vorbis-44k.ogg")
+    assert serial != fixtures_script.serial("vorbis-long-44k.ogg")
+    assert 0 <= serial < 2**31
+    command = fixtures_script.oggenc("5")("in.wav", "out/vorbis-44k.ogg")
+    assert command[command.index("--serial") + 1] == str(fixtures_script.serial("vorbis-44k.ogg"))
+    assert command[-3:] == ["-o", "out/vorbis-44k.ogg", "in.wav"]
+
+
+def test_every_oggenc_fixture_has_a_serial(fixtures_script):
+    for name, _, _, _, command in fixtures_script.FIXTURES_SPEC:
+        if command is not None and command("s.wav", name)[0] == "oggenc":
+            assert "--serial" in command("s.wav", name), name
+
+
+def test_only_selects_named_fixtures(fixtures_script):
+    spec = fixtures_script.FIXTURES_SPEC
+    assert fixtures_script.selected(spec, []) == spec
+    chosen = fixtures_script.selected(spec, ["vorbis-44k.ogg", "flac-44k.flac"])
+    assert [entry[0] for entry in chosen] == ["flac-44k.flac", "vorbis-44k.ogg"]
+    with pytest.raises(ValueError, match="nope.ogg"):
+        fixtures_script.selected(spec, ["nope.ogg"])
+
+
+def test_decoded_length_counts_samples_per_channel(fixtures_script):
+    import subprocess
+
+    def run(command, **kwargs):
+        assert command[:2] == ["ffmpeg", "-v"]
+        assert command[command.index("-ac") + 1] == "2"
+        return subprocess.CompletedProcess(command, 0, stdout=b"\0" * (4 * 22371))
+
+    assert fixtures_script.decoded_length("x.mp3", 2, run) == 22371
+
+
+def test_the_tests_table_names_only_real_fixtures(fixtures_script):
+    table = (
+        fixtures_script.REPO_ROOT / "core" / "tests" / "FFmpegAudioFormatTests.cpp"
+    ).read_text()
+    names = {entry[0] for entry in fixtures_script.FIXTURES_SPEC}
+    for name in re.findall(r'\{ "([\w.-]+)", \d+, \d, [\d.]+, Kind::', table):
+        assert name in names, name

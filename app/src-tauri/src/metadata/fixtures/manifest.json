@@ -1,0 +1,1345 @@
+{
+  "about": "How each file here was made; scripts/record-fixtures.py re-records the fetched ones (PLAN.md §9.2 M3). A rule's select keeps listed items in order, keep the keys shown, set replaces values. MusicBrainz, Cover Art Archive, Wikidata and Discogs' CC0 fields are CC0; Wikipedia's extracts are replaced by stand-in text (CC BY-SA).",
+  "fixtures": {
+    "coverartarchive/front-500.jpg": {
+      "made_by_hand": "an 8x8 JPEG made for the tests, standing in for a cover (images.rs)"
+    },
+    "coverartarchive/release-1a33443c-3fff-450f-8298-efbc65659d32.json": {
+      "url": "https://coverartarchive.org/release/1a33443c-3fff-450f-8298-efbc65659d32/",
+      "keep": {
+        "release": true,
+        "images": {
+          "edit": true,
+          "back": true,
+          "approved": true,
+          "types": true,
+          "comment": true,
+          "thumbnails": {
+            "small": true,
+            "large": true
+          },
+          "front": true,
+          "id": true,
+          "image": true
+        }
+      }
+    },
+    "coverartarchive/release-219e7d7c-806c-44b3-9972-cdb3614b3411.json": {
+      "url": "https://coverartarchive.org/release/219e7d7c-806c-44b3-9972-cdb3614b3411/",
+      "select": {
+        "images": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              1931675364
+            ],
+            [
+              32957019366
+            ],
+            [
+              32957019743
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "images": {
+          "approved": true,
+          "back": true,
+          "comment": true,
+          "edit": true,
+          "front": true,
+          "id": true,
+          "image": true,
+          "thumbnails": {
+            "1200": true,
+            "250": true,
+            "500": true,
+            "large": true,
+            "small": true
+          },
+          "types": true
+        },
+        "release": true
+      }
+    },
+    "discogs/release-1186009.json": {
+      "url": "https://api.discogs.com/releases/1186009",
+      "select": {
+        "identifiers": {
+          "by": [
+            "type",
+            "value"
+          ],
+          "items": [
+            [
+              "Barcode",
+              "8 80882 16222 1"
+            ],
+            [
+              "Barcode",
+              "880882162221"
+            ]
+          ]
+        },
+        "extraartists": {
+          "by": [
+            "id",
+            "role"
+          ],
+          "items": [
+            [
+              1857783,
+              "Artwork"
+            ],
+            [
+              718181,
+              "Artwork"
+            ],
+            [
+              136888,
+              "Concertmaster [Strings Led By]"
+            ],
+            [
+              298410,
+              "Engineer"
+            ],
+            [
+              232396,
+              "Engineer"
+            ],
+            [
+              169094,
+              "Engineer"
+            ],
+            [
+              436972,
+              "Engineer"
+            ],
+            [
+              169094,
+              "Mixed By"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "id": true,
+        "status": true,
+        "year": true,
+        "uri": true,
+        "artists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        },
+        "artists_sort": true,
+        "labels": {
+          "name": true,
+          "catno": true,
+          "entity_type_name": true,
+          "id": true
+        },
+        "formats": {
+          "name": true,
+          "qty": true,
+          "descriptions": true
+        },
+        "format_quantity": true,
+        "master_id": true,
+        "title": true,
+        "country": true,
+        "released": true,
+        "released_formatted": true,
+        "identifiers": {
+          "type": true,
+          "value": true,
+          "description": true
+        },
+        "genres": true,
+        "styles": true,
+        "tracklist": {
+          "position": true,
+          "type_": true,
+          "title": true,
+          "duration": true
+        },
+        "extraartists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        }
+      }
+    },
+    "discogs/release-1187003.json": {
+      "url": "https://api.discogs.com/releases/1187003",
+      "select": {
+        "identifiers": {
+          "by": [
+            "type",
+            "value"
+          ],
+          "items": [
+            [
+              "Barcode",
+              "8 80882 16231 3"
+            ]
+          ]
+        },
+        "extraartists": {
+          "by": [
+            "id",
+            "role"
+          ],
+          "items": [
+            [
+              1857783,
+              "Artwork"
+            ],
+            [
+              718181,
+              "Artwork"
+            ],
+            [
+              136888,
+              "Concertmaster [Strings Led By]"
+            ],
+            [
+              298410,
+              "Engineer"
+            ],
+            [
+              232396,
+              "Engineer"
+            ],
+            [
+              169094,
+              "Engineer"
+            ],
+            [
+              436972,
+              "Engineer"
+            ],
+            [
+              169094,
+              "Mixed By"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "id": true,
+        "status": true,
+        "year": true,
+        "uri": true,
+        "artists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        },
+        "artists_sort": true,
+        "labels": {
+          "name": true,
+          "catno": true,
+          "entity_type_name": true,
+          "id": true
+        },
+        "formats": {
+          "name": true,
+          "qty": true,
+          "descriptions": true
+        },
+        "format_quantity": true,
+        "master_id": true,
+        "title": true,
+        "country": true,
+        "released": true,
+        "released_formatted": true,
+        "identifiers": {
+          "type": true,
+          "value": true
+        },
+        "genres": true,
+        "styles": true,
+        "tracklist": {
+          "position": true,
+          "type_": true,
+          "title": true,
+          "duration": true
+        },
+        "extraartists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        }
+      }
+    },
+    "discogs/release-1376757.json": {
+      "url": "https://api.discogs.com/releases/1376757",
+      "select": {
+        "identifiers": {
+          "by": [
+            "type",
+            "value"
+          ],
+          "items": [
+            [
+              "Barcode",
+              "4 582214 502663"
+            ],
+            [
+              "Barcode",
+              "4582214502663"
+            ]
+          ]
+        },
+        "extraartists": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              1857783
+            ],
+            [
+              718181
+            ],
+            [
+              136888
+            ],
+            [
+              298410
+            ],
+            [
+              232396
+            ],
+            [
+              169094
+            ],
+            [
+              436972
+            ],
+            [
+              298408
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "id": true,
+        "status": true,
+        "year": true,
+        "uri": true,
+        "artists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        },
+        "artists_sort": true,
+        "labels": {
+          "name": true,
+          "catno": true,
+          "entity_type_name": true,
+          "id": true
+        },
+        "formats": {
+          "name": true,
+          "qty": true,
+          "descriptions": true,
+          "text": true
+        },
+        "format_quantity": true,
+        "master_id": true,
+        "title": true,
+        "country": true,
+        "released": true,
+        "released_formatted": true,
+        "identifiers": {
+          "type": true,
+          "value": true,
+          "description": true
+        },
+        "genres": true,
+        "styles": true,
+        "tracklist": {
+          "position": true,
+          "type_": true,
+          "title": true,
+          "duration": true
+        },
+        "extraartists": {
+          "name": true,
+          "anv": true,
+          "join": true,
+          "role": true,
+          "tracks": true,
+          "id": true
+        }
+      }
+    },
+    "discogs/search-in-rainbows.json": {
+      "made_by_hand": "Discogs' search needs a token, so this was put together in the documented format from the three recorded releases (discogs.rs's fixtures)."
+    },
+    "musicbrainz/artist-a74b1b7f-71a5-4011-9441-d0b5e4122711.json": {
+      "url": "https://musicbrainz.org/ws/2/artist/a74b1b7f-71a5-4011-9441-d0b5e4122711?inc=url-rels+genres+artist-rels&fmt=json",
+      "select": {
+        "genres": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "ceeaa283-5d7b-4202-8d1d-e25d116b2a18"
+            ],
+            [
+              "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+            ],
+            [
+              "0e3fc579-2d24-4f20-9dae-736e1ec78798"
+            ],
+            [
+              "89255676-1f14-4dd8-bbad-fca839d6aff4"
+            ],
+            [
+              "65c97e89-b42b-45c2-a70e-0eca1b8f0ff7"
+            ]
+          ]
+        },
+        "relations": {
+          "by": [
+            "type",
+            "url.id"
+          ],
+          "items": [
+            [
+              "discogs",
+              "f49de6eb-d9db-4474-9406-f3b02ec95b42"
+            ],
+            [
+              "free streaming",
+              "6e039c97-4476-4ddc-ab54-d226e8db5fb4"
+            ],
+            [
+              "official homepage",
+              "3731db81-d717-4658-a7b1-f2ef13c3033b"
+            ],
+            [
+              "wikidata",
+              "0d8cb250-f92f-4481-bb00-a0b40391912b"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "end-area": true,
+        "begin-area": {
+          "type-id": true,
+          "type": true,
+          "sort-name": true,
+          "disambiguation": true,
+          "id": true,
+          "name": true
+        },
+        "type": true,
+        "ipis": true,
+        "country": true,
+        "life-span": {
+          "end": true,
+          "begin": true,
+          "ended": true
+        },
+        "name": true,
+        "disambiguation": true,
+        "gender": true,
+        "sort-name": true,
+        "gender-id": true,
+        "genres": {
+          "count": true,
+          "name": true,
+          "id": true,
+          "disambiguation": true
+        },
+        "type-id": true,
+        "relations": {
+          "type": true,
+          "direction": true,
+          "source-credit": true,
+          "attributes": true,
+          "url": {
+            "id": true,
+            "resource": true
+          },
+          "type-id": true,
+          "begin": true,
+          "target-credit": true,
+          "end": true,
+          "target-type": true,
+          "attribute-ids": {},
+          "ended": true,
+          "attribute-values": {}
+        },
+        "id": true,
+        "isnis": true,
+        "area": {
+          "type-id": true,
+          "sort-name": true,
+          "iso-3166-1-codes": true,
+          "type": true,
+          "name": true,
+          "id": true,
+          "disambiguation": true
+        }
+      }
+    },
+    "musicbrainz/release-1a33443c-3fff-450f-8298-efbc65659d32.json": {
+      "url": "https://musicbrainz.org/ws/2/release/1a33443c-3fff-450f-8298-efbc65659d32?inc=recordings+artist-credits+labels+release-groups+genres&fmt=json",
+      "select": {
+        "release-group.genres": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "ceeaa283-5d7b-4202-8d1d-e25d116b2a18"
+            ],
+            [
+              "0e3fc579-2d24-4f20-9dae-736e1ec78798"
+            ],
+            [
+              "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+            ],
+            [
+              "89255676-1f14-4dd8-bbad-fca839d6aff4"
+            ],
+            [
+              "ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "media": {
+          "tracks": {
+            "number": true,
+            "position": true,
+            "id": true,
+            "length": true,
+            "recording": {
+              "id": true,
+              "length": true,
+              "title": true
+            },
+            "title": true
+          },
+          "track-count": true,
+          "track-offset": true,
+          "format-id": true,
+          "title": true,
+          "format": true,
+          "position": true,
+          "id": true
+        },
+        "packaging": true,
+        "country": true,
+        "title": true,
+        "artist-credit": {
+          "artist": {
+            "id": true,
+            "name": true,
+            "sort-name": true
+          },
+          "joinphrase": true,
+          "name": true
+        },
+        "disambiguation": true,
+        "barcode": true,
+        "release-events": {
+          "area": {
+            "name": true,
+            "type": true,
+            "iso-3166-1-codes": true,
+            "disambiguation": true,
+            "id": true,
+            "type-id": true,
+            "sort-name": true
+          },
+          "date": true
+        },
+        "genres": true,
+        "date": true,
+        "cover-art-archive": {
+          "darkened": true,
+          "count": true,
+          "front": true,
+          "artwork": true,
+          "back": true
+        },
+        "release-group": {
+          "id": true,
+          "secondary-types": true,
+          "disambiguation": true,
+          "primary-type-id": true,
+          "primary-type": true,
+          "title": true,
+          "secondary-type-ids": true,
+          "genres": {
+            "count": true,
+            "name": true,
+            "id": true,
+            "disambiguation": true
+          },
+          "first-release-date": true
+        },
+        "label-info": {
+          "catalog-number": true,
+          "label": {
+            "id": true,
+            "name": true
+          }
+        },
+        "id": true,
+        "status": true
+      }
+    },
+    "musicbrainz/release-200f0a5a-41c4-49f3-b997-1ef5f975f060.json": {
+      "url": "https://musicbrainz.org/ws/2/release/200f0a5a-41c4-49f3-b997-1ef5f975f060?inc=recordings+artist-credits+labels+release-groups+genres&fmt=json",
+      "select": {
+        "release-group.genres": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "ceeaa283-5d7b-4202-8d1d-e25d116b2a18"
+            ],
+            [
+              "0e3fc579-2d24-4f20-9dae-736e1ec78798"
+            ],
+            [
+              "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+            ],
+            [
+              "89255676-1f14-4dd8-bbad-fca839d6aff4"
+            ],
+            [
+              "ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "title": true,
+        "country": true,
+        "disambiguation": true,
+        "artist-credit": {
+          "artist": {
+            "id": true,
+            "name": true,
+            "sort-name": true
+          },
+          "name": true,
+          "joinphrase": true
+        },
+        "media": {
+          "format-id": true,
+          "title": true,
+          "format": true,
+          "id": true,
+          "position": true,
+          "tracks": {
+            "title": true,
+            "length": true,
+            "recording": {
+              "id": true,
+              "title": true,
+              "length": true
+            },
+            "number": true,
+            "id": true,
+            "position": true
+          },
+          "track-count": true,
+          "track-offset": true
+        },
+        "packaging": true,
+        "id": true,
+        "status": true,
+        "label-info": {
+          "catalog-number": true,
+          "label": {
+            "id": true,
+            "name": true
+          }
+        },
+        "date": true,
+        "cover-art-archive": {
+          "back": true,
+          "front": true,
+          "count": true,
+          "artwork": true,
+          "darkened": true
+        },
+        "release-events": {
+          "date": true,
+          "area": {
+            "type-id": true,
+            "sort-name": true,
+            "iso-3166-1-codes": true,
+            "disambiguation": true,
+            "id": true,
+            "name": true,
+            "type": true
+          }
+        },
+        "genres": true,
+        "barcode": true,
+        "release-group": {
+          "first-release-date": true,
+          "genres": {
+            "count": true,
+            "id": true,
+            "disambiguation": true,
+            "name": true
+          },
+          "secondary-type-ids": true,
+          "primary-type": true,
+          "primary-type-id": true,
+          "secondary-types": true,
+          "id": true,
+          "disambiguation": true,
+          "title": true
+        }
+      }
+    },
+    "musicbrainz/release-219e7d7c-806c-44b3-9972-cdb3614b3411.json": {
+      "url": "https://musicbrainz.org/ws/2/release/219e7d7c-806c-44b3-9972-cdb3614b3411?inc=recordings+artist-credits+labels+release-groups+genres&fmt=json",
+      "select": {
+        "release-group.genres": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "ceeaa283-5d7b-4202-8d1d-e25d116b2a18"
+            ],
+            [
+              "0e3fc579-2d24-4f20-9dae-736e1ec78798"
+            ],
+            [
+              "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+            ],
+            [
+              "89255676-1f14-4dd8-bbad-fca839d6aff4"
+            ],
+            [
+              "ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "release-events": {
+          "date": true,
+          "area": {
+            "type": true,
+            "name": true,
+            "type-id": true,
+            "sort-name": true,
+            "disambiguation": true,
+            "id": true,
+            "iso-3166-1-codes": true
+          }
+        },
+        "date": true,
+        "title": true,
+        "release-group": {
+          "primary-type-id": true,
+          "first-release-date": true,
+          "disambiguation": true,
+          "id": true,
+          "genres": {
+            "id": true,
+            "count": true,
+            "disambiguation": true,
+            "name": true
+          },
+          "primary-type": true,
+          "title": true,
+          "secondary-types": true,
+          "secondary-type-ids": true
+        },
+        "artist-credit": {
+          "name": true,
+          "joinphrase": true,
+          "artist": {
+            "id": true,
+            "name": true,
+            "sort-name": true
+          }
+        },
+        "id": true,
+        "media": {
+          "id": true,
+          "format": true,
+          "position": true,
+          "track-offset": true,
+          "track-count": true,
+          "format-id": true,
+          "title": true,
+          "tracks": {
+            "number": true,
+            "position": true,
+            "id": true,
+            "length": true,
+            "recording": {
+              "id": true,
+              "title": true,
+              "length": true
+            },
+            "title": true
+          }
+        },
+        "label-info": {
+          "catalog-number": true,
+          "label": {
+            "id": true,
+            "name": true
+          }
+        },
+        "cover-art-archive": {
+          "count": true,
+          "back": true,
+          "darkened": true,
+          "front": true,
+          "artwork": true
+        },
+        "status": true,
+        "genres": true,
+        "barcode": true,
+        "country": true,
+        "packaging": true,
+        "disambiguation": true
+      }
+    },
+    "musicbrainz/release-3b408cb5-7d51-4188-b07c-fabcf308cda3.json": {
+      "url": "https://musicbrainz.org/ws/2/release/3b408cb5-7d51-4188-b07c-fabcf308cda3?inc=recordings+artist-credits+labels+release-groups+genres&fmt=json",
+      "select": {
+        "release-group.genres": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "ceeaa283-5d7b-4202-8d1d-e25d116b2a18"
+            ],
+            [
+              "0e3fc579-2d24-4f20-9dae-736e1ec78798"
+            ],
+            [
+              "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+            ],
+            [
+              "89255676-1f14-4dd8-bbad-fca839d6aff4"
+            ],
+            [
+              "ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "country": true,
+        "disambiguation": true,
+        "release-group": {
+          "first-release-date": true,
+          "title": true,
+          "genres": {
+            "disambiguation": true,
+            "id": true,
+            "name": true,
+            "count": true
+          },
+          "secondary-type-ids": true,
+          "primary-type": true,
+          "primary-type-id": true,
+          "id": true,
+          "secondary-types": true,
+          "disambiguation": true
+        },
+        "status": true,
+        "media": {
+          "id": true,
+          "track-count": true,
+          "track-offset": true,
+          "format": true,
+          "position": true,
+          "format-id": true,
+          "title": true,
+          "tracks": {
+            "id": true,
+            "recording": {
+              "id": true,
+              "length": true,
+              "title": true
+            },
+            "length": true,
+            "position": true,
+            "number": true,
+            "title": true
+          }
+        },
+        "id": true,
+        "release-events": {
+          "area": {
+            "disambiguation": true,
+            "id": true,
+            "name": true,
+            "type-id": true,
+            "type": true,
+            "iso-3166-1-codes": true,
+            "sort-name": true
+          },
+          "date": true
+        },
+        "date": true,
+        "title": true,
+        "cover-art-archive": {
+          "back": true,
+          "count": true,
+          "front": true,
+          "artwork": true,
+          "darkened": true
+        },
+        "artist-credit": {
+          "artist": {
+            "id": true,
+            "name": true,
+            "sort-name": true
+          },
+          "joinphrase": true,
+          "name": true
+        },
+        "label-info": {
+          "label": {
+            "id": true,
+            "name": true
+          },
+          "catalog-number": true
+        },
+        "barcode": true,
+        "genres": true,
+        "packaging": true
+      }
+    },
+    "musicbrainz/release-group-6e335887-60ba-38f0-95af-fae7774336bf.json": {
+      "url": "https://musicbrainz.org/ws/2/release-group/6e335887-60ba-38f0-95af-fae7774336bf?inc=url-rels&fmt=json",
+      "select": {
+        "relations": {
+          "by": [
+            "type",
+            "url.id"
+          ],
+          "items": [
+            [
+              "discogs",
+              "66d8c20e-4504-4896-a4bb-eab05fc83fa9"
+            ],
+            [
+              "wikidata",
+              "10156fdb-ad24-4cda-b8c2-be2de3881808"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "first-release-date": true,
+        "disambiguation": true,
+        "secondary-type-ids": true,
+        "title": true,
+        "secondary-types": true,
+        "primary-type": true,
+        "primary-type-id": true,
+        "id": true,
+        "relations": {
+          "end": true,
+          "ended": true,
+          "source-credit": true,
+          "attribute-ids": {},
+          "target-credit": true,
+          "attributes": true,
+          "url": {
+            "resource": true,
+            "id": true
+          },
+          "type-id": true,
+          "type": true,
+          "direction": true,
+          "target-type": true,
+          "begin": true,
+          "attribute-values": {}
+        }
+      }
+    },
+    "musicbrainz/release-groups-a74b1b7f-71a5-4011-9441-d0b5e4122711.json": {
+      "url": "https://musicbrainz.org/ws/2/release-group?artist=a74b1b7f-71a5-4011-9441-d0b5e4122711&release-group-status=website-default&inc=artist-credits&limit=100&offset=0&fmt=json",
+      "select": {
+        "release-groups": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "30f765ef-d7f0-4cce-8a3b-d6e1069f1dda"
+            ],
+            [
+              "6e335887-60ba-38f0-95af-fae7774336bf"
+            ],
+            [
+              "6f365e6f-58b0-4ba1-993d-82c3308842b3"
+            ],
+            [
+              "75faca09-1ee6-42dd-81d5-35825986f121"
+            ],
+            [
+              "80975c59-4094-30d5-bb58-365e8b061274"
+            ],
+            [
+              "b1392450-e666-3926-a536-22c65f834433"
+            ],
+            [
+              "b2246643-115e-3b53-9a96-6d2df930f970"
+            ],
+            [
+              "b8048f24-c026-3398-b23a-b5e50716cbc7"
+            ],
+            [
+              "bbce0087-d386-4246-a51d-dbcdfdbe8fb2"
+            ],
+            [
+              "bca9280e-28b4-327f-8fe0-fd918579e486"
+            ],
+            [
+              "c5bc370b-95c2-3634-bb89-51bb2dce97c3"
+            ],
+            [
+              "cd76f76b-ff15-3784-a71d-4da3078a6851"
+            ],
+            [
+              "e404b349-7cef-398f-ac5e-ce06737341d1"
+            ],
+            [
+              "e75c0549-ad55-39e3-8025-c72c5d4a3c5d"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "release-group-offset": true,
+        "release-group-count": true,
+        "release-groups": {
+          "first-release-date": true,
+          "id": true,
+          "secondary-types": true,
+          "disambiguation": true,
+          "artist-credit": {
+            "artist": {
+              "id": true,
+              "name": true,
+              "sort-name": true
+            },
+            "name": true,
+            "joinphrase": true
+          },
+          "primary-type": true,
+          "title": true
+        }
+      },
+      "set": {
+        "release-group-count": 14
+      }
+    },
+    "musicbrainz/release-links-219e7d7c-806c-44b3-9972-cdb3614b3411.json": {
+      "url": "https://musicbrainz.org/ws/2/release/219e7d7c-806c-44b3-9972-cdb3614b3411?inc=url-rels&fmt=json",
+      "keep": {
+        "id": true,
+        "title": true,
+        "status": true,
+        "country": true,
+        "date": true,
+        "relations": {
+          "target-type": true,
+          "attribute-values": {},
+          "type-id": true,
+          "attribute-ids": {},
+          "ended": true,
+          "target-credit": true,
+          "begin": true,
+          "direction": true,
+          "url": {
+            "id": true,
+            "resource": true
+          },
+          "attributes": true,
+          "end": true,
+          "source-credit": true,
+          "type": true
+        }
+      }
+    },
+    "musicbrainz/search-artist-radiohead.json": {
+      "url": "https://musicbrainz.org/ws/2/artist/?query=artist%3A%28Radiohead%29%20OR%20alias%3A%28Radiohead%29&limit=10&fmt=json",
+      "select": {
+        "artists": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+            ],
+            [
+              "c74f4726-2671-4011-81b6-f70da905c05a"
+            ],
+            [
+              "3ecaa799-94ae-45cd-9ad1-bcabae4073e1"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "created": true,
+        "count": true,
+        "offset": true,
+        "artists": {
+          "id": true,
+          "type": true,
+          "type-id": true,
+          "score": true,
+          "name": true,
+          "sort-name": true,
+          "country": true,
+          "area": {
+            "id": true,
+            "type": true,
+            "type-id": true,
+            "name": true,
+            "sort-name": true,
+            "life-span": {
+              "ended": true
+            }
+          },
+          "begin-area": {
+            "id": true,
+            "type": true,
+            "type-id": true,
+            "name": true,
+            "sort-name": true,
+            "life-span": {
+              "ended": true
+            }
+          },
+          "isnis": true,
+          "life-span": {
+            "begin": true,
+            "ended": true,
+            "end": true
+          },
+          "aliases": {
+            "sort-name": true,
+            "type-id": true,
+            "name": true,
+            "locale": true,
+            "type": true,
+            "primary": true,
+            "begin-date": true,
+            "end-date": true
+          },
+          "disambiguation": true
+        }
+      }
+    },
+    "musicbrainz/search-in-rainbows.json": {
+      "url": "https://musicbrainz.org/ws/2/release/?query=release%3A%28In%20Rainbows%29%20AND%20artist%3A%28Radiohead%29%20tracks%3A10&limit=10&fmt=json",
+      "select": {
+        "releases": {
+          "by": [
+            "id"
+          ],
+          "items": [
+            [
+              "3b408cb5-7d51-4188-b07c-fabcf308cda3"
+            ],
+            [
+              "1a33443c-3fff-450f-8298-efbc65659d32"
+            ],
+            [
+              "200f0a5a-41c4-49f3-b997-1ef5f975f060"
+            ],
+            [
+              "219e7d7c-806c-44b3-9972-cdb3614b3411"
+            ],
+            [
+              "cba282c5-dd83-3157-afb6-9af6a5af7709"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "created": true,
+        "count": true,
+        "offset": true,
+        "releases": {
+          "id": true,
+          "score": true,
+          "count": true,
+          "title": true,
+          "status": true,
+          "packaging": true,
+          "artist-credit": {
+            "name": true,
+            "artist": {
+              "id": true,
+              "name": true,
+              "sort-name": true
+            }
+          },
+          "release-group": {
+            "id": true,
+            "type-id": true,
+            "primary-type-id": true,
+            "title": true,
+            "primary-type": true
+          },
+          "date": true,
+          "country": true,
+          "barcode": true,
+          "label-info": {
+            "catalog-number": true,
+            "label": {
+              "id": true,
+              "name": true
+            }
+          },
+          "track-count": true,
+          "media": {
+            "id": true,
+            "format": true,
+            "disc-count": true,
+            "track-count": true
+          },
+          "disambiguation": true
+        }
+      }
+    },
+    "wikipedia/extract-in-rainbows.json": {
+      "url": "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=extracts%7Cinfo&inprop=url&exintro=1&explaintext=1&redirects=1&titles=In%20Rainbows",
+      "keep": {
+        "batchcomplete": true,
+        "query": {
+          "pages": {
+            "pageid": true,
+            "ns": true,
+            "title": true,
+            "extract": true,
+            "contentmodel": true,
+            "pagelanguage": true,
+            "pagelanguagehtmlcode": true,
+            "pagelanguagedir": true,
+            "touched": true,
+            "lastrevid": true,
+            "length": true,
+            "fullurl": true,
+            "editurl": true,
+            "canonicalurl": true
+          }
+        }
+      },
+      "set": {
+        "query.pages.extract": "In Rainbows is the seventh studio album by the English rock band Radiohead.\n\nThis paragraph stands in for the rest of the article's lead, which isn't copied into the tests."
+      }
+    },
+    "wikipedia/extract-radiohead.json": {
+      "url": "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=extracts%7Cinfo&inprop=url&exintro=1&explaintext=1&redirects=1&titles=Radiohead",
+      "keep": {
+        "batchcomplete": true,
+        "query": {
+          "pages": {
+            "pageid": true,
+            "ns": true,
+            "title": true,
+            "extract": true,
+            "contentmodel": true,
+            "pagelanguage": true,
+            "pagelanguagehtmlcode": true,
+            "pagelanguagedir": true,
+            "touched": true,
+            "lastrevid": true,
+            "length": true,
+            "fullurl": true,
+            "editurl": true,
+            "canonicalurl": true
+          }
+        }
+      },
+      "set": {
+        "query.pages.extract": "Radiohead are an English rock band formed in Abingdon, Oxfordshire, in 1985.\n\nThis paragraph stands in for the rest of the article's lead, which isn't copied into the tests."
+      }
+    },
+    "wikipedia/wikidata-Q223295.json": {
+      "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q223295&props=sitelinks&sitefilter=enwiki&format=json",
+      "keep": {
+        "entities": {
+          "Q223295": {
+            "type": true,
+            "id": true,
+            "sitelinks": {
+              "enwiki": {
+                "site": true,
+                "title": true,
+                "badges": true
+              }
+            }
+          }
+        },
+        "success": true
+      }
+    },
+    "wikipedia/wikidata-Q44190.json": {
+      "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q44190&props=sitelinks&sitefilter=enwiki&format=json",
+      "keep": {
+        "entities": {
+          "Q44190": {
+            "type": true,
+            "id": true,
+            "sitelinks": {
+              "enwiki": {
+                "site": true,
+                "title": true,
+                "badges": true,
+                "url": true
+              }
+            }
+          }
+        },
+        "success": true
+      }
+    }
+  }
+}

@@ -1,1 +1,18 @@
-{"entities":{"Q44190":{"type":"item","id":"Q44190","sitelinks":{"enwiki":{"site":"enwiki","title":"Radiohead","badges":["Q17437796"],"url":"https://en.wikipedia.org/wiki/Radiohead"}}}},"success":1}
+{
+  "entities": {
+    "Q44190": {
+      "type": "item",
+      "id": "Q44190",
+      "sitelinks": {
+        "enwiki": {
+          "site": "enwiki",
+          "title": "Radiohead",
+          "badges": [
+            "Q17437796"
+          ]
+        }
+      }
+    }
+  },
+  "success": 1
+}

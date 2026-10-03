@@ -380,7 +380,7 @@ juce::String readTags (const juce::File& file, int parts, juce::AudioFormatManag
         return "File not found: " + file.getFullPathName();
 
     result = {};
-    const auto path = file.getFullPathName();
+    const auto& path = file.getFullPathName();
 
     {
 #if JUCE_WINDOWS
@@ -555,7 +555,7 @@ juce::String readFileInfo (const juce::File& file, juce::AudioFormatManager& for
 
     result = {};
     result.fileSize = file.getSize();
-    const auto path = file.getFullPathName();
+    const auto& path = file.getFullPathName();
     bool tagged = false;
 
     {

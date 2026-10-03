@@ -1,0 +1,24 @@
+# clang-tidy for the core (PLAN.md H21), run by scripts/lint-cpp.py.
+# A check turned off here has its reason; a single finding that isn't a
+# bug is allowed at its line with `// NOLINT(check-name): reason`.
+#
+# Off:
+# - bugprone-easily-swappable-parameters: a naming heuristic, firing on
+#   most functions taking two numbers (JUCE's own API included); the
+#   tests catch swapped arguments.
+# - bugprone-multi-level-implicit-pointer-conversion: FFmpeg's av_freep
+#   and CoreAudio's property getters take a pointer's address as void* by
+#   design; the core's own code passes no void*.
+# - performance-enum-size: memory layout, not speed, for enums held one at
+#   a time; and anomp.h's enums are its C ABI, whose size must not change.
+Checks: >-
+  -*,
+  bugprone-*,
+  performance-*,
+  concurrency-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -performance-enum-size
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/core/(src|include)/.*'
+SystemHeaders: false

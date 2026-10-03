@@ -272,7 +272,7 @@ def main(argv=None):
             full,
             {**kept, **results},
             here,
-            datetime.datetime.now(tz=datetime.timezone.utc).date().isoformat(),
+            datetime.datetime.now(tz=datetime.UTC).date().isoformat(),
         )
         args.baseline.write_text(json.dumps(new, indent=2, ensure_ascii=False) + "\n")
         print(f"bench: wrote {len(new['results'])} results to {args.baseline.name}")

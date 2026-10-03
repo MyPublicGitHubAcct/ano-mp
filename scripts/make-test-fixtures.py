@@ -10,9 +10,20 @@ Needs Homebrew's `ffmpeg` (for LAME, libopus and the AAC/ALAC/FLAC/WMA
 encoders) and `oggenc` (vorbis-tools). These tools only make test data; the
 app never uses them.
 
-Usage: scripts/make-test-fixtures.py
+Every file comes out the same from the same signal and encoders: ffmpeg's
+-bitexact fixes its Ogg serials, and each Vorbis file gets a serial made
+from its name (oggenc --serial), so a rerun changes nothing unless the
+signal or an encoder changed. --only remakes the named fixtures alone.
+Each fixture's line gives its length in samples as Homebrew's ffmpeg
+decodes it, for the tests' fixture table (FFmpegAudioFormatTests.cpp);
+check a lossyRaw file's length and lag there against the pinned FFmpeg.
+Homebrew's may trim differently: it gives vorbis-44k.ogg 22400 samples,
+where the pinned reader (and the table) has the signal's 22371.
+
+Usage: scripts/make-test-fixtures.py [--only NAME ...]
 """
 
+import argparse
 import math
 import pathlib
 import shutil
@@ -76,6 +87,27 @@ def ffmpeg(*output_args):
         "-bitexact",
         *output_args,
         output,
+    ]
+
+
+def serial(output):
+    """A fixed Ogg stream serial for `output`, made from its file name."""
+    return zlib.crc32(pathlib.Path(output).name.encode()) & 0x7FFFFFFF
+
+
+def oggenc(quality):
+    """An oggenc command for (source, output) with a fixed serial: oggenc
+    picks a random one by default, changing the file on every run."""
+    return lambda source, output: [
+        "oggenc",
+        "--quiet",
+        "-q",
+        quality,
+        "--serial",
+        str(serial(output)),
+        "-o",
+        output,
+        source,
     ]
 
 
@@ -197,7 +229,7 @@ FIXTURES_SPEC = [
     ("aac-44k.m4a", 44100, 2, 0.5, ffmpeg("-c:a", "aac", "-b:a", "160k")),
     # Raw ADTS AAC: no container timestamps or gapless info.
     ("aac-adts-44k.aac", 44100, 2, 0.5, ffmpeg("-c:a", "aac", "-b:a", "160k")),
-    ("vorbis-44k.ogg", 44100, 2, 0.5, lambda s, o: ["oggenc", "--quiet", "-q", "5", "-o", o, s]),
+    ("vorbis-44k.ogg", 44100, 2, 0.5, oggenc("5")),
     ("opus-48k.opus", 48000, 2, 0.5, ffmpeg("-c:a", "libopus", "-b:a", "128k")),
     ("wma-44k.wma", 44100, 2, 0.5, ffmpeg("-c:a", "wmav2", "-b:a", "192k")),
     ("flac-long-48k-mono.flac", 48000, 1, 4.0, ffmpeg("-c:a", "flac")),
@@ -209,7 +241,7 @@ FIXTURES_SPEC = [
         44100,
         2,
         4.0,
-        lambda s, o: ["oggenc", "--quiet", "-q", "2", "-o", o, s],
+        oggenc("2"),
     ),
     ("opus-long-48k.opus", 48000, 2, 4.0, ffmpeg("-c:a", "libopus", "-b:a", "64k")),
     # Tagged by another tool than TagLib, for the tag reader tests.
@@ -224,14 +256,45 @@ FIXTURES_SPEC = [
 ]
 
 
+def selected(spec, only):
+    """The entries of `spec` named in `only` (all when it's empty)."""
+    names = [entry[0] for entry in spec]
+    unknown = sorted(set(only) - set(names))
+    if unknown:
+        raise ValueError(f"no fixture named {', '.join(unknown)} (fixtures: {', '.join(names)})")
+    return [entry for entry in spec if not only or entry[0] in only]
+
+
+def decoded_length(path, channels, run=subprocess.run):
+    """Samples per channel in `path` as Homebrew's ffmpeg decodes it, with
+    its encoder delay and padding trimmed, as the tests' table counts."""
+    result = run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-f", "s16le", "-ac", str(channels), "-"],
+        capture_output=True,
+        check=True,
+    )
+    return len(result.stdout) // (2 * channels)
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Generate the decoder tests' audio fixtures.")
+    parser.add_argument(
+        "--only", action="append", default=[], metavar="NAME", help="only this fixture (repeatable)"
+    )
+    args = parser.parse_args()
+    try:
+        spec = selected(FIXTURES_SPEC, args.only)
+    except ValueError as error:
+        sys.exit(f"error: {error}")
+
     for tool in ("ffmpeg", "oggenc"):
         if shutil.which(tool) is None:
             sys.exit(f"error: {tool} not found (brew install ffmpeg vorbis-tools)")
 
     FIXTURES.mkdir(parents=True, exist_ok=True)
+    print(f"{'fixture':24} {'bytes':>8} {'length':>8} {'signal':>8}")
     with tempfile.TemporaryDirectory() as tmp:
-        for name, sample_rate, channels, seconds, command in FIXTURES_SPEC:
+        for name, sample_rate, channels, seconds, command in spec:
             output = FIXTURES / name
             if command is None:
                 write_source_wav(output, sample_rate, channels, seconds)
@@ -241,7 +304,9 @@ def main():
                     write_source_wav(source, sample_rate, channels, seconds)
                     write_cover_png(source.parent / "cover.png")
                 subprocess.run(command(str(source), str(output)), check=True)
-            print(f"{name:24} {output.stat().st_size:>8} bytes")
+            length = decoded_length(output, channels)
+            signal = signal_length(sample_rate, seconds)
+            print(f"{name:24} {output.stat().st_size:>8} {length:>8} {signal:>8}")
 
 
 if __name__ == "__main__":

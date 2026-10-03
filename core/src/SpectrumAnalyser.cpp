@@ -65,7 +65,7 @@ SpectrumAnalyser::SpectrumAnalyser (int bands, int waveform)
       chromaFft (std::make_unique<juce::dsp::FFT> (chromaFftOrder)),
       bandWindow (hann (bandFftSize)),
       chromaWindow (hann (windowSize)),
-      fftData (2 * windowSize),
+      fftData (2 * static_cast<size_t> (windowSize)),
       mono (windowSize),
       previousBands (static_cast<size_t> (numBands)),
       fluxHistory (beatHistoryCapacity)

@@ -1,5 +1,7 @@
 # Formatted by scripts/format-python.py, which pins the ruff version.
 line-length = 100
+# The oldest Python the scripts run on (doctor.py's PYTHON_MINIMUM).
+target-version = "py311"
 # Python files only, not the Python blocks in the Markdown docs; the git
 # hooks are Python without an extension.
 include = ["*.py", "*.pyi", "scripts/hooks/*"]

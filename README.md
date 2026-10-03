@@ -47,6 +47,9 @@ the Rust backend links directly; it does not run as a separate process.
 - Only for the fuzzers and the full check (`scripts/check-all.py`):
   `brew install llvm@22` and `cargo install cargo-deny --version 0.20.2 --locked`.
 
+`scripts/doctor.py` checks all of this (versions included) and prints what to
+install; `scripts/check-all.py` runs it first.
+
 ## First-time setup
 
 Run these from the repository root. You need an internet connection for the first
@@ -133,8 +136,14 @@ ID signing and notarization ([PLAN.md](PLAN.md) §8).
 | Frontend type check and lint | `npm run check`, `npm run lint` | `app/` |
 | Format after editing (add `--check` to only report) | `scripts/format-cpp.py`, `scripts/format-rust.py`, `scripts/format-python.py`, `scripts/format-frontend.py` | repo root |
 | Every check, as CI runs it (`--quick`: what the pre-commit hook runs) | `scripts/check-all.py` | repo root |
+| Check this machine has the tools, at the right versions | `scripts/doctor.py` | repo root |
+| Lint the core with clang-tidy (after `cmake --preset debug`) | `scripts/lint-cpp.py` | repo root |
+| Which pins have newer releases (report only) | `scripts/check-pins.py` | repo root |
+| Move a pin to a release (downloads, hashes; `--check`: show the diff) | `scripts/bump-pin.py juce 9.0.3` | repo root |
+| Advisories: cargo deny, npm audit, FFmpeg's security page | `scripts/audit-deps.py` | repo root |
 | Rebuild FFmpeg from scratch | `scripts/build-ffmpeg.sh --force` | repo root |
-| Regenerate decoder test fixtures (rarely; needs `brew install ffmpeg vorbis-tools`) | `scripts/make-test-fixtures.py` | repo root |
+| Regenerate decoder test fixtures (rarely; needs `brew install ffmpeg vorbis-tools`; `--only NAME` for one) | `scripts/make-test-fixtures.py` | repo root |
+| Re-record the online services' test responses (`--check`: show what changed upstream) | `scripts/record-fixtures.py` | repo root |
 
 ## When GitHub Actions run
 
@@ -153,7 +162,9 @@ it doesn't run on every push. It runs:
 - **By hand,** on any branch (see [Running CI by hand](#running-ci-by-hand)).
 
 The weekly fuzzing run ([fuzz.yml](.github/workflows/fuzz.yml)) runs on its
-own schedule, Mondays at 06:00 UTC. Between releases, the pre-commit hook
+own schedule, Mondays at 06:00 UTC, after the weekly dependency audit
+([audit.yml](.github/workflows/audit.yml), 05:00 UTC), which fails on a new
+advisory and lists newer pins in its run summary. Between releases, the pre-commit hook
 (`git config core.hooksPath scripts/hooks`) runs `scripts/check-all.py --quick`
 on every commit, and `scripts/check-all.py` runs the full set locally.
 

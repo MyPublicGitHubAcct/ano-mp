@@ -554,17 +554,17 @@ std::vector<std::tuple<PlayerEngine::LoadId, PlayerEngine::LoadResult, juce::Str
         const auto opening = std::move (it->opening);
         it = requests.erase (it);
 
-        auto error = opening->error;
-        if (opening->track == nullptr)
-            finished.emplace_back (id, LoadResult::failed, error);
-        else if (asNext && (error = installNext (std::move (opening->track))).isNotEmpty())
+        const auto opened = opening->track != nullptr;
+        auto error = opened ? juce::String() : opening->error;
+        if (opened && asNext)
+            error = installNext (std::move (opening->track));
+        else if (opened)
+            install (std::move (opening->track));
+
+        if (! opened || error.isNotEmpty())
             finished.emplace_back (id, LoadResult::failed, error);
         else
-        {
-            if (! asNext)
-                install (std::move (opening->track));
             finished.emplace_back (id, LoadResult::loaded, juce::String());
-        }
     }
     return finished;
 }

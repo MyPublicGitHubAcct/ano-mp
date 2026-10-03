@@ -15,6 +15,9 @@ void* currentUserData = nullptr;
 class Forwarder final : public juce::Logger
 {
 public:
+    // Nothing to throw, and a static (bugprone-throwing-static-initialization).
+    Forwarder() noexcept = default;
+
     // Destroyed with the process's statics, possibly while still JUCE's
     // current logger (a host needn't clear its callback): JUCE's destructor
     // would assert, and log the failure through this half-destroyed logger.

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Runs every check the repo has: the one entry point for CI and for a local run.
 
-First the quick checks: each formatter in --check mode, the repo checks
+First doctor.py, which checks the tools are installed (--quick: those the
+quick checks need). Then the quick checks: each formatter in --check mode, the repo checks
 (check-c-api.py, check-sources.py, check-migrations.py, version.py
 --check), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
-test suites: the core (CMake debug preset and ctest, then ctest again
-under ASan and UBSan, and under TSan, then each fuzz target for a
+test suites: the core (CMake debug preset, clang-tidy through lint-cpp.py
+and ctest, then ctest again under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
 ESLint, npm test and the build), THIRD_PARTY_NOTICES (make-notices.py
 --check), the Rust crate (clippy, cargo test,
@@ -41,6 +42,8 @@ class Step:
     command: list
     cwd: pathlib.Path = REPO_ROOT
     quick: bool = True
+    # The command for a full run, when it differs from the quick one.
+    full_command: list = None
 
 
 def script(name, *args):
@@ -49,6 +52,8 @@ def script(name, *args):
 
 
 STEPS = [
+    # Missing or outdated tools first, before they fail a step obscurely.
+    Step("tools", script("doctor.py", "--quick"), full_command=script("doctor.py")),
     Step("format C++", script("format-cpp.py", "--check")),
     Step("format Python", script("format-python.py", "--check")),
     Step("format Rust", script("format-rust.py", "--check")),
@@ -63,6 +68,8 @@ STEPS = [
     Step("secrets", ["gitleaks", "git", "--redact", "--no-banner", "--log-level", "warn"]),
     Step("core configure", ["cmake", "--preset", "debug"], quick=False),
     Step("core build", ["cmake", "--build", "--preset", "debug"], quick=False),
+    # clang-tidy over core/src (PLAN.md H21), from the configure's compile database.
+    Step("core lint", script("lint-cpp.py"), quick=False),
     Step("core tests", ["ctest", "--preset", "debug", "--output-on-failure"], quick=False),
     # The core's tests again under the sanitizers (PLAN.md H6): configure,
     # build and test each preset (CMakePresets.json's workflow presets).
@@ -101,7 +108,14 @@ STEPS = [
 
 
 def select(steps, quick):
-    return [step for step in steps if step.quick or not quick]
+    """The steps a run makes, each with its command for that run."""
+    return [
+        step
+        if quick or step.full_command is None
+        else dataclasses.replace(step, command=step.full_command)
+        for step in steps
+        if step.quick or not quick
+    ]
 
 
 def run_step(step):

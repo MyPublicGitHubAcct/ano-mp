@@ -3,7 +3,7 @@
 Moved from `PLAN.md` on 2026-10-03, unchanged but for the headings.
 Section numbers (§) refer to `PLAN.md`, whose Phase 7 keeps the
 order of work, the hardening table with each item's status,
-the open items (H4, H13's P2 part, H19, H21) and §9.2's open scripts.
+the open items (H4, H13's P2 part, H19) and §9.2's open scripts.
 
 ## Order of work, step by step
 
@@ -342,6 +342,20 @@ in order. Step 6 runs alongside all of them.
      30× real time (H18; the budget is 20×); browsing by year or genre at
      56–73 ms (H18; 100 ms budget); restore's 290 ms of track details
      (H16); `queue/model.rs` not split (H19), having changed little.
+   - **Part 6 done 2026-10-03:** the engineering that needs no owner
+     decision, each part followed by a full `check-all.py` run: H21
+     (clang-tidy), `doctor.py` (M4, H8's remainder), M5's dependency
+     tools and weekly audit, then M3's fixture tools, each in its entry.
+     After the last, all 29 steps passed (new: "tools", quick, and "core
+     lint"): ctest 115 (also under `asan` and `tsan`), `cargo test` 433
+     (13 ignored), `npm test` 30, `svelte-check` 0 errors, script tests
+     205.
+   - The owner's answers that shaped Part 6: the docs restructure and
+     Part 5 pushed, CI not yet run on `main`; no §8.1 decision or
+     checklist entry changed; clang-tidy pinned from PyPI through uvx
+     over Homebrew's `llvm@22`; `doctor.py` as check-all's first step in
+     both modes.
+   - H19: no large module changed substantially, so none was split.
    - Next: the owner's items above, in order; then Parts 0–3 of the signed
      release as decisions arrive. Engineering left that needs no
      decision: H19 as modules are touched, H21 (clang-tidy), M3 and M5's
@@ -594,6 +608,8 @@ this file gets in the way.
       `app/.npmrc` makes npm refuse other versions.
     - C++ lint is H21. `doctor.py` (M4) doesn't exist yet; it should read
       both pins when written.
+  - **`doctor.py` done 2026-10-03 (Step 8, Part 6)**; its record is under
+    M4 below. It reads both pins. The edition move is still open.
 - **H9 Logs, panics and diagnostics.** The Rust code reported problems
   with `eprintln!` (54 calls on 2026-10-02, none now), which a bundled app sends nowhere. With
   `panic = "abort"` in the release profile, a panic leaves no trace.
@@ -1097,6 +1113,41 @@ this file gets in the way.
     test -- --list` less the ignored, `npm test`, pytest's collection), a
     full-run step. Tests: 30 in `test_check_docs.py`, one against the real
     tree.
+- **H21 C++ static analysis.** `clang-tidy` with a small set of checks
+  (`bugprone-*`, `performance-*`, `concurrency-*`) over `core/src`, in
+  `check-all.py` but not `--quick`.
+  - **Done 2026-10-03 (Step 8, Part 6).** `scripts/lint-cpp.py` runs
+    clang-tidy 22.1.8 from PyPI through uvx, pinned like clang-format
+    (the owner's choice over Homebrew's `llvm@22`, whose version drifts
+    between machines; PyPI has no 23.x yet). It lints every `core/src`
+    file in the debug preset's compile database (which now sets
+    `CMAKE_EXPORT_COMPILE_COMMANDS`), in parallel, and prints each
+    finding once however many files include its header; JUCE's, TagLib's
+    and FFmpeg's headers are left out. On macOS it passes the SDK from
+    `xcrun --show-sdk-path`, which Apple's driver otherwise supplies.
+    The 20 files built on macOS take about 10 s; the six other platforms'
+    files (`*_none.cpp`, `FolderAccess_unsandboxed.cpp`) wait for their
+    platforms. "core lint" is a full-run `check-all.py` step after the
+    core build. The checks and their exceptions are in `.clang-tidy`.
+  - Found 39, none a bug:
+    - Turned off in `.clang-tidy`, with their reasons:
+      `performance-enum-size` (15; `anomp.h`'s enums are its C ABI),
+      `bugprone-easily-swappable-parameters` (14; a naming heuristic)
+      and `bugprone-multi-level-implicit-pointer-conversion` (4;
+      `av_freep` and CoreAudio's property getters take `void*` by
+      design).
+    - Fixed: `TagReader`'s two copies of a file's path (now
+      references); `SpectrumAnalyser`'s buffer size widened before the
+      multiplication; `Log.cpp`'s static forwarder's constructor declared
+      `noexcept`; and `PlayerEngine::takeFinishedLoads`'s two identical
+      "failed" branches and assignment in a condition, rewritten with no
+      change in behaviour (each outcome was already tested: a failed
+      open, "No track is loaded", a current and a next track loaded).
+    - `concurrency-*` found nothing.
+  - Tests: 6 script tests (`test_lint_cpp.py`: the files picked from a
+    compile database, the SDK argument per OS, splitting and
+    deduplicating diagnostics, the real compile database and
+    `.clang-tidy`). ctest stays 115.
 - **H22 Missing folders at launch.**
   - **Today:**
     - F8 marks a folder whose bookmark doesn't resolve as unavailable in
@@ -1328,7 +1379,7 @@ this file gets in the way.
     builds, so not in the quick check). **Done 2026-10-03** (H20's entry),
     `docs/` and relative links included; `npm test`'s and the scripts'
     counts too.
-- [ ] M3 Fixture tools (with 4.8, which adds sources and their fixtures):
+- [x] M3 Fixture tools (with 4.8, which adds sources and their fixtures):
   - `record-fixtures.py`: a manifest next to the metadata fixtures lists
     each file's URL and trim rule (which JSON fields to keep, how many
     list items). It fetches at one request a second with the app's
@@ -1341,7 +1392,47 @@ this file gets in the way.
     (`--serial`), so regenerating changes no file unless the signal or
     encoders changed (the Vorbis fixtures change once when this lands);
     add `--only NAME`; print each fixture's length for the tests' table.
-- [ ] M4 CI entry point (with Phase 7's CI). `check-all.py` is done
+  - **Done 2026-10-03 (Step 8, Part 6).**
+    - `make-test-fixtures.py`: each Vorbis file gets a serial made from
+      its name (`oggenc --serial`, CRC-32 of the name); ffmpeg's
+      `-bitexact` already fixed the Opus files'. The two Vorbis fixtures
+      changed once (only their serials; ctest passed as before), and a
+      second run left every fixture byte for byte the same. `--only NAME`
+      (repeatable) remakes those alone. Each line gives the file's bytes,
+      its length as Homebrew's ffmpeg decodes it, and the signal's
+      length. Those match the tests' table but for `vorbis-44k.ogg`:
+      Homebrew's ffmpeg gives 22,400 samples where the pinned reader and
+      the table have 22,371, so the docstring says to check a length
+      against the pinned FFmpeg.
+    - `record-fixtures.py` with `metadata/fixtures/manifest.json`: 19
+      fetched files (URL and rules) and two made by hand (the Discogs
+      search, which needs a token, and the 8×8 JPEG). A rule's `select`
+      keeps the listed list items, in the listed order, by identifying
+      fields (`id`; `id` and `role` for Discogs' credits, where one person
+      has two; `type` and `url.id` for links; `type` and `value` for
+      identifiers); `keep` is a nested object of the keys to keep; `set`
+      replaces values (the release-group count to match its 14 groups,
+      and Wikipedia's extracts, whose stand-in text the tests use since
+      the articles are CC BY-SA). The rules were derived from each
+      committed file against its live response, so they reproduce the
+      hand trimming. It fetches at one request a second with the app's
+      `User-Agent` (version from `CMakeLists.txt`, contact from
+      `http.rs`), writes two-space-indented JSON, and with `--check`
+      prints the diff and writes nothing. Each run checks the manifest
+      covers every file.
+    - Re-recorded once (2026-10-03): nothing selected had gone upstream.
+      Besides the formatting, only timestamps (`created`, `touched`), the
+      In Rainbows search's total (602,015 to 53: the earlier recording
+      used a broader query) and Wikidata's unused `sitelinks.enwiki.url`
+      changed. One test then failed: it edited a release's JSON as text
+      (`"front":true`), which the new formatting broke; it now edits the
+      parsed JSON (`coverartarchive.rs`). `cargo test` passed after.
+    - Tests: 12 in `test_record_fixtures.py` (selection, keep, set, the
+      output format, the throttle with a fake clock, recording with a
+      fake fetch, coverage, the real manifest, and every recorded file
+      unchanged by its own rule) and 5 more in
+      `test_make_test_fixtures.py`.
+- [x] M4 CI entry point (with Phase 7's CI). `check-all.py` is done
   (2026-10-02), with `.github/workflows/ci.yml` running it, and
   `scripts/hooks/pre-commit` runs its `--quick` mode (H7):
   - `check-all.py`: runs every formatter in `--check` mode, the M2
@@ -1358,7 +1449,38 @@ this file gets in the way.
     set margin; `--update` rewrites the baseline. **Done 2026-10-03**
     (H18's entry): the Rust benchmarks and the core's (`bench` preset),
     H18's budgets, 13 tests.
-- [ ] M5 Dependency tools (with Phase 7):
+  - **`doctor.py` done 2026-10-03 (Step 8, Part 6).**
+    - Checks, each with an install hint for macOS, Linux and Windows:
+      Python (3.11, what the scripts use: `datetime.UTC`, `tomllib`), git,
+      uv, gitleaks, Node and npm; then CMake (at `CMakeLists.txt`'s
+      `cmake_minimum_required`), Ninja, nasm, pkg-config, rustup with
+      `rust-toolchain.toml`'s toolchain and this OS's targets, and
+      cargo-deny at the version `ci.yml` installs. Node must be inside
+      `package.json`'s `engines` and should be `.nvmrc`'s (another patch
+      only warns). On macOS: the selected developer directory (the
+      Command Line Tools or Xcode) with an SDK, and `llvm@22` for the
+      fuzzers. Then FFmpeg's `BUILD_INFO` against what `build-ffmpeg.sh`
+      would build now, from its new `--info` flag (the same text it
+      compares before skipping a build), so no bash is parsed in Python.
+      The edit changes CI's FFmpeg cache key (the script's hash), so
+      CI's next run builds FFmpeg once.
+      Checks that don't apply to an OS (llvm@22, the developer directory,
+      an FFmpeg build Phases 9–10 add) are left out there.
+    - A missing or too-old tool fails; a difference that still works
+      (another Node patch, a Rust toolchain or target rustup fetches on
+      first use, a newer cargo-deny) warns. It prints each tool's line,
+      then each fix once.
+    - `check-all.py` runs it first as "tools", in both modes (the owner's
+      choice): `--quick` checks only what the quick steps need, a full
+      run everything. A step can now have a separate command for the
+      full run (`Step.full_command`).
+    - `ruff.toml` now sets `target-version = "py311"`, which made ruff
+      treat `tomllib` as the standard library, and moved `bench.py` to
+      `datetime.UTC`.
+    - Tests: 17 in `test_doctor.py` (versions, each check over fake
+      command output for each OS, the report, the real pins) and one in
+      `test_check_all.py`.
+- [x] M5 Dependency tools (with Phase 7):
   - `check-pins.py`: reads every pin (JUCE, Catch2, TagLib, FFmpeg,
     clang-format, ruff) from its file and asks upstream for the latest
     release (GitHub releases, ffmpeg.org, PyPI); also summarizes
@@ -1370,6 +1492,63 @@ this file gets in the way.
   - `audit-deps.py`: runs `cargo deny check` (H7) and `npm audit`, and
     checks the FFmpeg pin against ffmpeg.org's security page; a scheduled
     weekly CI job runs it with `check-pins.py`.
+  - **Done 2026-10-03 (Step 8, Part 6).**
+    - `check-pins.py` reads ten pins from their files: JUCE, Catch2,
+      TagLib, Signalsmith Stretch and its FFT library (`linear`), FFmpeg,
+      and clang-format, clang-tidy, ruff and pytest. GitHub projects'
+      latest releases come from `git ls-remote --tags` (no API token or
+      rate limit), FFmpeg's from ffmpeg.org's release listing, the tools'
+      from PyPI; pre-releases are left out. Then `cargo update --dry-run`
+      and `npm outdated`. Report only; `--summary FILE` appends it as
+      Markdown (the workflow's run summary). A failed lookup is reported
+      in its row.
+    - Its first run: JUCE 9.0.3, clang-format 23.1.2 and ruff 0.16.10
+      are out; 15 crates (Tauri's 2.7.x/2.12.x patches among them) and 9
+      npm packages, including SvelteKit 3, adapter-static 4 and
+      TypeScript 7 (majors). None was moved (the monthly update, §9.1).
+    - `bump-pin.py NAME VERSION` uses the same table. JUCE and Catch2 go
+      to GitHub's archive of the commit the tag names (the peeled commit
+      for an annotated tag), TagLib and Signalsmith to their tarballs;
+      each is downloaded and hashed, and the `anomp_fetch_declare` block
+      (and JUCE's and Catch2's version comment) rewritten. FFmpeg's
+      tarball is checked with gpg in a throwaway keyring holding only
+      ffmpeg.org's published key, and must be signed by the fingerprint
+      `build-ffmpeg.sh` records. PyPI pins only need the release to exist.
+      It prints the rebuild and test commands and where the docs name
+      the old version. `--check` downloads and verifies, prints the diff
+      and writes nothing. Checked against the real upstreams: Catch2
+      3.16.0 and FFmpeg 9.0.2 (signature included) reproduce the
+      committed pins exactly, and `juce 9.0.3 --check` gives the expected
+      diff.
+    - `audit-deps.py`: `cargo deny check`, `npm audit`, and FFmpeg's pin
+      against ffmpeg.org/security.html, which lists fixes under a heading
+      per release: a newer release of the pinned branch listing fixes
+      fails; a newer branch's, or git master's unreleased fixes, are
+      notes. Each check runs even after one fails.
+    - Found: `npm audit` reports GHSA-pxg6-pf52-xh8x (low): `cookie`
+      before 0.7.0, through `@sveltejs/kit` 2 and `adapter-static` 3,
+      both dev dependencies. Kit's cookie parsing runs only in a SvelteKit
+      server; adapter-static prerenders the app, so the webview never
+      runs it. The fix is SvelteKit 3, a major update, so it is allowed
+      with that reason in `audit-deps.py`'s `NPM_IGNORED` (npm has no
+      ignore list), which also notes an allowed advisory no longer
+      reported. FFmpeg 9.0.2 is current; six fixes are in master only.
+    - `.github/workflows/audit.yml`: Mondays 05:00 UTC (before the
+      fuzzing run) and by hand, on `ubuntu-24.04` (nothing in it is
+      macOS-specific). It installs Rust, Node (from `.nvmrc`), cargo-deny
+      at `ci.yml`'s version (cached) and the npm packages, then runs
+      `check-pins.py --summary "$GITHUB_STEP_SUMMARY"` and
+      `audit-deps.py`. Actions pinned by the commits `git ls-remote`
+      gives for checkout v5.1.0, setup-node v5.0.0 and cache v4.3.0 (the
+      ones `ci.yml` uses; all lightweight tags). It hasn't run yet.
+    - Tests (31, no network: fetches, `git ls-remote`, downloads and gpg
+      are faked): `test_check_pins.py` (tags, listings, rows, the
+      summaries and reports, every real pin read), `test_bump_pin.py`
+      (each kind of pin rewritten in copies of the real files, a good,
+      foreign or bad signature, the docs' mentions) and
+      `test_audit_deps.py` (the security page, npm's advisories, every
+      workflow action pinned by commit, the audit workflow's scripts and
+      cargo-deny version).
 - [ ] M6 Release tools (with §8.2). Done 2026-10-02 except `release.py`'s
   updater manifest (after the updater, §8.2): `version.py`,
   `make-notices.py`, `release.py` and `check-signing.py`, plus

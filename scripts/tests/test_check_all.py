@@ -9,12 +9,13 @@ def check_all(script):
 def test_quick_leaves_out_the_builds(check_all):
     quick = check_all.select(check_all.STEPS, quick=True)
     full = check_all.select(check_all.STEPS, quick=False)
-    assert full == check_all.STEPS
-    assert [step for step in full if step not in quick] == [
-        step for step in check_all.STEPS if not step.quick
+    names = [step.name for step in quick]
+    assert [step.name for step in full] == [step.name for step in check_all.STEPS]
+    assert [step.name for step in full if step.name not in names] == [
+        step.name for step in check_all.STEPS if not step.quick
     ]
-    assert "core build" not in [step.name for step in quick]
-    assert "C API bindings" in [step.name for step in quick]
+    assert "core build" not in names
+    assert "C API bindings" in names
 
 
 def test_every_step_runs_and_failures_are_collected(check_all):
@@ -41,3 +42,13 @@ def test_the_pre_commit_hook_runs_the_quick_checks(check_all):
     hook = check_all.REPO_ROOT / "scripts" / "hooks" / "pre-commit"
     assert hook.stat().st_mode & 0o111, "executable"
     assert "check-all.py" in hook.read_text()
+
+
+def test_tools_are_checked_first_for_the_run_being_made(check_all):
+    quick = check_all.select(check_all.STEPS, quick=True)
+    full = check_all.select(check_all.STEPS, quick=False)
+    assert quick[0].name == full[0].name == "tools"
+    assert quick[0].command[-2:] == [str(check_all.REPO_ROOT / "scripts" / "doctor.py"), "--quick"]
+    assert full[0].command[-1] == str(check_all.REPO_ROOT / "scripts" / "doctor.py")
+    # Other steps run the same command in both.
+    assert quick[1] == full[1]

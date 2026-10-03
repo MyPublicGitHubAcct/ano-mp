@@ -1,1 +1,229 @@
-{"media":[{"tracks":[{"number":"1","position":1,"id":"603244ec-69b2-4ef7-9e87-35a4bd449608","length":237000,"recording":{"id":"faea2aa0-80a9-41be-9b1e-3b994f4f76ac","length":238000,"title":"15 Step"},"title":"15 Step"},{"length":242293,"recording":{"id":"94a1d84a-66ce-4fc9-88a5-c46263c54d9a","title":"Bodysnatchers","length":242293},"title":"Bodysnatchers","number":"2","id":"b9c8f886-1a0e-4049-9cf0-b5931556320f","position":2},{"recording":{"length":255386,"title":"Nude","id":"f3bea96c-5ebf-4d37-990d-14f1bc281459"},"length":255386,"title":"Nude","id":"ca481440-b8aa-46e0-a411-729c2daac83b","position":3,"number":"3"},{"number":"4","position":4,"id":"a60647fe-0557-4d5d-9135-554bfc0fcb6f","title":"Weird Fishes/Arpeggi","length":318186,"recording":{"id":"f74b48a6-5a60-4b5a-864d-3ecb7e983c31","length":318186,"title":"Weird Fishes/Arpeggi"}},{"recording":{"title":"All I Need","length":228746,"id":"72c6b4d3-71a8-4c70-bf50-da11c0149089"},"length":228000,"title":"All I Need","id":"cab608ca-3ae2-4806-b615-744fc43f1a79","position":5,"number":"5"},{"title":"Faust Arp","recording":{"length":129680,"title":"Faust Arp","id":"ffac3cb1-a5e9-4f31-952d-45323f3640d5"},"length":129000,"id":"708f1bb0-a669-4c76-8a86-b3b062b09675","position":6,"number":"6"},{"title":"Reckoner","length":290213,"recording":{"length":290213,"title":"Reckoner","id":"d9b46ecb-5472-4dcd-8fa4-dd6723189e27"},"number":"7","position":7,"id":"3cfbc9a2-9e9c-485a-bd6f-9188efb8437c"},{"position":8,"id":"677fde57-ae34-4901-a4dd-a0b7b217034d","number":"8","recording":{"id":"29a9d792-151b-4dd4-99ae-25bc853d8895","title":"House of Cards","length":328293},"length":328293,"title":"House of Cards"},{"position":9,"id":"ba00524a-e036-4cd4-b351-7acb73d6a3ba","number":"9","recording":{"title":"Jigsaw Falling Into Place","length":248893,"id":"31600df4-e6dd-48ca-9f6b-8804027d8d6e"},"length":248000,"title":"Jigsaw Falling Into Place"},{"title":"Videotape","length":279000,"recording":{"length":281800,"title":"Videotape","id":"8648fe94-bbdc-44a1-9de8-c4ced7913dc2"},"number":"10","position":10,"id":"757979c1-5dbc-46ba-87ff-2d871bbc3918"}],"track-count":10,"track-offset":0,"format-id":"907a28d9-b3b2-3ef6-89a8-7b18d91d4794","title":"","format":"Digital Media","position":1,"id":"1368b105-a8ff-3423-b6c9-dce1e0d338aa"}],"packaging":"None","country":"XW","title":"In Rainbows","artist-credit":[{"artist":{"id":"a74b1b7f-71a5-4011-9441-d0b5e4122711","name":"Radiohead","sort-name":"Radiohead"},"joinphrase":"","name":"Radiohead"}],"disambiguation":"","barcode":"634904032463","release-events":[{"area":{"name":"[Worldwide]","type":null,"iso-3166-1-codes":["XW"],"disambiguation":"","id":"525d4e18-3d00-31b9-a58b-a146a916de8f","type-id":null,"sort-name":"[Worldwide]"},"date":"2016-05-06"}],"genres":[],"date":"2016-05-06","cover-art-archive":{"darkened":false,"count":1,"front":true,"artwork":true,"back":false},"release-group":{"id":"6e335887-60ba-38f0-95af-fae7774336bf","secondary-types":[],"disambiguation":"","primary-type-id":"f529b476-6e62-324f-b0aa-1f3e33d313fc","primary-type":"Album","title":"In Rainbows","secondary-type-ids":[],"genres":[{"count":20,"name":"alternative rock","id":"ceeaa283-5d7b-4202-8d1d-e25d116b2a18","disambiguation":""},{"count":12,"disambiguation":"","id":"0e3fc579-2d24-4f20-9dae-736e1ec78798","name":"rock"},{"id":"b7ef058e-6d83-4ca4-8123-9724bff4648b","disambiguation":"","name":"art rock","count":9},{"count":4,"id":"89255676-1f14-4dd8-bbad-fca839d6aff4","disambiguation":"","name":"electronic"},{"count":4,"id":"ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7","disambiguation":"","name":"indie rock"}],"first-release-date":"2007-10-10"},"label-info":[{"catalog-number":"XLDA324","label":{"id":"14221f01-8939-4ea0-b8f1-b5a21beae80a","name":"XL Recordings"}}],"id":"1a33443c-3fff-450f-8298-efbc65659d32","status":"Official"}
+{
+  "media": [
+    {
+      "position": 1,
+      "format": "Digital Media",
+      "tracks": [
+        {
+          "length": 237000,
+          "position": 1,
+          "number": "1",
+          "title": "15 Step",
+          "id": "603244ec-69b2-4ef7-9e87-35a4bd449608",
+          "recording": {
+            "id": "faea2aa0-80a9-41be-9b1e-3b994f4f76ac",
+            "length": 238000,
+            "title": "15 Step"
+          }
+        },
+        {
+          "number": "2",
+          "title": "Bodysnatchers",
+          "length": 242293,
+          "position": 2,
+          "recording": {
+            "title": "Bodysnatchers",
+            "length": 242293,
+            "id": "94a1d84a-66ce-4fc9-88a5-c46263c54d9a"
+          },
+          "id": "b9c8f886-1a0e-4049-9cf0-b5931556320f"
+        },
+        {
+          "id": "ca481440-b8aa-46e0-a411-729c2daac83b",
+          "recording": {
+            "title": "Nude",
+            "id": "f3bea96c-5ebf-4d37-990d-14f1bc281459",
+            "length": 255386
+          },
+          "position": 3,
+          "length": 255386,
+          "title": "Nude",
+          "number": "3"
+        },
+        {
+          "id": "a60647fe-0557-4d5d-9135-554bfc0fcb6f",
+          "recording": {
+            "title": "Weird Fishes/Arpeggi",
+            "length": 318186,
+            "id": "f74b48a6-5a60-4b5a-864d-3ecb7e983c31"
+          },
+          "length": 318186,
+          "position": 4,
+          "number": "4",
+          "title": "Weird Fishes/Arpeggi"
+        },
+        {
+          "id": "cab608ca-3ae2-4806-b615-744fc43f1a79",
+          "recording": {
+            "title": "All I Need",
+            "id": "72c6b4d3-71a8-4c70-bf50-da11c0149089",
+            "length": 228746
+          },
+          "position": 5,
+          "length": 228000,
+          "title": "All I Need",
+          "number": "5"
+        },
+        {
+          "length": 129000,
+          "position": 6,
+          "number": "6",
+          "title": "Faust Arp",
+          "id": "708f1bb0-a669-4c76-8a86-b3b062b09675",
+          "recording": {
+            "id": "ffac3cb1-a5e9-4f31-952d-45323f3640d5",
+            "length": 129680,
+            "title": "Faust Arp"
+          }
+        },
+        {
+          "length": 290213,
+          "position": 7,
+          "number": "7",
+          "title": "Reckoner",
+          "id": "3cfbc9a2-9e9c-485a-bd6f-9188efb8437c",
+          "recording": {
+            "id": "d9b46ecb-5472-4dcd-8fa4-dd6723189e27",
+            "length": 290213,
+            "title": "Reckoner"
+          }
+        },
+        {
+          "id": "677fde57-ae34-4901-a4dd-a0b7b217034d",
+          "recording": {
+            "id": "29a9d792-151b-4dd4-99ae-25bc853d8895",
+            "length": 328293,
+            "title": "House of Cards"
+          },
+          "length": 328293,
+          "position": 8,
+          "number": "8",
+          "title": "House of Cards"
+        },
+        {
+          "recording": {
+            "length": 248893,
+            "id": "31600df4-e6dd-48ca-9f6b-8804027d8d6e",
+            "title": "Jigsaw Falling Into Place"
+          },
+          "id": "ba00524a-e036-4cd4-b351-7acb73d6a3ba",
+          "title": "Jigsaw Falling Into Place",
+          "number": "9",
+          "position": 9,
+          "length": 248000
+        },
+        {
+          "id": "757979c1-5dbc-46ba-87ff-2d871bbc3918",
+          "recording": {
+            "title": "Videotape",
+            "id": "8648fe94-bbdc-44a1-9de8-c4ced7913dc2",
+            "length": 281800
+          },
+          "length": 279000,
+          "position": 10,
+          "number": "10",
+          "title": "Videotape"
+        }
+      ],
+      "format-id": "907a28d9-b3b2-3ef6-89a8-7b18d91d4794",
+      "title": "",
+      "id": "1368b105-a8ff-3423-b6c9-dce1e0d338aa",
+      "track-offset": 0,
+      "track-count": 10
+    }
+  ],
+  "id": "1a33443c-3fff-450f-8298-efbc65659d32",
+  "date": "2016-05-06",
+  "release-events": [
+    {
+      "area": {
+        "name": "[Worldwide]",
+        "id": "525d4e18-3d00-31b9-a58b-a146a916de8f",
+        "disambiguation": "",
+        "sort-name": "[Worldwide]",
+        "type": null,
+        "iso-3166-1-codes": [
+          "XW"
+        ],
+        "type-id": null
+      },
+      "date": "2016-05-06"
+    }
+  ],
+  "title": "In Rainbows",
+  "cover-art-archive": {
+    "darkened": false,
+    "artwork": true,
+    "front": true,
+    "back": false,
+    "count": 1
+  },
+  "artist-credit": [
+    {
+      "name": "Radiohead",
+      "joinphrase": "",
+      "artist": {
+        "sort-name": "Radiohead",
+        "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+        "name": "Radiohead"
+      }
+    }
+  ],
+  "label-info": [
+    {
+      "label": {
+        "name": "XL Recordings",
+        "id": "14221f01-8939-4ea0-b8f1-b5a21beae80a"
+      },
+      "catalog-number": "XLDA324"
+    }
+  ],
+  "packaging": "None",
+  "genres": [],
+  "barcode": "634904032463",
+  "country": "XW",
+  "disambiguation": "",
+  "release-group": {
+    "genres": [
+      {
+        "count": 20,
+        "id": "ceeaa283-5d7b-4202-8d1d-e25d116b2a18",
+        "name": "alternative rock",
+        "disambiguation": ""
+      },
+      {
+        "count": 12,
+        "id": "0e3fc579-2d24-4f20-9dae-736e1ec78798",
+        "name": "rock",
+        "disambiguation": ""
+      },
+      {
+        "count": 9,
+        "disambiguation": "",
+        "name": "art rock",
+        "id": "b7ef058e-6d83-4ca4-8123-9724bff4648b"
+      },
+      {
+        "count": 4,
+        "name": "electronic",
+        "id": "89255676-1f14-4dd8-bbad-fca839d6aff4",
+        "disambiguation": ""
+      },
+      {
+        "count": 4,
+        "name": "indie rock",
+        "id": "ccd19ebf-052c-4afe-8ad9-fbb0a73f94a7",
+        "disambiguation": ""
+      }
+    ],
+    "title": "In Rainbows",
+    "first-release-date": "2007-10-10",
+    "disambiguation": "",
+    "secondary-types": [],
+    "id": "6e335887-60ba-38f0-95af-fae7774336bf",
+    "secondary-type-ids": [],
+    "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+    "primary-type": "Album"
+  },
+  "status": "Official"
+}

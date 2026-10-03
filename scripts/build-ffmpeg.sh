@@ -9,9 +9,11 @@
 #                     CMake `fuzz` preset (PLAN.md H5); the same pin and formats
 # Phases 8-10 add iOS, Linux and Windows.
 #
-# Usage: scripts/build-ffmpeg.sh [--force] [--fuzz]
+# Usage: scripts/build-ffmpeg.sh [--force] [--fuzz] [--info]
 # Skips the build when BUILD_INFO already matches this script's version and
 # flags; --force rebuilds anyway. CI caches the output keyed on BUILD_INFO.
+# --info prints the BUILD_INFO a build would write and builds nothing
+# (scripts/doctor.py compares it with the one built).
 
 set -euo pipefail
 
@@ -62,11 +64,13 @@ FUZZ_FLAGS="-fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=un
 
 FORCE=0
 FUZZ=0
+INFO=0
 for arg in "$@"; do
     case "$arg" in
         --force) FORCE=1 ;;
         --fuzz) FUZZ=1 ;;
-        *) printf 'usage: %s [--force] [--fuzz]\n' "$0" >&2; exit 2 ;;
+        --info) INFO=1 ;;
+        *) printf 'usage: %s [--force] [--fuzz] [--info]\n' "$0" >&2; exit 2 ;;
     esac
 done
 
@@ -217,6 +221,9 @@ build_macos_fuzz() {
 }
 
 case "$(uname -s)" in
-    Darwin) if [[ $FUZZ -eq 1 ]]; then build_macos_fuzz; else build_macos; fi ;;
+    Darwin)
+        if [[ $INFO -eq 1 ]]; then
+            if [[ $FUZZ -eq 1 ]]; then build_info macos-arm64-fuzz; else build_info macos-universal; fi
+        elif [[ $FUZZ -eq 1 ]]; then build_macos_fuzz; else build_macos; fi ;;
     *) die "unsupported host $(uname -s); Linux and Windows arrive in Phases 9-10" ;;
 esac

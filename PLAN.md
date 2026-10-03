@@ -86,12 +86,13 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | 115 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
 | 433 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
 | 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 133 pytest tests (`test-python.py`) | `scripts/tests/` |
+| the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
 Needed for Phases 0–7 (macOS only; the Command Line Tools are enough). All
-installed on the dev machine as of 2026-09-25 (versions noted):
+installed on the dev machine as of 2026-09-25 (versions noted).
+`scripts/doctor.py` checks them against the repo's pins and minimums:
 
 - [x] CMake ≥ 3.25 and Ninja (4.4.3, 1.13.2 via Homebrew); Apple clang (21.0.0,
       Command Line Tools, macOS SDK 27.0)
@@ -429,13 +430,16 @@ found) is in [docs/design/phase-7-hardening.md](docs/design/phase-7-hardening.md
 8. The signed release (§8.3 with a Developer ID, §8.7), as far as the
    owner's decisions allow. **Begun 2026-10-02**: the smoke test
    (`docs/release-smoke-test.md`) and H14; Part 5 (2026-10-03): CI fixed,
-   H15–H18 and H20. Its signing parts wait on Step 6.
+   H15–H18 and H20; Part 6 (2026-10-03): H21, `doctor.py`, M5's
+   dependency tools and the weekly audit, M3's fixture tools. Its
+   signing parts wait on Step 6.
 
 Waiting on the owner, in the order the owner takes them (set 2026-10-03):
 
 1. ~~the CI log of run #9 (and #6)~~ fixed 2026-10-03 (Step 8's record);
-   CI on `main` itself waits for the owner to push the fix and run
-   it;
+   the fix is pushed (asked 2026-10-03), and CI on `main` waits for the
+   owner to run it, now with Part 6 (the audit workflow's first run
+   too);
 2. the distribution channel and where releases are hosted (Part 1,
    the updater, if a direct download). The owner made the
    repository public on 2026-10-03, so its GitHub Releases can host
@@ -465,8 +469,9 @@ Waiting on the owner, in the order the owner takes them (set 2026-10-03):
   (H16); `queue/model.rs` not split (H19), having changed little.
 - Next: the owner's items above, in order; then Parts 0–3 of the signed
   release as decisions arrive. Engineering left that needs no
-  decision: H19 as modules are touched, H21 (clang-tidy), M3 and M5's
-  scripts, `doctor.py`.
+  decision: H19 as modules are touched, M2's
+  `sync-ffmpeg-frameworks.py`, H4 (before Phase 9), H13's P2 tests and
+  H8's edition move.
 
 **Hardening items** (from the 2026-09-27 review; priorities as in
 §4.7). CI runs each check through `check-all.py` (M4), so a local run
@@ -481,7 +486,7 @@ matches it.
 | H5 | Fuzz the tag reader and decoder | security, robustness | M | P1 targets and CI run, P2 long runs | Done 2026-10-02; the weekly long runs' results to come |
 | H6 | Sanitizer presets for the core | robustness | S | P1 | Done 2026-10-02 |
 | H7 | Supply chain: exact pins, `cargo deny`, update bot, secret scanning | security, maintenance | S | P1 | Done 2026-10-02; GitHub secret scanning is the owner's setting |
-| H8 | Rust and C++ lint gates, pinned toolchains | maintenance | S | P1 | Done 2026-10-02 but the edition move and `doctor.py` (below) |
+| H8 | Rust and C++ lint gates, pinned toolchains | maintenance | S | P1 | Done 2026-10-02 (`doctor.py` 2026-10-03) but the edition move (below) |
 | H9 | Logs, panic capture and "Copy diagnostics" | robustness, support | M | P1 | Done 2026-10-02 |
 | H10 | Library DB safety: backups before migrations, checks, pruning | robustness | S–M | P1 | Done 2026-10-02 |
 | H11 | Open files off the main thread | robustness | M | P1 | Done 2026-10-02 |
@@ -494,7 +499,7 @@ matches it.
 | H18 | Performance budgets | efficiency | S | P2 | Done 2026-10-03; three budgets are owner checks |
 | H19 | Split the largest modules | maintenance | S each | P3, as touched | Open, as touched (below) |
 | H20 | Move design records out of `PLAN.md` | maintenance | S | P2 | Done 2026-10-03 |
-| H21 | C++ static analysis | maintenance | S | P3 | Open (below) |
+| H21 | C++ static analysis | maintenance | S | P3 | Done 2026-10-03 |
 | H22 | Missing folders at launch | robustness | M | P1 | Done 2026-10-02 (H22a and H22b) |
 
 Each finished item's proposal and record (what was built, its tests,
@@ -508,8 +513,7 @@ The open items and parts:
   blocks that, but Linux and Windows have no sandbox. Canonicalise the
   picture's path and require it under the folder's root, with a test
   using a symlink.
-- **H8's remainder.** Move to Rust edition 2024 in one separate commit;
-  `doctor.py` (M4) reads `rust-toolchain.toml` and `.nvmrc` when written.
+- **H8's remainder.** Move to Rust edition 2024 in one separate commit.
 - **H13's P2 part.**
   - P2: Vitest for the rune modules (`state/*.svelte.ts`), which plain
     `node --test` can't compile. IPC is faked with
@@ -525,9 +529,6 @@ The open items and parts:
   - `library/browse.rs`;
   - `queue/model.rs`;
   - `anomp.rs`, one file per area of the C API.
-- **H21 C++ static analysis.** `clang-tidy` with a small set of checks
-  (`bugprone-*`, `performance-*`, `concurrency-*`) over `core/src`, in
-  `check-all.py` but not `--quick`.
 
 - **Exit:** the macOS app is ready for the first release in §8.3, with
   the P1 items of §4.7 and of H1–H22 done.
@@ -1023,39 +1024,15 @@ Steps:
   - `sync-ffmpeg-frameworks.py`: rewrites `bundle.macOS.frameworks` from
     the dylibs in `third_party/ffmpeg/macos-universal/lib`; `--check`
     compares only.
-- [ ] M3 Fixture tools (with 4.8, which adds sources and their fixtures):
-  - `record-fixtures.py`: a manifest next to the metadata fixtures lists
-    each file's URL and trim rule (which JSON fields to keep, how many
-    list items). It fetches at one request a second with the app's
-    `User-Agent`, trims, writes, and with `--check` shows the diff
-    instead. Re-record the existing fixtures with it once and confirm
-    `cargo test` still passes. Tests: trimming over saved raw responses,
-    the rate limiting with a fake clock, and the manifest covering every
-    committed file.
-  - `make-test-fixtures.py`: pass fixed stream serials to `oggenc`
-    (`--serial`), so regenerating changes no file unless the signal or
-    encoders changed (the Vorbis fixtures change once when this lands);
-    add `--only NAME`; print each fixture's length for the tests' table.
-- [ ] M4 CI entry point. Done: `check-all.py` (2026-10-02; CI runs it,
-  the pre-commit hook its `--quick` mode) and `bench.py` (2026-10-03,
-  H18). Open:
-  - `doctor.py`: checks the tools in §3 are installed at the minimum
-    versions, that `third_party/ffmpeg/<platform>/BUILD_INFO` matches
-    `build-ffmpeg.sh`, and on macOS that the Command Line Tools are
-    selected. Prints what to install. Written for every OS from the
-    start, since Phases 8–10 need it most.
-- [ ] M5 Dependency tools (with Phase 7):
-  - `check-pins.py`: reads every pin (JUCE, Catch2, TagLib, FFmpeg,
-    clang-format, ruff) from its file and asks upstream for the latest
-    release (GitHub releases, ffmpeg.org, PyPI); also summarizes
-    `cargo update --dry-run` and `npm outdated`. Report only.
-  - `bump-pin.py NAME VERSION`: downloads the release, computes its
-    SHA-256 (and for FFmpeg verifies the GPG signature against the key
-    recorded in `build-ffmpeg.sh`), rewrites the pin in place and prints
-    the rebuild and test commands. Tests rewrite copies of the real files.
-  - `audit-deps.py`: runs `cargo deny check` (H7) and `npm audit`, and
-    checks the FFmpeg pin against ffmpeg.org's security page; a scheduled
-    weekly CI job runs it with `check-pins.py`.
+- [x] M3 Fixture tools. Done 2026-10-03 (Step 8's Part 6):
+  `record-fixtures.py` with `metadata/fixtures/manifest.json`, and
+  `make-test-fixtures.py`'s fixed serials, `--only` and lengths.
+- [x] M4 CI entry point. Done: `check-all.py` (2026-10-02; CI runs it,
+  the pre-commit hook its `--quick` mode), `bench.py` (2026-10-03, H18)
+  and `doctor.py` (2026-10-03, Step 8's Part 6).
+- [x] M5 Dependency tools. Done 2026-10-03 (Step 8's Part 6):
+  `check-pins.py`, `bump-pin.py`, `audit-deps.py` and the weekly
+  `audit.yml`.
 - [ ] M6 Release tools (with §8.2). Done 2026-10-02: `version.py`,
   `make-notices.py`, `release.py`, `check-signing.py`, `build-app.py`,
   `check-bundle.py` and `notarize.py`. Open: `release.py`'s updater

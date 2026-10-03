@@ -31,9 +31,11 @@ check safely.
 scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 scripts/format-cpp.py     # clang-format core/ after editing it (--check: report only)
+scripts/lint-cpp.py       # clang-tidy over core/src (.clang-tidy; after `cmake --preset debug`)
 scripts/format-python.py  # ruff format + ruff check scripts/*.py after editing them (--check: diff only)
 scripts/format-frontend.py # Prettier over app/ after editing the frontend (--check: report only)
 scripts/check-all.py      # every check, as CI runs it (--quick: formatters, repo checks, script tests, gitleaks)
+scripts/doctor.py         # the tools and versions this needs, and what to install (check-all runs it first)
 git config core.hooksPath scripts/hooks  # once per clone: the pre-commit hook (gitleaks, check-all --quick)
 
 cmake --workflow --preset asan  # configure, build and ctest under ASan + UBSan (build/asan)
@@ -73,7 +75,17 @@ scripts/self-test-bundle.py      # build a sandboxed bundle with the self-test a
                                  #   CI only: --local runs it here, in the real container)
 scripts/bench.py                 # benchmarks against H18's budgets and the baseline (--update,
                                  #   --only rust|core); a release step, not in check-all
+scripts/check-pins.py            # pins with newer releases, cargo update and npm outdated (report only)
+scripts/bump-pin.py NAME VERSION # download, hash (FFmpeg: GPG-check) and rewrite a pin (--check: diff)
+scripts/audit-deps.py            # cargo deny, npm audit, the FFmpeg pin against ffmpeg.org/security
 ```
+
+- **Dependency pins** (M5): `check-pins.py`'s `PINS` lists every pin
+  `bump-pin.py` can move (a new native pin or pinned tool goes there, with
+  a test). `audit.yml` runs `check-pins.py` and `audit-deps.py` weekly
+  (Mondays, 05:00 UTC). An npm advisory that can't be fixed yet goes in
+  `audit-deps.py`'s `NPM_IGNORED` with its reason, as RustSec's go in
+  `deny.toml`'s `ignore`.
 
 - **Benchmarks** (H18): `bench.py` runs the ignored Rust benchmarks
   (`library/bench.rs`) and the core's hidden `[.][bench]` tests
@@ -108,7 +120,9 @@ scripts/bench.py                 # benchmarks against H18's budgets and the base
 Tools beyond the build: `brew install uv gitleaks llvm@22`, and `cargo install
 cargo-deny --version 0.20.2 --locked` (the version CI installs). Rust and
 Node are pinned by `rust-toolchain.toml` and `.nvmrc`; `app/.npmrc` makes
-npm refuse a Node outside `package.json`'s `engines`.
+npm refuse a Node outside `package.json`'s `engines`. `doctor.py` checks
+each tool against these pins and minimums (written for every OS); a new
+tool or pin goes in its `TOOLS` list or checks.
 
 CI (`.github/workflows/ci.yml`, macOS) runs `scripts/check-all.py` and nothing
 else, so a new check goes in that script, not in the workflow. It runs by hand
@@ -141,9 +155,10 @@ deterministic chirp (`core/tests/TestSignal.h`, which must match
 `scripts/make-test-fixtures.py`). Regenerating needs `brew install ffmpeg
 vorbis-tools` (Homebrew's FFmpeg only encodes fixtures; it is never linked).
 Lengths and lags in the tests' fixture table are properties of the encoded
-files, so update them if you regenerate. Only the Vorbis fixtures change on a
-rerun (random stream serials): `git checkout` them unless you meant to change
-them. The two `tagged-*` fixtures carry the tags `TagReaderTests.cpp` expects.
+files, so update them if you regenerate (the script prints each file's
+length; `--only NAME` remakes one). A rerun changes no file unless the signal
+or an encoder changed (fixed Ogg serials). The two `tagged-*` fixtures carry
+the tags `TagReaderTests.cpp` expects.
 
 Pins: JUCE 9.0.2 and Catch2 v3.16.0 (GitHub's archive of the release's commit +
 SHA-256, top-level `CMakeLists.txt`), TagLib 2.3.2 (`cmake/TagLib.cmake`),
@@ -372,7 +387,9 @@ which rate-limits per host and backs off when offline; never call a service
 another way. Anything a command needs from a service runs on the metadata
 worker through `worker::call`. Tests never touch the network: they use the fake
 `Transport` and `Clock` (`http::testing`) with recorded responses in
-`metadata/fixtures/`, and live checks are `#[ignore]`d (`cargo test live_ --
+`metadata/fixtures/`, each made as its `manifest.json` entry says
+(`scripts/record-fixtures.py` re-records them; `--check` shows the drift; a new
+fixture gets an entry), and live checks are `#[ignore]`d (`cargo test live_ --
 --ignored`). A link row with `chosen_by = 'user'` or an `album_art` row is the
 user's pick, and automatic matching must never replace it. The `anomp-art`
 handler serves only local and already-downloaded pictures; it never goes
