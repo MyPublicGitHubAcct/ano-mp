@@ -157,7 +157,7 @@ and the stores.
   marked as a placeholder (`metadata/http.rs`, `CONTACT`, marked as a
   placeholder). MusicBrainz throttles clients it can't identify.
 - Whether to become a MetaBrainz supporter: they ask commercial users of
-  MusicBrainz's data to support them (Phase 4's sources table), so this
+  MusicBrainz's data to support them (the sources table in `docs/design/phase-4-online-metadata.md`), so this
   depends on whether the app is sold.
 
 **Blocks:** the first release (the contact); nothing in the build (the

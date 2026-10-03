@@ -9,8 +9,8 @@ plays MP3, FLAC and other common formats, shows file metadata enriched from serv
 such as MusicBrainz, and has an admin screen for configuring displayed fields, enabled
 services, library sort/grouping rules and visualization preferences.
 
-`PLAN.md` is the authoritative roadmap: its status line, §2 (each component and
-where it lives), the phases, §4 decisions (JUCE commercial license, FFmpeg,
+`PLAN.md` is the authoritative roadmap: its status line, §2 (where each component
+lives, and the test counts), the phases, §4 decisions (JUCE commercial license, FFmpeg,
 TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before
 starting anything non-trivial, and update it when a step finishes or a decision
 is made (§2's test counts too: `check-docs.py --counts` compares them).
@@ -377,7 +377,8 @@ worker through `worker::call`. Tests never touch the network: they use the fake
 user's pick, and automatic matching must never replace it. The `anomp-art`
 handler serves only local and already-downloaded pictures; it never goes
 online. Wikipedia text is CC BY-SA: always credit the article and licence where
-it's shown. The sources table in `PLAN.md` Phase 4 records which sources ship.
+it's shown. The sources table in `docs/design/phase-4-online-metadata.md` records which
+sources ship.
 
 **Discogs' terms shape its code**: store only the match (`album_links` with
 `details` NULL; `SourceInfo::stores_details` is false), fetch its data through

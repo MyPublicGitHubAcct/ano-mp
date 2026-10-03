@@ -54,64 +54,39 @@ Why this split:
 
 ## 2. Current state (done)
 
-| Item | Location |
+Where each part lives. Each phase's design doc in `docs/design/` says what it
+holds and how it was built.
+
+- **Core** (`core/`): the C API (`core/include/anomp/anomp.h`); decoding
+  (`FFmpegAudioFormat`, FFmpeg built by `scripts/build-ffmpeg.sh`), tags
+  (`TagReader`, TagLib), playback (`PlayerEngine`, `AudioEngine`: gapless,
+  async loads, crossfade, `Equaliser`, `Crossfeed`), visualizer analysis
+  (`SignalTap`, `SpectrumAnalyser`, `AnalysisThread`), `FileAnalyser`, and
+  platform code (`MediaControls`, `FolderAccess`, `FileStatus`,
+  `VolumeWatcher`, `DockMenu`). Fuzz targets in `core/fuzz/`.
+- **Rust** (`app/src-tauri/src/`): `anomp.rs` (the C API's wrappers),
+  `audio.rs` (the main-thread engine host), `library/` (DB, migrations,
+  scanner, browse, search, art and thumbnails, playlists, features),
+  `queue/`, `media.rs`, `metadata/` (online sources and their worker),
+  `history/`, `remote/`, `shell/` (menus, mini player, opened files),
+  `settings.rs`, `visualizer.rs`, `logging.rs`, `diagnostics.rs`,
+  `bindings.rs`, `self_test.rs`, `dev.rs` (debug builds only).
+- **Frontend** (`app/src/`): `routes/`, `lib/components/`, `lib/state/`,
+  `lib/visualizer/`, `lib/i18n/`, generated types in `lib/generated/`.
+- **Tooling** (`scripts/`, `.github/`): `check-all.py` and the repo checks,
+  formatters, release scripts, `bench.py`, the pre-commit hook, CI, release
+  and fuzz workflows.
+- **Docs** (`docs/`): checklists, release decisions, the smoke test, and
+  finished work's design in `docs/design/`.
+
+Test suites (`check-docs.py --counts` compares these with the suites):
+
+| Suite | Location |
 |---|---|
-| git repo, `.gitignore` | `/` |
-| Top-level CMake with JUCE 9.0.2 + Catch2 v3.16.0 via FetchContent, each pinned by commit (an archive of the commit plus its SHA-256) | `CMakeLists.txt` |
-| Presets `debug` / `release` (Ninja), and `asan` (Address and Undefined) / `tsan` sanitizer presets with workflow presets that build and run the Catch2 suite | `CMakePresets.json` |
-| `anomp_core` static lib; `FormatRegistry` registers `FFmpegAudioFormat` only | `core/src` |
-| `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
-| 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
-| C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, asynchronous loads, events, advance count), `anomp_file_is_dataless`, `anomp_media_controls_*`, `anomp_set_log_callback`, `anomp_volume_watcher_*` | `core/include/anomp/anomp.h` |
-| TagLib 2.3.2 (MPL, static, from the pinned release tarball, built with only the formats FFmpeg plays) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
-| `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
-| `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
-| Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
-| Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 115 passing Catch2 tests, also clean under ASan, UBSan and TSan, including the fuzzer's past findings | `core/tests` |
-| Fuzzing (H5): libFuzzer targets for the decoder and the tag reader, the `fuzz` preset (Homebrew `llvm@22`, ASan, UBSan, an instrumented static FFmpeg), 60 s each in `check-all.py`, 30 min weekly in CI | `core/fuzz/`, `scripts/run-fuzzers.py`, `.github/workflows/fuzz.yml` |
-| Files opened off the main thread (H11): asynchronous loads in the engine and the C API, the queue's loading state and timeout; cloud placeholders (H12) recorded unread by scans, left by the analysis, downloaded when played | `core/src/PlayerEngine.*`, `app/src-tauri/src/queue/opening.rs`, `core/src/FileStatus*`, `app/src-tauri/src/library/scanner.rs` |
-| Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
-| `build.rs` builds `anomp_core` with the `cmake` crate and links it plus the Apple frameworks | `app/src-tauri/build.rs` |
-| Safe Rust wrappers over the C API | `app/src-tauri/src/anomp.rs` |
-| Library: SQLite schema and migrations, folders, incremental parallel scanner, sort/grouping rules, paged browsing, FTS5 search, cover art (`anomp-art` URI scheme), `library_*` commands | `app/src-tauri/src/library/` |
-| Play queue: order, shuffle, repeat, gapless hand-off across it, persistence, `queue_*` commands and `queue-changed` event | `app/src-tauri/src/queue/` |
-| OS media integration host: Now Playing kept in step with the queue and player, remote commands routed to the queue, artwork | `app/src-tauri/src/media.rs` |
-| Metadata sources (Phase 4, in progress): source settings and order, HTTP client with rate limits, backoff and response cache, folder-image art, MusicBrainz search/lookup and album matching, Cover Art Archive covers and listings, the on-disk image cache, the metadata worker (job queue, priorities, background enrichment, offline pause, `metadata-changed` and `metadata-progress` events, calls for the dialogs), release/cover/artist candidates and the user's picks, Wikipedia artist biographies and album descriptions, Discogs as an opt-in second album-details source (only matches stored, the token in the keychain) | `app/src-tauri/src/metadata/` |
-| Visualizer stream: frames encoded and sent over a Tauri `Channel` while subscribed (`visualizer_*` commands); the cover wall's albums (`library_cover_wall`) | `app/src-tauri/src/visualizer.rs`, `app/src-tauri/src/library/covers.rs` |
-| Visualizer UI: eight canvas visualizations, picker, full screen, colours from the cover | `app/src/lib/visualizer/`, `app/src/lib/components/Visualizer*.svelte` |
-| Settings: typed `AppSettings` (display, playback, output, visualizer) stored under `app`, lenient reading, applied on save; TypeScript types generated with ts-rs and checked by `cargo test` | `app/src-tauri/src/settings.rs`, `app/src/lib/generated/settings.ts` |
-| Settings screen: library folders, sort rule editor, displayed fields, output device and buffer size, ReplayGain, visualizer, online sources | `app/src/lib/components/SettingsPage.svelte`, `app/src/lib/components/settings/` |
-| Optional features O1–O19 (Phase 6b), each switched in Settings › Features: file analysis, parts of files, loops, tempo and pitch, crossfeed, signal path in the core; analysis, history, radio, discovery, health, lyrics, preferences and the LAN remote in Rust; their views in the UI | `core/src/FileAnalyser.*`, `core/src/Crossfeed.*`, `app/src-tauri/src/{library,history,queue,remote}/`, `app/src/lib/components/` |
-| Expected features F1–F21 (Phase 6c): playlists and smart playlists, favourites and ratings, moves kept, credits and compilations, substring and field search, user-data export and import, folder watching and rescans at launch | `app/src-tauri/src/library/`, `app/src-tauri/src/collection.rs`, migrations 007–009 |
-| Menus, Dock menu, menu-bar controls, mini player, files opened from the Finder, track-change notifications | `app/src-tauri/src/shell/`, `core/src/DockMenu*` |
-| Crossfade and a 10-band equaliser in the engine; tag ratings, credits and full file info from the tag reader | `core/src/PlayerEngine.*`, `core/src/Equaliser.*`, `core/src/TagReader.*` |
-| UI text in a typed message catalogue; coded errors from Rust | `app/src/lib/i18n/`, `app/src-tauri/src/coded.rs` |
-| Library DB safety (H10): a copy before each migration, a check at launch with the restore or rebuild offer, `PRAGMA optimize` at exit, the response cache pruned | `app/src-tauri/src/library/db.rs`, `app/src-tauri/src/library/recovery.rs`, `app/src/lib/components/DbRepairDialog.svelte` |
-| Missing folders (H22): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned, unreadable folders' tracks dimmed in lists and left out of radio, smart playlists' play and Home's suggestions | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte`, `app/src/lib/folders.ts` |
-| Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
-| 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 115 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
 | 433 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
-| `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
-| Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
-| Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
-| Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
-| Developer page (debug builds only, with its commands): device name, test tone, loading typed paths straight into the engine, event log | `app/src/lib/components/dev/DevPage.svelte`, `app/src-tauri/src/dev.rs` |
-| Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
-| One version number: CMake's `project(VERSION)`, compiled into `anomp_version()`, the other copies set and checked by `version.py` | `CMakeLists.txt`, `scripts/version.py` |
-| Third-party notices, generated and checked, in the bundle and in Settings › About | `THIRD_PARTY_NOTICES`, `scripts/make-notices.py`, `scripts/licenses/`, `app/src/lib/components/NoticesDialog.svelte` |
-| Release tooling (unsigned until the Developer ID exists): the tag-triggered workflow, the universal build, the bundle check, notarization, checksums and notes from `CHANGELOG.md`, certificate expiry | `.github/workflows/release.yml`, `scripts/{build-app,check-bundle,notarize,release,check-signing}.py`, `CHANGELOG.md` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 133 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (by hand, and called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
-| The sandboxed bundle's self-test (H14): `--self-test` behind the `self-test` feature (scan, bookmark, covers, decoding and a gapless hand-off in the sandbox), built and run by `self-test-bundle.py` from `check-all.py` on CI | `app/src-tauri/src/self_test.rs`, `scripts/self-test-bundle.py` |
-| The clean-Mac smoke test for each release (§8.3, §8.7 step 6), with H18's owner checks | `docs/release-smoke-test.md` |
-| Finished phases' design notes and known limits (H20), the docs' paths, links and §2's counts checked (`check-docs.py`) | `docs/design/`, `scripts/check-docs.py` |
-| Benchmarks against H18's budgets and a committed baseline (`bench.py`): the Rust ones on 50,000 tracks and the core's (`bench` preset) | `scripts/bench.py`, `scripts/bench-baseline.json`, `core/tests/BenchTests.cpp` |
-
-Build and test:
-
-```sh
-cmake --preset debug && cmake --build --preset debug && ctest --preset debug
-```
+| 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| the scripts' 133 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -351,90 +326,7 @@ sources per kind (the first with a result wins), and a per-album choice
 that pins a specific source's match or picture. Every service can be turned
 off, and the app works offline on what it has already fetched.
 
-**Sources considered** (checked 2026-09-26, and settled in 4.8 from the
-terms read first-hand that day unless the row says otherwise; "terms" is
-about a closed-source commercial app, §4.1, and every online source is
-re-checked before release, §8.1):
-
-| Source | Provides | Access and limits | Terms | Plan |
-|---|---|---|---|---|
-| Embedded art (tags) | Album/track art | Local, already read by the core | — | On (exists) |
-| Folder images | Album art (`cover`, `folder`, `front`, `album`, `albumart*` .jpg/.png/.webp next to the tracks) | Local; readable through the folder's bookmark | — | On |
-| MusicBrainz | Release, recording and artist metadata (dates, label, catalogue number, country, release type, genres), and links to Wikidata, Discogs etc. | No key; a `User-Agent` with contact details; **~1 request/s per IP**, 503 when exceeded | Core data CC0; MetaBrainz asks commercial users to become supporters | On, the primary source |
-| Cover Art Archive | Album art by release or release-group MBID; 250/500/1200 px thumbnails | No key; no limits today; images redirect (307) to archive.org | Images belong to their owners; showing them in a player is the norm | On |
-| Wikidata + Wikipedia | Artist and album descriptions, reached through MusicBrainz URL relationships | No key; `User-Agent` | Text CC BY-SA: show attribution and a link with it | On |
-| Discogs | Release metadata (credits, labels, catalogue numbers, formats, styles) and images | 60 requests/min with a token, 25 without; searching needs a token. The user's own personal access token, since a secret shipped in a desktop app isn't secret | API Terms of Use, last updated 2025-05-27 (read through the Help Center's article API, as the page answers 403 to scripts): release data (titles, dates, formats, track lists, identifiers, credits, artist and label names) is CC0; images, user and marketplace data are "Restricted Data", **not for any commercial purpose**. Commercial use is "generally permitted", but "charging a fee to use or access any part of Your application that integrates with Our API" needs their written permission when Discogs gives that access free. Nothing may be shown more than 6 hours behind discogs.com, nor cached or stored longer than needed. "Data provided by Discogs" directly next to its data, linked to the discogs.com page with it; a non-affiliation notice shown prominently (may be in the terms or documentation) | **Ships (4.8), off by default.** Details only: the match (release id) is stored, details are fetched when shown and kept in memory for at most 5 hours, no offline copy, no pictures anywhere; credit and notice shown. Token in the OS keychain. If the app is sold, Discogs' written permission is a release gate (§8.1) |
-| fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | A project key (ours) required, a personal key per user optional (fresher images) | Its terms page answers a bot check; the archived copy (2025-01-26) says images stay their owners' and rests its fair-use case partly on being "a completely free service". The API docs say nothing on commercial use; a third-party API listing quotes "Do not use the API for commercial use without written consent" (not found first-hand) | **Not shipped.** Ask fanart.tv for written consent before any work; it would add artist images (a new `ArtistImage` kind) |
-| TheAudioDB | Artist bios and images, album descriptions | Free test key "123", 30 requests/min; premium $8/month (Patreon), 100/min | Terms of use: with the free key "you cannot publish apps to an appstore unless you are a paid subscriber"; paid users may build apps within their rate limit and must name TheAudioDB as the source; images are mostly fan uploads, Creative Commons only where marked | **Not shipped.** A project key would put every user under one paid 100/min limit; a user-supplied key asks each user to pay for biographies Wikipedia already gives; image rights unclear |
-| iTunes Search API | Large album art, release dates | No key; about 20 calls/min | Apple Services Performance Partners terms: album art and other promotional content only "for the purposes of promoting" the item, next to an Apple store badge linking to it, and not for "independent entertainment value apart from its promotional purpose" | **Excluded**: a player's covers are the non-promotional use the terms rule out |
-| Deezer | Album art up to 1000 px, search | No key | API terms: use "strictly limited for a non-commercial purpose", with no money made "in connection with the use of" the services or their content | **Excluded** |
-| AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan (not re-read in 4.8) | Deferred (after Phase 4): needs a paid plan and a new native dependency |
-| Last.fm | Artist bios, tags, similar artists | API key | **Non-commercial only** without written permission, 100 MB storage cap, mandatory branding | Excluded |
-| Bandcamp | Details and art for albums bought there | No API for fans (only label and merch-partner APIs); the Acceptable Use Policy forbids scraping | Personal, non-commercial use only | Only under the Phase 11 agreement |
-| Spotify | — | OAuth; endpoints cut back in 2024 | Terms don't fit enriching a local library | Excluded |
-
-Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
-
-**Design decisions:**
-- **Tags stay the library's identity.** Titles, artists, albums and the
-  grouping come from the files, which the app never writes. Online data adds
-  fields (release date, label, catalogue number, country, release type,
-  genres, descriptions) and pictures, shown next to the tag values with
-  their source. A per-field "prefer online value" display option belongs to
-  the Phase 6 fields screen.
-- **Providers behind traits.** Each source is a provider declaring what it
-  can supply: `Release` (album match and details), `AlbumArt`,
-  `ArtistInfo`, `ArtistImage`. Matching, art and the UI see only the traits,
-  so adding a source is one module. Album details went behind
-  `albums::ReleaseSource` with Discogs (4.8); the other kinds still have one
-  online source each and get their trait with a second.
-- **Choosing a source.** The settings (`metadata.services` in `settings`,
-  read with the same keep-what's-usable fallback as `library.sort`) hold a
-  master "online services" switch, per-service enabled flags and API keys,
-  "match automatically after a scan", and an ordered source list per kind.
-  Automatic matching walks that order. Per album, the user can open "Find
-  details" or "Choose cover" to see candidates from every enabled source,
-  labelled by source, and pick one. A pick is stored as `chosen_by = 'user'`
-  and automatic runs never replace it; "Use automatic" clears it.
-- **Storage (migration 003):** `album_links` (album, source, status,
-  external ID, score, `chosen_by`, the normalized details as JSON,
-  checked-at; one row per album and source, so an album can be linked to
-  MusicBrainz and Discogs at once), `artist_links` likewise, and
-  `album_art` (the user's chosen picture: source and reference).
-  All cascade from their album or artist. They are separate from the
-  scanner's columns, which a rescan overwrites; album and artist ids survive
-  rescans because the scanner upserts them. A "not found" result is stored
-  too, so it isn't retried on every launch (retried after 30 days, or on
-  request).
-- **HTTP:** `ureq` 3 (blocking: the work runs on its own thread at ≤1
-  request/s, so async adds nothing), rustls with *ring* and the OS trust
-  store through `rustls-platform-verifier`, so the TLS stack is the same on
-  all four OSes, iOS included, with no OpenSSL on Linux. `User-Agent`:
-  `ano-mp/<version> ( <contact> )`. A token-bucket limiter per host (MB 1/s,
-  Discogs 1/s, others per their limits), timeouts, and backoff on
-  503/429/`Retry-After`. Responses are cached in `mb_cache` (used for every
-  source despite its name, keyed by source and URL) with a time-to-live per
-  kind (lookups 30 days, searches 7 days).
-- **Downloaded images** go to a size-capped folder in the app cache dir,
-  named by a hash of the URL, not into SQLite, and can always be fetched
-  again.
-- **The art URI handler never goes online.** It serves the user's choice,
-  then local sources (embedded, folder), then downloaded images, and says
-  404 otherwise. Fetching is done by the metadata worker, which emits
-  `metadata-changed` (album and artist ids) so the UI reloads that art.
-- **One metadata worker thread** owns the HTTP client and the limiters and
-  takes jobs from a queue: user requests (a candidates dialog, the playing
-  album) before background enrichment. It opens its own DB connection, like
-  the scanner, and never holds the shared one while waiting on the network.
-- **Offline:** a connection failure marks the service unreachable and
-  backs off (1 min, doubling to 30 min); background work pauses, cached
-  data keeps showing, and user requests fail at once with "offline". The UI
-  shows the status per service.
-- **Tests never touch the network.** Providers take a `Transport` trait;
-  tests use a fake that serves recorded responses committed as fixtures.
-  Each service gets one `#[ignore]`d live smoke test.
-
-Design notes, the steps as built, tests and known limits: [docs/design/phase-4-online-metadata.md](docs/design/phase-4-online-metadata.md).
+The sources considered and which ship, the design decisions, the steps as built, tests and known limits: [docs/design/phase-4-online-metadata.md](docs/design/phase-4-online-metadata.md).
 
 - **Exit:** a library of tagged and untagged albums gets details and covers
   from MusicBrainz and the Cover Art Archive; the user can reorder or turn
@@ -1102,7 +994,7 @@ shell everywhere (MSYS2 on Windows).
 | Third-party notices | Each release and each dependency change | Regenerate and check every licence is known (§8.2) | `make-notices.py` |
 | Release artifacts | Each release | SHA-256 checksums, updater manifest, release notes from `CHANGELOG.md` (§8.2) | `release.py` |
 | Signing material: Apple certificates (distribution and provisioning profiles yearly, Developer ID every five years), notarization key, Windows certificate, updater key | Monthly check once §8.3 is set up | Renew before expiry; keep the offline backups current | `check-signing.py` |
-| Service terms and limits (MusicBrainz, Cover Art Archive, Wikimedia, later sources), the `User-Agent` contact, the MetaBrainz supporter plan | Yearly and before each release (§8.1) | Read the terms; update the sources table in Phase 4 | none (manual) |
+| Service terms and limits (MusicBrainz, Cover Art Archive, Wikimedia, later sources), the `User-Agent` contact, the MetaBrainz supporter plan | Yearly and before each release (§8.1) | Read the terms; update the sources table (`docs/design/phase-4-online-metadata.md`) | none (manual) |
 | JUCE licence tier against revenue; App Store rules (SDK minimums, privacy manifests); minimum OS targets (§4.5) | Yearly (after WWDC for Apple) | Owner decisions; record them in §4 | none (manual) |
 
 ### 9.2 Scripts to develop and test

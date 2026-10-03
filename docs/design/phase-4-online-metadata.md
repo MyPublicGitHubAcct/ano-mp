@@ -2,7 +2,97 @@
 
 Moved from `PLAN.md` (H20) on 2026-10-03, unchanged but for this
 heading. Section numbers (§) refer to `PLAN.md`, whose Phase 4
-keeps the phase's status, decisions and open steps.
+keeps the phase's goal and exit.
+
+## Sources and design decisions
+
+Moved from `PLAN.md` Phase 4 on 2026-10-03, unchanged but for this heading.
+Re-read the sources table's terms yearly and before each release (§8.1, §9.1).
+
+**Sources considered** (checked 2026-09-26, and settled in 4.8 from the
+terms read first-hand that day unless the row says otherwise; "terms" is
+about a closed-source commercial app, §4.1, and every online source is
+re-checked before release, §8.1):
+
+| Source | Provides | Access and limits | Terms | Plan |
+|---|---|---|---|---|
+| Embedded art (tags) | Album/track art | Local, already read by the core | — | On (exists) |
+| Folder images | Album art (`cover`, `folder`, `front`, `album`, `albumart*` .jpg/.png/.webp next to the tracks) | Local; readable through the folder's bookmark | — | On |
+| MusicBrainz | Release, recording and artist metadata (dates, label, catalogue number, country, release type, genres), and links to Wikidata, Discogs etc. | No key; a `User-Agent` with contact details; **~1 request/s per IP**, 503 when exceeded | Core data CC0; MetaBrainz asks commercial users to become supporters | On, the primary source |
+| Cover Art Archive | Album art by release or release-group MBID; 250/500/1200 px thumbnails | No key; no limits today; images redirect (307) to archive.org | Images belong to their owners; showing them in a player is the norm | On |
+| Wikidata + Wikipedia | Artist and album descriptions, reached through MusicBrainz URL relationships | No key; `User-Agent` | Text CC BY-SA: show attribution and a link with it | On |
+| Discogs | Release metadata (credits, labels, catalogue numbers, formats, styles) and images | 60 requests/min with a token, 25 without; searching needs a token. The user's own personal access token, since a secret shipped in a desktop app isn't secret | API Terms of Use, last updated 2025-05-27 (read through the Help Center's article API, as the page answers 403 to scripts): release data (titles, dates, formats, track lists, identifiers, credits, artist and label names) is CC0; images, user and marketplace data are "Restricted Data", **not for any commercial purpose**. Commercial use is "generally permitted", but "charging a fee to use or access any part of Your application that integrates with Our API" needs their written permission when Discogs gives that access free. Nothing may be shown more than 6 hours behind discogs.com, nor cached or stored longer than needed. "Data provided by Discogs" directly next to its data, linked to the discogs.com page with it; a non-affiliation notice shown prominently (may be in the terms or documentation) | **Ships (4.8), off by default.** Details only: the match (release id) is stored, details are fetched when shown and kept in memory for at most 5 hours, no offline copy, no pictures anywhere; credit and notice shown. Token in the OS keychain. If the app is sold, Discogs' written permission is a release gate (§8.1) |
+| fanart.tv | Artist images, logos, backgrounds; album covers; keyed by MBIDs | A project key (ours) required, a personal key per user optional (fresher images) | Its terms page answers a bot check; the archived copy (2025-01-26) says images stay their owners' and rests its fair-use case partly on being "a completely free service". The API docs say nothing on commercial use; a third-party API listing quotes "Do not use the API for commercial use without written consent" (not found first-hand) | **Not shipped.** Ask fanart.tv for written consent before any work; it would add artist images (a new `ArtistImage` kind) |
+| TheAudioDB | Artist bios and images, album descriptions | Free test key "123", 30 requests/min; premium $8/month (Patreon), 100/min | Terms of use: with the free key "you cannot publish apps to an appstore unless you are a paid subscriber"; paid users may build apps within their rate limit and must name TheAudioDB as the source; images are mostly fan uploads, Creative Commons only where marked | **Not shipped.** A project key would put every user under one paid 100/min limit; a user-supplied key asks each user to pay for biographies Wikipedia already gives; image rights unclear |
+| iTunes Search API | Large album art, release dates | No key; about 20 calls/min | Apple Services Performance Partners terms: album art and other promotional content only "for the purposes of promoting" the item, next to an Apple store badge linking to it, and not for "independent entertainment value apart from its promotional purpose" | **Excluded**: a player's covers are the non-promotional use the terms rule out |
+| Deezer | Album art up to 1000 px, search | No key | API terms: use "strictly limited for a non-commercial purpose", with no money made "in connection with the use of" the services or their content | **Excluded** |
+| AcoustID + Chromaprint | Identifies untagged files by audio fingerprint | API key; 3 requests/s; Chromaprint is LGPL and a new native dependency | **Free for non-commercial use only**; commercial use is a paid plan (not re-read in 4.8) | Deferred (after Phase 4): needs a paid plan and a new native dependency |
+| Last.fm | Artist bios, tags, similar artists | API key | **Non-commercial only** without written permission, 100 MB storage cap, mandatory branding | Excluded |
+| Bandcamp | Details and art for albums bought there | No API for fans (only label and merch-partner APIs); the Acceptable Use Policy forbids scraping | Personal, non-commercial use only | Only under the Phase 11 agreement |
+| Spotify | — | OAuth; endpoints cut back in 2024 | Terms don't fit enriching a local library | Excluded |
+
+Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
+
+**Design decisions:**
+- **Tags stay the library's identity.** Titles, artists, albums and the
+  grouping come from the files, which the app never writes. Online data adds
+  fields (release date, label, catalogue number, country, release type,
+  genres, descriptions) and pictures, shown next to the tag values with
+  their source. A per-field "prefer online value" display option belongs to
+  the Phase 6 fields screen.
+- **Providers behind traits.** Each source is a provider declaring what it
+  can supply: `Release` (album match and details), `AlbumArt`,
+  `ArtistInfo`, `ArtistImage`. Matching, art and the UI see only the traits,
+  so adding a source is one module. Album details went behind
+  `albums::ReleaseSource` with Discogs (4.8); the other kinds still have one
+  online source each and get their trait with a second.
+- **Choosing a source.** The settings (`metadata.services` in `settings`,
+  read with the same keep-what's-usable fallback as `library.sort`) hold a
+  master "online services" switch, per-service enabled flags and API keys,
+  "match automatically after a scan", and an ordered source list per kind.
+  Automatic matching walks that order. Per album, the user can open "Find
+  details" or "Choose cover" to see candidates from every enabled source,
+  labelled by source, and pick one. A pick is stored as `chosen_by = 'user'`
+  and automatic runs never replace it; "Use automatic" clears it.
+- **Storage (migration 003):** `album_links` (album, source, status,
+  external ID, score, `chosen_by`, the normalized details as JSON,
+  checked-at; one row per album and source, so an album can be linked to
+  MusicBrainz and Discogs at once), `artist_links` likewise, and
+  `album_art` (the user's chosen picture: source and reference).
+  All cascade from their album or artist. They are separate from the
+  scanner's columns, which a rescan overwrites; album and artist ids survive
+  rescans because the scanner upserts them. A "not found" result is stored
+  too, so it isn't retried on every launch (retried after 30 days, or on
+  request).
+- **HTTP:** `ureq` 3 (blocking: the work runs on its own thread at ≤1
+  request/s, so async adds nothing), rustls with *ring* and the OS trust
+  store through `rustls-platform-verifier`, so the TLS stack is the same on
+  all four OSes, iOS included, with no OpenSSL on Linux. `User-Agent`:
+  `ano-mp/<version> ( <contact> )`. A token-bucket limiter per host (MB 1/s,
+  Discogs 1/s, others per their limits), timeouts, and backoff on
+  503/429/`Retry-After`. Responses are cached in `mb_cache` (used for every
+  source despite its name, keyed by source and URL) with a time-to-live per
+  kind (lookups 30 days, searches 7 days).
+- **Downloaded images** go to a size-capped folder in the app cache dir,
+  named by a hash of the URL, not into SQLite, and can always be fetched
+  again.
+- **The art URI handler never goes online.** It serves the user's choice,
+  then local sources (embedded, folder), then downloaded images, and says
+  404 otherwise. Fetching is done by the metadata worker, which emits
+  `metadata-changed` (album and artist ids) so the UI reloads that art.
+- **One metadata worker thread** owns the HTTP client and the limiters and
+  takes jobs from a queue: user requests (a candidates dialog, the playing
+  album) before background enrichment. It opens its own DB connection, like
+  the scanner, and never holds the shared one while waiting on the network.
+- **Offline:** a connection failure marks the service unreachable and
+  backs off (1 min, doubling to 30 min); background work pauses, cached
+  data keeps showing, and user requests fail at once with "offline". The UI
+  shows the status per service.
+- **Tests never touch the network.** Providers take a `Transport` trait;
+  tests use a fake that serves recorded responses committed as fixtures.
+  Each service gets one `#[ignore]`d live smoke test.
+
+## Matching and steps as built
 
 **MusicBrainz matching** (album → release):
 1. A release MBID from the tags: look it up directly (score 1).
