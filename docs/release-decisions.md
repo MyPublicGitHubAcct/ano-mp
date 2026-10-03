@@ -176,7 +176,7 @@ report by hand. Nothing is sent.
 `deny.toml`) and a service, a switch in Settings (off by default, as for
 anything that goes online), an entry in the privacy policy and the App
 Store's privacy answers, and a symbol upload in `release.yml`
-(`CARGO_PROFILE_RELEASE_DEBUG`, as CLAUDE.md describes for crash reports).
+(`CARGO_PROFILE_RELEASE_DEBUG`, as `docs/bundle-checks.md` describes for crash reports).
 
 **Blocks:** the privacy policy's wording (6); nothing else.
 

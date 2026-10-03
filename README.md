@@ -5,10 +5,12 @@ MP3, FLAC, AAC/M4A, ALAC, Ogg Vorbis, Opus, WAV, AIFF and WMA, shows file metada
 enriched from services such as MusicBrainz, and has an admin screen for choosing
 displayed fields, library sorting and visualization.
 
-**Status:** in development, macOS only so far. Working: gapless playback of a
-play queue, a library of your music folders with browsing, search and cover art,
-macOS Now Playing and media keys, online details (MusicBrainz, Cover Art Archive,
-Wikipedia, optionally Discogs) and visualizations. The admin screen is next. See
+**Status:** in development, macOS only so far, and not yet released. Working:
+gapless playback of a play queue, a library of your music folders with browsing,
+search, playlists, favourites and cover art, macOS Now Playing, media keys and
+menus, online details (MusicBrainz, Cover Art Archive, Wikipedia, optionally
+Discogs), visualizations, a Settings screen, and optional features you can turn on
+in Settings › Features. Current work is hardening for a first signed release. See
 [PLAN.md](PLAN.md) for the roadmap and current phase.
 
 ## How it's built
@@ -31,13 +33,19 @@ the Rust backend links directly; it does not run as a separate process.
   and, later, for iPhone/iPad builds.
 - [Homebrew](https://brew.sh) packages:
   ```sh
-  brew install cmake ninja nasm pkg-config node uv
+  brew install cmake ninja nasm pkg-config node uv gitleaks
   ```
-  CMake 3.25 or later is required. `uv` runs the pinned code formatters.
-- Rust (stable), via [rustup](https://rustup.rs):
+  CMake 3.25 or later is required. `uv` runs the pinned code formatters and
+  `gitleaks` the secret scan in the pre-commit hook. Node must be the version in
+  `.nvmrc` (npm refuses another); use a version manager such as `fnm` or `nvm` if
+  Homebrew's differs.
+- Rust via [rustup](https://rustup.rs), which installs the version pinned in
+  `rust-toolchain.toml` by itself:
   ```sh
   curl https://sh.rustup.rs -sSf | sh
   ```
+- Only for the fuzzers and the full check (`scripts/check-all.py`):
+  `brew install llvm@22` and `cargo install cargo-deny --version 0.20.2 --locked`.
 
 ## First-time setup
 
@@ -58,9 +66,10 @@ build.
    cmake --preset debug && cmake --build --preset debug && ctest --preset debug
    ```
 
-3. **Install the frontend dependencies:**
+3. **Install the frontend dependencies, and the pre-commit hook:**
    ```sh
    cd app && npm install
+   git config core.hooksPath scripts/hooks   # from the repository root
    ```
 
 4. **Run the app** (from `app/`):
@@ -121,8 +130,9 @@ ID signing and notarization ([PLAN.md](PLAN.md) §8).
 | Backend tests (Rust) | `cargo test` | `app/src-tauri/` |
 | Live checks against the online services | `cargo test live_ -- --ignored` | `app/src-tauri/` |
 | Frontend tests | `npm test` | `app/` |
-| Frontend type check | `npm run check` | `app/` |
-| Format after editing (add `--check` to only report) | `scripts/format-cpp.py`, `scripts/format-rust.py`, `scripts/format-python.py` | repo root |
+| Frontend type check and lint | `npm run check`, `npm run lint` | `app/` |
+| Format after editing (add `--check` to only report) | `scripts/format-cpp.py`, `scripts/format-rust.py`, `scripts/format-python.py`, `scripts/format-frontend.py` | repo root |
+| Every check, as CI runs it (`--quick`: what the pre-commit hook runs) | `scripts/check-all.py` | repo root |
 | Rebuild FFmpeg from scratch | `scripts/build-ffmpeg.sh --force` | repo root |
 | Regenerate decoder test fixtures (rarely; needs `brew install ffmpeg vorbis-tools`) | `scripts/make-test-fixtures.py` | repo root |
 
@@ -211,25 +221,27 @@ and keep `workflow_dispatch:`, so it can still be run by hand.
 - **"Folder not available" for a folder on an external or network drive:** the
   drive isn't mounted. Mount it and try again; the library keeps its tracks
   meanwhile.
-- **No sound:** check that the output device shown under "Developer tools" (at
-  the bottom of the sidebar) is the one
-  you are listening on, that it isn't muted, and that the volume slider in the
-  player bar isn't at zero.
+- **No sound:** check that the device in Settings › Playback is the one you are
+  listening on, that it isn't muted, and that the volume slider in the player bar
+  isn't at zero.
 
 ## Repository layout
 
 ```
 core/          C++ audio core (static library), its C API and Catch2 tests
 app/           Tauri app: Svelte frontend (src/) and Rust backend (src-tauri/)
-scripts/       build-ffmpeg.sh, the format scripts and other tooling
-cmake/         CMake helpers (FFmpeg imported targets, TagLib)
+scripts/       build-ffmpeg.sh, the checks, format, release and test tooling
+cmake/         CMake helpers (pinned downloads, FFmpeg, TagLib, Signalsmith)
 third_party/   locally built FFmpeg (git-ignored)
-PLAN.md        roadmap, decisions, risks and release plan
-CLAUDE.md      conventions and notes for AI-assisted development
+docs/          checklists, release decisions, and finished phases' design (design/)
+PLAN.md        roadmap, status, decisions, risks and release plan
+CLAUDE.md      conventions and rules for AI-assisted development
 ```
 
 ## License
 
 Proprietary; all rights reserved. Third-party components keep their own licenses:
 JUCE is used under a commercial license, FFmpeg under the LGPL 2.1 or later as
-shared libraries, and TagLib under the MPL 1.1. See [PLAN.md](PLAN.md) §4.
+shared libraries, and TagLib under the MPL 1.1. Every component and its license
+is listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) (generated by
+`scripts/make-notices.py`). See [PLAN.md](PLAN.md) §4.

@@ -18,8 +18,7 @@ A sandboxed bundle runs in the app's real container
 The self-test only writes (and removes) a folder in the container's
 temporary directory and never opens the app's own files, but it still
 runs only on CI (CI is set) unless --local is given; check-all.py runs it,
-so a local check-all skips it. See "Running a bundle check safely" in
-CLAUDE.md.
+so a local check-all skips it. See docs/bundle-checks.md.
 
 Usage: scripts/self-test-bundle.py [--local] [--no-build] [--require-audio]
 """
@@ -117,7 +116,7 @@ def main():
     if not should_run(os.environ, args.local):
         print(
             "self-test-bundle: skipped outside CI: the sandboxed bundle runs in the app's "
-            "real container; run with --local to run it here (CLAUDE.md)"
+            "real container; run with --local to run it here (docs/bundle-checks.md)"
         )
         return 0
 

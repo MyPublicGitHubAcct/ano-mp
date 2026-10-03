@@ -12,7 +12,7 @@ Who:
 - **you**: by ear, by eye, or with hardware.
 
 Before any bundle run, protect the real container and use a scratch
-library ("Running a bundle check safely" in `CLAUDE.md`).
+library (`docs/bundle-checks.md`).
 
 ## 1. Sandbox-only behaviour
 
