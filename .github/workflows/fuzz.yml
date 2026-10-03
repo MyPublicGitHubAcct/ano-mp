@@ -22,7 +22,7 @@ jobs:
     # Building FFmpeg's and JUCE's instrumented builds, then 2 x 30 min.
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # llvm@22: the fuzzers' compiler (Apple's clang has no libFuzzer).
       - name: Install tools
@@ -31,13 +31,13 @@ jobs:
       # The same cache as CI's; build-ffmpeg.sh --fuzz skips the build when
       # BUILD_INFO matches.
       - name: Restore FFmpeg
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
 
       - name: Restore fuzz build
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/fuzz
           key: fuzz-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
@@ -45,7 +45,7 @@ jobs:
 
       # A new key each run saves the grown corpus; the newest one is restored.
       - name: Restore corpus
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/fuzz/corpus
           key: fuzz-corpus-${{ runner.os }}-${{ github.run_id }}
