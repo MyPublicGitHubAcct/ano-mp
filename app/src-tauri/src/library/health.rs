@@ -27,6 +27,7 @@ const LIMIT: usize = 500;
 const SAME_LENGTH: f64 = 2.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthReport {
     pub undecodable: Vec<HealthTrack>,
@@ -41,6 +42,7 @@ pub struct HealthReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthTrack {
     pub track_id: i64,
@@ -54,6 +56,7 @@ pub struct HealthTrack {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumIssue {
     pub album_id: i64,
@@ -63,6 +66,7 @@ pub struct AlbumIssue {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DuplicateGroup {
     /// Why they look alike.

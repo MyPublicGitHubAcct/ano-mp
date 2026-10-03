@@ -23,6 +23,7 @@ use crate::anomp::{self, FolderAccess};
 
 /// Whether a library folder can be read now, and if not, why (PLAN.md H22).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum FolderState {
     Available,
@@ -85,6 +86,7 @@ impl FolderState {
 
 /// A folder's state, with the system's words for it when there are any.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FolderStatus {
     pub state: FolderState,

@@ -147,6 +147,7 @@ fn store(
 /// (0 to 100) for how well it matched the search; 100 for one looked up by
 /// id.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistCandidate {
     pub artist: Artist,
@@ -401,6 +402,7 @@ fn score_of(hit: &ArtistHit) -> f64 {
 /// An artist's biography or an album's description as the UI shows it: the
 /// text, the source, and the licence to credit it under.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourcedArticle {
     pub source: SourceId,
@@ -426,6 +428,7 @@ impl SourcedArticle {
 /// What the metadata sources know about an artist, as the artist page
 /// shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistInfo {
     /// The MusicBrainz match's status; `None` if never looked up.

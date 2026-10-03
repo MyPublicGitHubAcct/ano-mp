@@ -5,14 +5,14 @@
   // the equaliser, crossfeed, crossfading into the next track, the volume,
   // and the device.
   import { onMount } from "svelte";
-  import { player as api, type SignalPath } from "$lib/api";
+  import { player as api, type SignalPathPayload } from "$lib/api";
   import { t, type MessageKey } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import Popover from "./Popover.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
-  let path = $state.raw<SignalPath | null>(null);
+  let path = $state.raw<SignalPathPayload | null>(null);
 
   const refresh = async () => (path = await api.signalPath().catch(() => path));
 

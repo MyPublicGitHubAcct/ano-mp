@@ -247,6 +247,8 @@ pub async fn library_lyrics<R: Runtime>(
 // ---- Playback preferences (O7) --------------------------------------------------
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "FeaturePrefs"))]
 #[serde(rename_all = "camelCase")]
 pub struct Prefs {
     pub track: Option<TrackPrefs>,

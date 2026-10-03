@@ -12,13 +12,18 @@ services, library sort/grouping rules and visualization preferences.
 `PLAN.md` is the authoritative roadmap: phased plan, §4 decisions (JUCE commercial
 license, FFmpeg, TagLib, Svelte 5, minimum OS targets), risks and release gates. Read it before starting
 anything non-trivial, and update it when a phase completes or a decision is made.
+A finished phase's design notes, steps as built and known limits are in
+`docs/design/phase-<n>-<name>.md` (PLAN.md H20), linked from its heading in
+`PLAN.md`, which keeps its status, decisions and open steps. Move a phase's
+design there, word for word, when it is finished.
 Current state: Phases 0–3 are complete: the player UI (queue, browser,
 search, cover art, now-playing bar) and OS media integration (macOS Now
 Playing and media keys: `MediaControls` in the core, hosted by
 `app/src-tauri/src/media.rs`, which keeps it in step with the queue). The C++ core
 plays any supported file with gapless hand-off to a pre-opened next track;
 the Rust queue (`app/src-tauri/src/queue/`) keeps it armed across the whole
-queue. The Svelte UI is in `app/src/lib/` (`api.ts` has the payload types) and
+queue. The Svelte UI is in `app/src/lib/` (`api.ts` wraps the commands; their
+payload types and wrappers are generated into `generated/`) and
 `app/src/routes/`; the old dev panels are at `/dev`, in debug builds only.
 The core reads tags and art (`anomp_read_tags`, TagLib), the Rust library
 (`app/src-tauri/src/library/`: SQLite DB and incremental folder scanner) fills
@@ -104,9 +109,14 @@ scripts. Step 6, the owner's decisions (§8.1), has its briefs in
 `docs/release-decisions.md`; the signed release waits on them.
 Step 8, the signed release, has begun with what needs no decision: the
 clean-Mac smoke test (`docs/release-smoke-test.md`) and H14, the
-sandboxed bundle's self-test (`self_test.rs`, `self-test-bundle.py`).
-`docs/` holds the Step 4 checklist, the release decisions' briefs and
-the release smoke test.
+sandboxed bundle's self-test (`self_test.rs`, `self-test-bundle.py`);
+then Part 5: CI fixed (downloads through `cmake/Fetch.cmake`, the fuzz
+build on CI's newer Xcode), H18's budgets (`bench.py`), H20 (finished
+phases' design in `docs/design/`, `check-docs.py`), H15 (generated
+command bindings), H16 (the queue as rows and numbered edits) and H17
+(cover thumbnails).
+`docs/` holds the Step 4 checklist, the release decisions' briefs, the
+release smoke test and, in `docs/design/`, finished phases' design notes.
 
 ## Build & test
 
@@ -129,7 +139,12 @@ The fuzz targets (PLAN.md H5) need Homebrew's `llvm@22` (`brew install
 llvm@22`): Apple's clang has no libFuzzer runtime, and LLVM 21's ASan hangs
 at start-up on macOS 26. The `fuzz` preset (build/fuzz) compiles everything
 with it under ASan and UBSan and links FFmpeg's instrumented static build
-(`scripts/build-ffmpeg.sh --fuzz`, which `run-fuzzers.py` runs). A crash
+(`scripts/build-ffmpeg.sh --fuzz`, which `run-fuzzers.py` runs).
+Xcode 16's ld, the macos-15 runners' default, can't read clang 22's
+objects ("invalid r_symbolnum"), and Homebrew's lld breaks C++ exceptions
+in the fuzz build, so CI sets `ANOMP_FUZZ_DEVELOPER_DIR` to the runner's
+Xcode 26.3, which `run-fuzzers.py` passes to its own builds as
+`DEVELOPER_DIR`; every other build keeps the default Xcode. A crash
 found becomes a regression test with a committed fixture in
 `core/tests/fixtures/fuzz/` ("Inputs the fuzzer found stay harmless" in
 `TagReaderTests.cpp`, which the asan preset runs with UBSan fatal); a new
@@ -153,7 +168,21 @@ scripts/release.py BUNDLE_DIR    # check-bundle, then dist/: DMG, app zip, SHA25
 scripts/check-signing.py         # signing certificates' expiry (monthly once they exist)
 scripts/self-test-bundle.py      # build a sandboxed bundle with the self-test and run it (H14;
                                  #   CI only: --local runs it here, in the real container)
+scripts/bench.py                 # benchmarks against H18's budgets and the baseline (--update,
+                                 #   --only rust|core); a release step, not in check-all
 ```
+
+`scripts/bench.py` (PLAN.md H18, §9.2 M4) runs the ignored Rust
+benchmarks (`library/bench.rs`, `cargo test --release`) and the core's
+hidden `[.][bench]` Catch2 tests (`core/tests/BenchTests.cpp`, built by
+the Release `bench` preset), reads their `bench <key> <value> <unit>`
+lines, and checks each against `scripts/bench-baseline.json`: its
+budgets on any machine, and its results (25% margin) only on the machine
+it records. A new benchmark prints such a line, and a budget for it goes
+in the JSON; `--update` rewrites the results and machine, never the
+budgets. Run it after scanner, browse, search or DB changes. Launch
+time, memory and whole-app CPU are the owner's checks (§ 6 of
+`docs/release-smoke-test.md`).
 
 The bundle self-test (PLAN.md H14) is `src-tauri/src/self_test.rs`,
 compiled in only with the `self-test` Cargo feature: `ano-mp --self-test`
@@ -242,8 +271,12 @@ JUCE 9.0.2 and Catch2 v3.16.0 are pinned by commit in the top-level `CMakeLists.
 (GitHub's archive of the release's commit + SHA-256), TagLib
 2.3.2 (tarball + SHA-256) in `cmake/TagLib.cmake`, Signalsmith Stretch 1.4.0 and its
 FFT library (MIT, header-only, tarballs + SHA-256) in `cmake/Signalsmith.cmake`, all
-fetched by FetchContent into
-`build/<preset>/_deps` — the first configure takes several minutes. TagLib is a
+declared with `anomp_fetch_declare` (`cmake/Fetch.cmake`): each tarball is
+downloaded once, with retries, into `build/_downloads/<sha256>-<name>` and
+checked, then FetchContent extracts it into `build/<preset>/_deps` (Cargo's
+build shares the downloads too) — the first configure takes several minutes.
+Declare a new pinned tarball the same way, never with `FetchContent_Declare`
+(`test_fetch_cmake.py` checks). TagLib is a
 separate static lib (`libtag.a`), so `build.rs` links it next to `anomp_core`.
 The `release` preset sets `ANOMP_BUILD_TESTS=OFF`, so tests only run in `debug`.
 Tauri's crates and plugins are pinned exactly in `app/src-tauri/Cargo.toml`, and
@@ -268,7 +301,7 @@ npm test                     # frontend unit tests (node --test tests/, plain .m
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
 cargo clippy --all-targets -- -D warnings  # Rust lint, as check-all runs it
 cargo deny check             # advisories, licences, bans, sources (deny.toml)
-ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/settings.ts
+ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/ (settings, ipc, commands)
 ../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```
 
@@ -361,8 +394,9 @@ over temp dirs, not real bookmarks.
 
 `PlayerEngine` (`core/src/PlayerEngine.*`) is a plain `juce::AudioSource` with no
 device; `AudioEngine` owns the device and feeds it. Tests render it offline by calling
-`getNextAudioBlock` directly (`core/tests/PlayerEngineTests.cpp`); `PLAN.md` Phase 1
-records its design (why not `AudioTransportSource`, the host-owned queue, threading).
+`getNextAudioBlock` directly (`core/tests/PlayerEngineTests.cpp`);
+`docs/design/phase-1-playback-engine.md` records its design (why not
+`AudioTransportSource`, the host-owned queue, threading).
 
 **The engine is main-thread only.** JUCE's message loop rides on the main run loop
 that Tauri runs, so `anomp_engine_*` calls must happen on the main thread and event
@@ -395,7 +429,16 @@ The settings' TypeScript types (`app/src/lib/generated/settings.ts`) are
 generated from the Rust types by ts-rs (a dev-dependency: derive it with
 `#[cfg_attr(test, derive(ts_rs::TS))]` and list the type in
 `settings::bindings`); `cargo test` fails while the file is stale, so
-regenerate and commit it after changing them. Never edit it by hand. A new
+regenerate and commit it after changing them. Never edit it by hand.
+The commands' side is generated the same way (PLAN.md H15,
+`src-tauri/src/bindings.rs`): `generated/ipc.ts` holds every payload and
+event type (derive `TS` on a new one and add it, or a type containing
+it, to `declare_types`; a name the frontend already uses differently
+gets `#[cfg_attr(test, ts(rename = "…"))]`), and `generated/commands.ts`
+a typed wrapper per command in `generate_handler!`, read from its
+signature with syn. `api.ts` calls `commands.*`, never `invoke` with a
+string, so a renamed command, argument or field fails `npm run check`.
+`ANOMP_WRITE_BINDINGS=1 cargo test bindings` rewrites all three files. A new
 setting goes in `AppSettings` with a default and a `validate` rule; stored
 values are read leniently, so no migration is needed. Track gains
 (ReplayGain) are computed in Rust (`PlaybackSettings::gain`) and passed to
@@ -422,6 +465,14 @@ hides); a new one gets a switch there, off by default if it costs a lot,
 changes what is heard, goes online or listens on the network. The LAN
 remote answers local addresses only and keeps only hashes of tokens; any
 change to `remote/` needs the security review in `PLAN.md` §8.1.
+
+The saved queue is rows of `queue_items` (PLAN.md H16), kept in step by
+`queue/store.rs` applying the same `model::Edit`s the frontend gets; the
+rest of it (current index, position, repeat, `shuffled`, volume) is the
+`player.queue` setting. A model change to the list must log an edit
+(`edited`) or a reset (`reset_list`), or neither the UI nor the rows
+follow it. The UI applies edits by `listVersion` (`lib/queueEdits.ts`) and
+asks for the whole state when it misses one.
 
 Search uses FTS5 tables kept in step by triggers: word indexes (recreated by
 migration 008 over `IFNULL(artist_credit, …)`) and trigram indexes (009). A
@@ -462,6 +513,15 @@ The /dev page and its commands (`src/dev.rs`) exist in debug builds only
 in `generate_handler!`, and the page is loaded only when the Vite constant
 `__DEV_TOOLS__` is true (`vite dev`, or a debug build from the Tauri CLI).
 Put anything that bypasses the queue or takes a raw path there.
+
+Covers go to the UI as thumbnails (PLAN.md H17, `library/thumbs.rs`):
+`artUrl(…, "list" | "header")`, or `"full"` only where a picture is shown
+full size. Thumbnails live in the image cache, named by the SHA-256 of
+their picture, and `art_thumbs` remembers which picture each album shows.
+A new album-art source sets `Art::origin`, or its thumbnails aren't
+indexed. Code that changes which picture an album shows calls
+`thumbs::forget` (one album) or `thumbs::forget_all`, next to
+`art.remove`/`art.clear`.
 
 The webview runs under a strict CSP (`tauri.conf.json`; what it allows and
 why is in `PLAN.md` H1): no remote scripts, styles, images or connections,
@@ -519,9 +579,9 @@ Constraints that shape the code and must not be broken casually:
 - **FFmpeg will decode every format on every platform** (decided; see `PLAN.md` §4.3),
   wrapped as a single JUCE `AudioFormat` (`core/src/FFmpegAudioFormat.*`) so nothing
   else in the core knows FFmpeg exists; only that `.cpp` includes FFmpeg headers.
-  `PLAN.md` Phase 1 records its design and the container quirks behind it (why
-  rewinding reopens the demuxer, the seek margins, the length rule) — read that
-  before changing the reader.
+  `docs/design/phase-1-playback-engine.md` records its design and the container
+  quirks behind it (why rewinding reopens the demuxer, the seek margins, the
+  length rule) — read that before changing the reader.
 - **Keep the core platform-neutral.** Platform code (media controls, file access, audio
   session) lives behind small interfaces with one implementation per OS; no AppKit or
   CoreAudio calls elsewhere. UTF-8 across the C API, no assumed `/` separators or

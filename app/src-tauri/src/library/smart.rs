@@ -21,6 +21,7 @@ pub const MAX_CONDITIONS: usize = 20;
 const MAX_VALUE: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SmartRules {
     /// Every condition must hold (true), or any one of them (false).
@@ -37,6 +38,8 @@ pub struct SmartRules {
 
 /// One condition on a track. Ranges are inclusive; a missing bound is open.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "SmartCondition"))]
 #[serde(
     tag = "field",
     rename_all = "camelCase",
@@ -67,6 +70,7 @@ pub enum Condition {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum SmartOrder {
     /// A shuffle that stays put until the rules change.

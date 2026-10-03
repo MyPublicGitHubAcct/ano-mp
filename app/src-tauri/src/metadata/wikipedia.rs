@@ -47,6 +47,7 @@ const MAX_AGE: Duration = Duration::from_secs(30 * 86400);
 /// album's description. Stored as JSON in `artist_links.details` and
 /// `album_links.details`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Article {
     /// The article's title and address, to credit and link it.

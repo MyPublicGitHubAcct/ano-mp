@@ -162,6 +162,7 @@ pub fn check_token(conn: &Connection, token: &str) -> Result<Option<i64>, Error>
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteDevice {
     pub id: i64,
@@ -219,6 +220,7 @@ impl RemoteServer {
 
 /// What Settings shows about the remote.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteStatus {
     pub running: bool,

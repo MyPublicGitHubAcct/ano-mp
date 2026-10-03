@@ -368,6 +368,8 @@ impl Shared {
 
 /// The worker's progress, as the `metadata-progress` event sends it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "MetadataProgress"))]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
     /// Albums and artists finished, and in all, since the worker was last
@@ -383,6 +385,8 @@ pub struct Progress {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "MetadataCurrent"))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Current {
     #[serde(rename_all = "camelCase")]
@@ -398,6 +402,7 @@ pub enum Current {
 /// Albums and artists whose details or art changed, as the
 /// `metadata-changed` event sends them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataChanged {
     pub albums: Vec<i64>,

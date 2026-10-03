@@ -16,6 +16,7 @@ use crate::metadata::settings::{self, Kind, SourceId};
 use crate::metadata::wikipedia;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumDetails {
     pub id: i64,
@@ -43,6 +44,7 @@ pub struct AlbumDetails {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumTrack {
     pub id: i64,
@@ -60,6 +62,7 @@ pub struct AlbumTrack {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourcedLink {
     pub source_name: &'static str,
@@ -77,6 +80,7 @@ pub struct SourcedLink {
 
 /// Where the cover shown comes from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverSource {
     pub source: SourceId,

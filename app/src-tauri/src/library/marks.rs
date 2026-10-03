@@ -11,6 +11,7 @@ use super::{track_from_row, unix_now, Error, TrackSummary, TRACKS_FROM, TRACK_CO
 
 /// What a heart is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum MarkKind {
     Track,
@@ -88,6 +89,7 @@ pub fn set_rating(conn: &Connection, track_ids: &[i64], rating: Option<u8>) -> R
 
 /// An artist the user hearted.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FavouriteArtist {
     pub id: i64,
@@ -99,6 +101,7 @@ pub struct FavouriteArtist {
 
 /// Everything with a heart, newest first: the Favourites view.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Favourites {
     pub tracks: Vec<TrackSummary>,

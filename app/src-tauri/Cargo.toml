@@ -71,6 +71,10 @@ base64 = "0.22"
 notify = "8"
 # Background threads at a low priority (library rescans, PLAN.md F9).
 libc = "0.2"
+# Cover thumbnails (PLAN.md H17): decodes JPEG, PNG and WebP, scales and
+# writes JPEG, the same on every platform. Default features off: only those
+# three formats (the owner's choice over ImageIO in the core).
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 
 # Keys for metadata sources (a Discogs token) go in the OS keychain
 # (metadata/keys.rs). macOS only for now: iOS needs the protected store
@@ -86,6 +90,10 @@ tempfile = "3"
 # TypeScript types for the settings (settings::bindings), checked by a test
 # against app/src/lib/generated/settings.ts; test-only, so not in the app.
 ts-rs = { version = "12", default-features = false, features = ["serde-compat"] }
+# Reads the commands' signatures for their generated TypeScript wrappers
+# (bindings.rs, app/src/lib/generated/commands.ts; PLAN.md H15). Test-only;
+# the same version Tauri's and serde's macros already build.
+syn = { version = "=2.0.119", default-features = false, features = ["full", "parsing", "printing", "clone-impls"] }
 
 [features]
 # `--self-test`: a check of the sandboxed bundle that CI runs (PLAN.md H14,

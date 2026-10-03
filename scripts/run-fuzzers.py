@@ -11,6 +11,10 @@ a committed fixture.
 
 Needs Homebrew's llvm@22 (`brew install llvm@22`): Apple's clang has no
 libFuzzer runtime, and LLVM 21's ASan hangs at start-up on macOS 26.
+Xcode 16's ld can't read clang 22's objects ("invalid r_symbolnum"); where
+it is the default (the macos-15 runners), set ANOMP_FUZZ_DEVELOPER_DIR to
+a newer Xcode's Developer folder, which this script passes to its builds,
+and only those, as DEVELOPER_DIR (so /usr/bin/ld runs that Xcode's ld).
 
 Usage: scripts/run-fuzzers.py [--seconds N] [--target NAME] [--no-build]
        scripts/run-fuzzers.py --target NAME CRASH_FILE  (reproduce one input)
@@ -56,6 +60,20 @@ def fuzz_command(target, seconds, build=BUILD, fixtures=FIXTURES):
     ]
 
 
+def build_env(environ=os.environ):
+    """The environment for the builds: DEVELOPER_DIR from
+    ANOMP_FUZZ_DEVELOPER_DIR when that is set, or None (an error) when it
+    names a folder that doesn't exist."""
+    developer_dir = environ.get("ANOMP_FUZZ_DEVELOPER_DIR")
+    if not developer_dir:
+        return dict(environ)
+    if not pathlib.Path(developer_dir).is_dir():
+        print(f"run-fuzzers: ANOMP_FUZZ_DEVELOPER_DIR {developer_dir} doesn't exist")
+        return None
+    print(f"run-fuzzers: building with DEVELOPER_DIR={developer_dir}")
+    return {**environ, "DEVELOPER_DIR": developer_dir}
+
+
 def run(command, env=None):
     print("$ " + " ".join(command), flush=True)
     return subprocess.run(command, cwd=REPO_ROOT, env=env, check=False).returncode == 0
@@ -65,10 +83,13 @@ def build():
     if not (LLVM / "bin" / "clang").exists():
         print(f"run-fuzzers: {LLVM}/bin/clang not found: brew install llvm@22")
         return False
+    env = build_env()
+    if env is None:
+        return False
     return (
-        run([str(REPO_ROOT / "scripts" / "build-ffmpeg.sh"), "--fuzz"])
-        and run(["cmake", "--preset", "fuzz"])
-        and run(["cmake", "--build", "--preset", "fuzz"])
+        run([str(REPO_ROOT / "scripts" / "build-ffmpeg.sh"), "--fuzz"], env)
+        and run(["cmake", "--preset", "fuzz"], env)
+        and run(["cmake", "--build", "--preset", "fuzz"], env)
     )
 
 

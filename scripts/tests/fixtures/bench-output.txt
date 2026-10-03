@@ -1,0 +1,16 @@
+running 5 tests
+test library::bench::bench_browse_pages ... browse album-artist: first page 22.43 ms, its first group's page 0.12 ms
+bench browse.page.album-artist 22.426 ms
+bench browse.node.album-artist 0.121 ms
+test library::bench::bench_scan ... copied 50000 files in 6.5 s
+scan of 50000 files: 50000 added, 0 failed, in 9.4 s; unchanged rescan (50000 unchanged) in 0.27 s
+bench scan.first 9.448 s
+bench scan.rescan 0.269 s
+search         love: 31 artists, 1382 albums, 2407 tracks; all kinds (count + 50 each) 11.85 ms
+bench search.love.all 11.850 ms
+bench queue.json_size 8.052 MB
+ok
+Randomness seeded to: 1234
+bench core.play.mp3 30.2163 x
+bench core.analysis 403.396 x
+All tests passed (150 assertions in 2 test cases)

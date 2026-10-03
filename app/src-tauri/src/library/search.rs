@@ -22,6 +22,7 @@ use super::browse::MAX_PAGE_SIZE;
 use super::{rules, track_from_row, Error, TrackSummary, TRACK_COLUMNS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum SearchKind {
     Artists,
@@ -33,6 +34,7 @@ pub const ALL_KINDS: [SearchKind; 3] =
     [SearchKind::Artists, SearchKind::Albums, SearchKind::Tracks];
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistHit {
     pub id: i64,
@@ -45,6 +47,7 @@ pub struct ArtistHit {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumHit {
     pub id: i64,
@@ -57,6 +60,7 @@ pub struct AlbumHit {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResults {
     pub artists: Vec<ArtistHit>,

@@ -26,6 +26,7 @@ const MAX_NAME: usize = 30;
 const MAX_M3U: u64 = 16 << 20;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
     pub id: i64,
@@ -42,6 +43,7 @@ pub struct Playlist {
 /// A track in a playlist, and which entry it is (a track can be listed
 /// twice).
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistEntry {
     /// `None` in a smart playlist.
@@ -51,6 +53,7 @@ pub struct PlaylistEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistPage {
     pub playlist: Playlist,
@@ -363,6 +366,8 @@ pub fn track_ids(conn: &Connection, id: i64, unreadable: &[i64]) -> Result<Vec<i
 
 /// What importing a playlist file did.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "PlaylistImport"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     pub playlist: Playlist,

@@ -11,6 +11,7 @@ use super::{rules, Error};
 
 /// An album as the discovery views list it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumCard {
     pub id: i64,

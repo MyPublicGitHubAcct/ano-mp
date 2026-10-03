@@ -21,6 +21,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/008_credits.sql"),
     include_str!("migrations/009_substring_search.sql"),
     include_str!("migrations/010_dataless.sql"),
+    include_str!("migrations/011_queue_items.sql"),
+    include_str!("migrations/012_art_thumbs.sql"),
 ];
 
 /// How many copies `back_up` keeps: the newest two.
@@ -212,6 +214,7 @@ mod tests {
                 "album_links",
                 "album_prefs",
                 "albums",
+                "art_thumbs",
                 "artist_favourites",
                 "artist_links",
                 "artists",
@@ -223,6 +226,7 @@ mod tests {
                 "playlist_items",
                 "playlists",
                 "plays",
+                "queue_items",
                 "remote_devices",
                 "settings",
                 "track_analysis",
@@ -378,6 +382,66 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn the_saved_queue_moves_from_its_setting_to_rows() {
+        // Migration 011 (PLAN.md H16), on a file, so the copy is written.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 10);
+        let old = r#"{"tracks":[11,12,13],"original":[2,0,1],"current":1,
+                      "position":42.5,"repeat":"all","volume":0.3}"#;
+        Connection::open(&path)
+            .unwrap()
+            .execute(
+                "INSERT INTO settings (key, value) VALUES ('player.queue', ?1)",
+                [old],
+            )
+            .unwrap();
+        let conn = open(&path).unwrap();
+        let rows: Vec<(i64, i64, f64, Option<f64>)> = conn
+            .prepare("SELECT uid, track_id, ord, original FROM queue_items ORDER BY ord")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // Before shuffling, the order was the third item, the first, the second.
+        assert_eq!(
+            rows,
+            [
+                (1, 11, 0.0, Some(1.0)),
+                (2, 12, 1.0, Some(2.0)),
+                (3, 13, 2.0, Some(0.0))
+            ]
+        );
+        let setting: serde_json::Value = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'player.queue'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map(|json| serde_json::from_str(&json).unwrap())
+            .unwrap();
+        assert_eq!(
+            setting,
+            serde_json::json!({"current": 1, "position": 42.5, "repeat": "all",
+                               "volume": 0.3, "shuffled": true})
+        );
+        // The copy still has the list in the setting.
+        let copy = Connection::open(dir.path().join("library.sqlite3.pre-11")).unwrap();
+        assert_eq!(user_version(&copy), 10);
+        let value: String = copy
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'player.queue'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(value.contains("\"tracks\":[11,12,13]"));
     }
 
     #[test]

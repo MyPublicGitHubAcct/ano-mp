@@ -68,8 +68,8 @@
     item === null
       ? null
       : item.albumId !== null
-        ? artUrl({ albumId: item.albumId }, library.version, library.artVersions.get(item.albumId))
-        : artUrl({ trackId: item.trackId }, library.version),
+        ? artUrl({ albumId: item.albumId }, library.version, library.artVersions.get(item.albumId), "header")
+        : artUrl({ trackId: item.trackId }, library.version, 0, "header"),
   );
   $effect(() => {
     const url = coverUrl;

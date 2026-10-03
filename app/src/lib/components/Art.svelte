@@ -1,7 +1,7 @@
 <script lang="ts">
   // Cover art for an album (or an album-less track), with a placeholder when
   // there is none. Loaded lazily from the `anomp-art` scheme.
-  import { artUrl } from "$lib/api";
+  import { artUrl, type ArtSize } from "$lib/api";
   import { library } from "$lib/state/library.svelte";
   import Icon from "./Icon.svelte";
 
@@ -9,13 +9,20 @@
     albumId = null,
     trackId = null,
     size = "3rem",
-  }: { albumId?: number | null; trackId?: number | null; size?: string } = $props();
+    quality = "list",
+  }: {
+    albumId?: number | null;
+    trackId?: number | null;
+    size?: string;
+    /** The picture asked for: a thumbnail for lists or the header, or full size (PLAN.md H17). */
+    quality?: ArtSize;
+  } = $props();
 
   const src = $derived(
     albumId !== null
-      ? artUrl({ albumId }, library.version, library.artVersions.get(albumId))
+      ? artUrl({ albumId }, library.version, library.artVersions.get(albumId), quality)
       : trackId !== null
-        ? artUrl({ trackId }, library.version)
+        ? artUrl({ trackId }, library.version, 0, quality)
         : null,
   );
   let failed = $state<string | null>(null);

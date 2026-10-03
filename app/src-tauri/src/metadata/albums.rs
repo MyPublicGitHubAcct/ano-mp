@@ -27,6 +27,7 @@ use super::{keys, Error};
 const AUTO_LOOKUPS: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum LinkStatus {
     Matched,
@@ -196,6 +197,7 @@ fn names_another_release(source: SourceId, text: &str) -> bool {
 /// A release offered for an album in the "Find details" dialog, scored as
 /// automatic matching scores it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseCandidate {
     pub release: Release,
@@ -209,6 +211,7 @@ pub struct ReleaseCandidate {
 
 /// An album's row in `album_links` for one source.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumLink {
     pub source: SourceId,

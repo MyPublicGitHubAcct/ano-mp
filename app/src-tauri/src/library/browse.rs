@@ -21,6 +21,7 @@ pub const MAX_PAGE_SIZE: u32 = 1000;
 
 /// Identifies a group within its level.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(untagged)]
 pub enum GroupKey {
     /// An artist, album or library folder id, or a year.
@@ -30,6 +31,7 @@ pub enum GroupKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Group {
     /// Append it to the path to browse into the group. Null for the tracks
@@ -46,6 +48,7 @@ pub struct Group {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BrowsePage {
     /// A node lists its groups, then its tracks. Nodes of tag levels have
@@ -58,6 +61,8 @@ pub struct BrowsePage {
 
 /// What a browse (or playing a node) keeps of the library.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "BrowseFilter"))]
 #[serde(rename_all = "camelCase", default)]
 pub struct Filter {
     /// Only favourites: tracks hearted, on hearted albums or by hearted
@@ -208,6 +213,7 @@ fn mark_favourites(
 /// A stored rule, by id, or a rule given in full (e.g. to play an album
 /// found by search, whatever the stored rules are).
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(untagged)]
 pub enum RuleSpec {
     Id(String),

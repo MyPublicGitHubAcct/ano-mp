@@ -1,0 +1,297 @@
+{
+  "machine": {
+    "cpu": "Apple M1 Ultra (Virtual)",
+    "cores": 6,
+    "memory_gb": 12,
+    "os": "macOS 26"
+  },
+  "measured": "2026-10-03",
+  "budgets": {
+    "search.*": {
+      "max": 100,
+      "unit": "ms"
+    },
+    "browse.page.*": {
+      "max": 100,
+      "unit": "ms"
+    },
+    "browse.node.*": {
+      "max": 100,
+      "unit": "ms"
+    },
+    "browse.all_tracks": {
+      "max": 300,
+      "unit": "ms"
+    },
+    "browse.folder_tree": {
+      "max": 300,
+      "unit": "ms"
+    },
+    "scan.first": {
+      "max": 90,
+      "unit": "s"
+    },
+    "scan.rescan": {
+      "max": 10,
+      "unit": "s"
+    },
+    "core.play.*": {
+      "min": 20,
+      "unit": "x"
+    },
+    "core.analysis": {
+      "min": 50,
+      "unit": "x"
+    }
+  },
+  "results": {
+    "art.cover_size": {
+      "value": 0.204,
+      "unit": "MB"
+    },
+    "art.thumbnail_header": {
+      "value": 20.878,
+      "unit": "ms"
+    },
+    "art.thumbnail_header_size": {
+      "value": 0.076,
+      "unit": "MB"
+    },
+    "art.thumbnail_list": {
+      "value": 11.087,
+      "unit": "ms"
+    },
+    "art.thumbnail_list_size": {
+      "value": 0.011,
+      "unit": "MB"
+    },
+    "browse.all_tracks": {
+      "value": 202.074,
+      "unit": "ms"
+    },
+    "browse.folder_tree": {
+      "value": 114.6,
+      "unit": "ms"
+    },
+    "browse.node.album-artist": {
+      "value": 0.114,
+      "unit": "ms"
+    },
+    "browse.node.composer": {
+      "value": 26.586,
+      "unit": "ms"
+    },
+    "browse.node.folder": {
+      "value": 56.755,
+      "unit": "ms"
+    },
+    "browse.node.genre": {
+      "value": 45.149,
+      "unit": "ms"
+    },
+    "browse.node.year": {
+      "value": 68.256,
+      "unit": "ms"
+    },
+    "browse.one_artist": {
+      "value": 0.076,
+      "unit": "ms"
+    },
+    "browse.page.album-artist": {
+      "value": 24.268,
+      "unit": "ms"
+    },
+    "browse.page.composer": {
+      "value": 18.261,
+      "unit": "ms"
+    },
+    "browse.page.folder": {
+      "value": 1.042,
+      "unit": "ms"
+    },
+    "browse.page.genre": {
+      "value": 56.086,
+      "unit": "ms"
+    },
+    "browse.page.year": {
+      "value": 76.581,
+      "unit": "ms"
+    },
+    "core.analysis": {
+      "value": 403.396,
+      "unit": "x"
+    },
+    "core.play.aac": {
+      "value": 31.0766,
+      "unit": "x"
+    },
+    "core.play.flac": {
+      "value": 1198.89,
+      "unit": "x"
+    },
+    "core.play.mp3": {
+      "value": 30.2163,
+      "unit": "x"
+    },
+    "core.play.mp3_effects": {
+      "value": 27.2796,
+      "unit": "x"
+    },
+    "core.play.opus": {
+      "value": 724.01,
+      "unit": "x"
+    },
+    "insert.schema8": {
+      "value": 3.208,
+      "unit": "s"
+    },
+    "insert.schema8_size": {
+      "value": 14.131,
+      "unit": "MB"
+    },
+    "insert.schema9": {
+      "value": 5.347,
+      "unit": "s"
+    },
+    "insert.schema9_size": {
+      "value": 24.326,
+      "unit": "MB"
+    },
+    "queue.add_next": {
+      "value": 1.701,
+      "unit": "ms"
+    },
+    "queue.add_next_size": {
+      "value": 0.001,
+      "unit": "MB"
+    },
+    "queue.json": {
+      "value": 9.356,
+      "unit": "ms"
+    },
+    "queue.json_size": {
+      "value": 8.052,
+      "unit": "MB"
+    },
+    "queue.next": {
+      "value": 1.261,
+      "unit": "ms"
+    },
+    "queue.restore": {
+      "value": 320.406,
+      "unit": "ms"
+    },
+    "queue.restore_rows": {
+      "value": 5.299,
+      "unit": "ms"
+    },
+    "queue.track_infos": {
+      "value": 187.135,
+      "unit": "ms"
+    },
+    "scan.first": {
+      "value": 9.48,
+      "unit": "s"
+    },
+    "scan.rescan": {
+      "value": 0.278,
+      "unit": "s"
+    },
+    "search.blue_moon.all": {
+      "value": 3.558,
+      "unit": "ms"
+    },
+    "search.blue_moon.offset": {
+      "value": 1.879,
+      "unit": "ms"
+    },
+    "search.blue_moon.tracks": {
+      "value": 1.782,
+      "unit": "ms"
+    },
+    "search.cafe.all": {
+      "value": 4.351,
+      "unit": "ms"
+    },
+    "search.cafe.offset": {
+      "value": 3.37,
+      "unit": "ms"
+    },
+    "search.cafe.tracks": {
+      "value": 2.616,
+      "unit": "ms"
+    },
+    "search.golden_1234.all": {
+      "value": 3.214,
+      "unit": "ms"
+    },
+    "search.golden_1234.offset": {
+      "value": 1.783,
+      "unit": "ms"
+    },
+    "search.golden_1234.tracks": {
+      "value": 1.784,
+      "unit": "ms"
+    },
+    "search.k.all": {
+      "value": 49.618,
+      "unit": "ms"
+    },
+    "search.k.offset": {
+      "value": 40.363,
+      "unit": "ms"
+    },
+    "search.k.tracks": {
+      "value": 31.884,
+      "unit": "ms"
+    },
+    "search.ka.all": {
+      "value": 49.281,
+      "unit": "ms"
+    },
+    "search.ka.offset": {
+      "value": 39.118,
+      "unit": "ms"
+    },
+    "search.ka.tracks": {
+      "value": 31.575,
+      "unit": "ms"
+    },
+    "search.kalo.all": {
+      "value": 8.974,
+      "unit": "ms"
+    },
+    "search.kalo.offset": {
+      "value": 6.548,
+      "unit": "ms"
+    },
+    "search.kalo.tracks": {
+      "value": 4.751,
+      "unit": "ms"
+    },
+    "search.love.all": {
+      "value": 12.697,
+      "unit": "ms"
+    },
+    "search.love.offset": {
+      "value": 10.286,
+      "unit": "ms"
+    },
+    "search.love.tracks": {
+      "value": 8.002,
+      "unit": "ms"
+    },
+    "search.zzz.all": {
+      "value": 0.442,
+      "unit": "ms"
+    },
+    "search.zzz.offset": {
+      "value": 0.186,
+      "unit": "ms"
+    },
+    "search.zzz.tracks": {
+      "value": 0.203,
+      "unit": "ms"
+    }
+  }
+}

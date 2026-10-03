@@ -1,5 +1,7 @@
 mod anomp;
 mod audio;
+#[cfg(test)]
+mod bindings;
 mod coded;
 mod collection;
 #[cfg(debug_assertions)]
@@ -29,6 +31,8 @@ pub fn run() {
     if let Some(status) = self_test::run_if_asked() {
         std::process::exit(status);
     }
+    // The launch time that the first paint is measured from (PLAN.md H18).
+    diagnostics::mark_start();
     // First, so a panic anywhere after is written down (PLAN.md H9).
     logging::install_panic_hook();
     tauri::Builder::default()
@@ -146,6 +150,7 @@ pub fn run() {
             diagnostics::diagnostics_show_logs,
             diagnostics::diagnostics_notices,
             diagnostics::diagnostics_discogs_notice,
+            diagnostics::diagnostics_first_paint,
             library::commands::library_db_check,
             library::commands::library_db_restore,
             library::commands::library_db_rebuild,

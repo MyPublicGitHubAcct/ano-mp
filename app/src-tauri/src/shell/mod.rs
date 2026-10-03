@@ -143,6 +143,7 @@ pub fn opened<R: Runtime>(app: &AppHandle<R>, urls: Vec<Url>) {
 /// Paths dropped on the window, sorted: folders (to offer as library
 /// folders) and files (to play).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DroppedPaths {
     pub folders: Vec<PathBuf>,

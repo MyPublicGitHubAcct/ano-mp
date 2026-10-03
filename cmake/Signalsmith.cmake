@@ -5,15 +5,13 @@
 # own CMake files (which fetch from git) are not used. Exposes the interface
 # target Signalsmith::stretch.
 
-FetchContent_Declare(signalsmith_stretch
+anomp_fetch_declare(signalsmith_stretch
     URL      https://github.com/Signalsmith-Audio/signalsmith-stretch/archive/refs/tags/1.4.0.tar.gz
     URL_HASH SHA256=077235709ecf2a358545e3ca7bdf32859f70f5c9afb4493e078bd753c9aff284
-    DOWNLOAD_EXTRACT_TIMESTAMP OFF
     SOURCE_SUBDIR  no-cmake)
-FetchContent_Declare(signalsmith_linear
+anomp_fetch_declare(signalsmith_linear
     URL      https://github.com/Signalsmith-Audio/linear/archive/refs/tags/0.6.4.tar.gz
     URL_HASH SHA256=2cb10d84b96c626255ab46c4aa4c80f64ae532be487063cff6a08903c1445a56
-    DOWNLOAD_EXTRACT_TIMESTAMP OFF
     SOURCE_SUBDIR  no-cmake)
 FetchContent_MakeAvailable(signalsmith_stretch signalsmith_linear)
 

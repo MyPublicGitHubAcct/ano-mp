@@ -13,6 +13,7 @@ use crate::library::{unix_now, Error};
 /// One row of recently played: a run of plays from one album collapsed
 /// into the album, or a single track without one.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RecentEntry {
     /// When the latest play in it started, Unix seconds.
@@ -23,6 +24,7 @@ pub struct RecentEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RecentTrack {
     pub track_id: i64,
@@ -99,6 +101,7 @@ pub fn recently_played(conn: &Connection, limit: usize) -> Result<Vec<RecentEntr
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum TopKind {
     Tracks,
@@ -107,6 +110,7 @@ pub enum TopKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TopEntry {
     pub id: i64,
@@ -123,6 +127,7 @@ pub struct TopEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TopPlayed {
     pub entries: Vec<TopEntry>,
@@ -277,6 +282,7 @@ fn most_played_track(
 
 /// The history page's highlights.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Highlights {
     /// Albums played often (five times or more) but not in the last year.

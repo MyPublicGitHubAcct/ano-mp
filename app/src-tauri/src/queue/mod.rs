@@ -12,8 +12,10 @@
 //! thread.
 //!
 //! After every change the queue emits `queue-changed` with a `QueueState`
-//! and is saved under `player.queue` in `settings`, with the position in
-//! the current track and the volume. At launch it is restored paused and
+//! and is saved: its items as rows of `queue_items` (`store`, PLAN.md H16),
+//! written as the same edits the frontend gets, and the rest (the current
+//! item, the position in it, repeat, shuffle, the volume) under
+//! `player.queue` in `settings`. At launch it is restored paused and
 //! not loaded: no file is opened until playback is asked for. Long tracks'
 //! positions go to `track_positions` (PLAN.md F17).
 //!
@@ -28,6 +30,7 @@
 pub mod model;
 mod opening;
 pub mod radio;
+pub(crate) mod store;
 
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -48,11 +51,14 @@ use crate::library::playback::TrackPlay;
 use crate::library::Error;
 use crate::settings::{self, FeatureSettings, PlaybackSettings};
 use model::{
-    Opening, Player, Queue, QueueState, Repeat, Request, Saved, SleepTimer, TrackInfo, Uid,
+    ListLog, Opening, Player, Queue, QueueState, Repeat, Request, Saved, SleepTimer, TrackInfo, Uid,
 };
+use store::Store;
 
 thread_local! {
     static QUEUE: RefCell<Option<Queue>> = const { RefCell::new(None) };
+    /// The saved rows' mirror, beside the queue on the main thread.
+    static STORE: RefCell<Option<Store>> = const { RefCell::new(None) };
 }
 
 /// Frontend event with a `QueueState` payload.
@@ -60,12 +66,18 @@ pub const QUEUE_CHANGED_EVENT: &str = "queue-changed";
 
 const SETTINGS_KEY: &str = "player.queue";
 
-/// What is saved: the queue, plus the volume.
-#[derive(Debug, Default, Serialize, Deserialize)]
+/// What the setting holds besides the rows: small, so it is written with
+/// every state.
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct SavedPlayer {
-    #[serde(flatten)]
-    queue: Saved,
+    /// An index in the play order of the saved (library) items.
+    current: Option<usize>,
+    /// Seconds into the current track.
+    position: f64,
+    repeat: Repeat,
+    /// Shuffle is on (which the rows show only when there are some).
+    shuffled: bool,
     volume: Option<f64>,
 }
 
@@ -180,31 +192,21 @@ impl<R: Runtime> Player for EnginePlayer<'_, R> {
 /// Restores the saved queue and volume. Call on the main thread after the
 /// engine and the library have started.
 pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let saved = match app.try_state::<LibraryState>() {
+    let (queue, store) = match app.try_state::<LibraryState>() {
         Some(library) => {
             let conn = library.conn();
-            let saved = load_saved(&conn).map_err(|e| e.to_string())?;
             let features = settings::current(app).features;
-            let tracks =
-                track_infos(&conn, &saved.queue.tracks, &features).map_err(|e| e.to_string())?;
-            Some((saved, tracks))
-        }
-        None => None,
-    };
-    let queue = match saved {
-        Some((saved, tracks)) => {
-            if let Some(volume) = saved.volume {
+            let (queue, store, volume) =
+                restore(&conn, &features, seed()).map_err(|e| e.to_string())?;
+            if let Some(volume) = volume {
                 let _ = audio::engine_mut(|engine| engine.set_volume(volume));
             }
-            let tracks = tracks
-                .into_iter()
-                .map(|track| (track.track_id, track))
-                .collect();
-            Queue::restore(saved.queue, &tracks, seed())
+            (queue, store)
         }
-        None => Queue::new(seed()),
+        None => (Queue::new(seed()), Store::default()),
     };
     QUEUE.with_borrow_mut(|slot| *slot = Some(queue));
+    STORE.with_borrow_mut(|slot| *slot = Some(store));
     Ok(())
 }
 
@@ -217,8 +219,9 @@ pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
             queue.remember_position(&Position(position));
         }
         save_positions(app, &mut queue);
-        save(app, &queue);
+        save(app, &mut queue);
     }
+    STORE.with_borrow_mut(Option::take);
 }
 
 /// A player that only knows where it is, for noting a position at quit.
@@ -509,31 +512,61 @@ fn seed_random() -> u64 {
     seed()
 }
 
-fn save<R: Runtime>(app: &AppHandle<R>, queue: &Queue) {
+fn save<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
     let (position, volume) =
         audio::engine_mut(|engine| (engine.position(), engine.volume())).unwrap_or((0.0, 1.0));
-    let saved = SavedPlayer {
-        queue: queue.saved(position),
-        volume: Some(volume),
-    };
     let Some(library) = app.try_state::<LibraryState>() else {
         return;
     };
-    let result = serde_json::to_string(&saved)
-        .map_err(|e| e.to_string())
-        .and_then(|json| {
-            library
-                .conn()
-                .execute(
-                    "INSERT INTO settings (key, value) VALUES (?1, ?2)
-                     ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                    (SETTINGS_KEY, json),
-                )
-                .map_err(|e| e.to_string())
-        });
+    let conn = library.conn();
+    let result = STORE.with_borrow_mut(|store| {
+        save_to(
+            &conn,
+            queue,
+            store.get_or_insert_with(Store::default),
+            position,
+            volume,
+        )
+    });
     if let Err(error) = result {
         log::warn!("cannot save: {error}");
     }
+}
+
+/// Writes what changed: the list's edits to the rows (or the whole list
+/// after a reset, or when the edits can't be written), and the setting.
+pub(crate) fn save_to(
+    conn: &Connection,
+    queue: &mut Queue,
+    store: &mut Store,
+    position: f64,
+    volume: f64,
+) -> Result<(), Error> {
+    match queue.take_stored() {
+        ListLog::Clean => {}
+        ListLog::Reset => store.reset(conn, queue.items(), queue.original_order())?,
+        ListLog::Edits(edits) => {
+            if let Err(error) = store.apply(conn, &edits) {
+                log::warn!("rewriting the saved queue: {error}");
+                store.reset(conn, queue.items(), queue.original_order())?;
+            }
+        }
+    }
+    let saved = queue.saved(position);
+    let player = SavedPlayer {
+        current: saved.current,
+        position: saved.position,
+        repeat: saved.repeat,
+        shuffled: queue.original_order().is_some(),
+        volume: Some(volume),
+    };
+    let json = serde_json::to_string(&player).expect("the saved player serializes");
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (SETTINGS_KEY, json),
+    )?;
+    Ok(())
 }
 
 fn load_saved(conn: &Connection) -> Result<SavedPlayer, Error> {
@@ -548,6 +581,50 @@ fn load_saved(conn: &Connection) -> Result<SavedPlayer, Error> {
     Ok(json
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_default())
+}
+
+/// The saved queue, from the rows and the setting, not loaded (nothing
+/// plays until asked), with the store mirroring its rows and the saved
+/// volume. Rows whose track left the library are deleted.
+pub(crate) fn restore(
+    conn: &Connection,
+    features: &FeatureSettings,
+    seed: u64,
+) -> Result<(Queue, Store, Option<f64>), Error> {
+    let player = load_saved(conn)?;
+    let (mut store, loaded) = Store::load(conn)?;
+    let tracks: Vec<i64> = loaded.items.iter().map(|&(_, track)| track).collect();
+    let uids: Vec<Uid> = loaded.items.iter().map(|&(uid, _)| uid).collect();
+    let original = match loaded.original {
+        Some(order) => {
+            let index: HashMap<Uid, usize> =
+                uids.iter().enumerate().map(|(i, &uid)| (uid, i)).collect();
+            Some(
+                order
+                    .iter()
+                    .filter_map(|uid| index.get(uid).copied())
+                    .collect(),
+            )
+        }
+        None => player.shuffled.then(Vec::new),
+    };
+    let infos = track_infos(conn, &tracks, features)?;
+    let infos: HashMap<i64, TrackInfo> = infos
+        .into_iter()
+        .map(|track| (track.track_id, track))
+        .collect();
+    let saved = Saved {
+        tracks,
+        uids,
+        original,
+        current: player.current,
+        position: player.position,
+        repeat: player.repeat,
+    };
+    let queue = Queue::restore(saved, &infos, seed);
+    let kept: Vec<Uid> = queue.items().iter().map(|item| item.uid).collect();
+    store.retain(conn, &kept)?;
+    Ok((queue, store, player.volume))
 }
 
 /// What the queue shows about each track in `ids`, in that order; ids not
@@ -1020,6 +1097,7 @@ pub fn queue_set_stop_after<R: Runtime>(app: AppHandle<R>, uid: Option<Uid>) -> 
 
 /// A sleep timer, as the UI asks for it.
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum SleepRequest {
     /// In this many minutes, 1 to 1440.
@@ -1227,17 +1305,90 @@ mod tests {
     }
 
     #[test]
-    fn saved_state_round_trips_through_settings() {
+    fn a_queue_saved_before_the_rows_restores_shuffled_where_it_was() {
+        // Saved as migration 010 left it, then migrated (PLAN.md H16).
+        let library = Library::from_conn(crate::library::db::open_in_memory_at(10).unwrap());
+        for name in ["a", "b", "c", "d"] {
+            library.add(
+                library.folder_id,
+                track(&format!("{name}.flac")).title(name),
+            );
+        }
+        let ids: Vec<i64> = library
+            .conn
+            .prepare("SELECT id FROM tracks ORDER BY relative_path")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // Shuffled as d, b, c (gone since), a; the order before was a b c d.
+        let old = serde_json::json!({
+            "tracks": [ids[3], ids[1], 9999, ids[0]],
+            "original": [3, 1, 2, 0],
+            "current": 1, "position": 30.0, "repeat": "one", "volume": 0.4,
+        });
+        library
+            .conn
+            .execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+                (SETTINGS_KEY, old.to_string()),
+            )
+            .unwrap();
+        library
+            .conn
+            .execute_batch(include_str!("../library/migrations/011_queue_items.sql"))
+            .unwrap();
+        let (mut queue, mut store, volume) =
+            restore(&library.conn, &FeatureSettings::default(), 1).unwrap();
+        assert_eq!(volume, Some(0.4));
+        let titles = |queue: &Queue| -> Vec<String> {
+            queue
+                .items()
+                .iter()
+                .map(|item| item.track.title.clone())
+                .collect()
+        };
+        assert_eq!(titles(&queue), ["d", "b", "a"]);
+        let state = queue.state();
+        assert_eq!(state.current, Some(1));
+        assert_eq!(state.resume_at, 30.0);
+        assert_eq!(state.repeat, Repeat::One);
+        assert!(state.shuffle);
+        // The missing track's row is gone, and unshuffling gives a b d.
+        let rows: i64 = library
+            .conn
+            .query_row("SELECT count(*) FROM queue_items", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 3);
+        queue.set_shuffle(&mut Position(0.0), false);
+        assert_eq!(titles(&queue), ["a", "b", "d"]);
+        save_to(&library.conn, &mut queue, &mut store, 0.0, 0.4).unwrap();
+        let (again, _, _) = restore(&library.conn, &FeatureSettings::default(), 1).unwrap();
+        assert_eq!(titles(&again), ["a", "b", "d"]);
+        assert!(again.original_order().is_none());
+    }
+
+    #[test]
+    fn an_empty_queue_keeps_shuffle_on() {
         let library = Library::new([]);
-        assert_eq!(load_saved(&library.conn).unwrap().queue, Saved::default());
+        let mut queue = Queue::new(1);
+        queue.set_shuffle(&mut Position(0.0), true);
+        let mut store = Store::default();
+        save_to(&library.conn, &mut queue, &mut store, 0.0, 1.0).unwrap();
+        let (restored, _, _) = restore(&library.conn, &FeatureSettings::default(), 1).unwrap();
+        assert_eq!(restored.original_order(), Some(&[][..]));
+    }
+
+    #[test]
+    fn the_setting_reads_back_and_unreadable_ones_start_empty() {
+        let library = Library::new([]);
+        assert_eq!(load_saved(&library.conn).unwrap(), SavedPlayer::default());
         let saved = SavedPlayer {
-            queue: Saved {
-                tracks: vec![3, 1, 2],
-                original: Some(vec![1, 2, 0]),
-                current: Some(1),
-                position: 12.5,
-                repeat: Repeat::One,
-            },
+            current: Some(1),
+            position: 12.5,
+            repeat: Repeat::One,
+            shuffled: true,
             volume: Some(0.25),
         };
         library
@@ -1247,10 +1398,7 @@ mod tests {
                 (SETTINGS_KEY, serde_json::to_string(&saved).unwrap()),
             )
             .unwrap();
-        let loaded = load_saved(&library.conn).unwrap();
-        assert_eq!(loaded.queue, saved.queue);
-        assert_eq!(loaded.volume, Some(0.25));
-
+        assert_eq!(load_saved(&library.conn).unwrap(), saved);
         library
             .conn
             .execute(
@@ -1258,7 +1406,7 @@ mod tests {
                 [SETTINGS_KEY],
             )
             .unwrap();
-        assert_eq!(load_saved(&library.conn).unwrap().queue, Saved::default());
+        assert_eq!(load_saved(&library.conn).unwrap(), SavedPlayer::default());
     }
 
     #[test]

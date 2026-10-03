@@ -17,6 +17,7 @@ use crate::anomp::{self, TagParts};
 const LRC_LIMIT: u64 = 1 << 20;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Lyrics {
     /// Timed lines, in order; empty for unsynced lyrics.
@@ -28,6 +29,7 @@ pub struct Lyrics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LyricLine {
     /// Seconds into the track.

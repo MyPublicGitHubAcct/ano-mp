@@ -57,10 +57,12 @@ jobs:
 
       # FetchContent's sources and JUCE's objects, which keep their
       # timestamps; the repo's own files are rebuilt after checkout.
+      # build/_downloads holds the pinned tarballs (cmake/Fetch.cmake).
       - name: Restore core build
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
+            build/_downloads
             build/debug
             build/asan
             build/tsan
@@ -90,4 +92,8 @@ jobs:
         run: npm ci
 
       - name: Check
+        # Xcode 16.4's ld, the runner's default, can't read clang 22's
+        # objects; run-fuzzers.py builds with this Xcode instead.
+        env:
+          ANOMP_FUZZ_DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
         run: scripts/check-all.py

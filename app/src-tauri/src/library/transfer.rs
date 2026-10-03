@@ -388,6 +388,8 @@ pub fn export(
 
 /// What an import found and did.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "DataImportReport"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportReport {
     /// Tracks, albums and artists the file names that the library has, of

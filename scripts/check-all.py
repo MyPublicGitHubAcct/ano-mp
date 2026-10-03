@@ -57,6 +57,7 @@ STEPS = [
     Step("core source lists", script("check-sources.py")),
     Step("DB migrations", script("check-migrations.py")),
     Step("version number", script("version.py", "--check")),
+    Step("docs' paths and links", script("check-docs.py")),
     Step("script tests", script("test-python.py", "-q")),
     # Every commit's changes; scripts/hooks/pre-commit checks the staged ones.
     Step("secrets", ["gitleaks", "git", "--redact", "--no-banner", "--log-level", "warn"]),
@@ -84,6 +85,8 @@ STEPS = [
         quick=False,
     ),
     Step("Rust tests", ["cargo", "test"], cwd=APP / "src-tauri", quick=False),
+    # After the suites have built: PLAN.md §2's test counts are current.
+    Step("docs' test counts", script("check-docs.py", "--counts"), quick=False),
     # The sandboxed bundle's self-test (H14); on CI only, unless run by
     # hand with --local, since it runs in the app's real container.
     Step("bundle self-test", script("self-test-bundle.py"), quick=False),

@@ -181,7 +181,7 @@
           ondblclick={() => playAlbum(album)}
           oncontextmenu={(event) => albumMenu(event, album)}
         >
-          <Art albumId={album.id} size="100%" />
+          <Art albumId={album.id} size="100%" quality="header" />
           <span class="name" title={album.title}>{album.title}</span>
           <span class="muted small">
             {[

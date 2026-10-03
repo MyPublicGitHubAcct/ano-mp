@@ -787,6 +787,7 @@ unsafe fn slice_of<'a, T>(ptr: *const T, count: c_int) -> &'a [T] {
 
 /// Everything a file says about itself, for Get Info (PLAN.md F16).
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FileInfo {
     /// Each value of each tag field, as (TagLib's key, value).
@@ -807,6 +808,7 @@ pub struct FileInfo {
 
 /// An embedded picture.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FilePicture {
     /// e.g. "Front Cover".
@@ -1093,6 +1095,7 @@ impl Drop for FolderAccess {
 
 /// Player state, as reported by `Engine::state` and `Event::StateChanged`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
 pub enum PlayerState {
     /// No track loaded.
@@ -1277,6 +1280,7 @@ impl TrackOptions {
 
 /// Every step between the file and the speakers (`anomp_signal_path`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SignalPath {
     pub loaded: bool,

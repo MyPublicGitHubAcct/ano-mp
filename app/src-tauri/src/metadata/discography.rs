@@ -40,6 +40,7 @@ pub const MAX_PAGES: u32 = 10;
 const SAME_TITLE: f64 = 0.9;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Discography {
     /// The MusicBrainz artist listed, and their name there.

@@ -11,7 +11,7 @@
   // (F4, F5); track changes are announced to screen readers (F18).
   import { ask, open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { on, queue, shell } from "$lib/api";
+  import { diagnostics, on, queue, shell } from "$lib/api";
   import { t } from "$lib/i18n";
   import ArtistPage from "$lib/components/ArtistPage.svelte";
   import BrowsePane from "$lib/components/BrowsePane.svelte";
@@ -52,6 +52,12 @@
   let dropping = $state(false);
   /** The user put off repairing a damaged database until the next launch. */
   let repairLater = $state(false);
+
+  // Two frames after the page mounted, it has painted: Rust logs the time
+  // since launch, once (PLAN.md H18's launch budget).
+  $effect(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => void diagnostics.firstPaint().catch(() => {})));
+  });
 
   $effect(() => {
     const stopPlayer = player.connect();

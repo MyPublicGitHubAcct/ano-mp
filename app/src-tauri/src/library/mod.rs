@@ -33,6 +33,7 @@ pub mod smart;
 pub mod sort_key;
 #[cfg(test)]
 pub mod test_library;
+pub mod thumbs;
 pub mod transfer;
 pub mod watch;
 
@@ -70,6 +71,7 @@ impl From<rusqlite::Error> for Error {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
     pub id: i64,
@@ -278,6 +280,8 @@ fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
 
 /// A track as the library lists it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "Track"))]
 #[serde(rename_all = "camelCase")]
 pub struct TrackSummary {
     pub id: i64,

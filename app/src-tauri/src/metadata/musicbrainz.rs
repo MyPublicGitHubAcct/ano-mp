@@ -57,6 +57,7 @@ const SEARCH_LIMIT: u32 = 10;
 /// matcher and the UI handle every source alike; `release_group_id` is then
 /// their grouping of a release's issues (a Discogs master).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Release {
     pub id: String,
@@ -104,6 +105,7 @@ pub struct Release {
 
 /// A credit on a release, e.g. "Producer" by "Nigel Godrich".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Credit {
     pub role: String,
@@ -111,6 +113,7 @@ pub struct Credit {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Label {
     pub name: Option<String>,
@@ -118,6 +121,7 @@ pub struct Label {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseTrack {
     /// 1-based medium (disc) position.
@@ -148,6 +152,8 @@ fn year_of(date: Option<&str>) -> Option<u32> {
 /// the links that lead to a biography. Stored as JSON in
 /// `artist_links.details`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "MusicBrainzArtist"))]
 #[serde(rename_all = "camelCase")]
 pub struct Artist {
     pub id: String,
@@ -190,6 +196,7 @@ pub struct Artist {
 
 /// An artist linked to another on MusicBrainz.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedArtist {
     pub id: String,
@@ -217,6 +224,7 @@ pub struct ReleaseGroup {
 
 /// A release group as an artist's discography lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseGroupEntry {
     pub id: String,

@@ -18,11 +18,12 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::http::{header, Response, StatusCode};
 
 use super::access::{self, OpenFolder};
 use super::commands::LibraryState;
+use super::thumbs::Size;
 use super::{track_path, Error};
 use crate::anomp;
 use crate::metadata::settings::{self, Kind, SourceId};
@@ -68,21 +69,70 @@ pub struct Art {
     pub source: SourceId,
     /// Whether it's the picture the user chose for the album.
     pub chosen: bool,
+    /// The file or download it was read from, for the thumbnails' index
+    /// (`thumbs`); `None` for a file opened from outside the library.
+    pub origin: Option<Origin>,
 }
 
-/// Art looked up so far, including what has none.
+/// Where a picture was read from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+pub enum Origin {
+    /// A track's embedded picture, or an image in a library folder.
+    File {
+        source: SourceId,
+        folder_id: i64,
+        relative: String,
+    },
+    /// A picture downloaded into the image cache.
+    Download { url: String },
+}
+
+impl Origin {
+    pub fn source(&self) -> SourceId {
+        match self {
+            Origin::File { source, .. } => *source,
+            Origin::Download { .. } => SourceId::CoverArtArchive,
+        }
+    }
+}
+
+/// Art looked up so far, including what has none: full size (`None`) and
+/// as thumbnails.
 #[derive(Default)]
 pub struct ArtCache(Mutex<CacheEntries>);
 
+type CacheKey = (ArtKey, Option<Size>);
+
 #[derive(Default)]
 struct CacheEntries {
-    entries: HashMap<ArtKey, (Option<Arc<Art>>, u64)>,
+    entries: HashMap<CacheKey, (Option<Arc<Art>>, u64)>,
     bytes: usize,
     clock: u64,
 }
 
 impl ArtCache {
     fn get(&self, key: ArtKey) -> Option<Option<Arc<Art>>> {
+        self.get_entry((key, None))
+    }
+
+    fn insert(&self, key: ArtKey, art: Option<Arc<Art>>) {
+        self.insert_entry((key, None), art);
+    }
+
+    pub fn get_sized(&self, key: ArtKey, size: Size) -> Option<Option<Arc<Art>>> {
+        self.get_entry((key, Some(size)))
+    }
+
+    pub fn insert_sized(&self, key: ArtKey, size: Size, art: Option<Arc<Art>>) {
+        self.insert_entry((key, Some(size)), art);
+    }
+
+    fn get_entry(&self, key: CacheKey) -> Option<Option<Arc<Art>>> {
         let mut cache = self.0.lock().unwrap_or_else(|e| e.into_inner());
         cache.clock += 1;
         let clock = cache.clock;
@@ -92,7 +142,7 @@ impl ArtCache {
         })
     }
 
-    fn insert(&self, key: ArtKey, art: Option<Arc<Art>>) {
+    fn insert_entry(&self, key: CacheKey, art: Option<Arc<Art>>) {
         let mut cache = self.0.lock().unwrap_or_else(|e| e.into_inner());
         cache.clock += 1;
         let clock = cache.clock;
@@ -112,12 +162,19 @@ impl ArtCache {
         }
     }
 
-    /// Forgets `key`'s art, e.g. after a cover was downloaded for it.
+    /// Forgets `key`'s art at every size, e.g. after a cover was
+    /// downloaded for it.
     pub fn remove(&self, key: ArtKey) {
         let mut cache = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((art, _)) = cache.entries.remove(&key) {
-            cache.bytes -= art.map_or(0, |art| art.data.len());
-        }
+        let mut freed = 0;
+        cache.entries.retain(|(entry, _), (art, _)| {
+            let keep = *entry != key;
+            if !keep {
+                freed += art.as_ref().map_or(0, |art| art.data.len());
+            }
+            keep
+        });
+        cache.bytes -= freed;
     }
 
     /// Forgets everything, e.g. after a scan may have changed the files.
@@ -283,6 +340,11 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
                 data: picture.data,
                 source,
                 chosen: false,
+                origin: Some(Origin::File {
+                    source,
+                    folder_id: file.folder_id,
+                    relative: file.relative.clone(),
+                }),
             })
         }),
         SourceId::Folder => {
@@ -302,11 +364,17 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
                 };
                 candidates.iter().find_map(|path| {
                     let (mime_type, data) = folder_art::read(path)?;
+                    let relative = super::scanner::relative_path(&root, path);
                     Some(Art {
                         mime_type: mime_type.into(),
                         data,
                         source,
                         chosen: false,
+                        origin: relative.map(|relative| Origin::File {
+                            source,
+                            folder_id: file.folder_id,
+                            relative,
+                        }),
                     })
                 })
             })
@@ -314,15 +382,18 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
         // Only pictures already downloaded; the metadata worker fetches them.
         SourceId::CoverArtArchive => {
             let images = &folders.library.images;
-            let (mime_type, data) = match reference {
-                Some(url) => images.get(url),
-                None => covers.iter().find_map(|url| images.get(url)),
+            let (url, (mime_type, data)) = match reference {
+                Some(url) => images.get(url).map(|found| (url.to_owned(), found)),
+                None => covers
+                    .iter()
+                    .find_map(|url| images.get(url).map(|found| (url.clone(), found))),
             }?;
             Some(Art {
                 mime_type: mime_type.into(),
                 data,
                 source,
                 chosen: false,
+                origin: Some(Origin::Download { url }),
             })
         }
         // Not album-art sources.
@@ -332,6 +403,7 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
 
 /// A picture the user can choose as an album's cover.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverCandidate {
     pub source: SourceId,
@@ -505,14 +577,16 @@ pub fn choose(
         }
     }
     library.art.remove(ArtKey::Album(album_id));
+    super::thumbs::forget(&library.conn(), ArtKey::Album(album_id))?;
     Ok(())
 }
 
 /// What an `anomp-art` URI asks for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
-    /// "/album-12" or "/track-7".
-    Art(ArtKey),
+    /// "/album-12" or "/track-7", full size or (`?size=list` or
+    /// `header`) as a thumbnail.
+    Art(ArtKey, Option<Size>),
     /// "/album-12/folder?ref=Scans%2Fback.jpg": a picture the "Choose
     /// cover" dialog offers, by its source and `CoverCandidate::preview`.
     Candidate {
@@ -525,8 +599,17 @@ pub enum Target {
 impl Target {
     /// Parses a URI's path and query.
     pub fn parse(path: &str, query: Option<&str>) -> Option<Target> {
+        let param = |name: &str| -> Option<String> {
+            let query = query?;
+            tauri::Url::parse(&format!("{SCHEME}://localhost/?{query}"))
+                .ok()?
+                .query_pairs()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.into_owned())
+        };
         if let Some(key) = ArtKey::from_path(path) {
-            return Some(Target::Art(key));
+            let size = param("size").and_then(|size| Size::from_query(&size));
+            return Some(Target::Art(key, size));
         }
         let (album, source) = path.trim_start_matches('/').split_once('/')?;
         let Some(ArtKey::Album(album_id)) = ArtKey::from_path(album) else {
@@ -590,7 +673,10 @@ pub fn respond(
         // The UI adds the library's scan count and the album's count of
         // `metadata-changed` events to the URL, so a rescan or a download
         // that changed the art gets a new one.
-        Target::Art(key) => (lookup(library, key), "max-age=86400"),
+        Target::Art(key, None) => (lookup(library, key), "max-age=86400"),
+        Target::Art(key, Some(size)) => {
+            (super::thumbs::lookup(library, key, size), "max-age=86400")
+        }
         // Only while the dialog is open; the file may change.
         Target::Candidate {
             album_id,
@@ -650,6 +736,7 @@ mod tests {
                 data: vec![0; size],
                 source: SourceId::Embedded,
                 chosen: false,
+                origin: None,
             }))
         };
         cache.insert(ArtKey::Album(1), art(CACHE_BUDGET / 2));
@@ -866,7 +953,20 @@ mod tests {
     fn parses_targets() {
         assert_eq!(
             Target::parse("/album-3", Some("g=1.0")),
-            Some(Target::Art(ArtKey::Album(3)))
+            Some(Target::Art(ArtKey::Album(3), None))
+        );
+        assert_eq!(
+            Target::parse("/album-3", Some("g=1.0&size=list")),
+            Some(Target::Art(ArtKey::Album(3), Some(Size::List)))
+        );
+        assert_eq!(
+            Target::parse("/track-4", Some("size=header")),
+            Some(Target::Art(ArtKey::Track(4), Some(Size::Header)))
+        );
+        // A size this version doesn't know is full size.
+        assert_eq!(
+            Target::parse("/album-3", Some("size=huge")),
+            Some(Target::Art(ArtKey::Album(3), None))
         );
         assert_eq!(
             Target::parse("/album-3/folder", Some("ref=Scans%2Fback%20cover.jpg&g=2")),

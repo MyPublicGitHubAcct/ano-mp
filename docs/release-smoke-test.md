@@ -87,7 +87,25 @@ section and say so in the results.
 - [ ] **Updates off.** With updates turned off, relaunch. Pass: nothing
   is checked (no request in the log).
 
-## 6. Clean up
+## 6. Performance (PLAN.md H18)
+
+On the Mac you use day to day, with your own library (note its track
+count from Settings › Library; the budgets are for 50,000 tracks), the
+release build, and nothing else busy. Note each number in the results.
+
+- [ ] **Launch to first paint.** Quit the app, wait a minute, open it.
+  Then Settings › Show logs, the newest `first paint after N ms` line.
+  Pass: at most 1,500 ms.
+- [ ] **Memory at rest.** One minute after launch, nothing playing, the
+  main window open on the library. In Activity Monitor › Memory, add up
+  `ano-mp` and its `ano-mp Web Content` and `ano-mp Networking`
+  processes (the "Memory" column). Pass: at most 400 MB in all.
+- [ ] **CPU while playing.** Play an album with the visualizer closed,
+  wait 30 s, and read `ano-mp` plus its Web Content process in Activity
+  Monitor › CPU over another 30 s. Pass: at most 5% in all. Then open
+  the visualizer (any style) and read them again: at most 25%.
+
+## 7. Clean up
 
 - [ ] Quit the app. Pass: no crash report on quitting.
 - [ ] Note the macOS version and Mac model in the results, and anything

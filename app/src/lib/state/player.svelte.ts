@@ -15,6 +15,7 @@ import {
   type SleepTimer,
 } from "$lib/api";
 import { errorText, t } from "$lib/i18n";
+import { applyEdits, listAction } from "$lib/queueEdits";
 import { playback } from "./position.svelte";
 import { attempt, toasts } from "./toasts.svelte";
 
@@ -41,6 +42,9 @@ class PlayerStore {
   stopAfter = $state<number | null>(null);
   sleep = $state.raw<SleepTimer | null>(null);
   #revision = 0;
+  /** The list version `items` is at (PLAN.md H16); -1 before the first. */
+  #listVersion = -1;
+  #resyncing = false;
 
   get playing() {
     return this.state === "playing";
@@ -58,7 +62,7 @@ class PlayerStore {
   apply(state: QueueState) {
     if (state.revision <= this.#revision && state.items === null) return; // stale
     this.#revision = state.revision;
-    if (state.items !== null) this.items = state.items;
+    this.#applyList(state);
     this.current = state.current;
     this.currentItem = state.currentItem;
     this.shuffle = state.shuffle;
@@ -75,6 +79,33 @@ class PlayerStore {
     this.sleep = state.sleep;
     for (const skipped of state.skipped)
       toasts.show(t("queue.skippedTrack", { title: skipped.title, error: errorText(skipped.error) }));
+  }
+
+  /** Takes the list from a state: whole, or as edits to the copy. A missed
+      version (or an edit that doesn't fit) asks for the whole state. */
+  #applyList(state: QueueState) {
+    let action = listAction(this.#listVersion, state);
+    if (action === "apply") {
+      try {
+        this.items = applyEdits(this.items, state.edits ?? []);
+        this.#listVersion = state.listVersion;
+      } catch {
+        action = "resync";
+      }
+    }
+    if (action === "replace") {
+      this.items = state.items ?? [];
+      this.#listVersion = state.listVersion;
+    } else if (action === "resync" && !this.#resyncing) {
+      this.#resyncing = true;
+      attempt(async () => {
+        try {
+          this.apply(await queueApi.state());
+        } finally {
+          this.#resyncing = false;
+        }
+      });
+    }
   }
 
   /** Follows the backend; returns a function that stops. */

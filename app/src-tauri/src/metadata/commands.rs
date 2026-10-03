@@ -55,6 +55,10 @@ pub fn metadata_save_settings<R: Runtime>(
     let saved =
         settings::save_service_settings(&state.conn(), settings).map_err(|e| e.to_string())?;
     state.art.clear();
+    // The sources or their order changed: any album may show another.
+    if let Err(error) = crate::library::thumbs::forget_all(&state.conn()) {
+        log::warn!("{error}");
+    }
     worker::enrich_library(&app);
     Ok(with_sources(saved))
 }
@@ -92,6 +96,10 @@ pub fn metadata_reset_settings<R: Runtime>(
 ) -> Result<MetadataSettings, String> {
     let settings = settings::reset_service_settings(&state.conn()).map_err(|e| e.to_string())?;
     state.art.clear();
+    // The sources or their order changed: any album may show another.
+    if let Err(error) = crate::library::thumbs::forget_all(&state.conn()) {
+        log::warn!("{error}");
+    }
     worker::enrich_library(&app);
     Ok(with_sources(settings))
 }
@@ -139,6 +147,7 @@ pub async fn metadata_update_artist<R: Runtime>(
 
 /// What one source offers in a dialog.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceCandidates<T> {
     pub source: SourceId,
@@ -376,6 +385,7 @@ pub async fn metadata_use_automatic_release<R: Runtime>(
 
 /// The picture the user chose for an album.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ChosenCover {
     pub source: SourceId,
@@ -383,6 +393,7 @@ pub struct ChosenCover {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverChoices {
     pub chosen: Option<ChosenCover>,

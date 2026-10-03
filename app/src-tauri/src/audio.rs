@@ -63,6 +63,7 @@ pub struct OutputStatus {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct PlayerStatus {
     state: PlayerState,
     position: f64,
@@ -329,6 +330,7 @@ pub fn change_volume<R: Runtime>(app: &AppHandle<R>, step: f64) -> Result<f64, S
 
 /// Every step from the file to the speakers (O10).
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SignalPathPayload {
     path: SignalPath,
@@ -363,6 +365,7 @@ pub fn player_set_tempo<R: Runtime>(
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Practice {
     /// The loop's start and end in seconds, if one is set.

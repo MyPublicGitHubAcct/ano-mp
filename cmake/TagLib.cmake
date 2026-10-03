@@ -2,10 +2,9 @@
 # built as a static library from the pinned release tarball, which bundles
 # utfcpp. Exposes the target TagLib::tag.
 
-FetchContent_Declare(taglib
+anomp_fetch_declare(taglib
     URL      https://github.com/taglib/taglib/releases/download/v2.3.2/taglib-2.3.2.tar.gz
-    URL_HASH SHA256=3ca2d8afaa7f1cf7f6ed10e511ebc368bfacd6dcaa3dbfa690b89e502e8963dc
-    DOWNLOAD_EXTRACT_TIMESTAMP OFF)
+    URL_HASH SHA256=3ca2d8afaa7f1cf7f6ed10e511ebc368bfacd6dcaa3dbfa690b89e502e8963dc)
 
 block(SCOPE_FOR VARIABLES PROPAGATE taglib_SOURCE_DIR taglib_BINARY_DIR)
     set(BUILD_SHARED_LIBS OFF)

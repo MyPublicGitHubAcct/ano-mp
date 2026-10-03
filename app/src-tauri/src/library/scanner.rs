@@ -133,6 +133,7 @@ pub mod testing {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScanReport {
     pub folder_id: i64,
@@ -159,6 +160,7 @@ pub struct ScanReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 pub struct ScanFailure {
     /// Absolute path.
     pub path: String,
@@ -167,6 +169,7 @@ pub struct ScanFailure {
 
 /// Sent before the first file is read and after each batch.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScanProgress {
     pub folder_id: i64,
@@ -910,7 +913,7 @@ fn is_audio(path: &Path, decodable: &mut HashMap<String, bool>) -> bool {
 
 /// `path` relative to `root`, '/'-separated; `None` if it isn't under
 /// `root` or isn't UTF-8.
-fn relative_path(root: &Path, path: &Path) -> Option<String> {
+pub(crate) fn relative_path(root: &Path, path: &Path) -> Option<String> {
     let components = path
         .strip_prefix(root)
         .ok()?

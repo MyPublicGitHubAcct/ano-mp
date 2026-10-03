@@ -57,7 +57,7 @@
   </div>
   <div class="cover">
     <div class="frame">
-      <Art albumId={item?.albumId ?? null} trackId={item?.trackId ?? null} size="100%" />
+      <Art albumId={item?.albumId ?? null} trackId={item?.trackId ?? null} size="100%" quality="full" />
     </div>
   </div>
 </section>

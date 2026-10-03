@@ -22,6 +22,7 @@ pub const COLLECTION_CHANGED_EVENT: &str = "collection-changed";
 
 /// What changed.
 #[derive(Debug, Clone, Copy, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum CollectionChanged {
     Playlists,
@@ -308,6 +309,7 @@ pub async fn data_export<R: Runtime>(app: AppHandle<R>, path: PathBuf) -> Result
 
 /// What importing a data file did.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DataImport {
     #[serde(flatten)]

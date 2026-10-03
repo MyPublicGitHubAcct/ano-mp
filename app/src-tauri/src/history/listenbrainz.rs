@@ -30,6 +30,7 @@ const RETRY_WAIT: Duration = Duration::from_secs(300);
 
 /// What the settings show about ListenBrainz.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ListenBrainzStatus {
     pub has_token: bool,

@@ -13,6 +13,9 @@ pub const MAX_OFFSET_DB: f64 = 15.0;
 
 /// A track's rules; `None` leaves each to its album, or the default.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+// Every field may be left out (`default`), so each is optional in TS.
+#[cfg_attr(test, ts(optional_fields = nullable))]
 #[serde(rename_all = "camelCase", default)]
 pub struct TrackPrefs {
     /// Passed over in album and shuffle play; it still plays when chosen.
@@ -26,6 +29,9 @@ pub struct TrackPrefs {
 
 /// An album's rules, for all of its tracks.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+// Every field may be left out (`default`), so each is optional in TS.
+#[cfg_attr(test, ts(optional_fields = nullable))]
 #[serde(rename_all = "camelCase", default)]
 pub struct AlbumPrefs {
     pub skip: Option<bool>,

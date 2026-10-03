@@ -77,6 +77,7 @@ pub fn art(track_id: i64) -> Option<Arc<Art>> {
         data: picture.data,
         source: SourceId::Embedded,
         chosen: false,
+        origin: None,
     }))
 }
 

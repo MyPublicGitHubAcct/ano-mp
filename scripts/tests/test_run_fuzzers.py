@@ -26,3 +26,31 @@ def test_the_preset_and_ffmpeg_build_use_the_same_compiler(fuzzers):
     script = (fuzzers.REPO_ROOT / "scripts" / "build-ffmpeg.sh").read_text()
     assert f"{fuzzers.LLVM}/bin/clang++" in presets
     assert f'FUZZ_LLVM="{fuzzers.LLVM}"' in script
+
+
+def test_the_build_uses_the_fuzz_developer_dir_when_set(fuzzers, tmp_path):
+    env = fuzzers.build_env({"PATH": "/usr/bin", "ANOMP_FUZZ_DEVELOPER_DIR": str(tmp_path)})
+    assert env == {
+        "PATH": "/usr/bin",
+        "ANOMP_FUZZ_DEVELOPER_DIR": str(tmp_path),
+        "DEVELOPER_DIR": str(tmp_path),
+    }
+
+
+def test_the_build_keeps_the_environment_without_it(fuzzers):
+    assert fuzzers.build_env({"PATH": "/usr/bin"}) == {"PATH": "/usr/bin"}
+
+
+def test_a_missing_fuzz_developer_dir_fails_the_build(fuzzers, tmp_path):
+    assert fuzzers.build_env({"ANOMP_FUZZ_DEVELOPER_DIR": str(tmp_path / "Xcode_0.app")}) is None
+
+
+def test_the_workflows_point_the_fuzz_build_at_the_same_xcode(fuzzers):
+    workflows = fuzzers.REPO_ROOT / ".github" / "workflows"
+    dirs = {
+        line.split(":", 1)[1].strip()
+        for name in ("ci.yml", "fuzz.yml")
+        for line in (workflows / name).read_text().splitlines()
+        if line.strip().startswith("ANOMP_FUZZ_DEVELOPER_DIR:")
+    }
+    assert len(dirs) == 1 and next(iter(dirs)).endswith(".app/Contents/Developer")

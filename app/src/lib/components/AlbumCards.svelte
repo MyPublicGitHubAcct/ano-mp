@@ -60,7 +60,7 @@
       >
         <div class="art">
           <button class="cover" title={t("library.openName", { name: album.title })} onclick={() => open(album)}>
-            <Art albumId={album.id} size="100%" />
+            <Art albumId={album.id} size="100%" quality="header" />
           </button>
           <button
             class="icon play"

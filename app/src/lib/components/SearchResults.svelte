@@ -223,7 +223,7 @@
               ondblclick={() => playAlbum(album)}
               oncontextmenu={(event) => albumMenu(event, album)}
             >
-              <Art albumId={album.id} size="100%" />
+              <Art albumId={album.id} size="100%" quality="header" />
               <span class="name">{album.title}</span>
               <span class="muted small">
                 {[album.albumArtist, album.year].filter((v) => v !== null).join(" · ")}

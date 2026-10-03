@@ -37,8 +37,9 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::anomp::{Event, MediaCommand, MediaControls, PlayerState};
 use crate::audio;
-use crate::library::art::{self, Art, ArtKey};
+use crate::library::art::{Art, ArtKey};
 use crate::library::commands::LibraryState;
+use crate::library::thumbs::{self, Size};
 use crate::queue;
 use crate::queue::model::{QueueState, TrackInfo, Uid};
 
@@ -139,13 +140,15 @@ pub fn art_changed<R: Runtime>(app: &AppHandle<R>, album_ids: &[i64]) {
     });
 }
 
-/// Looks up the art for `key` off the main thread, then publishes it there
+/// Looks up the art for `key`, as a thumbnail, off the main thread, then publishes it there
 /// if it is still the current item's.
 fn fetch_artwork<R: Runtime>(app: &AppHandle<R>, key: ArtKey) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        // Capped (PLAN.md H17): the OS shows it at most a few hundred
+        // points across, and gets it through the C API as bytes.
         let art = app.try_state::<LibraryState>().and_then(|library| {
-            art::lookup(&library, key).unwrap_or_else(|error| {
+            thumbs::lookup(&library, key, Size::Header).unwrap_or_else(|error| {
                 log::warn!("artwork: {error}");
                 None
             })
@@ -475,7 +478,9 @@ mod tests {
     ) -> QueueState {
         QueueState {
             revision: 1,
+            list_version: 0,
             items: None,
+            edits: None,
             length: usize::from(current.is_some()),
             current: current.as_ref().map(|_| 0),
             current_item: current,
@@ -510,6 +515,7 @@ mod tests {
             data: bytes.to_vec(),
             source: crate::metadata::settings::SourceId::Embedded,
             chosen: false,
+            origin: None,
         }
     }
 

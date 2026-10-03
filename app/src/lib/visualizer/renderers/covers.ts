@@ -101,7 +101,7 @@ function create(): Renderer {
         failed.add(id);
         loadMore();
       };
-      image.src = artUrl({ albumId: id }, library.version, library.artVersions.get(id) ?? 0);
+      image.src = artUrl({ albumId: id }, library.version, library.artVersions.get(id) ?? 0, "header");
     }
   }
 

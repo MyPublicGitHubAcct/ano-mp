@@ -18,6 +18,7 @@ use crate::anomp::{self, FileInfo};
 const MAX_PICTURE: usize = 8 << 20;
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TrackDetails {
     pub track: TrackSummary,
@@ -36,6 +37,7 @@ pub struct TrackDetails {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PictureView {
     pub kind: String,
@@ -48,6 +50,7 @@ pub struct PictureView {
 
 /// MusicBrainz ids from the tags, as MusicBrainz's pages take them.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MusicBrainzIds {
     pub recording: Option<String>,

@@ -20,6 +20,7 @@ pub enum CoverBasis {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverWall {
     pub basis: CoverBasis,
@@ -35,6 +36,7 @@ pub struct CoverWall {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverAlbum {
     pub id: i64,

@@ -52,6 +52,10 @@ jobs:
           restore-keys: fuzz-corpus-${{ runner.os }}-
 
       - name: Fuzz
+        # Xcode 16.4's ld, the runner's default, can't read clang 22's
+        # objects; run-fuzzers.py builds with this Xcode instead.
+        env:
+          ANOMP_FUZZ_DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
         run: scripts/run-fuzzers.py --seconds 1800
 
       - name: Upload corpus and failing inputs

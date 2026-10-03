@@ -287,6 +287,34 @@ pub async fn diagnostics_notices<R: Runtime>(app: AppHandle<R>) -> Result<String
     std::fs::read_to_string(path).map_err(|e| unreadable(e.to_string()))
 }
 
+/// When the process started, for `diagnostics_first_paint` (PLAN.md H18).
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+static PAINTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Notes the time the process started; `run` calls it first.
+pub fn mark_start() {
+    STARTED.get_or_init(std::time::Instant::now);
+}
+
+/// Milliseconds from `mark_start` to the first call, or None on later
+/// calls (a reload of the page isn't a launch).
+fn first_paint_ms() -> Option<u128> {
+    let started = STARTED.get()?;
+    if PAINTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    Some(started.elapsed().as_millis())
+}
+
+/// The main window's page has painted for the first time: logs the time
+/// since launch, for H18's launch budget (a count only).
+#[tauri::command]
+pub fn diagnostics_first_paint() {
+    if let Some(ms) = first_paint_ms() {
+        log::info!("first paint after {ms} ms");
+    }
+}
+
 /// Discogs' non-affiliation notice, in its terms' words, which About shows
 /// (PLAN.md §8.1).
 #[tauri::command]
@@ -297,6 +325,14 @@ pub fn diagnostics_discogs_notice() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_paint_is_timed_once_from_the_start() {
+        mark_start();
+        let first = first_paint_ms();
+        assert!(first.is_some());
+        assert_eq!(first_paint_ms(), None);
+    }
 
     #[test]
     fn the_bundle_carries_the_notices_under_the_name_read() {

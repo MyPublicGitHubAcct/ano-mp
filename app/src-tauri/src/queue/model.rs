@@ -88,6 +88,7 @@ pub fn open_timed_out(seconds: f64) -> String {
 
 /// What the queue shows about a track.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TrackInfo {
     pub track_id: i64,
@@ -124,6 +125,7 @@ impl TrackInfo {
 
 /// When a sleep timer stops playback.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(
     rename_all = "camelCase",
     rename_all_fields = "camelCase",
@@ -147,6 +149,8 @@ struct Sleep {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "QueueItem"))]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     pub uid: Uid,
@@ -154,7 +158,88 @@ pub struct Item {
     pub track: TrackInfo,
 }
 
+/// One change to the list (PLAN.md H16), sent to the frontend, which
+/// applies it to its copy (`app/src/lib/queueEdits.ts`), and applied to the
+/// saved rows (`store`). Indices are into the list as each edit finds it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(rename = "QueueEdit"))]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+pub enum Edit {
+    /// `items` go in before index `at`.
+    Insert {
+        at: usize,
+        items: Vec<Item>,
+        /// With shuffle on, where they go in the order before shuffling;
+        /// the store's business, not the frontend's.
+        #[serde(skip)]
+        #[cfg_attr(test, ts(skip))]
+        original_at: Option<usize>,
+    },
+    /// `count` items from `at` leave.
+    Remove { at: usize, count: usize },
+    /// `count` items from `from` move to `to`, an index in the list
+    /// without them.
+    Move {
+        from: usize,
+        count: usize,
+        to: usize,
+    },
+    /// The items from `at` show something new (their tags changed); same
+    /// uids, same tracks.
+    Update { at: usize, items: Vec<Item> },
+}
+
+/// The list's changes since one side last took them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum ListLog {
+    #[default]
+    Clean,
+    Edits(Vec<Edit>),
+    /// Replaced (or cleared, shuffled, unshuffled): send or write it whole.
+    Reset,
+}
+
+impl ListLog {
+    fn push(&mut self, edit: Edit) {
+        match self {
+            ListLog::Clean => *self = ListLog::Edits(vec![edit]),
+            ListLog::Edits(edits) => edits.push(edit),
+            ListLog::Reset => {}
+        }
+    }
+
+    fn is_clean(&self) -> bool {
+        *self == ListLog::Clean
+    }
+}
+
+/// `indices`, sorted, as `Remove` edits from the last range back, so each
+/// finds the indices before it unchanged.
+fn removals(mut indices: Vec<usize>) -> Vec<Edit> {
+    indices.sort_unstable();
+    let mut edits: Vec<Edit> = Vec::new();
+    for index in indices.into_iter().rev() {
+        match edits.last_mut() {
+            Some(Edit::Remove { at, count }) if *at == index + 1 => {
+                *at = index;
+                *count += 1;
+            }
+            _ => edits.push(Edit::Remove {
+                at: index,
+                count: 1,
+            }),
+        }
+    }
+    edits
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Repeat {
     #[default]
@@ -165,6 +250,7 @@ pub enum Repeat {
 
 /// A track that couldn't be opened and was passed over.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Skipped {
     pub uid: Uid,
@@ -213,13 +299,18 @@ pub trait Player {
 
 /// What the UI needs to show the queue and the current track.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct QueueState {
     /// Increases with every state sent.
     pub revision: u64,
-    /// The whole list, only when it changed since the previous state (and in
-    /// every full state), so moving to the next track doesn't resend it.
+    /// Increases with every state that changes the list (PLAN.md H16).
+    pub list_version: u64,
+    /// The whole list, when it was replaced (and in every full state).
     pub items: Option<Vec<Item>>,
+    /// Otherwise, when it changed: the edits from `list_version - 1`. A
+    /// frontend that has another version asks for the whole state.
+    pub edits: Option<Vec<Edit>>,
     pub length: usize,
     /// Index of the current item; `None` only when the queue is empty.
     pub current: Option<usize>,
@@ -260,6 +351,9 @@ pub struct QueueState {
 #[serde(rename_all = "camelCase", default)]
 pub struct Saved {
     pub tracks: Vec<i64>,
+    /// The items' uids, as the store saved them; empty for new ones.
+    #[serde(skip)]
+    pub uids: Vec<Uid>,
     /// With shuffle on, the order before shuffling, as indices into `tracks`.
     pub original: Option<Vec<usize>>,
     pub current: Option<usize>,
@@ -319,7 +413,10 @@ pub struct Queue {
     unavailable: HashSet<Uid>,
     revision: u64,
     changed: bool,
-    list_changed: bool,
+    list_version: u64,
+    /// The list's changes not yet sent, and not yet saved (`take_stored`).
+    sent: ListLog,
+    stored: ListLog,
     skipped: Vec<Skipped>,
     /// Radio mode (O9): the host adds tracks as the queue runs out.
     radio: bool,
@@ -350,7 +447,9 @@ impl Queue {
             unavailable: HashSet::new(),
             revision: 0,
             changed: false,
-            list_changed: false,
+            list_version: 0,
+            sent: ListLog::Clean,
+            stored: ListLog::Clean,
             skipped: Vec::new(),
             radio: false,
             stop_after: None,
@@ -365,9 +464,16 @@ impl Queue {
     pub fn restore(saved: Saved, tracks: &HashMap<i64, TrackInfo>, seed: u64) -> Queue {
         let mut queue = Queue::new(seed);
         let mut index_of_saved = Vec::with_capacity(saved.tracks.len());
-        for id in &saved.tracks {
+        queue.next_uid = saved.uids.iter().max().map_or(1, |max| max + 1);
+        for (i, id) in saved.tracks.iter().enumerate() {
             index_of_saved.push(tracks.get(id).map(|track| {
-                let item = queue.new_item(track.clone());
+                let item = match saved.uids.get(i) {
+                    Some(&uid) => Item {
+                        uid,
+                        track: track.clone(),
+                    },
+                    None => queue.new_item(track.clone()),
+                };
                 queue.items.push(item);
                 queue.items.len() - 1
             }));
@@ -409,7 +515,8 @@ impl Queue {
             uids
         });
         queue.repeat = saved.repeat;
-        queue.list_changed = true;
+        // The store's rows are what was restored (less any `retain` drops).
+        queue.sent = ListLog::Reset;
         queue
     }
 
@@ -432,6 +539,7 @@ impl Queue {
             .and_then(|item| index.get(&item.uid).copied());
         Saved {
             tracks: kept.iter().map(|item| item.track.track_id).collect(),
+            uids: kept.iter().map(|item| item.uid).collect(),
             original: self.original.as_ref().map(|uids| {
                 uids.iter()
                     .filter_map(|uid| index.get(uid).copied())
@@ -445,6 +553,21 @@ impl Queue {
             },
             repeat: self.repeat,
         }
+    }
+
+    /// The list's changes since the store last took them (PLAN.md H16).
+    pub fn take_stored(&mut self) -> ListLog {
+        std::mem::take(&mut self.stored)
+    }
+
+    /// Every item, in play order.
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
+    /// With shuffle on, the uids in their order before shuffling.
+    pub fn original_order(&self) -> Option<&[Uid]> {
+        self.original.as_deref()
     }
 
     /// Marks the state as changed, so it is sent and saved.
@@ -475,7 +598,8 @@ impl Queue {
     /// Replaces what the items show with `tracks` (e.g. after a rescan);
     /// items whose track isn't in it are left as they were.
     pub fn update_tracks(&mut self, tracks: &HashMap<i64, TrackInfo>) {
-        for item in &mut self.items {
+        let mut changed = Vec::new();
+        for (index, item) in self.items.iter_mut().enumerate() {
             if let Some(track) = tracks.get(&item.track.track_id) {
                 // Why radio picked it stays.
                 let track = TrackInfo {
@@ -489,9 +613,21 @@ impl Queue {
                 };
                 if track != item.track {
                     item.track = track;
-                    self.list_changed = true;
+                    changed.push(index);
                 }
             }
+        }
+        // One edit per run of changed items.
+        let mut start = 0;
+        while start < changed.len() {
+            let mut end = start + 1;
+            while end < changed.len() && changed[end] == changed[end - 1] + 1 {
+                end += 1;
+            }
+            let at = changed[start];
+            let items = self.items[at..at + (end - start)].to_vec();
+            self.edited(Edit::Update { at, items });
+            start = end;
         }
     }
 
@@ -513,30 +649,44 @@ impl Queue {
 
     /// The whole state, list included.
     pub fn state(&mut self) -> QueueState {
-        self.list_changed = true;
+        self.sent = ListLog::Reset;
         self.take_state().expect("a changed queue has a state")
     }
 
     /// The state if anything changed since the last one, marking it sent.
     pub fn take_state(&mut self) -> Option<QueueState> {
-        if !self.changed && !self.list_changed && self.skipped.is_empty() {
+        if !self.changed && self.sent.is_clean() && self.skipped.is_empty() {
             return None;
         }
         self.revision += 1;
+        let (items, edits) = match std::mem::take(&mut self.sent) {
+            ListLog::Clean => (None, None),
+            ListLog::Reset => (Some(self.items.clone()), None),
+            ListLog::Edits(edits) => (None, Some(edits)),
+        };
+        if items.is_some() || edits.is_some() {
+            self.list_version += 1;
+        }
         let state = QueueState {
             revision: self.revision,
-            items: self.list_changed.then(|| self.items.clone()),
+            list_version: self.list_version,
+            items,
+            edits,
             length: self.items.len(),
             current: self.current,
             current_item: self.current_item().cloned(),
             shuffle: self.original.is_some(),
             repeat: self.repeat,
-            unavailable: self
-                .items
-                .iter()
-                .map(|item| item.uid)
-                .filter(|uid| self.unavailable.contains(uid))
-                .collect(),
+            // In list order; most states have none, so skip the walk then.
+            unavailable: if self.unavailable.is_empty() {
+                Vec::new()
+            } else {
+                self.items
+                    .iter()
+                    .map(|item| item.uid)
+                    .filter(|uid| self.unavailable.contains(uid))
+                    .collect()
+            },
             skipped: std::mem::take(&mut self.skipped),
             has_next: self.current.is_some_and(|current| {
                 self.find(current, true, self.repeat == Repeat::All)
@@ -559,7 +709,6 @@ impl Queue {
             sleep: self.sleep.map(|sleep| sleep.timer),
         };
         self.changed = false;
-        self.list_changed = false;
         Some(state)
     }
 
@@ -601,7 +750,7 @@ impl Queue {
             .map(|track| self.new_item(track))
             .collect();
         self.unavailable.clear();
-        self.list_changed = true;
+        self.reset_list();
         let mut start = start.min(self.items.len() - 1);
         if !chosen && self.items[start].track.skip {
             start = (start..self.items.len())
@@ -670,18 +819,24 @@ impl Queue {
             _ => self.items.len(),
         };
         let current_uid = self.current_item().map(|item| item.uid);
-        self.items.splice(at..at, new);
+        let mut original_at = None;
         if let Some(original) = &mut self.original {
             let at = match current_uid.filter(|_| next) {
                 Some(uid) => original.iter().position(|&o| o == uid).map_or(0, |i| i + 1),
                 None => original.len(),
             };
             original.splice(at..at, uids);
+            original_at = Some(at);
         }
+        self.edited(Edit::Insert {
+            at,
+            items: new.clone(),
+            original_at,
+        });
+        self.items.splice(at..at, new);
         if self.current.is_none() {
             self.current = Some(0);
         }
-        self.list_changed = true;
         self.sync_next(p);
     }
 
@@ -716,6 +871,12 @@ impl Queue {
             .iter()
             .filter(|item| !gone.contains(&item.uid))
             .count();
+        let indices = (0..self.items.len())
+            .filter(|&index| gone.contains(&self.items[index].uid))
+            .collect();
+        for edit in removals(indices) {
+            self.edited(edit);
+        }
         self.items.retain(|item| !gone.contains(&item.uid));
         if let Some(original) = &mut self.original {
             original.retain(|uid| !gone.contains(uid));
@@ -724,7 +885,6 @@ impl Queue {
             self.stop_after = None;
         }
         self.unavailable.retain(|uid| !gone.contains(uid));
-        self.list_changed = true;
         if self.items.is_empty() {
             return self.clear(p);
         }
@@ -757,7 +917,7 @@ impl Queue {
         let item = self.items.remove(from);
         self.items.insert(to, item);
         self.current = current_uid.and_then(|uid| self.index_of(uid));
-        self.list_changed = true;
+        self.edited(Edit::Move { from, count: 1, to });
         self.sync_next(p);
     }
 
@@ -765,21 +925,32 @@ impl Queue {
     /// the move: a block dragged together (F4).
     pub fn move_items(&mut self, p: &mut impl Player, uids: &[Uid], to: usize) {
         self.reconcile(p);
-        let moving: Vec<Item> = self
-            .items
-            .iter()
-            .filter(|item| uids.contains(&item.uid))
-            .cloned()
+        let selected: HashSet<Uid> = uids.iter().copied().collect();
+        let indices: Vec<usize> = (0..self.items.len())
+            .filter(|&index| selected.contains(&self.items[index].uid))
             .collect();
-        if moving.is_empty() {
+        if indices.is_empty() {
             return;
         }
+        let moving: Vec<Item> = indices
+            .iter()
+            .map(|&index| self.items[index].clone())
+            .collect();
         let current_uid = self.current_item().map(|item| item.uid);
-        self.items.retain(|item| !uids.contains(&item.uid));
+        self.items.retain(|item| !selected.contains(&item.uid));
         let to = to.min(self.items.len());
+        // Sent as the block leaving and coming back; the store keeps the
+        // moved items' places in the order before shuffling.
+        for edit in removals(indices) {
+            self.edited(edit);
+        }
+        self.edited(Edit::Insert {
+            at: to,
+            items: moving.clone(),
+            original_at: None,
+        });
         self.items.splice(to..to, moving);
         self.current = current_uid.and_then(|uid| self.index_of(uid));
-        self.list_changed = true;
         self.sync_next(p);
     }
 
@@ -807,7 +978,7 @@ impl Queue {
         self.resume_at = 0.0;
         self.unavailable.clear();
         self.radio = false;
-        self.list_changed = true;
+        self.reset_list();
     }
 
     /// Marks the items of `track_ids` unavailable, their folders being out
@@ -953,7 +1124,7 @@ impl Queue {
             self.items.extend(by_uid.into_values()); // None, if the invariant holds.
             self.current = current_uid.and_then(|uid| self.index_of(uid));
         }
-        self.list_changed = true;
+        self.reset_list();
         self.sync_next(p);
     }
 
@@ -1265,6 +1436,18 @@ impl Queue {
         self.positions.push((track_id, value));
     }
 
+    /// Notes an edit for the frontend and the store.
+    fn edited(&mut self, edit: Edit) {
+        self.stored.push(edit.clone());
+        self.sent.push(edit);
+    }
+
+    /// The list was replaced: both sides get it whole.
+    fn reset_list(&mut self) {
+        self.sent = ListLog::Reset;
+        self.stored = ListLog::Reset;
+    }
+
     fn new_item(&mut self, track: TrackInfo) -> Item {
         let uid = self.next_uid;
         self.next_uid += 1;
@@ -1557,7 +1740,7 @@ impl Queue {
             }
         }
         self.current = Some(0);
-        self.list_changed = true;
+        self.reset_list();
         0
     }
 
@@ -2852,5 +3035,213 @@ mod tests {
         assert_eq!(saved.position, 0.0);
         queue.next(&mut p);
         assert_eq!(queue.saved(5.0).current, Some(1));
+    }
+
+    // ---- Numbered edits (PLAN.md H16) ------------------------------------
+
+    /// `before`'s uids after `edits`, applied as the frontend applies them.
+    fn replay(mut list: Vec<Uid>, edits: &[Edit]) -> Vec<Uid> {
+        for edit in edits {
+            match edit {
+                Edit::Insert { at, items, .. } => {
+                    list.splice(*at..*at, items.iter().map(|item| item.uid));
+                }
+                Edit::Remove { at, count } => {
+                    list.drain(*at..*at + *count);
+                }
+                Edit::Move { from, count, to } => {
+                    let moving: Vec<Uid> = list.drain(*from..*from + *count).collect();
+                    list.splice(*to..*to, moving);
+                }
+                Edit::Update { at, items } => {
+                    for (offset, item) in items.iter().enumerate() {
+                        assert_eq!(list[at + offset], item.uid, "an update keeps its uids");
+                    }
+                }
+            }
+        }
+        list
+    }
+
+    fn uids(queue: &Queue) -> Vec<Uid> {
+        queue.items.iter().map(|item| item.uid).collect()
+    }
+
+    /// Takes the state and the store's log after an edit, and checks both
+    /// edit lists turn `before` into the list as it is now.
+    fn edits_since(queue: &mut Queue, before: &[Uid]) -> Vec<Edit> {
+        let state = queue.take_state().expect("a changed queue has a state");
+        assert!(
+            state.items.is_none(),
+            "an edit isn't sent as the whole list"
+        );
+        let edits = state.edits.expect("edits");
+        assert_eq!(replay(before.to_vec(), &edits), uids(queue));
+        assert_eq!(queue.take_stored(), ListLog::Edits(edits.clone()));
+        edits
+    }
+
+    #[test]
+    fn list_changes_go_out_as_numbered_edits_on_50_000_items() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos(1..=50_000), 10, false);
+        let first = queue.take_state().unwrap();
+        assert_eq!(first.items.as_ref().map(Vec::len), Some(50_000));
+        assert_eq!(queue.take_stored(), ListLog::Reset);
+        let mut version = first.list_version;
+
+        let mut step = |queue: &mut Queue, edit: &dyn Fn(&mut Queue, &mut Fake)| {
+            let before = uids(queue);
+            edit(queue, &mut p);
+            let edits = edits_since(queue, &before);
+            version += 1;
+            assert_eq!(queue.list_version, version);
+            edits
+        };
+        // Play next: one insert after the current item.
+        let edits = step(&mut queue, &|q, p| q.add(p, infos([7, 8]), true));
+        assert!(
+            matches!(edits[..], [Edit::Insert { at: 11, ref items, original_at: None }] if items.len() == 2)
+        );
+        // Add to the end.
+        step(&mut queue, &|q, p| q.add(p, infos(60_000..60_010), false));
+        // Remove scattered items: one edit per run, the last run first.
+        let edits = step(&mut queue, &|q, p| {
+            let all = uids(q);
+            let gone = [all[3], all[4], all[5], all[9000], all[49_999]];
+            q.remove(p, &gone);
+        });
+        assert_eq!(
+            edits,
+            [
+                Edit::Remove {
+                    at: 49_999,
+                    count: 1
+                },
+                Edit::Remove { at: 9000, count: 1 },
+                Edit::Remove { at: 3, count: 3 },
+            ]
+        );
+        // Move one item, then a scattered block.
+        let edits = step(&mut queue, &|q, p| {
+            let uid = uids(q)[20_000];
+            q.move_item(p, uid, 2);
+        });
+        assert_eq!(
+            edits,
+            [Edit::Move {
+                from: 20_000,
+                count: 1,
+                to: 2
+            }]
+        );
+        step(&mut queue, &|q, p| {
+            let all = uids(q);
+            q.move_items(p, &[all[100], all[101], all[30_000]], 40_000);
+        });
+        // A state with nothing else changed sends no list.
+        queue.set_repeat(&mut p, Repeat::All);
+        let state = queue.take_state().unwrap();
+        assert!(state.items.is_none() && state.edits.is_none());
+        assert_eq!(state.list_version, version);
+        assert_eq!(queue.take_stored(), ListLog::Clean);
+    }
+
+    #[test]
+    fn retagged_tracks_go_out_as_updates_of_their_runs() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos(1..=10), 0, false);
+        queue.take_state();
+        queue.take_stored();
+        let before = uids(&queue);
+        let retagged: HashMap<i64, TrackInfo> = [3, 4, 8]
+            .into_iter()
+            .map(|id| {
+                (
+                    id,
+                    TrackInfo {
+                        title: format!("new {id}"),
+                        ..info(id)
+                    },
+                )
+            })
+            .collect();
+        queue.update_tracks(&retagged);
+        let edits = edits_since(&mut queue, &before);
+        assert!(
+            matches!(edits[..], [Edit::Update { at: 2, ref items }, Edit::Update { at: 7, .. }] if items.len() == 2)
+        );
+        assert_eq!(queue.items[7].track.title, "new 8");
+    }
+
+    #[test]
+    fn replacing_clearing_and_shuffling_send_the_whole_list() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos(1..=20), 0, false);
+        let mut version = queue.take_state().unwrap().list_version;
+        for change in [
+            &(|q: &mut Queue, p: &mut Fake| q.set_shuffle(p, true))
+                as &dyn Fn(&mut Queue, &mut Fake),
+            &|q, p| q.set_shuffle(p, false),
+            &|q, p| q.clear(p),
+        ] {
+            queue.take_stored();
+            change(&mut queue, &mut p);
+            let state = queue.take_state().unwrap();
+            version += 1;
+            assert_eq!(state.list_version, version);
+            assert_eq!(state.items.as_ref().map(Vec::len), Some(queue.items.len()));
+            assert!(state.edits.is_none());
+            assert_eq!(queue.take_stored(), ListLog::Reset);
+        }
+        // The whole state asked for is a new version too, so an edit sent
+        // before it isn't applied again.
+        queue.add(&mut p, infos([1]), false);
+        let full = queue.state();
+        assert_eq!(full.list_version, version + 1);
+        assert!(full.items.is_some() && full.edits.is_none());
+        assert!(queue.take_state().is_none());
+    }
+
+    #[test]
+    fn an_insert_while_shuffled_says_where_it_goes_in_the_original_order() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos(1..=5), 0, false);
+        queue.set_shuffle(&mut p, true);
+        queue.take_state();
+        queue.take_stored();
+        queue.add(&mut p, infos([9]), true);
+        let ListLog::Edits(edits) = queue.take_stored() else {
+            panic!("an edit");
+        };
+        let current = queue.current_item().unwrap().uid;
+        let original = queue.original.as_ref().unwrap();
+        let after = original.iter().position(|&uid| uid == current).unwrap() + 1;
+        assert!(matches!(edits[..], [Edit::Insert { original_at: Some(at), .. }] if at == after));
+        assert_eq!(original[after], queue.items[1].uid);
+    }
+
+    #[test]
+    fn a_restored_queue_keeps_its_saved_uids() {
+        let tracks: HashMap<i64, TrackInfo> = (1..=4).map(|id| (id, info(id))).collect();
+        let saved = Saved {
+            tracks: vec![1, 2, 99, 4],
+            uids: vec![10, 20, 30, 40],
+            current: Some(1),
+            ..Saved::default()
+        };
+        let mut queue = Queue::restore(saved, &tracks, 1);
+        assert_eq!(uids(&queue), [10, 20, 40]);
+        let state = queue.take_state().unwrap();
+        assert!(state.items.is_some());
+        // The rows are what was saved: nothing to write but the drop.
+        assert_eq!(queue.take_stored(), ListLog::Clean);
+        let mut p = Fake::default();
+        queue.add(&mut p, infos([3]), false);
+        assert_eq!(queue.items.last().unwrap().uid, 41);
     }
 }

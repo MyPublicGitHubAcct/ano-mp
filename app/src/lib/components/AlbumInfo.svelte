@@ -11,7 +11,7 @@
   import { webLink } from "$lib/links";
   import { openLink } from "$lib/openLink";
   import { untrack } from "svelte";
-  import { metadata, type AlbumDetails, type AlbumFact, type AlbumLink, type Release, type SourceId } from "$lib/api";
+  import { metadata, type AlbumDetails, type AlbumFact, type SourcedLink, type Release, type SourceId } from "$lib/api";
   import { formatDate, formatDay, formatLabels, formatMedia, formatTime, percent } from "$lib/format";
   import { count, errorText, t } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
@@ -86,7 +86,7 @@
   }
 
   /** What was fetched for `link`, if it's still for the release linked. */
-  const fetchedFor = (link: AlbumLink) => {
+  const fetchedFor = (link: SourcedLink) => {
     const result = fetched[link.source];
     return result && result.id === link.externalId ? result : null;
   };
@@ -128,7 +128,7 @@
   });
   const showDescription = $derived(appSettings.display.showDescriptions);
 
-  function status(link: AlbumLink | null) {
+  function status(link: SourcedLink | null) {
     if (!details) return "";
     if (link === null) return details.canLookUp ? t("album.notLookedUp") : "";
     switch (link.status) {
@@ -143,7 +143,7 @@
     }
   }
 
-  function describeLink(link: AlbumLink) {
+  function describeLink(link: SourcedLink) {
     const day = formatDay(link.checkedAt);
     switch (link.status) {
       case "matched":
@@ -272,7 +272,7 @@
       aria-label={t("album.chooseCoverFor", { title: album.title })}
       onclick={chooseCover}
     >
-      <Art albumId={album.id} size="100%" />
+      <Art albumId={album.id} size="100%" quality="header" />
     </button>
     <div class="facts">
       {#if details}

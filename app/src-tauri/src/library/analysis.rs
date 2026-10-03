@@ -38,6 +38,7 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(500);
 const ENVELOPE_SCALE: f32 = 127.0;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisProgress {
     /// Whether the whole library is being analysed.
@@ -51,6 +52,7 @@ pub struct AnalysisProgress {
 
 /// A track's analysis, as the UI shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TrackAnalysis {
     pub error: Option<String>,

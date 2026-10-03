@@ -14,6 +14,13 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "ANOMP_BUILD_TESTS": "OFF" }
     },
     {
+      "name": "bench",
+      "displayName": "Release with the tests, for scripts/bench.py's core benchmarks (PLAN.md H18)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/bench",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
       "name": "asan",
       "displayName": "Debug with AddressSanitizer and UndefinedBehaviorSanitizer (PLAN.md H6)",
       "generator": "Ninja",
@@ -63,7 +70,8 @@
     { "name": "release", "configurePreset": "release" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "tsan", "configurePreset": "tsan" },
-    { "name": "fuzz", "configurePreset": "fuzz" }
+    { "name": "fuzz", "configurePreset": "fuzz" },
+    { "name": "bench", "configurePreset": "bench" }
   ],
   "testPresets": [
     { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },

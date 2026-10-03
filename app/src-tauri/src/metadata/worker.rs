@@ -47,6 +47,10 @@ impl<R: Runtime> Host for TauriHost<R> {
     fn art_changed(&mut self, album_id: i64) {
         if let Some(library) = self.app.try_state::<LibraryState>() {
             library.art.remove(ArtKey::Album(album_id));
+            let key = ArtKey::Album(album_id);
+            if let Err(error) = crate::library::thumbs::forget(&library.conn(), key) {
+                log::warn!("{error}");
+            }
         }
     }
 

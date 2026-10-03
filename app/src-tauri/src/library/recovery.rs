@@ -29,6 +29,7 @@ const MAX_PROBLEMS: usize = 20;
 
 /// What the launch check found.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase", tag = "state")]
 pub enum DbCheck {
     Running,
@@ -43,6 +44,7 @@ pub enum DbCheck {
 
 /// A copy of the database, as the UI shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CopyInfo {
     pub file_name: String,

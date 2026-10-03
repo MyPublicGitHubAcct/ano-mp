@@ -10,6 +10,7 @@ use crate::metadata::artists::{self, ArtistInfo};
 use crate::metadata::settings::{self, SourceId};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistPage {
     pub id: i64,
@@ -24,6 +25,7 @@ pub struct ArtistPage {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistAlbum {
     pub id: i64,
