@@ -3,7 +3,8 @@
 The §8.1 items in `PLAN.md` that only the owner can decide (Phase 7 Step 6),
 ordered by how much they block. Each brief says what has to be decided, the
 options, what it blocks in §8.2–8.3, and what could be checked from the
-repo. Nothing here is decided. Record each decision in `PLAN.md` §8.1 (and
+repo. Nothing here is decided (asked again 2026-10-02, Step 8: all eight
+still open); only the drafts at the end are reviewed. Record each decision in `PLAN.md` §8.1 (and
 §4 where it changes a decision there), with its date.
 
 Written 2026-10-02. Checks made from here: the code, read-only DNS and
@@ -192,8 +193,9 @@ release too:
 - **GitHub settings (from Step 2):** secret scanning with push protection
   and Dependabot security updates, turned on in the repository's settings.
 
-## Drafts awaiting your wording
+## Drafts reviewed
 
+Kept as drafted (owner, 2026-10-02):
 - `CHANGELOG.md`'s first entry (the release notes `release.py` cuts).
 - `error.noticesUnreadable` in `en.json`: "The third-party notices
   couldn't be read" (shown only if the bundled file is missing).

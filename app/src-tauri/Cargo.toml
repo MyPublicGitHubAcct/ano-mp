@@ -87,6 +87,11 @@ tempfile = "3"
 # against app/src/lib/generated/settings.ts; test-only, so not in the app.
 ts-rs = { version = "12", default-features = false, features = ["serde-compat"] }
 
+[features]
+# `--self-test`: a check of the sandboxed bundle that CI runs (PLAN.md H14,
+# scripts/self-test-bundle.py). Never in a release build.
+self-test = []
+
 # See https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

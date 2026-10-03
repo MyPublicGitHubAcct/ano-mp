@@ -89,9 +89,10 @@ impl LibraryState {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "self-test"))]
 impl LibraryState {
-    /// A library over `conn`, for tests; scans aren't possible.
+    /// A library over `conn`, for tests and the bundle's self-test; scans
+    /// aren't possible.
     pub fn for_tests(conn: Connection) -> LibraryState {
         LibraryState {
             db_path: PathBuf::new(),

@@ -126,6 +126,47 @@ ID signing and notarization ([PLAN.md](PLAN.md) §8).
 | Rebuild FFmpeg from scratch | `scripts/build-ffmpeg.sh --force` | repo root |
 | Regenerate decoder test fixtures (rarely; needs `brew install ffmpeg vorbis-tools`) | `scripts/make-test-fixtures.py` | repo root |
 
+## When GitHub Actions run
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs
+`scripts/check-all.py`, the same command you can run locally. It takes a long
+time on a macOS runner (it builds FFmpeg, JUCE and every sanitizer preset), so
+it doesn't run on every push. It runs:
+
+- **On a version tag.** Pushing a `v*` tag starts
+  [release.yml](.github/workflows/release.yml), which runs all of CI first and
+  builds the release only if CI passes:
+  ```sh
+  scripts/version.py 0.2.0      # set the version everywhere, then commit
+  git tag v0.2.0 && git push origin v0.2.0
+  ```
+- **By hand,** on any branch: `gh workflow run ci.yml --ref <branch>`, or
+  Actions › CI › Run workflow on GitHub.
+
+The weekly fuzzing run ([fuzz.yml](.github/workflows/fuzz.yml)) runs on its
+own schedule, Mondays at 06:00 UTC. Between releases, the pre-commit hook
+(`git config core.hooksPath scripts/hooks`) runs `scripts/check-all.py --quick`
+on every commit, and `scripts/check-all.py` runs the full set locally.
+
+Dependabot's monthly pull requests don't get CI automatically. Run CI by hand
+on their branch, or run `scripts/check-all.py` locally, before you merge them.
+
+### Other ways to set the triggers
+
+To change when CI runs, edit the `on:` block at the top of `ci.yml`. Keep
+`workflow_call`, because `release.yml` uses it.
+
+| Option | `on:` in `ci.yml` | Trade-off |
+|---|---|---|
+| **Version tag and by hand** (current) | `workflow_call:` and `workflow_dispatch:` | The fewest runs. A broken commit is found only at release time, or when you run a check yourself. |
+| **When the version changes on `main`** | add `push:` with `branches: [main]` and `paths:` listing the files `scripts/version.py` writes: `CMakeLists.txt`, `app/package.json`, `app/package-lock.json`, `app/src-tauri/Cargo.toml`, `app/src-tauri/Cargo.lock`, `app/src-tauri/tauri.conf.json` | Checks a version bump before you tag it. Dependency updates also change `Cargo.lock` and `package-lock.json`, so they trigger it too. |
+| **Pull requests only** | add `pull_request:` | Every pull request is checked before it is merged, Dependabot's included. Direct pushes to `main` aren't checked. |
+| **Pushes to `main` and pull requests** | add `push:` with `branches: [main]`, and `pull_request:` | `main` is always checked. Work-in-progress branches aren't. |
+| **Every push and pull request** (the old setting) | add `push:` with `branches: ["**"]`, and `pull_request:` | Every commit is checked. Uses the most runner time. |
+
+To stop the weekly fuzzing too, delete the `schedule:` block in `fuzz.yml`
+and keep `workflow_dispatch:`, so it can still be run by hand.
+
 ## Troubleshooting
 
 - **`FFmpeg not found in …third_party/ffmpeg/macos-universal`**: run

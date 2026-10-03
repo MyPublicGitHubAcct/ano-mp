@@ -13,6 +13,8 @@ mod media;
 mod metadata;
 mod queue;
 mod remote;
+#[cfg(any(test, feature = "self-test"))]
+mod self_test;
 mod settings;
 mod shell;
 mod visualizer;
@@ -22,6 +24,11 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The bundle's self-test (PLAN.md H14) runs instead of the app.
+    #[cfg(feature = "self-test")]
+    if let Some(status) = self_test::run_if_asked() {
+        std::process::exit(status);
+    }
     // First, so a panic anywhere after is written down (PLAN.md H9).
     logging::install_panic_hook();
     tauri::Builder::default()

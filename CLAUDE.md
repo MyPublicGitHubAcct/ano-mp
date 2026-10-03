@@ -102,7 +102,11 @@ the third-party notices, the release workflow (unsigned until the
 Developer ID secrets exist), and the macOS build, bundle and notarization
 scripts. Step 6, the owner's decisions (§8.1), has its briefs in
 `docs/release-decisions.md`; the signed release waits on them.
-`docs/` holds the Step 4 checklist and the release decisions' briefs.
+Step 8, the signed release, has begun with what needs no decision: the
+clean-Mac smoke test (`docs/release-smoke-test.md`) and H14, the
+sandboxed bundle's self-test (`self_test.rs`, `self-test-bundle.py`).
+`docs/` holds the Step 4 checklist, the release decisions' briefs and
+the release smoke test.
 
 ## Build & test
 
@@ -147,7 +151,21 @@ scripts/check-bundle.py PATH.app # slices, FFmpeg install names, signatures, ent
 scripts/notarize.py PATH.dmg     # notarytool + staple; prints the plan without NOTARY_* keys
 scripts/release.py BUNDLE_DIR    # check-bundle, then dist/: DMG, app zip, SHA256SUMS, notes
 scripts/check-signing.py         # signing certificates' expiry (monthly once they exist)
+scripts/self-test-bundle.py      # build a sandboxed bundle with the self-test and run it (H14;
+                                 #   CI only: --local runs it here, in the real container)
 ```
+
+The bundle self-test (PLAN.md H14) is `src-tauri/src/self_test.rs`,
+compiled in only with the `self-test` Cargo feature: `ano-mp --self-test`
+runs instead of the app, with no window and none of the app's files. It
+writes the core's fixtures (embedded; `every_audio_fixture_is_embedded`
+fails when one is added to `core/tests/fixtures/` but not to its list)
+into the temporary folder, then scans, resolves the bookmark, reads covers,
+decodes and plays a gapless hand-off at volume 0 (skipped without an output
+device), one line per stage. `check-all.py` runs `self-test-bundle.py`,
+which builds into `target/self-test` and does nothing outside CI unless
+given `--local`. `cargo run --features self-test -- --self-test` runs it
+unsandboxed. A new sandbox-only behaviour gets a stage there.
 
 `THIRD_PARTY_NOTICES` (repo root) is generated and committed: regenerate it
 whenever `Cargo.lock`, `package-lock.json`, a native pin or `BUILD_INFO`
@@ -180,7 +198,11 @@ Node are pinned by `rust-toolchain.toml` and `.nvmrc`; `app/.npmrc` makes
 npm refuse a Node outside `package.json`'s `engines`.
 
 CI (`.github/workflows/ci.yml`, macOS) runs `scripts/check-all.py` and nothing
-else, so a new check goes in that script, not in the workflow. The repo
+else, so a new check goes in that script, not in the workflow. It runs by
+hand (Actions › CI › Run workflow) and through `release.yml` on a version
+tag, not on pushes or pull requests (README.md, "When GitHub Actions run"),
+so run `check-all.py` locally before pushing, and CI by hand on a branch
+whose result matters (Dependabot's). The repo
 checks it runs are read-only scripts: `check-c-api.py` (each `anomp.h`
 function declared in `anomp.rs` with the same parameter count, apart from its
 `NOT_BOUND` list), `check-sources.py` (the core's CMake source lists) and

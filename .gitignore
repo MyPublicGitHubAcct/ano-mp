@@ -11,6 +11,10 @@ app/dist/
 app/src-tauri/target/
 app/src-tauri/gen/
 
+# Python bytecode (scripts/)
+__pycache__/
+*.pyc
+
 # IDE / OS
 .vscode/*
 !.vscode/extensions.json

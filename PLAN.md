@@ -59,7 +59,12 @@ them in the app. On 2026-10-02 the order of the remaining work was set
 7. the release setup that needs no certificate (done 2026-10-02: one
    version number, third-party notices, the release workflow, the macOS
    build, bundle and notarization scripts); the signed release waits on
-   Step 6.
+   Step 6;
+8. the signed release as far as the owner's decisions allow (begun
+   2026-10-02: none decided yet, so its signing parts wait; done meanwhile:
+   the clean-Mac smoke-test checklist and H14, the sandboxed bundle's
+   self-test). CI has failed on `main` since Step 5, while every check
+   passes locally; its log is awaited.
 
 ## 1. Architecture
 
@@ -143,7 +148,7 @@ Why this split:
 | Missing folders (H22): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned, unreadable folders' tracks dimmed in lists and left out of radio, smart playlists' play and Home's suggestions | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte`, `app/src/lib/folders.ts` |
 | Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
 | 25 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links, unreadable folders) | `app/tests/` |
-| 399 passing `cargo test` tests (the bundled notices; files opened off the main thread: loading, timeouts and skips; cloud placeholders in scans and the analysis; a drive unmounted mid-scan; database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 405 passing `cargo test` tests (the bundle's self-test stages; the bundled notices; files opened off the main thread: loading, timeouts and skips; cloud placeholders in scans and the analysis; a drive unmounted mid-scan; database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
@@ -153,7 +158,9 @@ Why this split:
 | One version number: CMake's `project(VERSION)`, compiled into `anomp_version()`, the other copies set and checked by `version.py` | `CMakeLists.txt`, `scripts/version.py` |
 | Third-party notices, generated and checked, in the bundle and in Settings › About | `THIRD_PARTY_NOTICES`, `scripts/make-notices.py`, `scripts/licenses/`, `app/src/lib/components/NoticesDialog.svelte` |
 | Release tooling (unsigned until the Developer ID exists): the tag-triggered workflow, the universal build, the bundle check, notarization, checksums and notes from `CHANGELOG.md`, certificate expiry | `.github/workflows/release.yml`, `scripts/{build-app,check-bundle,notarize,release,check-signing}.py`, `CHANGELOG.md` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 72 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (also called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 79 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (by hand, and called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
+| The sandboxed bundle's self-test (H14): `--self-test` behind the `self-test` feature (scan, bookmark, covers, decoding and a gapless hand-off in the sandbox), built and run by `self-test-bundle.py` from `check-all.py` on CI | `app/src-tauri/src/self_test.rs`, `scripts/self-test-bundle.py` |
+| The clean-Mac smoke test for each release (§8.3, §8.7 step 6) | `docs/release-smoke-test.md` |
 
 Build and test:
 
@@ -2896,7 +2903,8 @@ in order. Step 6 runs alongside all of them.
      Discogs' notice. Tests: 15 script tests, a Rust test that the bundle
      maps the file under the name the command reads.
    - The release workflow (`release.yml`): on a `v*` tag it calls
-     `ci.yml` (now also `workflow_call`, and run on branch pushes only),
+     `ci.yml` (now also `workflow_call`, and run on branch pushes only;
+     since Step 8, by hand and through `release.yml` only),
      builds the universal app and DMG with `build-app.py`, notarizes when
      the secrets exist, and `release.py` checks the bundle, zips the app,
      writes `SHA256SUMS` and cuts the notes from the new `CHANGELOG.md`;
@@ -2925,6 +2933,53 @@ in order. Step 6 runs alongside all of them.
      distribution decision); the icon set (after the name); a first trial
      of `release.yml`; the wording of `CHANGELOG.md`'s first entry and of
      `error.noticesUnreadable`; the About page by eye.
+8. **The signed release (§8.3 with a Developer ID, §8.7), as far as the
+   owner's decisions allow. Begun 2026-10-02; its signing parts wait on
+   Step 6.**
+   - The owner's answers: Step 7 committed and pushed (`fd3aeae`); none
+     of the eight decisions in `docs/release-decisions.md` made; which of
+     the checklist's owner entries are done not known (none known to have
+     failed); `CHANGELOG.md`'s first entry and `error.noticesUnreadable`
+     kept as drafted; no identifier chosen, so no container move.
+   - CI (from the owner's screenshot of the Actions page): runs #6
+     ("completed step 5") and #9 ("completed phase 7 in six parts")
+     failed on `main`, #9 after 7 min; Dependabot's runs based on them fail
+     too. `check-all.py` passed here in full, all 24 steps, on the same
+     tree, so the cause is in the runner; the failing step's log is
+     awaited, and the fix comes first once it is in. Meanwhile the owner
+     set CI to run by hand and through `release.yml` only (`ci.yml`,
+     README's "When GitHub Actions run"), so a push no longer runs it.
+   - Done: `scripts/__pycache__` and `scripts/tests/__pycache__` (17
+     committed `.pyc` files) untracked and ignored.
+   - Done: Part 4's checklist, `docs/release-smoke-test.md`: checksums,
+     Gatekeeper on the DMG and at first launch, import and relaunch, MP3,
+     FLAC and AAC, seeking, a gapless album, media keys, a MusicBrainz
+     lookup, the log, and the update from the previous version (once the
+     updater exists). The owner runs it on each release's DMG. The dry
+     run of §8.7 waits on a signed trial of `release.yml`; `bench.py`
+     (§8.7 step 4) doesn't exist yet (M4).
+   - Done: H14, the sandboxed bundle's self-test (its entry), proposed as
+     Part 5's first item and agreed. Every suite passed afterwards:
+     ctest 115 (also under `asan` and `tsan`), `cargo test` 405 (9
+     ignored), `npm test` 25, `svelte-check` 0 errors, script tests 79,
+     `check-all.py` all 25 steps (new: "bundle self-test", which skips
+     itself outside CI).
+   - Waiting on the owner, in the order they block the first public
+     release:
+     1. the CI log of run #9 (and #6), then a run by hand after the fix;
+     2. the name, bundle identifier and publisher (Part 0's rename, then
+        the icon set from the artwork);
+     3. the distribution channel and where releases are hosted (Part 1,
+        the updater, if a direct download);
+     4. the Developer Program and the Developer ID certificate (Part 2),
+        then the App Store Connect API key and the six secrets (Part 3);
+     5. the JUCE licence, the AAC opinion, the privacy policy and support
+        URL, the `User-Agent` contact and MetaBrainz plan, crash
+        reporting;
+     6. the checklist's owner entries (`docs/step4-checklist.md`) and,
+        per release, `docs/release-smoke-test.md`.
+   - Next while those wait (Part 5, in the order proposed): `bench.py`
+     (M4) and H18's budgets, H20, H15, then H16 and H17.
 
 Then the signed release (§8.3 with a Developer ID, §8.7), then Phase 8. H20 (design
 records out of this file) is P2, but it can be pulled forward whenever
@@ -3055,7 +3110,8 @@ matches it.
       over a `juce::MemoryInputStream`.
   - Seed the corpus from `core/tests/fixtures/`, and build with ASan and
     UBSan (a `fuzz` preset).
-  - CI runs each target for 60 s on every push. A weekly job runs them
+  - CI runs each target for 60 s (on each version tag, through
+    release.yml, or by hand; not on every push since 2026-10-02). A weekly job runs them
     for longer and keeps the corpus as an artifact.
   - Each crash found becomes a regression test with a committed fixture.
   - **Done 2026-10-02 (the P1 targets and the CI run; the weekly long run
@@ -3465,6 +3521,33 @@ matches it.
     scan, play two tracks through a gapless hand-off, and read the
     covers.
   - CI runs it on the macOS runner after building the bundle.
+  - **Done 2026-10-02 (Step 8).** `app/src-tauri/src/self_test.rs`,
+    compiled in only with the `self-test` Cargo feature (no new crate):
+    `ano-mp --self-test` runs before Tauri starts, with no window and
+    none of the app's files. It writes the 21 core fixtures (embedded)
+    into the temporary folder (the container's when sandboxed), then:
+    the sandbox (`APP_SANDBOX_CONTAINER_ID`), a scratch library with the
+    folder added (a security-scoped bookmark) and scanned (every fixture a
+    track, none failed), the bookmark resolved, the two tagged fixtures'
+    covers through `art::lookup`, every file decoded (`analyse_file`, its
+    folder held), and the two shortest tracks through a gapless hand-off
+    at volume 0 (`advance_count`). Without an output device playback is
+    skipped (`--require-audio` fails instead); `--require-sandbox` fails
+    an unsandboxed run. One line per stage; nothing with a path.
+  - `scripts/self-test-bundle.py` builds the ad-hoc bundle with the
+    feature into `target/self-test` (apart from `build-app.py`'s), runs
+    the executable with `--require-sandbox` and checks the lines. It is
+    `check-all.py`'s "bundle self-test" step, which runs only on CI (`CI`
+    set) or with `--local`, since a sandboxed bundle runs in the app's
+    real container. No workflow change: CI's `check-all.py` runs it.
+  - Tests: 6 Rust tests (every stage outside the sandbox but playback, the
+    sandbox required, a folder that can't be written, the command line,
+    the lines, every fixture embedded) and 7 script tests. Run here:
+    unsandboxed with `cargo run --features self-test -- --self-test`, and
+    in the sandboxed bundle with the owner's go-ahead (the container's
+    temporary folder only; left as it was): every stage passed, the
+    hand-off after 0.5 s. Not yet seen on CI's runner, which may have no
+    output device (playback would be skipped there).
 - **H15 Typed IPC end to end.** Phase 6 notes that payloads other than
   the settings are still hand-written in `api.ts`. Derive their
   TypeScript types with ts-rs as the settings do. Then generate the
@@ -4075,7 +4158,9 @@ release workflow are in place, unsigned until the secrets exist.
   `scripts/notarize.py` does it with an App Store Connect API key, and
   prints the plan without one (Step 7).
 - Verify on a clean Mac: Gatekeeper accepts it (`spctl --assess`), first
-  launch, library import, update from the previous version.
+  launch, library import, update from the previous version. The checklist
+  is `docs/release-smoke-test.md` (Step 8), the owner's to run on each
+  release's DMG; with §8.7 step 6 in it.
 
 ### 8.4 iOS and iPadOS
 - App Store Connect record, bundle ID, distribution certificate and
@@ -4130,7 +4215,8 @@ release workflow are in place, unsigned until the secrets exist.
 5. Tag `vX.Y.Z`; the release workflow builds, signs, notarizes and
    packages, and leaves a draft release to publish.
 6. Smoke test each artifact on a clean machine: install/upgrade, play MP3,
-   FLAC and AAC, seek, gapless album, media keys, MusicBrainz lookup.
+   FLAC and AAC, seek, gapless album, media keys, MusicBrainz lookup
+   (`docs/release-smoke-test.md` on macOS).
 7. Publish the GitHub Release and the updater manifest; submit store builds
    (TestFlight → App Store review).
 8. After release: watch crash reports (if enabled) and issue tracker; keep
@@ -4275,6 +4361,7 @@ Steps:
     manifest, and release notes cut from `CHANGELOG.md`.
   - `check-signing.py` (with §8.3): lists the signing certificates'
     expiry dates from the keychain and warns within 60 days.
-- **Exit:** `check-all.py` runs in CI on every push, the scheduled job
+- **Exit:** `check-all.py` runs in CI (by hand and on each version tag
+  since 2026-10-02; the pre-commit hook runs `--quick`), the scheduled job
   reports outdated pins and advisories, and each §9.1 row either has its
   script or is marked manual.

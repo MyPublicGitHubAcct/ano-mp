@@ -8,8 +8,9 @@ test suites: the core (CMake debug preset and ctest, then ctest again
 under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
 ESLint, npm test and the build), THIRD_PARTY_NOTICES (make-notices.py
---check) and the Rust crate (clippy, cargo test,
-and cargo deny over its dependencies). CI runs this and nothing else, so
+--check), the Rust crate (clippy, cargo test,
+and cargo deny over its dependencies), and on CI the sandboxed bundle's
+self-test (self-test-bundle.py). CI runs this and nothing else, so
 a local run matches it; --quick suits a pre-commit hook.
 
 Every step runs even after one fails, and a summary at the end lists the
@@ -83,6 +84,9 @@ STEPS = [
         quick=False,
     ),
     Step("Rust tests", ["cargo", "test"], cwd=APP / "src-tauri", quick=False),
+    # The sandboxed bundle's self-test (H14); on CI only, unless run by
+    # hand with --local, since it runs in the app's real container.
+    Step("bundle self-test", script("self-test-bundle.py"), quick=False),
     # Advisories (fetched from RustSec), licences, bans and sources (deny.toml).
     Step(
         "Rust dependencies",
