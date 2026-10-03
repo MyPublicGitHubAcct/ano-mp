@@ -10,6 +10,7 @@
 #endif
 
 #include <functional>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -32,10 +33,13 @@ bool runEventsUntil (const std::function<bool()>& done)
 }
 } // namespace
 
-TEST_CASE ("C API reports a version", "[c-api]")
+TEST_CASE ("C API reports the project's version", "[c-api]")
 {
     REQUIRE (anomp_version() != nullptr);
-    CHECK (std::string_view (anomp_version()) == "0.1.0");
+    const std::string_view version (anomp_version());
+    // The top-level CMakeLists.txt's project(VERSION), not a copy of it.
+    CHECK (version == ANOMP_PROJECT_VERSION);
+    CHECK (std::regex_match (std::string (version), std::regex (R"(\d+\.\d+\.\d+)")));
 }
 
 TEST_CASE ("C API format query", "[c-api]")

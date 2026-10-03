@@ -172,8 +172,12 @@ What Step 5 (`PLAN.md` H11, H12) changed that only real disks, shares and
 iCloud show. The probe checks wait for your go-ahead (a sandboxed bundle
 uses the real container).
 
-- [ ] **A folder held open while a file opens off the main thread**
-  (probe). In the sandboxed bundle, play a scratch library's tracks: the
+- [x] **A folder held open while a file opens off the main thread**
+  (probe). *Passed 2026-10-02: the 21 fixtures played through with 20
+  gapless hand-offs, every load handed to the engine with its folder
+  held, none failed; then 9 skips back to back (paused), 5 superseded
+  while opening and cancelled, no folder left held; no warning or error
+  in the log, no crash report on quitting.* In the sandboxed bundle, play a scratch library's tracks: the
   bookmark is resolved on a blocking thread and held until the engine's
   opening thread reports the file. Pass: every track plays, gapless
   hand-offs included; nothing in the log says a file couldn't be opened.

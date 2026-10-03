@@ -96,8 +96,13 @@ the exit checks in a sandboxed bundle, has its checklist in
 `docs/step4-checklist.md`: the probe checks are done, the owner's (by
 hand, by ear, by eye) wait. Step 5 is done: H5 (fuzzing, `core/fuzz/`),
 H11 (files opened off the main thread) and H12 (cloud placeholders); its
-owner's checks are § 5 of the checklist.
-`docs/` holds the Step 4 checklist.
+owner's checks are § 5 of the checklist. Step 7, the release setup that
+needs no certificate (§8.2 and part of §8.3), is done: one version number,
+the third-party notices, the release workflow (unsigned until the
+Developer ID secrets exist), and the macOS build, bundle and notarization
+scripts. Step 6, the owner's decisions (§8.1), has its briefs in
+`docs/release-decisions.md`; the signed release waits on them.
+`docs/` holds the Step 4 checklist and the release decisions' briefs.
 
 ## Build & test
 
@@ -121,9 +126,53 @@ llvm@22`): Apple's clang has no libFuzzer runtime, and LLVM 21's ASan hangs
 at start-up on macOS 26. The `fuzz` preset (build/fuzz) compiles everything
 with it under ASan and UBSan and links FFmpeg's instrumented static build
 (`scripts/build-ffmpeg.sh --fuzz`, which `run-fuzzers.py` runs). A crash
-found becomes a regression test with a committed fixture; a new target goes
-in `core/fuzz/CMakeLists.txt` and `run-fuzzers.py`'s `TARGETS`.
+found becomes a regression test with a committed fixture in
+`core/tests/fixtures/fuzz/` ("Inputs the fuzzer found stay harmless" in
+`TagReaderTests.cpp`, which the asan preset runs with UBSan fatal); a new
+target goes in `core/fuzz/CMakeLists.txt` and `run-fuzzers.py`'s `TARGETS`.
+TagLib is built with only the formats FFmpeg plays (`cmake/TagLib.cmake`'s
+`WITH_*`): turn one on only with its FFmpeg demuxer.
 `.github/workflows/fuzz.yml` runs each target for 30 min weekly.
+
+Releases (PLAN.md §8.2, §8.3, §8.7):
+
+```sh
+scripts/version.py 0.2.0         # set the version everywhere (--check: compare only)
+scripts/make-notices.py          # regenerate THIRD_PARTY_NOTICES (--check in check-all)
+CI=true scripts/build-app.py     # universal .app and DMG (--native: this Mac only; ad-hoc
+                                 #   unless --identity/APPLE_SIGNING_IDENTITY, then hardened;
+                                 #   CI=true skips the DMG's Finder layout, which waits
+                                 #   on the Automation permission)
+scripts/check-bundle.py PATH.app # slices, FFmpeg install names, signatures, entitlements
+scripts/notarize.py PATH.dmg     # notarytool + staple; prints the plan without NOTARY_* keys
+scripts/release.py BUNDLE_DIR    # check-bundle, then dist/: DMG, app zip, SHA256SUMS, notes
+scripts/check-signing.py         # signing certificates' expiry (monthly once they exist)
+```
+
+`THIRD_PARTY_NOTICES` (repo root) is generated and committed: regenerate it
+whenever `Cargo.lock`, `package-lock.json`, a native pin or `BUILD_INFO`
+changes, or `check-all` fails (Dependabot's updates included). It lists
+the crates the app links (normal dependencies, both macOS targets), the
+npm packages in the built frontend (the list `app/vite.config.js`'s
+`bundledPackages` plugin writes), JUCE and what it vendors into the
+modules the core links (from `JUCE.spdx.json`: a new vendored library
+fails the script until it is listed), FFmpeg, TagLib, Signalsmith and
+Catch2. A licence outside `deny.toml`'s `allow` list fails it; a package
+without a licence text gets a standard one from `scripts/licenses/`. The
+bundle carries it (`bundle.resources`) and Settings › About shows it
+(`diagnostics_notices`).
+
+The release workflow (`.github/workflows/release.yml`, on a `v*` tag, or
+by hand for a trial) calls `ci.yml`, then runs `build-app.py`,
+`notarize.py` and `release.py`, and attaches dist/ to a draft GitHub
+Release. Checks go in the scripts, never in the workflow. Steps that
+need the Developer ID secrets are named "[signed releases]" and skipped
+without them, and the run warns that the build is unsigned. Release notes
+are the version's section of `CHANGELOG.md` (Keep a Changelog headings,
+`## [X.Y.Z] - date`): add to `## [Unreleased]` as you go, rename it when
+tagging. The hardened runtime is on exactly when a signing identity is
+given; `tauri.conf.json` keeps the ad-hoc local settings, and the bundle
+identifier is the owner's (`docs/release-decisions.md`).
 
 Tools beyond the build: `brew install uv gitleaks llvm@22`, and `cargo install
 cargo-deny --version 0.20.2 --locked` (the version CI installs). Rust and
@@ -135,7 +184,9 @@ else, so a new check goes in that script, not in the workflow. The repo
 checks it runs are read-only scripts: `check-c-api.py` (each `anomp.h`
 function declared in `anomp.rs` with the same parameter count, apart from its
 `NOT_BOUND` list), `check-sources.py` (the core's CMake source lists) and
-`check-migrations.py`. Scripts use the standard library only; their tests are
+`check-migrations.py`, and `version.py --check` (every copy of the version
+agrees); the full run adds `make-notices.py --check` (after the core's
+configure and the frontend build). Scripts use the standard library only; their tests are
 in `scripts/tests/` (pytest, run by `scripts/test-python.py`), each repo check
 with one test against the real tree. The full run also runs clippy, `cargo
 deny`, ESLint and the sanitizer presets; `--quick` is what the pre-commit
@@ -462,6 +513,8 @@ Constraints that shape the code and must not be broken casually:
   Allman braces. `juce_recommended_warning_flags` is on — keep it warning-clean.
 - New core source files must be added to the `add_library` list in `core/CMakeLists.txt`
   (and tests to `core/tests/CMakeLists.txt`); there is no globbing.
-- Version `0.1.0` is currently duplicated in `CMakeLists.txt` and hard-coded in
-  `anomp_version()`. Per `PLAN.md` §8.2 the CMake `project(VERSION)` becomes the single
-  source of truth — don't add a third copy.
+- The version is CMake's `project(VERSION)` (PLAN.md §8.2): `anomp_version()` is
+  compiled from it (`ANOMP_VERSION`, `core/CMakeLists.txt`), and the copies the tools
+  need (`Cargo.toml`, `Cargo.lock`, `tauri.conf.json`, `package.json`,
+  `package-lock.json`) are set together by `scripts/version.py X.Y.Z` and checked by
+  `version.py --check`. Never edit one by hand, and don't add another copy.

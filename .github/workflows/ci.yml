@@ -5,8 +5,12 @@
 name: CI
 
 on:
+  # Branches only: a version tag runs this through release.yml, which
+  # calls it before building the release.
   push:
+    branches: ["**"]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read

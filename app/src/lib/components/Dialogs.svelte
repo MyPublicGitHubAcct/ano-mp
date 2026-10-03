@@ -4,6 +4,7 @@
   import ChooseCoverDialog from "./ChooseCoverDialog.svelte";
   import FindArtistDialog from "./FindArtistDialog.svelte";
   import FindDetailsDialog from "./FindDetailsDialog.svelte";
+  import NoticesDialog from "./NoticesDialog.svelte";
   import PrefsDialog from "./PrefsDialog.svelte";
   import ShortcutsDialog from "./ShortcutsDialog.svelte";
   import SmartPlaylistDialog from "./SmartPlaylistDialog.svelte";
@@ -26,4 +27,6 @@
   {#key ui.dialog}<TrackInfoDialog trackId={ui.dialog.trackId} onclose={close} />{/key}
 {:else if ui.dialog?.kind === "shortcuts"}
   <ShortcutsDialog onclose={close} />
+{:else if ui.dialog?.kind === "notices"}
+  <NoticesDialog onclose={close} />
 {/if}

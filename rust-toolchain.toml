@@ -4,3 +4,5 @@
 channel = "1.98.1"
 profile = "minimal"
 components = ["clippy", "rustfmt"]
+# Both macOS architectures, for the universal app (scripts/build-app.py).
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

@@ -712,3 +712,32 @@ TEST_CASE ("Tags from a stream in memory match the file's", "[tags][fuzz]")
     CHECK (anomp::readTags (junk, parts, none).isEmpty());
     CHECK (none.title.isEmpty());
 }
+
+TEST_CASE ("Inputs the fuzzer found stay harmless", "[tags][fuzz]")
+{
+    // Each file in fixtures/fuzz is an input that once crashed or tripped a
+    // sanitizer in the tag fuzzer (PLAN.md H5); the asan preset runs this
+    // with UBSan errors fatal.
+    // - tags-shorten-shift.bin: a Shorten header whose Rice code shifted
+    //   a signed int too far in TagLib's Shorten reader. TagLib is now built
+    //   without the formats FFmpeg can't play (cmake/TagLib.cmake), so it
+    //   isn't parsed at all.
+    const auto name = GENERATE ("fuzz/tags-shorten-shift.bin");
+    CAPTURE (name);
+    juce::MemoryBlock data;
+    REQUIRE (fixtureFile (name).loadFileAsData (data));
+    const TagLib::ByteVector bytes (static_cast<const char*> (data.getData()),
+                                    static_cast<unsigned int> (data.getSize()));
+
+    TagLib::ByteVectorStream stream (bytes);
+    anomp::TrackTags tags;
+    CHECK (anomp::readTags (stream, anomp::TagParts::picture | anomp::TagParts::lyrics, tags).isEmpty());
+    CHECK (tags.title.isEmpty());
+    CHECK (tags.sampleRate == 0);
+
+    TagLib::ByteVectorStream again (bytes);
+    anomp::FileInfo info;
+    bool tagged = true;
+    anomp::readFileInfo (again, info, tagged);
+    CHECK_FALSE (tagged);
+}

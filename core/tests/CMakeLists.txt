@@ -11,7 +11,8 @@ add_executable(anomp_core_tests
     TagReaderTests.cpp)
 
 target_compile_definitions(anomp_core_tests
-    PRIVATE ANOMP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    PRIVATE ANOMP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+            ANOMP_PROJECT_VERSION="${ano_mp_VERSION}")
 
 target_include_directories(anomp_core_tests PRIVATE ../src)
 

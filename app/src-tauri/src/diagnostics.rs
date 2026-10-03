@@ -1,4 +1,5 @@
-//! "Copy diagnostics" and "Show logs" in Settings › About (PLAN.md H9).
+//! "Copy diagnostics" and "Show logs" in Settings › About (PLAN.md H9),
+//! and the third-party notices shown there (PLAN.md §8.2).
 //!
 //! The diagnostics are plain text for a bug report. They name no paths,
 //! titles or artists: versions, the OS, the output device, library
@@ -10,6 +11,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use rusqlite::Connection;
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::library::availability::FolderStates;
@@ -266,9 +268,53 @@ pub fn diagnostics_show_logs<R: Runtime>(app: AppHandle<R>) -> Result<(), String
     tauri_plugin_opener::reveal_item_in_dir(target).map_err(|e| e.to_string())
 }
 
+/// The notices `scripts/make-notices.py` writes, bundled as a resource
+/// (`bundle.resources` in tauri.conf.json).
+const NOTICES: &str = "THIRD_PARTY_NOTICES";
+
+/// The third-party notices, as text. Off the main thread: the file is a
+/// few hundred KB.
+#[tauri::command]
+pub async fn diagnostics_notices<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
+    let unreadable = |message: String| {
+        log::warn!("the third-party notices can't be read: {message}");
+        crate::coded::coded("noticesUnreadable", &[], message)
+    };
+    let path = app
+        .path()
+        .resolve(NOTICES, BaseDirectory::Resource)
+        .map_err(|e| unreadable(e.to_string()))?;
+    std::fs::read_to_string(path).map_err(|e| unreadable(e.to_string()))
+}
+
+/// Discogs' non-affiliation notice, in its terms' words, which About shows
+/// (PLAN.md §8.1).
+#[tauri::command]
+pub fn diagnostics_discogs_notice() -> &'static str {
+    crate::metadata::discogs::NOTICE
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_bundle_carries_the_notices_under_the_name_read() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(manifest.join("tauri.conf.json")).unwrap(),
+        )
+        .unwrap();
+        let resources = config["bundle"]["resources"].as_object().unwrap();
+        let (source, name) = resources
+            .iter()
+            .find(|(_, name)| name.as_str() == Some(NOTICES))
+            .expect("THIRD_PARTY_NOTICES in bundle.resources");
+        let text = std::fs::read_to_string(manifest.join(source)).unwrap();
+        assert!(text.starts_with("ano-mp: third-party notices"));
+        assert!(text.contains("FFmpeg") && text.contains("JUCE"));
+        assert_eq!(name, NOTICES);
+    }
 
     #[test]
     fn renders_every_section() {

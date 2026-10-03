@@ -54,7 +54,12 @@ them in the app. On 2026-10-02 the order of the remaining work was set
 4. the exit checks in a sandboxed bundle;
 5. the larger core items (done 2026-10-02: fuzzing, opening files off
    the main thread, cloud placeholders);
-6. alongside all of these, the owner's §8.1 decisions.
+6. alongside all of these, the owner's §8.1 decisions (briefs in
+   `docs/release-decisions.md`, 2026-10-02);
+7. the release setup that needs no certificate (done 2026-10-02: one
+   version number, third-party notices, the release workflow, the macOS
+   build, bundle and notarization scripts); the signed release waits on
+   Step 6.
 
 ## 1. Architecture
 
@@ -110,12 +115,12 @@ Why this split:
 | `FFmpegAudioFormat`: FFmpeg-backed JUCE reader (float output, gapless trimming, exact seeks and lengths) | `core/src/FFmpegAudioFormat.*` |
 | 21 committed audio fixtures (750 KB) of one deterministic chirp (two of them tagged, with cover art), and their generator | `core/tests/fixtures/`, `scripts/make-test-fixtures.py` |
 | C API: `anomp_version`, `anomp_can_decode_extension`, `anomp_read_tags`, `anomp_engine_*` (device, player, asynchronous loads, events, advance count), `anomp_file_is_dataless`, `anomp_media_controls_*`, `anomp_set_log_callback`, `anomp_volume_watcher_*` | `core/include/anomp/anomp.h` |
-| TagLib 2.3.2 (MPL, static, from the pinned release tarball) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
+| TagLib 2.3.2 (MPL, static, from the pinned release tarball, built with only the formats FFmpeg plays) and `TagReader`: tags, MusicBrainz IDs, embedded art | `cmake/TagLib.cmake`, `core/src/TagReader.*` |
 | `PlayerEngine`: load/play/pause/stop/seek/volume, gapless next track, resampling to the device rate | `core/src/PlayerEngine.*` |
 | `MediaControls`: OS Now Playing info and remote commands (Apple: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`; no-op fallback elsewhere) | `core/src/MediaControls*` |
 | Visualizer analysis: `SignalTap` (lock-free tap on the player's output), `SpectrumAnalyser` (bands, chroma, levels, triggered waveform, beats), `AnalysisThread`, `anomp_engine_set_analysis_callback` | `core/src/SignalTap.h`, `core/src/SpectrumAnalyser.*`, `core/src/AnalysisThread.*` |
 | Output devices (list, open by name with a buffer size, device info), per-track gain switched sample-exactly at the hand-off, ReplayGain and R128 tags | `core/src/AudioEngine.*`, `core/src/PlayerEngine.*`, `core/src/TagReader.*` |
-| 114 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| 115 passing Catch2 tests, also clean under ASan, UBSan and TSan, including the fuzzer's past findings | `core/tests` |
 | Fuzzing (H5): libFuzzer targets for the decoder and the tag reader, the `fuzz` preset (Homebrew `llvm@22`, ASan, UBSan, an instrumented static FFmpeg), 60 s each in `check-all.py`, 30 min weekly in CI | `core/fuzz/`, `scripts/run-fuzzers.py`, `.github/workflows/fuzz.yml` |
 | Files opened off the main thread (H11): asynchronous loads in the engine and the C API, the queue's loading state and timeout; cloud placeholders (H12) recorded unread by scans, left by the analysis, downloaded when played | `core/src/PlayerEngine.*`, `app/src-tauri/src/queue/opening.rs`, `core/src/FileStatus*`, `app/src-tauri/src/library/scanner.rs` |
 | Tauri 2 app (SvelteKit + `adapter-static`, Svelte 5, TS) under a strict Content Security Policy; Rust and Node pinned by `rust-toolchain.toml` and `.nvmrc` | `app/`, `app/src-tauri/tauri.conf.json` |
@@ -138,14 +143,17 @@ Why this split:
 | Missing folders (H22): each folder's state, scans that never empty a folder, the launch message, the queue passing over unavailable tracks, volumes watched so a drive that comes back is rescanned, unreadable folders' tracks dimmed in lists and left out of radio, smart playlists' play and Home's suggestions | `app/src-tauri/src/library/access.rs`, `app/src-tauri/src/library/availability.rs`, `core/src/VolumeWatcher*`, `app/src/lib/components/MissingFolders.svelte`, `app/src/lib/folders.ts` |
 | Logs (H9): a rotating, redacted log file, the panic hook, the core's log (JUCE's Logger and failed assertions), the webview's errors, Settings › About with "Show logs" and "Copy diagnostics" | `app/src-tauri/src/logging.rs`, `app/src-tauri/src/diagnostics.rs`, `core/src/Log.*`, `app/src/lib/components/settings/AboutOptions.svelte` |
 | 25 frontend tests (`npm test`: frame decoding, key estimation, selection, equaliser presets, the visualizer's flash guard, the message catalogue, theme contrast, web links, unreadable folders) | `app/tests/` |
-| 398 passing `cargo test` tests (files opened off the main thread: loading, timeouts and skips; cloud placeholders in scans and the analysis; a drive unmounted mid-scan; database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
+| 399 passing `cargo test` tests (the bundled notices; files opened off the main thread: loading, timeouts and skips; cloud placeholders in scans and the analysis; a drive unmounted mid-scan; database copies, checks and recovery, folder states and the scanner keeping a folder's tracks, unreadable folders left out of radio, smart playlists and suggestions, logs, redaction and diagnostics, playlists, smart playlists, favourites and ratings, moves, credits and compilations, substring search, sleep timer and stop after, crossfade arming, resume, data export and import, coded errors, settings and their bindings, ReplayGain gains, C API wrappers, schema, folders, scanner, sort keys, genres, rules, browsing, search, art sources and candidates, album details, queue, Now Playing sync, metadata settings and keys, HTTP client, MusicBrainz parsing and matching, Cover Art Archive, image cache, metadata worker, candidates and choices, Wikipedia, discographies, Discogs, visualizer frames and subscribers, cover walls), plus 3 ignored 50,000-track benchmarks and 6 ignored live tests (MusicBrainz, Cover Art Archive, biographies, descriptions, discographies, Discogs) | `app/src-tauri/src` |
 | `AudioEngine` + `anomp_engine_*` C API: default output device, test tone, device-change event | `core/src/AudioEngine.*` |
 | Pinned LGPL audio-only FFmpeg 9.0.2 (universal dylibs) and `FFmpeg::*` CMake targets | `scripts/build-ffmpeg.sh`, `cmake/FFmpeg.cmake` |
 | Main-thread engine host; `audio_device_name`, test-tone and `player_*` commands; `player-*` events | `app/src-tauri/src/audio.rs` |
 | Player UI: sidebar (views, folders, scanning, online sources), browser with album details, search, queue panel, now-playing bar, artist pages, the metadata dialogs and the Online sources panel; responsive down to 360 px, light and dark | `app/src/routes/+page.svelte`, `app/src/lib/` |
 | Developer page (debug builds only, with its commands): device name, test tone, loading typed paths straight into the engine, event log | `app/src/lib/components/dev/DevPage.svelte`, `app/src-tauri/src/dev.rs` |
 | Tauri dialog plugin (`dialog:allow-open`) for the dev UI's file picker | `app/src-tauri/src/lib.rs`, `app/src-tauri/capabilities/default.json` |
-| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 33 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
+| One version number: CMake's `project(VERSION)`, compiled into `anomp_version()`, the other copies set and checked by `version.py` | `CMakeLists.txt`, `scripts/version.py` |
+| Third-party notices, generated and checked, in the bundle and in Settings › About | `THIRD_PARTY_NOTICES`, `scripts/make-notices.py`, `scripts/licenses/`, `app/src/lib/components/NoticesDialog.svelte` |
+| Release tooling (unsigned until the Developer ID exists): the tag-triggered workflow, the universal build, the bundle check, notarization, checksums and notes from `CHANGELOG.md`, certificate expiry | `.github/workflows/release.yml`, `scripts/{build-app,check-bundle,notarize,release,check-signing}.py`, `CHANGELOG.md` |
+| One entry point for every check (`check-all.py`, `--quick` without the builds), the repo checks (C API bindings, core source lists, migrations), the scripts' 72 pytest tests (`test-python.py`), `ruff check`, gitleaks, clippy, `cargo deny`, ESLint and Prettier, the sanitizer runs, a pre-commit hook, Dependabot, and a GitHub Actions macOS job that runs `check-all.py` (also called by the release workflow) | `scripts/`, `scripts/tests/`, `scripts/hooks/`, `.github/` |
 
 Build and test:
 
@@ -2817,6 +2825,8 @@ in order. Step 6 runs alongside all of them.
      FFmpeg instrumented too; the CI cache and the weekly fuzzing job; the
      wording "Opening…", "The file took more than {seconds} s to open",
      "Downloading from iCloud…" and "{count} in iCloud, not downloaded".
+   - The probe in the checklist's § 5 ran on 2026-10-02 with Step 7 and
+     passed (Step 7's entry).
    - No bundle check was run in Step 5: H11 holding a folder open while
      another thread opens the file, and H12's placeholders, are in the
      checklist's § 5 (one probe, the rest the owner's).
@@ -2834,7 +2844,89 @@ in order. Step 6 runs alongside all of them.
    - the MetaBrainz plan and a real `User-Agent` contact;
    - whether to have crash reporting.
 
-Then §8.2 and §8.3 (the first macOS release), then Phase 8. H20 (design
+   **Briefs written 2026-10-02** (`docs/release-decisions.md`), one per
+   item, in the order they block: the name, then the bundle identifier
+   and publisher; the distribution channels; the Developer Program and
+   Developer ID; the JUCE licence; the AAC opinion; the privacy policy
+   (with a table, from the code, of what the app sends where); the
+   MetaBrainz plan and the `User-Agent` contact; crash reporting. None is
+   decided yet. Read-only lookups: no DNS records for the candidate
+   domains, and WHOIS shows `anotracks.com`, `anotone.com` and
+   `anotraks.com` unregistered; the `.app` registry's WHOIS didn't answer.
+7. **Release setup without a certificate (§8.2, and §8.3's parts that
+   need none; M6). Done 2026-10-02; the signed release waits on Step 6.**
+   - Every suite passed on a clean tree after each part: ctest 115 (also
+     under `asan` and `tsan`), `cargo test` 399 (9 ignored), `npm test`
+     25, `svelte-check` 0 errors, script tests 72, `check-all.py` all 24
+     steps (new: "version number", quick, and "third-party notices").
+   - The owner's answers that shaped it: the Actions runs haven't run yet;
+     which of the checklist's owner entries are done isn't known, and
+     none is known to have failed; no §8.1 decision made yet; the crates'
+     licences from `cargo metadata` rather than a new tool; the About
+     wording ("Third-party notices" and its hint), with Discogs' notice
+     there too; the release workflow as proposed.
+   - Step 5's bundle probe (the checklist's § 5) passed in a sandboxed
+     bundle, with the real container's files moved out and back (identical
+     after): the 21 fixtures played through with 20 gapless hand-offs,
+     every load handed to the engine with its folder held, none failed;
+     then 9 skips back to back, 5 superseded while opening, no folder left
+     held. The probe's first run stopped on its own mistake (it skipped
+     while the short fixtures kept playing), not the app's.
+   - One version number: `anomp_version()` is compiled from CMake's
+     `project(VERSION)` (`ANOMP_VERSION`), and `scripts/version.py` sets
+     or checks the copies the tools need (`Cargo.toml` and `Cargo.lock`,
+     `tauri.conf.json`, `package.json` and both versions in
+     `package-lock.json`). The `User-Agent` and ListenBrainz already took
+     the version from the core; the contact is a marked placeholder
+     until the owner gives one. Tests: 9 script tests, the C API test
+     against `project(VERSION)`, a bump round trip through the core.
+   - Third-party notices: `scripts/make-notices.py` writes
+     `THIRD_PARTY_NOTICES` (374 KB): JUCE (its licensing statement, and
+     zlib, the only code it vendors into the linked modules; FLAC, Ogg,
+     Vorbis, Oboe and ASIO are listed as not in the app, and a new
+     vendored library fails the script), FFmpeg (LGPL 2.1, version,
+     configure flags, source tarball and SHA-256), TagLib under the MPL
+     with utfcpp, Signalsmith Stretch and Linear, Catch2 as not shipped,
+     264 crates and the 6 npm packages the frontend bundles (recorded by
+     a Vite plugin at build time). Each licence expression must be
+     satisfiable from `deny.toml`'s list; identical texts are printed
+     once. 16 crates and the 4 Tauri npm packages ship no licence text,
+     so standard texts are committed in `scripts/licenses/`. The bundle
+     carries the file; Settings › About opens it in a dialog and shows
+     Discogs' notice. Tests: 15 script tests, a Rust test that the bundle
+     maps the file under the name the command reads.
+   - The release workflow (`release.yml`): on a `v*` tag it calls
+     `ci.yml` (now also `workflow_call`, and run on branch pushes only),
+     builds the universal app and DMG with `build-app.py`, notarizes when
+     the secrets exist, and `release.py` checks the bundle, zips the app,
+     writes `SHA256SUMS` and cuts the notes from the new `CHANGELOG.md`;
+     the files go to a draft GitHub Release with `gh`. By hand, on a
+     branch, it is a trial with the files as an artifact. It hasn't run
+     yet.
+   - macOS without a certificate: `build-app.py` (the hardened-runtime
+     rule), `check-bundle.py`, `notarize.py` (dry run without
+     credentials), `check-signing.py` (no identities yet), and the
+     entitlements reviewed (§8.3). `rust-toolchain.toml` adds the x86_64
+     target. A universal build here passed `check-bundle.py`: arm64 and
+     x86_64 in the executable and the four FFmpeg dylibs, `@rpath` install
+     names and the `@executable_path/../Frameworks` rpath, no library from
+     outside the bundle and the OS, `codesign --verify --deep --strict`,
+     the entitlements and notices as committed; the DMG (14.5 MB) verified,
+     and `release.py`'s trial run wrote files whose `SHA256SUMS` check.
+     Tauri's DMG step drives the Finder by AppleScript unless `CI=true`,
+     and waits on the Automation permission locally, so local runs set it.
+     The hardened runtime with a real identity, notarization and
+     Gatekeeper wait for the certificate.
+   - Found: fuzzing found undefined behaviour in TagLib's Shorten reader
+     in the first full run; fixed with a test and a fixture (H5's entry).
+   - Waiting on the owner, in the order they block: the decisions in
+     `docs/release-decisions.md`; then the Developer ID certificate, the
+     notarization key and the six secrets; the updater (after the
+     distribution decision); the icon set (after the name); a first trial
+     of `release.yml`; the wording of `CHANGELOG.md`'s first entry and of
+     `error.noticesUnreadable`; the About page by eye.
+
+Then the signed release (§8.3 with a Developer ID, §8.7), then Phase 8. H20 (design
 records out of this file) is P2, but it can be pulled forward whenever
 this file gets in the way.
 
@@ -2999,6 +3091,18 @@ matches it.
       target locally (32,681 decoder and 276,768 tag runs, 2,444 and 4,749
       new corpus units) and in every 60 s run since. One slow tag input
       (a passing stall; 0.12 s when run alone) was not a failure.
+    - Found 2026-10-02 (Step 7's check-all run): UBSan in TagLib's
+      Shorten reader (`shortenfile.cpp:135`, a signed left shift too far),
+      reached through `FileRef`'s detection by content from a 40-byte
+      input. Shorten is a format the app can't play. Fixed by building
+      TagLib with only the formats FFmpeg plays (`cmake/TagLib.cmake`:
+      Shorten, TrueAudio, DSF, tracker modules and Matroska off; APE kept
+      for MP3's APE tags), which also takes their parsers out of the
+      attack surface. The input is the first fuzz fixture
+      (`core/tests/fixtures/fuzz/tags-shorten-shift.bin`), run by "Inputs
+      the fuzzer found stay harmless", which failed under the asan preset
+      before the fix and passes after. Not reported upstream (the owner's
+      call).
 - **H6 Sanitizer presets.** Add CMake presets `asan` (Address and
   Undefined) and `tsan` that build and run the Catch2 suite. `tsan`
   covers `SignalTap`, `AnalysisThread`, and the audio thread's hand-off
@@ -3846,11 +3950,16 @@ Platform subsections apply once the matching phase in §5 is done.
 
 ### 8.1 Gates before any public release
 These need answers first; most need the owner rather than engineering.
+Each open item has a brief (options, what it blocks, what was checked) in
+`docs/release-decisions.md` (2026-10-02).
 
 - [ ] **JUCE license** (§4.1): commercial license in place (Starter tier to
       start; upgrade before revenue passes its cap).
 - [ ] **FFmpeg LGPL compliance** (§4.1): notice, source offer and replaceable
-      shared libraries in every package. For the App Store, confirm this is
+      shared libraries in every package. Done for the macOS direct
+      download (2026-10-02): `THIRD_PARTY_NOTICES` has the LGPL, the
+      configure flags and the source tarball, and the dylibs are separate
+      in `Contents/Frameworks` (`check-bundle.py`). For the App Store, confirm this is
       acceptable before the first iOS or Mac App Store submission.
 - [ ] **AAC patents** (§4.3): licensing opinion obtained for FFmpeg's AAC
       decoder (the chosen path), or fall back to routing AAC to
@@ -3902,44 +4011,69 @@ These need answers first; most need the owner rather than engineering.
       policy.
 
 ### 8.2 Cross-platform release setup
-Build once (after Phase 7), reused for every platform.
+Build once (after Phase 7), reused for every platform. **Done 2026-10-02
+for macOS, except the signing secrets, the updater and the icon set,
+which wait on §8.1** (Phase 7, Step 7): the version, the notices and the
+release workflow are in place, unsigned until the secrets exist.
 
 - **Single version number:** CMake `project(VERSION)` is the source of truth;
   generate `anomp_version()` from it instead of the hard-coded string, and
   keep `Cargo.toml`, `tauri.conf.json` and `package.json` in sync with
   `scripts/version.py`, checked in CI (§9.2 M6). MusicBrainz `User-Agent` includes this version and a
-  contact address.
+  contact address. **Done**, but the contact is a placeholder until the
+  owner gives one (§8.1).
 - **Release workflow** (GitHub Actions, triggered by a version tag): build and
   test on every platform, sign, package, attach the artifacts plus SHA-256
   checksums to a draft GitHub Release, and generate release notes from
-  `CHANGELOG.md`.
+  `CHANGELOG.md`. **Done for macOS** (`.github/workflows/release.yml`):
+  it calls `ci.yml`, builds the universal app and DMG, and runs
+  `release.py`; signing and notarization steps are skipped, with a
+  warning, until the secrets exist. Linux and Windows join with their
+  phases.
 - **Signing secrets** (Apple certificates and notarization key, Windows
   signing, updater key) stored as CI secrets, with an offline backup. Losing
-  the updater key strands existing installs.
+  the updater key strands existing installs. **Waits on the owner**:
+  `release.yml`'s header lists the six Apple secrets it reads.
 - **Auto-updates** for direct-download builds: Tauri updater plugin with a
   signed update manifest hosted with the releases. Store builds (App Store,
   Microsoft Store, Flathub) update through the store instead.
+  **Waits on the distribution decision (§8.1)**; the plugin is a new crate
+  and npm package, to be agreed with the owner first.
 - **Third-party notices:** a generated `THIRD_PARTY_NOTICES` file shipped in
   every package and shown in the app's About screen. It covers JUCE; FFmpeg
   (LGPL text, exact version and configure flags, link to the matching
   source tarball); TagLib; Rust crates (`cargo-about`); and npm packages,
   generated by `scripts/make-notices.py` (§9.2 M6). CI fails if a
-  dependency's license is unknown.
+  dependency's license is unknown. **Done**: committed at the repo root,
+  checked by `check-all.py`, in the bundle's Resources and in Settings ›
+  About with Discogs' notice. The crates come from `cargo metadata`, not
+  `cargo-about` (no new tool), and Signalsmith Stretch, the JUCE-vendored
+  zlib and TagLib's utfcpp are covered too.
 - **App icon and metadata:** icon set for every platform (`cargo tauri icon`),
-  app description, screenshots.
+  app description, screenshots. Not done: it needs the name (§8.1).
 
 ### 8.3 macOS
 - Apple Developer Program membership and a **Developer ID Application**
   certificate (direct download); Mac App Store needs its own certificates.
 - Universal binary (arm64 + x86_64), including the core and FFmpeg.
 - Bundle the FFmpeg dylibs in `Contents/Frameworks`, set install names to
-  `@rpath`, and sign all nested code with the hardened runtime. Done except
-  the hardened runtime (Phase 2): the dylibs are embedded and signed, and
-  `tauri.conf.json` turns the hardened runtime off for ad-hoc local builds.
-  Turn it back on with the Developer ID identity.
-- Entitlements: network client; for the sandbox, user-selected read access
-  and app-scoped bookmarks.
+  `@rpath`, and sign all nested code with the hardened runtime. Done
+  (Phase 2, and Phase 7 Step 7): the dylibs are embedded and signed;
+  `scripts/build-app.py` turns the hardened runtime on exactly when a
+  signing identity is given, and `tauri.conf.json` keeps it off for ad-hoc
+  local builds. `scripts/check-bundle.py` checks a built bundle's slices,
+  install names, rpath, nested signatures and entitlements.
+- Entitlements: network client; for the sandbox, user-selected access and
+  app-scoped bookmarks. Reviewed 2026-10-02 against the code: the sandbox,
+  user-selected **read-write** (exporting M3U8 playlists and the user's
+  data, F1 and F20, writes where the user picks), app-scoped bookmarks,
+  network client, and network server for the LAN remote (O14), whose
+  local-network prompt is `Info.plist`'s `NSLocalNetworkUsageDescription`,
+  not an entitlement. No audio input is opened, so no microphone
+  entitlement; the hardened runtime needs no exceptions.
 - Notarize with `notarytool`, staple the ticket, ship as a DMG.
+  `scripts/notarize.py` does it with an App Store Connect API key, and
+  prints the plan without one (Step 7).
 - Verify on a clean Mac: Gatekeeper accepts it (`spctl --assess`), first
   launch, library import, update from the previous version.
 
@@ -3985,12 +4119,16 @@ Build once (after Phase 7), reused for every platform.
 
 ### 8.7 Checklist for every release
 1. All §8.1 gates still hold (new dependencies? new data sent anywhere?).
-2. Bump the version (`scripts/version.py`); update `CHANGELOG.md`.
+2. Bump the version (`scripts/version.py X.Y.Z`); rename `CHANGELOG.md`'s
+   `[Unreleased]` section to the version and date.
 3. CI green on every platform, including the format decode tests.
 4. Regenerate third-party notices (`scripts/make-notices.py`); check the
    FFmpeg source link matches the pinned version. Run `scripts/bench.py`
    and `scripts/check-signing.py`, and do the §9.1 rows due "each release".
-5. Tag; the release workflow builds, signs, notarizes and packages.
+   A trial run of the release workflow (by hand, on the branch) shows the
+   build passes `check-bundle.py` before tagging.
+5. Tag `vX.Y.Z`; the release workflow builds, signs, notarizes and
+   packages, and leaves a draft release to publish.
 6. Smoke test each artifact on a clean machine: install/upgrade, play MP3,
    FLAC and AAC, seek, gapless album, media keys, MusicBrainz lookup.
 7. Publish the GitHub Release and the updater manifest; submit store builds
@@ -4120,7 +4258,12 @@ Steps:
   - `audit-deps.py`: runs `cargo deny check` (H7) and `npm audit`, and
     checks the FFmpeg pin against ffmpeg.org's security page; a scheduled
     weekly CI job runs it with `check-pins.py`.
-- [ ] M6 Release tools (with §8.2):
+- [ ] M6 Release tools (with §8.2). Done 2026-10-02 except `release.py`'s
+  updater manifest (after the updater, §8.2): `version.py`,
+  `make-notices.py`, `release.py` and `check-signing.py`, plus
+  `build-app.py`, `check-bundle.py` and `notarize.py` (§8.3), with 39
+  tests in `test_version.py`, `test_make_notices.py` and
+  `test_release_tools.py`.
   - `version.py`: `--check` fails unless `CMakeLists.txt`, `Cargo.toml`,
     `tauri.conf.json` and `package.json` agree (`anomp_version()` is
     generated from CMake by then); `version.py 0.2.0` sets them all.

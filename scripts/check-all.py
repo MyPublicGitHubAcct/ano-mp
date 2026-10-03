@@ -2,12 +2,13 @@
 """Runs every check the repo has: the one entry point for CI and for a local run.
 
 First the quick checks: each formatter in --check mode, the repo checks
-(check-c-api.py, check-sources.py, check-migrations.py), the scripts'
-tests and gitleaks over the history. Then, unless --quick, the builds and
+(check-c-api.py, check-sources.py, check-migrations.py, version.py
+--check), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
 test suites: the core (CMake debug preset and ctest, then ctest again
 under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
-ESLint, npm test and the build) and the Rust crate (clippy, cargo test,
+ESLint, npm test and the build), THIRD_PARTY_NOTICES (make-notices.py
+--check) and the Rust crate (clippy, cargo test,
 and cargo deny over its dependencies). CI runs this and nothing else, so
 a local run matches it; --quick suits a pre-commit hook.
 
@@ -54,6 +55,7 @@ STEPS = [
     Step("C API bindings", script("check-c-api.py")),
     Step("core source lists", script("check-sources.py")),
     Step("DB migrations", script("check-migrations.py")),
+    Step("version number", script("version.py", "--check")),
     Step("script tests", script("test-python.py", "-q")),
     # Every commit's changes; scripts/hooks/pre-commit checks the staged ones.
     Step("secrets", ["gitleaks", "git", "--redact", "--no-banner", "--log-level", "warn"]),
@@ -71,6 +73,9 @@ STEPS = [
     Step("frontend tests", ["npm", "test"], cwd=APP, quick=False),
     # Before the Rust steps: Tauri embeds app/build when the crate compiles.
     Step("frontend build", ["npm", "run", "build"], cwd=APP, quick=False),
+    # After the core's configure (JUCE, TagLib, …) and the frontend build
+    # (the npm packages it bundled): THIRD_PARTY_NOTICES is up to date.
+    Step("third-party notices", script("make-notices.py", "--check"), quick=False),
     Step(
         "Rust lint",
         ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],

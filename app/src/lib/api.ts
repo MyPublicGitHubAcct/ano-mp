@@ -430,6 +430,10 @@ export const diagnostics = {
   text: () => invoke<string>("diagnostics_text"),
   /** Shows the log files in the Finder. */
   showLogs: () => invoke<void>("diagnostics_show_logs"),
+  /** The third-party notices (THIRD_PARTY_NOTICES, bundled with the app), as text. */
+  notices: () => invoke<string>("diagnostics_notices"),
+  /** Discogs' non-affiliation notice, in its terms' words. */
+  discogsNotice: () => invoke<string>("diagnostics_discogs_notice"),
 };
 
 export const shell = {

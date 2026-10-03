@@ -137,6 +137,8 @@ pub fn run() {
             audio::player_status,
             diagnostics::diagnostics_text,
             diagnostics::diagnostics_show_logs,
+            diagnostics::diagnostics_notices,
+            diagnostics::diagnostics_discogs_notice,
             library::commands::library_db_check,
             library::commands::library_db_restore,
             library::commands::library_db_rebuild,

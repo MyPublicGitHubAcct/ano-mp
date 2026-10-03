@@ -48,7 +48,9 @@ export type Dialog =
   /** Get Info for a track (F16). */
   | { kind: "trackInfo"; trackId: number }
   /** The keyboard shortcuts (F6). */
-  | { kind: "shortcuts" };
+  | { kind: "shortcuts" }
+  /** The third-party notices (Settings › About, PLAN.md §8.2). */
+  | { kind: "notices" };
 
 /** Views that `back` returns from. */
 const OPENED: MainView[] = [

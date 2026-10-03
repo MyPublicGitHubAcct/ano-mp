@@ -20,6 +20,8 @@ use crate::anomp;
 
 /// Where service operators can reach whoever runs this client. MusicBrainz
 /// throttles clients whose `User-Agent` has no contact (PLAN.md §8.1).
+/// A placeholder until the owner picks one: the repository is private, so
+/// this link reaches no one (`docs/release-decisions.md`).
 const CONTACT: &str = "https://github.com/MyPublicGitHubAcct/ano-mp";
 
 /// The `User-Agent` sent with every request, e.g.

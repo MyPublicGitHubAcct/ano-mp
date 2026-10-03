@@ -1,0 +1,134 @@
+# Builds a release from a version tag (PLAN.md §8.2, §8.7): every check
+# (ci.yml), then the universal macOS app and DMG, checked and collected
+# with SHA-256 checksums and notes from CHANGELOG.md by scripts/release.py,
+# and attached to a draft GitHub Release for the owner to publish. Steps
+# here only install, build and upload; checks belong in check-all.py and
+# the release scripts. Actions are pinned by commit, with the release in a
+# comment (PLAN.md H7).
+#
+# Signing (§8.3): until the Developer ID secrets exist, the app is ad-hoc
+# signed, the steps named "[signed releases]" are skipped, and the run
+# says so in a warning. The secrets, once they exist:
+#   APPLE_CERTIFICATE           the Developer ID Application .p12, base64
+#   APPLE_CERTIFICATE_PASSWORD  its password
+#   APPLE_SIGNING_IDENTITY      "Developer ID Application: <name> (<team>)"
+#   NOTARY_KEY                  the App Store Connect API key (.p8 contents)
+#   NOTARY_KEY_ID, NOTARY_ISSUER  that key's id and issuer
+# The updater's key and manifest are added with the updater (§8.2).
+#
+# Run by hand (workflow_dispatch) on any branch for a trial: the same
+# build, with the files as a workflow artifact and no release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      # The draft release, and nothing else.
+      contents: write
+    env:
+      SIGNED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.NOTARY_KEY != '' }}
+      BUNDLE: app/src-tauri/target/universal-apple-darwin/release/bundle
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Rust (with both macOS targets) and Node come from rust-toolchain.toml
+      # and .nvmrc (PLAN.md H8).
+      - name: Install tools
+        run: |
+          brew install ninja nasm pkg-config
+          rustup toolchain install
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # build-ffmpeg.sh skips the build when BUILD_INFO matches its pin.
+      - name: Restore FFmpeg
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
+
+      - name: Build FFmpeg
+        run: scripts/build-ffmpeg.sh
+
+      - name: Install npm packages
+        working-directory: app
+        run: npm ci
+
+      - name: "Unsigned: signing and notarization skipped"
+        if: env.SIGNED != 'true'
+        run: >
+          echo "::warning title=Unsigned release::No Developer ID secrets, so the
+          app is ad-hoc signed and not notarized; Gatekeeper will block it on
+          other Macs. The [signed releases] steps were skipped (PLAN.md §8.3)."
+
+      # Signed and hardened when the secrets exist, ad-hoc otherwise
+      # (build-app.py's rule); Tauri imports the certificate itself.
+      - name: Build the universal app and DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: scripts/build-app.py
+
+      - name: "[signed releases] Notarize and staple the DMG"
+        if: env.SIGNED == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          export NOTARY_KEY_PATH="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY" > "$NOTARY_KEY_PATH"
+          scripts/notarize.py "$BUNDLE"/dmg/*.dmg
+          rm -f "$NOTARY_KEY_PATH"
+
+      # Checks the bundle (check-bundle.py), then writes dist/: the DMG, the
+      # zipped app, SHA256SUMS and the release notes.
+      - name: Collect the release files
+        run: |
+          args=()
+          if [[ "$SIGNED" == true ]]; then args+=(--signed); fi
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          else
+            args+=(--unreleased)
+          fi
+          scripts/release.py "$BUNDLE" --out dist "${args[@]}"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+
+      - name: Create the draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag
+          --title "ano-mp ${GITHUB_REF_NAME#v}"
+          --notes-file dist/RELEASE_NOTES.md
+          dist/*.dmg dist/*.app.zip dist/SHA256SUMS

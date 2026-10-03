@@ -38,6 +38,10 @@ target_include_directories(anomp_core
     PUBLIC  include
     PRIVATE src)
 
+# anomp_version()'s string: the top-level project(VERSION), the one source
+# of the version number (PLAN.md §8.2; scripts/version.py checks the copies).
+target_compile_definitions(anomp_core PRIVATE ANOMP_VERSION="${ano_mp_VERSION}")
+
 target_compile_definitions(anomp_core
     PUBLIC
         JUCE_WEB_BROWSER=0

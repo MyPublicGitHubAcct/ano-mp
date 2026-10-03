@@ -15,6 +15,15 @@ block(SCOPE_FOR VARIABLES PROPAGATE taglib_SOURCE_DIR taglib_BINARY_DIR)
     # zlib only inflates compressed ID3v2 frames, which are rare; without it
     # TagLib skips them. Leaving it out keeps the link line unchanged.
     set(WITH_ZLIB OFF)
+    # Only the formats FFmpeg plays (scripts/build-ffmpeg.sh): TagLib
+    # otherwise detects the others by content, and every parser is attack
+    # surface (PLAN.md H5; the fuzzer found UB in the Shorten reader). APE
+    # stays: MP3 files can carry APE tags.
+    set(WITH_SHORTEN OFF)
+    set(WITH_TRUEAUDIO OFF)
+    set(WITH_DSF OFF)
+    set(WITH_MOD OFF)
+    set(WITH_MATROSKA OFF)
     # Always the bundled utfcpp, never one installed on the build machine.
     set(CMAKE_DISABLE_FIND_PACKAGE_utf8cpp ON)
     set(utf8cpp_INCLUDE_DIR "${FETCHCONTENT_BASE_DIR}/taglib-src/3rdparty/utfcpp/source"

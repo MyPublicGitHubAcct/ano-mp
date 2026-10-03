@@ -11,7 +11,7 @@
 //! - Images are "Restricted Data", not for commercial use: none are used,
 //!   not even thumbnails.
 //! - "Data provided by Discogs" (`CREDIT`) goes next to its data, linked to
-//!   the release's page, and the settings show `NOTICE`.
+//!   the release's page, and the settings and About show `NOTICE`.
 //! - 60 requests a minute with a token (`http::request_interval`).
 
 use std::time::Duration;

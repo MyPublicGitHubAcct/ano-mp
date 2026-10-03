@@ -191,7 +191,11 @@ int withPath (anomp_engine* engine, const char* path, char* error, size_t errorS
 }
 } // namespace
 
-extern "C" const char* anomp_version (void) { return "0.1.0"; }
+#ifndef ANOMP_VERSION
+#error "ANOMP_VERSION comes from CMake's project(VERSION) (core/CMakeLists.txt)"
+#endif
+
+extern "C" const char* anomp_version (void) { return ANOMP_VERSION; }
 
 extern "C" int anomp_can_decode_extension (const char* extension)
 {

@@ -2,6 +2,8 @@
 build/
 out/
 cmake-build-*/
+# A release's files (scripts/release.py)
+/dist/
 
 # Tauri / Rust / Node (app/)
 app/node_modules/
