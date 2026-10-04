@@ -158,3 +158,9 @@ import it once the folders are back.
 4. If asked for the log, **Show logs** opens its folder; attach the latest
    file. It doesn't contain your keys, and at its normal level not your
    titles or file names either.
+5. If the log doesn't show enough, you may be asked to turn on
+   **Detailed logging** in **Settings › About**, make the problem happen
+   again, and attach `ano-mp-detailed.log` from the same folder. That
+   file names your files and music
+   ([chapter 13](13-privacy.md#detailed-logging)): read it first, and turn
+   the switch off afterwards, which deletes it.

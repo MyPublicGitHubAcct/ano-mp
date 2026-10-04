@@ -25,6 +25,11 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfades, leaves out the time paused, and writes a cue sheet beside
   the file naming each track. MP3 is encoded by LAME 4.0, now built into
   the app's FFmpeg.
+- Detailed logging, in Settings › About: while it's on, a second log file,
+  `ano-mp-detailed.log`, names the files, folders, titles and artists
+  ano-mp works with, to trace a problem the normal log can't explain. Keys
+  and tokens are never written, and the normal log is unchanged. The file
+  is deleted when you turn the switch off or open ano-mp again.
 - A user guide, in the app under Help › ano-mp Help (bundled, so it works
   offline) and in `docs/user-guide/`: fourteen chapters from adding your
   music to troubleshooting, covering every view, setting, feature and

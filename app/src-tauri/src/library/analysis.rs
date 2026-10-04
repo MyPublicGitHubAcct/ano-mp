@@ -24,6 +24,7 @@ use super::access::{open_folder_of, FolderState};
 use super::commands::LibraryState;
 use super::{db, track_path, unix_now, Error};
 use crate::anomp::{self, FileAnalysis};
+use crate::quitting;
 use crate::settings::{self, FeatureSettings};
 
 /// Frontend event with an `AnalysisProgress` payload.
@@ -130,8 +131,21 @@ fn encode_envelope(min: &[f32], max: &[f32]) -> Vec<u8> {
 }
 
 /// Stores `track_id`'s analysis (or why it failed) for the file as it is
-/// in the library, and brings its album's loudness up to date.
+/// in the library, and brings its album's loudness up to date, in one
+/// transaction: a quit between the two would leave the album's loudness
+/// without the track for good. `conn` must not be in a transaction.
 pub fn store(
+    conn: &Connection,
+    track_id: i64,
+    result: &Result<FileAnalysis, String>,
+) -> Result<(), Error> {
+    let tx = conn.unchecked_transaction()?;
+    store_in(&tx, track_id, result)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn store_in(
     conn: &Connection,
     track_id: i64,
     result: &Result<FileAnalysis, String>,
@@ -409,6 +423,8 @@ pub struct AnalysisWorker {
     state: Mutex<State>,
     wake: Condvar,
     progress: Mutex<AnalysisProgress>,
+    /// The thread's end, which quitting waits for.
+    finished: Option<quitting::Finished>,
 }
 
 impl AnalysisWorker {
@@ -436,6 +452,31 @@ impl AnalysisWorker {
         let state = self.lock();
         !state.stop && (state.background || !background)
     }
+
+    /// Stops the thread: an analysis under way gives up at its next
+    /// progress report (four times a second) and isn't stored.
+    fn stop(&self) {
+        self.lock().stop = true;
+        self.wake.notify_all();
+    }
+}
+
+/// Where the thread reports what it did: events in the app, kept by tests.
+trait Events {
+    /// Tracks just analysed.
+    fn analysed(&self, ids: &[i64]);
+    /// The progress changed.
+    fn progress(&self, progress: &AnalysisProgress);
+}
+
+impl<R: Runtime> Events for AppHandle<R> {
+    fn analysed(&self, ids: &[i64]) {
+        let _ = self.emit(ANALYSIS_CHANGED_EVENT, ids);
+    }
+
+    fn progress(&self, progress: &AnalysisProgress) {
+        let _ = self.emit(ANALYSIS_PROGRESS_EVENT, progress);
+    }
 }
 
 /// How many tracks are analysed at once in the background: a few, leaving
@@ -452,19 +493,26 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .try_state::<LibraryState>()
         .ok_or("The library is not available")?;
     let db_path = library.db_path().to_path_buf();
-    let worker = Arc::new(AnalysisWorker::default());
+    let (running, finished) = quitting::track();
+    let worker = Arc::new(AnalysisWorker {
+        finished: Some(finished),
+        ..AnalysisWorker::default()
+    });
     worker.configure(&settings::current(app).features);
     let thread_worker = worker.clone();
     let thread_app = app.clone();
     std::thread::Builder::new()
         .name("analysis".into())
-        .spawn(move || run(&thread_app, &thread_worker, &db_path))
+        .spawn(move || {
+            let _running = running;
+            run(&thread_app, &thread_worker, &db_path);
+        })
         .map_err(|e| format!("Cannot start the analysis: {e}"))?;
     app.manage(worker);
     Ok(())
 }
 
-fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) {
+fn run(events: &impl Events, worker: &AnalysisWorker, db_path: &Path) {
     let conn = match db::open(db_path) {
         Ok(conn) => conn,
         Err(error) => {
@@ -519,7 +567,7 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
         };
         if ids.is_empty() {
             // The library is done: wait for a scan, a request or a change.
-            report(app, worker, &conn, false);
+            report(events, worker, &conn, false);
             let mut state = worker.lock();
             if state.requested.is_empty() && !state.changed && !state.stop {
                 let _ = worker.wake.wait_timeout(state, Duration::from_secs(600));
@@ -576,21 +624,16 @@ fn run<R: Runtime>(app: &AppHandle<R>, worker: &AnalysisWorker, db_path: &Path) 
             }
         }
         if !analysed.is_empty() {
-            let _ = app.emit(ANALYSIS_CHANGED_EVENT, &analysed);
+            events.analysed(&analysed);
         }
         if last_progress.elapsed() >= PROGRESS_INTERVAL {
             last_progress = Instant::now();
-            report(app, worker, &conn, background);
+            report(events, worker, &conn, background);
         }
     }
 }
 
-fn report<R: Runtime>(
-    app: &AppHandle<R>,
-    worker: &AnalysisWorker,
-    conn: &Connection,
-    running: bool,
-) {
+fn report(events: &impl Events, worker: &AnalysisWorker, conn: &Connection, running: bool) {
     let Ok((done, remaining, failed)) = counts(conn) else {
         return;
     };
@@ -603,7 +646,7 @@ fn report<R: Runtime>(
     let mut current = worker.progress.lock().unwrap_or_else(|e| e.into_inner());
     if *current != progress {
         *current = progress.clone();
-        let _ = app.emit(ANALYSIS_PROGRESS_EVENT, &progress);
+        events.progress(&progress);
     }
 }
 
@@ -633,10 +676,18 @@ pub fn playing<R: Runtime>(app: &AppHandle<R>, track_id: i64) {
     with_worker(app, |worker| worker.request(track_id));
 }
 
+/// The app is quitting: stops the thread, without waiting for it.
 pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
+    with_worker(app, AnalysisWorker::stop);
+}
+
+/// Waits, until `deadline`, for the thread to store what it finished and
+/// end.
+pub fn wait<R: Runtime>(app: &AppHandle<R>, deadline: Instant) {
     with_worker(app, |worker| {
-        worker.lock().stop = true;
-        worker.wake.notify_all();
+        if let Some(finished) = &worker.finished {
+            finished.wait("analysis", deadline);
+        }
     });
 }
 
@@ -781,6 +832,72 @@ mod tests {
             .query_row("SELECT tracks FROM album_analysis", [], |row| row.get(0))
             .unwrap();
         assert_eq!(tracks, 1);
+    }
+
+    struct Sent(Mutex<std::sync::mpsc::Sender<Vec<i64>>>);
+
+    impl Events for Sent {
+        fn analysed(&self, ids: &[i64]) {
+            let _ = self.0.lock().unwrap().send(ids.to_vec());
+        }
+        fn progress(&self, _: &AnalysisProgress) {}
+    }
+
+    #[test]
+    fn a_pass_stopped_midway_keeps_whole_results_and_ends() {
+        const TRACKS: usize = 30;
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("library.sqlite3");
+        let root = dir.path().join("Music");
+        std::fs::create_dir(&root).unwrap();
+        let conn = db::open(&db_path).unwrap();
+        let folder = crate::library::add_folder(&conn, &root).unwrap();
+        let library = Library {
+            conn,
+            folder_id: folder.id,
+        };
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../core/tests/fixtures/flac-44k.flac");
+        for n in 0..TRACKS {
+            let name = format!("{n:02}.flac");
+            std::fs::copy(&fixture, root.join(&name)).unwrap();
+            library.add(folder.id, track(&name).album("A"));
+        }
+
+        let (sent, analysed) = std::sync::mpsc::channel();
+        let events = Sent(Mutex::new(sent));
+        let (running, finished) = quitting::track();
+        let worker = Arc::new(AnalysisWorker::default());
+        worker.configure(&FeatureSettings {
+            loudness_analysis: true,
+            ..FeatureSettings::default()
+        });
+        let thread_worker = worker.clone();
+        std::thread::spawn(move || {
+            let _running = running;
+            run(&events, &thread_worker, &db_path);
+        });
+        // Stopped, as quitting stops it, once the first tracks are in.
+        analysed.recv_timeout(Duration::from_secs(30)).unwrap();
+        worker.stop();
+        assert!(finished.wait("analysis", Instant::now() + Duration::from_secs(5)));
+
+        // Each track is analysed in full or left to do at the next launch,
+        // and the album's loudness covers exactly the tracks analysed.
+        let conn = &library.conn;
+        let (done, remaining, failed) = counts(conn).unwrap();
+        assert_eq!((done as usize + remaining as usize, failed), (TRACKS, 0));
+        assert!(done > 0 && remaining > 0, "stopped midway: {done} done");
+        let (whole, album_tracks): (u32, u32) = conn
+            .query_row(
+                "SELECT (SELECT count(*) FROM track_analysis
+                         WHERE error IS NULL AND loudness IS NOT NULL AND envelope IS NOT NULL),
+                        (SELECT tracks FROM album_analysis)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((whole, album_tracks), (done, done));
     }
 
     #[test]

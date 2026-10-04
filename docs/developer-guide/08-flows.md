@@ -283,18 +283,73 @@ The user switches ReplayGain to "album" in Settings › Playback.
 
 ## Quitting
 
+```mermaid
+sequenceDiagram
+    participant M as Main thread (lib.rs)
+    participant H as history thread
+    participant A as analysis thread
+    participant W as metadata thread
+    M->>A: stop (shutdown)
+    M->>W: stop after this job (shutdown)
+    M->>H: the play in progress, then Quit (shutdown)
+    M->>M: finish the recording, save the queue, pause, PRAGMA optimize
+    H-->>M: ended (plays written), or the main thread writes what it left
+    A-->>M: ended (out of the core)
+    W-->>M: ended, or still in a request at the deadline
+    M->>M: release the media controls, drop the Engine
+    M->>M: register the atexit handler
+    Note over M: Tauri's cleanup, then exit: the handler calls _exit
+```
+
 1. ⌘Q (or the Dock's Quit) ends Tauri's run loop, which sends
-   `RunEvent::Exit` on the main thread (`lib.rs`).
-2. In order: the remote stops listening; the update checker, the
-   analysis worker and the metadata worker are told to stop, without
-   waiting for them; a recording is finished and its file
-   finalised (`recording::shutdown`); the queue notes the position and
-   saves itself (`queue::shutdown`: positions of long tracks, the
-   `player.queue` setting and rows); the library runs `PRAGMA optimize`;
-   the volume watcher, the Dock menu and the media controls are released.
-3. Last, `audio::shutdown` drops the `Engine`: `anomp_engine_destroy`
-   stops the device, frees the tracks and shuts JUCE down, on the main
-   thread, while the run loop still exists.
+   `RunEvent::Exit` on the main thread (`lib.rs`). When the handler
+   returns, Tauri ends the process with `std::process::exit`, whatever
+   other threads are doing, so the handler waits for the ones with
+   something to finish (`quitting.rs`), up to a deadline taken first:
+   `quitting::WAIT`, one second for all of them together.
+2. Told to stop, in order: the remote stops listening; the update
+   checker ends (it writes nothing); the analysis stops, giving up the
+   track it is on at its next progress report, a quarter of a second at
+   most, without storing it; the metadata worker stops after the job it
+   is on; the history tracker sends how long the play in progress was
+   listened to, then `Quit` (`history::shutdown`).
+3. On the main thread: a recording is finished and its file finalised
+   (`recording::shutdown`); the queue notes the position and saves
+   itself (`queue::shutdown`: positions of long tracks, the
+   `player.queue` setting and rows); playback is paused, so nothing
+   plays on while the threads are waited for; the library runs
+   `PRAGMA optimize`.
+4. Waited for until the deadline: the history thread, which writes
+   everything waiting before each ListenBrainz request; if it is still
+   in one at the deadline, `history::wait` takes what it left from the
+   shared receiver and writes it with the library's connection (a
+   `Listened` names its play by track and start, so any connection can
+   update it);
+   the analysis thread, so that results it finished are stored; the
+   metadata worker, which may
+   be in a request (up to 30 s): at the deadline it is left, and
+   `quitting` logs "metadata still running at quit". What it loses is
+   unfinished work, which background enrichment queues again at the
+   next launch: its writes are single statements, and pictures are
+   renamed into place.
+5. Then the volume watcher, the Dock menu and the media controls are
+   released, and `audio::shutdown` drops the `Engine`:
+   `anomp_engine_destroy` stops the device, frees the tracks and shuts
+   JUCE down, on the main thread, while the run loop still exists.
+6. Last, `quitting::skip_static_destructors` registers an `atexit`
+   handler. Tauri then does its own cleanup (and, after a database
+   restore or rebuild, starts the app again) and calls `exit`. Handlers
+   run in reverse order of registration, so ours runs before the C++
+   static destructors (the core's format registry, TagLib's and JUCE's
+   singletons): it flushes the log and calls `_exit`. A thread still
+   inside the core, such as a scan reading tags or a cover being read,
+   is never left running over destroyed objects, which could otherwise
+   crash the quit.
+
+Not waited for, as nothing of theirs is lost: the update checker; the
+remote's threads; the library watcher and a scan in progress, whose
+batches are transactions (a cut one rolls back, and the launch's rescan
+does it again).
 
 Closing the main window is not quitting: on macOS it hides the window
 and the music plays on (`lib.rs`'s `on_window_event`).

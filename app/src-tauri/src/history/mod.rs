@@ -14,10 +14,9 @@ pub mod listenbrainz;
 pub mod views;
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use rusqlite::{params, Connection};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -25,6 +24,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use crate::library::commands::LibraryState;
 use crate::library::{db, unix_now};
 use crate::queue::model::QueueState;
+use crate::quitting;
 use crate::settings;
 
 /// Frontend event, with no payload, after a play is recorded.
@@ -40,8 +40,6 @@ const MAX_STEP: f64 = 1.0;
 /// The track playing, as far as the history is concerned.
 #[derive(Debug, Clone, PartialEq)]
 struct Listening {
-    /// Tells this play from others, for the history thread.
-    token: u64,
     uid: u64,
     track_id: i64,
     started_at: i64,
@@ -56,7 +54,6 @@ struct Listening {
 #[derive(Debug, Default)]
 pub struct Tracker {
     listening: Option<Listening>,
-    next_token: u64,
 }
 
 /// What the tracker tells the history thread.
@@ -64,15 +61,21 @@ pub struct Tracker {
 pub enum Message {
     /// A play that has just counted.
     Played {
-        token: u64,
         track_id: i64,
         started_at: i64,
         seconds: f64,
     },
-    /// How long a counted play was listened to in the end.
-    Listened { token: u64, seconds: f64 },
+    /// How long a counted play (its track and start) was listened to in
+    /// the end.
+    Listened {
+        track_id: i64,
+        started_at: i64,
+        seconds: f64,
+    },
     /// Settings changed (ListenBrainz on or off, a new token).
     Wake,
+    /// The app is quitting: write what came before, then end.
+    Quit,
 }
 
 impl Tracker {
@@ -134,7 +137,6 @@ impl Tracker {
         if !listening.recorded && listening.duration > 0.0 && listening.played >= needed {
             listening.recorded = true;
             messages.push(Message::Played {
-                token: listening.token,
                 track_id: listening.track_id,
                 started_at: listening.started_at,
                 seconds: listening.played,
@@ -144,9 +146,7 @@ impl Tracker {
     }
 
     fn start(&mut self, uid: u64, track_id: i64, duration: f64, now: i64) -> Vec<Message> {
-        self.next_token += 1;
         self.listening = Some(Listening {
-            token: self.next_token,
             uid,
             track_id,
             started_at: now,
@@ -161,7 +161,8 @@ impl Tracker {
     fn finish(&mut self) -> Vec<Message> {
         match self.listening.take() {
             Some(listening) if listening.recorded => vec![Message::Listened {
-                token: listening.token,
+                track_id: listening.track_id,
+                started_at: listening.started_at,
                 seconds: listening.played,
             }],
             _ => Vec::new(),
@@ -174,6 +175,9 @@ impl Tracker {
 /// Writes plays, and sends listens, off the main thread.
 pub struct History {
     sender: Mutex<Sender<Message>>,
+    /// Shared with the thread so that quitting can write what it left.
+    receiver: Arc<Mutex<Receiver<Message>>>,
+    finished: quitting::Finished,
 }
 
 thread_local! {
@@ -187,16 +191,23 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .ok_or("The library is not available")?;
     let db_path = library.db_path().to_path_buf();
     let (sender, receiver) = mpsc::channel();
-    let thread_app = app.clone();
+    let receiver = Arc::new(Mutex::new(receiver));
+    let (running, finished) = quitting::track();
+    let (thread_app, thread_receiver) = (app.clone(), receiver.clone());
     std::thread::Builder::new()
         .name("history".into())
-        .spawn(move || match db::open(&db_path) {
-            Ok(conn) => run(&thread_app, &conn, &receiver),
-            Err(error) => log::warn!("{error}"),
+        .spawn(move || {
+            let _running = running;
+            match db::open(&db_path) {
+                Ok(conn) => run(&thread_app, &conn, &thread_receiver),
+                Err(error) => log::warn!("{error}"),
+            }
         })
         .map_err(|e| format!("Cannot start the history: {e}"))?;
     app.manage(History {
         sender: Mutex::new(sender),
+        receiver,
+        finished,
     });
     Ok(())
 }
@@ -242,47 +253,116 @@ pub fn wake<R: Runtime>(app: &AppHandle<R>) {
     send(app, vec![Message::Wake]);
 }
 
-fn run<R: Runtime>(app: &AppHandle<R>, conn: &Connection, receiver: &Receiver<Message>) {
-    let mut rows: HashMap<u64, i64> = HashMap::new();
+/// The app is quitting: how long the play in progress was listened to is
+/// sent, and the thread writes what it has and ends. Main thread.
+pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
+    let mut messages = TRACKER.with_borrow_mut(Tracker::finish);
+    messages.push(Message::Quit);
+    send(app, messages);
+}
+
+/// Waits, until `deadline`, for the thread to write what it was sent. If
+/// it's still in a ListenBrainz request then, what it hasn't taken is
+/// written here, with the library's connection. Main thread.
+pub fn wait<R: Runtime>(app: &AppHandle<R>, deadline: Instant) {
+    let Some(history) = app.try_state::<History>() else {
+        return;
+    };
+    if history.finished.wait("history", deadline) {
+        return;
+    }
+    if let Some(library) = app.try_state::<LibraryState>() {
+        write_left(app, &library.conn(), &history.receiver);
+    }
+}
+
+/// What the history thread needs from the app; tests use a fake.
+trait Host {
+    /// A play was added to the history.
+    fn recorded(&self);
+    /// Whether listens go to ListenBrainz.
+    fn listenbrainz(&self) -> bool;
+}
+
+impl<R: Runtime> Host for AppHandle<R> {
+    fn recorded(&self) {
+        let _ = self.emit(HISTORY_CHANGED_EVENT, ());
+    }
+
+    fn listenbrainz(&self) -> bool {
+        settings::current(self).features.listenbrainz
+    }
+}
+
+/// Writes the messages as they come, until `Message::Quit` or the senders
+/// are gone. Everything waiting is written before ListenBrainz is sent to;
+/// the receiver is free only while a request is under way, for `wait`.
+fn run(host: &impl Host, conn: &Connection, receiver: &Mutex<Receiver<Message>>) {
     let mut sender = listenbrainz::Sender::new();
     loop {
-        let message = receiver.recv_timeout(sender.wait());
-        match message {
-            Ok(Message::Played {
-                token,
-                track_id,
-                started_at,
-                seconds,
-            }) => match record(conn, track_id, started_at, seconds) {
-                Ok(row) => {
-                    rows.insert(token, row);
-                    let _ = app.emit(HISTORY_CHANGED_EVENT, ());
-                    let features = settings::current(app).features;
-                    if features.listenbrainz {
-                        if let Err(error) = listenbrainz::queue(conn, track_id, started_at) {
-                            log::warn!("{error}");
-                        }
-                    }
-                }
-                Err(error) => log::warn!("{error}"),
-            },
-            Ok(Message::Listened { token, seconds }) => {
-                if let Some(row) = rows.remove(&token) {
-                    if let Err(error) = conn.execute(
-                        "UPDATE plays SET seconds = ?1 WHERE id = ?2",
-                        params![seconds, row],
-                    ) {
-                        log::warn!("{error}");
-                    }
+        {
+            let receiver = receiver.lock().unwrap_or_else(|e| e.into_inner());
+            let first = match receiver.recv_timeout(sender.wait()) {
+                Ok(message) => Some(message),
+                Err(mpsc::RecvTimeoutError::Timeout) => None,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            };
+            let mut quit = false;
+            for message in first.into_iter().chain(receiver.try_iter()) {
+                match message {
+                    Message::Wake => sender.retry_now(),
+                    Message::Quit => quit = true,
+                    message => write(host, conn, &message),
                 }
             }
-            Ok(Message::Wake) => sender.retry_now(),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            if quit {
+                return;
+            }
         }
-        if settings::current(app).features.listenbrainz {
+        if host.listenbrainz() {
             sender.send_pending(conn);
         }
+    }
+}
+
+/// Writes what the thread hasn't taken, as `wait` does at quit.
+fn write_left(host: &impl Host, conn: &Connection, receiver: &Mutex<Receiver<Message>>) {
+    let receiver = receiver.lock().unwrap_or_else(|e| e.into_inner());
+    for message in receiver.try_iter() {
+        write(host, conn, &message);
+    }
+}
+
+/// Writes a play, or how long one was listened to.
+fn write(host: &impl Host, conn: &Connection, message: &Message) {
+    let written = match *message {
+        Message::Played {
+            track_id,
+            started_at,
+            seconds,
+        } => record(conn, track_id, started_at, seconds).map(|_| {
+            host.recorded();
+            if host.listenbrainz() {
+                if let Err(error) = listenbrainz::queue(conn, track_id, started_at) {
+                    log::warn!("{error}");
+                }
+            }
+        }),
+        Message::Listened {
+            track_id,
+            started_at,
+            seconds,
+        } => conn
+            .execute(
+                "UPDATE plays SET seconds = ?1
+                 WHERE id = (SELECT max(id) FROM plays WHERE track_id = ?2 AND played_at = ?3)",
+                params![seconds, track_id, started_at],
+            )
+            .map(|_| ()),
+        Message::Wake | Message::Quit => Ok(()),
+    };
+    if let Err(error) = written {
+        log::warn!("{error}");
     }
 }
 
@@ -315,6 +395,85 @@ mod tests {
             position += 0.05;
         }
         messages
+    }
+
+    struct Offline;
+
+    impl Host for Offline {
+        fn recorded(&self) {}
+        fn listenbrainz(&self) -> bool {
+            false
+        }
+    }
+
+    /// A library with one track, its id, and the messages of a play of it
+    /// counted at 30 s, with the app quitting at 45 s as `shutdown` sends.
+    fn quit_while_playing() -> (crate::library::test_library::Library, i64, Vec<Message>) {
+        use crate::library::test_library::{track, Library};
+        let library = Library::new([track("a/1.flac")]);
+        let track_id: i64 = library
+            .conn
+            .query_row("SELECT id FROM tracks", [], |row| row.get(0))
+            .unwrap();
+        let mut tracker = Tracker::default();
+        tracker.current(Some((1, track_id, 60.0)), true, 500);
+        let mut messages = play(&mut tracker, 0.0, 45.0, 60.0);
+        messages.extend(tracker.finish());
+        messages.push(Message::Quit);
+        (library, track_id, messages)
+    }
+
+    fn listened(conn: &Connection, track_id: i64) -> f64 {
+        conn.query_row(
+            "SELECT seconds FROM plays WHERE track_id = ?1 AND played_at = 500",
+            [track_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn quitting_writes_the_play_in_progress_and_ends_the_thread() {
+        let (library, track_id, messages) = quit_while_playing();
+        let (sender, receiver) = mpsc::channel();
+        for message in messages {
+            sender.send(message).unwrap();
+        }
+        let receiver = Arc::new(Mutex::new(receiver));
+        let (running, finished) = quitting::track();
+        let conn = library.conn;
+        let thread_receiver = receiver.clone();
+        let thread = std::thread::spawn(move || {
+            let _running = running;
+            run(&Offline, &conn, &thread_receiver);
+            conn
+        });
+        // The thread ends on the quit, though the sender is still there.
+        assert!(finished.wait("history", Instant::now() + Duration::from_secs(5)));
+        let conn = thread.join().unwrap();
+        let seconds = listened(&conn, track_id);
+        assert!(seconds > 44.0, "the listened time at quit: {seconds}");
+        drop(sender);
+    }
+
+    #[test]
+    fn what_the_thread_leaves_at_the_deadline_is_written_by_the_caller() {
+        // The thread is in a ListenBrainz request, so it takes nothing.
+        let (library, track_id, messages) = quit_while_playing();
+        let (sender, receiver) = mpsc::channel();
+        for message in messages {
+            sender.send(message).unwrap();
+        }
+        let receiver = Mutex::new(receiver);
+        write_left(&Offline, &library.conn, &receiver);
+        let seconds = listened(&library.conn, track_id);
+        assert!(seconds > 44.0, "the listened time at quit: {seconds}");
+        // Written once.
+        let plays: i64 = library
+            .conn
+            .query_row("SELECT count(*) FROM plays", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(plays, 1);
     }
 
     #[test]

@@ -17,6 +17,7 @@ mod logging;
 mod media;
 mod metadata;
 mod queue;
+mod quitting;
 mod recording;
 mod remote;
 #[cfg(any(test, feature = "self-test"))]
@@ -53,6 +54,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            logging::init(app.handle());
             anomp::forward_core_log();
             log::info!(
                 "ano-mp {} (core {}) starting",
@@ -162,6 +164,8 @@ pub fn run() {
             diagnostics::diagnostics_notices,
             diagnostics::diagnostics_discogs_notice,
             diagnostics::diagnostics_first_paint,
+            logging::logging_detailed,
+            logging::logging_set_detailed,
             library::commands::library_db_check,
             library::commands::library_db_restore,
             library::commands::library_db_rebuild,
@@ -303,18 +307,31 @@ pub fn run() {
         .run(|app, event| match event {
             tauri::RunEvent::Exit => {
                 log::info!("quitting");
+                // The process ends when this returns (`quitting.rs`).
+                let deadline = std::time::Instant::now() + quitting::WAIT;
                 remote::shutdown(app);
                 updates::shutdown(app);
                 library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
+                history::shutdown(app);
                 recording::shutdown(app);
                 queue::shutdown(app);
+                audio::pause_for_quit();
                 library::commands::shutdown(app);
+                // What the threads were writing is written before the
+                // process ends.
+                history::wait(app, deadline);
+                library::analysis::wait(app, deadline);
+                metadata::worker::wait(app, deadline);
                 library::availability::shutdown();
                 shell::shutdown();
                 media::shutdown();
                 audio::shutdown();
+                // No C++ static destructor runs under a thread still in the
+                // core (`quitting.rs`).
+                quitting::skip_static_destructors();
             }
+            tauri::RunEvent::ExitRequested { code, .. } => quitting::exit_requested(code),
             // Files opened from the Finder play (F5).
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             tauri::RunEvent::Opened { urls } => shell::opened(app, urls),

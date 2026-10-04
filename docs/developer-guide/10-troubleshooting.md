@@ -8,7 +8,8 @@ is the place.
 
 ## The logs
 
-Every layer writes to one log file, `ano-mp.log`:
+Every layer writes to one log file, `ano-mp.log` (and, while detailed
+logging is on, to `ano-mp-detailed.log` beside it):
 
 - unsandboxed (`npm run tauri dev`):
   `~/Library/Logs/dev.anomp.player/ano-mp.log`, and every line is also
@@ -23,12 +24,25 @@ from: the Rust module path (`queue`, `library::scanner`,
 failed assertions), `webview` for the page's uncaught errors, and
 `panic` for a panic's message and backtrace.
 
-**Levels.** Release builds write info and above; debug builds also write
-debug. There is no switch at run time: to see debug lines (titles, file
-names, paths), run a debug build (`npm run tauri dev`). At info and
-above, absolute paths become `<path>` and URLs keep only their host, and
-at every level keys and tokens are redacted (`logging.rs`), so a log
-attached to a bug report holds ids and counts, not the user's music.
+**Levels.** `ano-mp.log` takes info and above in a release build, and
+debug too in a debug build (`npm run tauri dev`). At info and above,
+absolute paths become `<path>` and URLs keep only their host, and at
+every level keys and tokens are redacted (`logging.rs`), so that file
+holds ids and counts, not the user's music.
+
+**Detailed logging.** To see a release build's debug lines (file names,
+paths, titles, artists, full URLs), the user turns on **Detailed logging**
+in Settings › About. Every line, debug included, then also goes to
+`ano-mp-detailed.log` in the same folder, redacted as above, until the
+switch is turned off or the app quits; past 8 MB the file is set aside
+as `ano-mp-detailed.1.log` and a new one started. Turning the switch off
+deletes both files, and so does the next launch (`logging::init`), so
+they hold one session at most but outlive the quit that may be the bug.
+`ano-mp.log` never takes the debug lines. The logger lets every level
+through to its targets, each with its own filter; `apply_max_level`
+keeps debug lines from being formatted at all while no file takes them.
+Ask a user for the detailed file only when the normal log doesn't
+explain the problem, and remind them it names their music.
 
 The file starts again past 2 MB, keeping two older ones (`ano-mp.log`
 plus rotated copies). A crash of a bundle also leaves a report in
@@ -47,6 +61,7 @@ short report for a bug, with no paths, titles or artists:
 | Folders | how many folders are in each state (`available`, `missing`, `empty`, `mostlyGone`, `inTrash`, `noPermission`) |
 | Features on, Online sources on | the feature switches that are on, and the online sources in use (or "online off") |
 | Database | the schema version, the file's size, how many pre-migration copies exist, the launch check's result |
+| Logging | whether detailed logging is on (never the detailed log's lines) |
 | Log (last lines) | the log's last lines at info and above |
 
 ## The developer page
@@ -140,6 +155,7 @@ bookmark problem or an entitlement only shows in a sandboxed bundle.
 | **The database repair dialog appears** | `library/recovery.rs`: the launch check failed. The copies are `library.sqlite3.pre-<n>`; the damaged file is kept as `…damaged-<time>`. | `library::commands`: "the database check failed: [...]" |
 | **The UI shows an old queue, or a wrong order** | `queue/model.rs`: a list change that didn't log an `Edit` (`edited`) or `reset_list`; `lib/queueEdits.ts` applies edits by `listVersion`. | (none; compare `queue_state` with the UI) |
 | **High CPU** | The loudness analysis (Settings › Features; `library/analysis.rs`), a scan, the visualizer (its frame rate), effects at a high sample rate (`scripts/bench.py` has their budgets). | `library::analysis` progress; the Activity Monitor's threads are named (`analysis`, `metadata`, `anomp read-ahead`…) |
+| **A crash report at quit**, or a play's listened time cut short | `lib.rs`'s `RunEvent::Exit` and `quitting.rs` ([chapter 8, "Quitting"](08-flows.md#quitting)): which threads are waited for, and for how long, and the `atexit` handler that ends the process before the C++ static destructors. A crash report whose stack is in a static destructor means the handler didn't run (registered too early, or not at all). | `app`: "quitting"; `quitting`: "<thread> still running at quit", "cannot register the end of the process" |
 | **The app won't start** | `lib.rs`'s `setup` logs each part's failure and carries on; a panic is in the log with its backtrace. | `panic`: the message and backtrace; any `ERROR` line from `setup` |
 | **`cargo test`: "… is out of date"** | A Rust type, command or setting changed: `ANOMP_WRITE_BINDINGS=1 cargo test bindings` and commit the generated files (chapter 6). | — |
 | **Clippy fails on `unsafe`** | Every `unsafe` block needs a `// SAFETY:` comment saying why it is sound, and an unsafe function's body still wraps its unsafe operations in blocks (`Cargo.toml`'s `[lints]`). | — |

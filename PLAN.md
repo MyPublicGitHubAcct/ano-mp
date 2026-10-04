@@ -102,7 +102,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 475 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 485 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 64 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 225 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -1274,10 +1274,59 @@ links to them rather than repeating them.
   makes keeping the map current part of each change. Open:
   - the exit check: a developer new to the repo finds three real bugs'
     code from the guide alone, and adds a setting by its recipe;
-  - found while writing: the log level can't be raised in a release
-    build (debug lines need a debug build), which limits what a user's
-    log can show; and the metadata and analysis workers are told to stop
-    at quit but not waited for.
+  - found while writing, both looked into on 2026-10-04:
+    - *the log level can't be raised in a release build* (debug lines
+      need a debug build), which limited what a user's log can show:
+      **decided and done** 2026-10-04. Of three designs (a switch writing
+      debug lines into `ano-mp.log` until the next launch; the same kept
+      across launches for up to 24 hours; debug lines in a file of their
+      own), the owner chose the third. **Detailed logging** in Settings ›
+      About writes every line, debug included and redacted as ever, to
+      `ano-mp-detailed.log` (one old copy past 8 MB) until switched off or
+      the app quits; switching it off deletes the file, and so does the
+      next launch, so it holds one session at most but outlives a quit.
+      `ano-mp.log` never takes debug lines in a release build. "Copy
+      diagnostics" says only whether it is on (a "Logging" section) and
+      still leaves debug lines out. It is a switch for this run, not a
+      setting, so it has no stored value, `validate` rule or settings
+      reference row: commands `logging_detailed` and
+      `logging_set_detailed`.
+    - *the workers at quit*: **done** 2026-10-04. Tauri calls
+      `process::exit` as soon as `RunEvent::Exit` is handled. Harm found:
+      the history thread was never told to stop, the play in progress
+      never got its final listened time, and a play queued behind a
+      ListenBrainz request (up to 30 s) was lost; the analysis could
+      still be inside the core while `exit` ran its static destructors;
+      and `analysis::store` wrote a track and its album's loudness as two
+      statements, so a cut between them left the album's loudness stale
+      for good. Not harmful: the metadata worker (single-statement
+      writes, pictures renamed into place, unfinished work queued again
+      at launch), the update checker (writes nothing), the remote, the
+      library watcher and scans (batches are transactions, the launch
+      rescans). Now quitting waits, at most `quitting::WAIT` (1 s) for
+      all, for the history, analysis and metadata threads, with playback
+      paused first and the engine still dropped last; the history thread
+      writes everything waiting before each ListenBrainz request, and if
+      it is still in one at the deadline, the main thread writes what it
+      left (a listened time names its play by track and start, not by a
+      row only that thread knew); `store` is one transaction. The tests
+      found that a user's request under way when the metadata worker
+      stopped was never answered (its next step was queued after the
+      stop): the worker now drops what is queued as it stops. Tests
+      stop each worker mid-job.
+    - *a crash at quit* (found with the above): any thread still in the
+      core when `exit` ran the C++ static destructors (a scan or a cover
+      reading tags, Get Info, a file opening) could run over the core's
+      format registry or TagLib's and JUCE's singletons as they were
+      destroyed. Making scans stoppable wouldn't cover the other threads,
+      or TagLib's statics, so instead: **done** 2026-10-04,
+      `quitting::skip_static_destructors`, last on `RunEvent::Exit`,
+      registers an `atexit` handler that runs before those destructors
+      (handlers run in reverse order of registration), flushes the log
+      and calls `_exit` with the exit code asked for. Tauri's cleanup and a
+      restart's relaunch come before `exit`, so they still run. A test
+      runs the handler in a child process and checks that what was
+      registered before it doesn't run.
 
   How the code is organised and how it works,
   detailed enough that a developer can go straight to the part that

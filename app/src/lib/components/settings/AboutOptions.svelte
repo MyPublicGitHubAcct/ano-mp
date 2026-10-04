@@ -5,7 +5,9 @@
   // and the log's last lines; no paths or titles). With the versions, the
   // third-party notices (PLAN.md §8.2) and Discogs' non-affiliation notice
   // (§8.1); then newer releases (§8.2: a check by hand, the automatic
-  // checks' switch, and the release's page to download from).
+  // checks' switch, and the release's page to download from). Detailed
+  // logging writes debug lines (paths, titles) to a file of their own until
+  // it's turned off or the app quits, which deletes that file.
   import { onMount } from "svelte";
   import { diagnostics } from "$lib/api";
   import { formatDay } from "$lib/format";
@@ -18,11 +20,22 @@
 
   let text = $state<string | null>(null);
   let discogsNotice = $state<string | null>(null);
+  /** Whether detailed logging is on; null until known. */
+  let detailed = $state<boolean | null>(null);
+  let changingDetailed = $state(false);
 
   onMount(() => {
     void attempt(async () => (text = await diagnostics.text()));
     void attempt(async () => (discogsNotice = await diagnostics.discogsNotice()));
+    void attempt(async () => (detailed = await diagnostics.detailedLogging()));
   });
+
+  async function setDetailed(on: boolean) {
+    changingDetailed = true;
+    const now = await attempt(() => diagnostics.setDetailedLogging(on));
+    detailed = now ?? (await attempt(() => diagnostics.detailedLogging())) ?? detailed;
+    changingDetailed = false;
+  }
 
   /** The lines of the Versions section. */
   const versions = $derived(
@@ -110,6 +123,21 @@
   <button onclick={() => attempt(() => diagnostics.showLogs())}>{t("about.showLogs")}</button>
   <button onclick={copy}>{t("about.copyDiagnostics")}</button>
 </div>
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={detailed === true}
+    disabled={detailed === null || changingDetailed}
+    onchange={(event) => void setDetailed(event.currentTarget.checked)}
+  />
+  <span>
+    <span class="title">{t("about.detailedLogging")}</span>
+    <span class="hint">{t("about.detailedLoggingHint")}</span>
+  </span>
+</label>
+{#if detailed}
+  <p class="warning">{t("about.detailedLoggingOn")}</p>
+{/if}
 
 <style>
   .versions {
@@ -120,6 +148,10 @@
 
   .small {
     font-size: 0.8rem;
+  }
+
+  .warning {
+    color: var(--danger);
   }
 
   .actions {

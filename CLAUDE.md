@@ -379,12 +379,17 @@ of tokens; any change to `remote/` needs the security review in `PLAN.md` §8.1.
 and above, write ids and counts only: titles, artists, file names and paths go
 at debug (the formatter also scrubs absolute paths and URL paths at info and
 above, and redacts keys, `Authorization` values and `token=`-like parameters at
-every level). A new key or token the app holds goes through `metadata::keys`,
+every level). In a release build debug lines reach only `ano-mp-detailed.log`,
+while the user's "Detailed logging" switch (Settings › About) is on; never route
+them into `ano-mp.log`. A new key or token the app holds goes through `metadata::keys`,
 which registers it with `logging::keep_secret`. The core logs through
 `anomp_set_log_callback` (`core/src/Log.h`: `anomp::log::warn` and so on);
 JUCE's `Logger` and failed assertions arrive there. Anything in the core that
 outlives JUCE's runtime at exit (a static, a base class of `AudioEngine`) must
-let go of JUCE first, or the quit aborts. "Copy diagnostics" (`diagnostics.rs`)
+let go of JUCE first, or the quit aborts (tests and the self-test still run
+the destructors; the app skips them: `quitting::skip_static_destructors` stays
+last on `RunEvent::Exit`, so no thread still in the core runs over destroyed
+statics). "Copy diagnostics" (`diagnostics.rs`)
 holds no paths or titles; adding to it, or to what logs may contain, is an owner
 decision.
 

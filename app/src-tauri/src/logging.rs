@@ -4,8 +4,15 @@
 //! to `ano-mp.log` in the app's log directory (on macOS
 //! `~/Library/Logs/<identifier>`, inside the container when sandboxed),
 //! starting a new file past `MAX_FILE_SIZE` and keeping `KEEP` old ones.
-//! Release builds write info and above; debug builds also debug, and copy
-//! everything to stderr. Targets are the module paths ("library::scanner"),
+//! Release builds write info and above there; debug builds also debug, and
+//! copy everything to stderr.
+//!
+//! "Detailed logging" (Settings › About) writes every line, debug too, to
+//! a second file, `ano-mp-detailed.log`, from when it's switched on until
+//! it's switched off or the app quits. The file is deleted when it's
+//! switched off, or at the next launch (`init`); it outlives a quit so that
+//! a problem ending in one can still be reported. `ano-mp.log` never holds
+//! what debug lines name, and the user chooses which file to attach. Targets are the module paths ("library::scanner"),
 //! "core" for the C++ core (`anomp::forward_core_log`: JUCE's Logger and
 //! failed assertions too), and "webview" for the page's uncaught errors.
 //!
@@ -16,22 +23,25 @@
 //! - At info and above, absolute paths become `<path>` and URLs keep only
 //!   their scheme and host (their queries and paths name albums and
 //!   artists). Write ids and counts at those levels; library paths, file
-//!   names, titles and artists go at debug, which release builds don't
-//!   write.
+//!   names, titles and artists go at debug, which release builds write
+//!   only to the detailed log.
 //!
 //! A panic hook writes the message, where it happened and a backtrace
 //! before the default hook runs and the release build aborts
 //! (`panic = "abort"`).
 
 use std::fmt::Arguments;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use log::{Level, LevelFilter, Record};
 use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_log::fern::FormatCallback;
+use tauri_plugin_log::fern::{self, FormatCallback};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
 /// The log file's name, without ".log".
@@ -40,6 +50,18 @@ pub const FILE_NAME: &str = "ano-mp";
 const MAX_FILE_SIZE: u128 = 2 * 1024 * 1024;
 /// Old files kept, besides the current one.
 const KEEP: usize = 2;
+
+/// The detailed log's file name, without ".log".
+pub const DETAILED_FILE_NAME: &str = "ano-mp-detailed";
+/// The detailed log past this many bytes is put aside, as its one old
+/// copy, and a new one started.
+const DETAILED_MAX_SIZE: u64 = 8 * 1024 * 1024;
+
+/// The detailed log while it's on. Never log while holding it: the logger
+/// takes it to write.
+static DETAILED: Mutex<Option<DetailedLog>> = Mutex::new(None);
+/// Whether lines go to the detailed log, read by the logger for each one.
+static DETAILED_ON: AtomicBool = AtomicBool::new(false);
 
 /// Query parameters whose values are never written.
 const SECRET_PARAMETERS: [&str; 7] = [
@@ -68,20 +90,31 @@ pub fn keep_secret(secret: &str) {
     }
 }
 
-/// The log plugin, writing to the app's log directory.
+/// The log plugin, writing to the app's log directory: `ano-mp.log`, and
+/// the detailed log while it's on.
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
+    let detailed = fern::Dispatch::new().chain(fern::Output::call(|record| {
+        let mut detailed = DETAILED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(detailed) = detailed.as_mut() {
+            detailed.write(&record.args().to_string());
+        }
+    }));
     let mut builder = tauri_plugin_log::Builder::new()
         .clear_targets()
-        .target(Target::new(TargetKind::LogDir {
-            file_name: Some(FILE_NAME.into()),
-        }))
+        .target(
+            Target::new(TargetKind::LogDir {
+                file_name: Some(FILE_NAME.into()),
+            })
+            .filter(|metadata| in_normal_log(metadata.level(), cfg!(debug_assertions))),
+        )
+        .target(
+            Target::new(TargetKind::Dispatch(detailed))
+                .filter(|_| DETAILED_ON.load(Ordering::Relaxed)),
+        )
         .max_file_size(MAX_FILE_SIZE)
         .rotation_strategy(RotationStrategy::KeepSome(KEEP))
-        .level(if cfg!(debug_assertions) {
-            LevelFilter::Debug
-        } else {
-            LevelFilter::Info
-        })
+        // Narrowed by `apply_max_level`; each target filters too.
+        .level(LevelFilter::Debug)
         // Other crates' chatter: only their problems.
         .level_for("tao", LevelFilter::Warn)
         .level_for("wry", LevelFilter::Warn)
@@ -101,6 +134,134 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
 /// The log directory.
 pub fn log_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path().app_log_dir().map_err(|e| e.to_string())
+}
+
+/// Whether `ano-mp.log` takes a record at `level`: debug only in a debug
+/// build.
+fn in_normal_log(level: Level, debug_build: bool) -> bool {
+    debug_build || level <= Level::Info
+}
+
+/// Deletes the detailed log a previous run left, and sets the level. Call
+/// first in `setup`, after the log plugin.
+pub fn init<R: Runtime>(app: &AppHandle<R>) {
+    if let Ok(dir) = log_dir(app) {
+        DetailedLog::remove(&dir);
+    }
+    apply_max_level();
+}
+
+/// Debug lines are made only while some file takes them.
+fn apply_max_level() {
+    log::set_max_level(
+        if cfg!(debug_assertions) || DETAILED_ON.load(Ordering::Relaxed) {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
+        },
+    );
+}
+
+/// Whether detailed logging is on.
+pub fn detailed() -> bool {
+    DETAILED_ON.load(Ordering::Relaxed)
+}
+
+/// Starts or ends detailed logging. Ending it deletes the detailed log.
+pub fn set_detailed<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<(), String> {
+    if on == detailed() {
+        return Ok(());
+    }
+    if on {
+        let started = DetailedLog::start(&log_dir(app)?, DETAILED_MAX_SIZE)
+            .map_err(|e| format!("Cannot start the detailed log: {e}"))?;
+        *DETAILED.lock().unwrap_or_else(|e| e.into_inner()) = Some(started);
+        DETAILED_ON.store(true, Ordering::Relaxed);
+        apply_max_level();
+        log::info!("detailed logging on");
+    } else {
+        log::info!("detailed logging off");
+        DETAILED_ON.store(false, Ordering::Relaxed);
+        apply_max_level();
+        let stopped = DETAILED.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(stopped) = stopped {
+            stopped.stop();
+        }
+    }
+    Ok(())
+}
+
+/// The detailed log's file, kept to `max_size` bytes or so, with one old
+/// copy.
+struct DetailedLog {
+    dir: PathBuf,
+    file: File,
+    size: u64,
+    max_size: u64,
+}
+
+impl DetailedLog {
+    fn current(dir: &Path) -> PathBuf {
+        dir.join(format!("{DETAILED_FILE_NAME}.log"))
+    }
+
+    fn previous(dir: &Path) -> PathBuf {
+        dir.join(format!("{DETAILED_FILE_NAME}.1.log"))
+    }
+
+    /// Starts an empty detailed log in `dir`.
+    fn start(dir: &Path, max_size: u64) -> std::io::Result<DetailedLog> {
+        std::fs::create_dir_all(dir)?;
+        Self::remove(dir);
+        Ok(DetailedLog {
+            dir: dir.to_path_buf(),
+            file: File::create(Self::current(dir))?,
+            size: 0,
+            max_size,
+        })
+    }
+
+    /// Adds a line. Errors are dropped: logging them would come back here.
+    fn write(&mut self, line: &str) {
+        let length = line.len() as u64 + 1;
+        if self.size > 0 && self.size + length > self.max_size {
+            let current = Self::current(&self.dir);
+            let renamed = std::fs::rename(&current, Self::previous(&self.dir));
+            if let (Ok(()), Ok(file)) = (renamed, File::create(&current)) {
+                self.file = file;
+                self.size = 0;
+            }
+        }
+        if writeln!(self.file, "{line}").is_ok() {
+            self.size += length;
+        }
+    }
+
+    /// Closes and deletes the detailed log.
+    fn stop(self) {
+        let dir = self.dir;
+        drop(self.file);
+        Self::remove(&dir);
+    }
+
+    /// Deletes the detailed log and its old copy in `dir`, if there.
+    fn remove(dir: &Path) {
+        let _ = std::fs::remove_file(Self::current(dir));
+        let _ = std::fs::remove_file(Self::previous(dir));
+    }
+}
+
+/// Whether detailed logging is on (Settings › About).
+#[tauri::command]
+pub fn logging_detailed() -> bool {
+    detailed()
+}
+
+/// Turns detailed logging on or off; returns whether it's on.
+#[tauri::command]
+pub fn logging_set_detailed<R: Runtime>(app: AppHandle<R>, on: bool) -> Result<bool, String> {
+    set_detailed(&app, on)?;
+    Ok(detailed())
 }
 
 /// `2026-10-02T09:15:42.123Z WARN library::scanner: message`, redacted,
@@ -485,6 +646,63 @@ mod tests {
                     && text.contains("on purpose")),
             "{captured:?}"
         );
+    }
+
+    #[test]
+    fn the_normal_log_takes_debug_lines_only_in_a_debug_build() {
+        for level in [Level::Error, Level::Warn, Level::Info] {
+            assert!(in_normal_log(level, false));
+        }
+        assert!(!in_normal_log(Level::Debug, false));
+        assert!(in_normal_log(Level::Debug, true));
+    }
+
+    #[test]
+    fn the_detailed_log_holds_debug_lines_redacted_and_is_deleted_when_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = DetailedLog::current(dir.path());
+        keep_secret("detailed-log-s3cr3t");
+        let mut detailed = DetailedLog::start(dir.path(), 1 << 20).unwrap();
+        detailed.write(&line(
+            Level::Debug,
+            "ano_mp_lib::library::scanner",
+            "read /Users/me/Music/Song.flac with detailed-log-s3cr3t",
+        ));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            "DEBUG library::scanner: read /Users/me/Music/Song.flac with <redacted>\n"
+        );
+        detailed.stop();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_detailed_log_keeps_one_old_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut detailed = DetailedLog::start(dir.path(), 20).unwrap();
+        for n in 0..5 {
+            detailed.write(&format!("line {n} ........"));
+        }
+        let current = std::fs::read_to_string(DetailedLog::current(dir.path())).unwrap();
+        let previous = std::fs::read_to_string(DetailedLog::previous(dir.path())).unwrap();
+        assert_eq!(current, "line 4 ........\n");
+        assert_eq!(previous, "line 3 ........\n");
+        detailed.stop();
+        assert!(!DetailedLog::previous(dir.path()).exists());
+    }
+
+    #[test]
+    fn a_detailed_log_left_by_an_earlier_run_is_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(DetailedLog::current(dir.path()), "old").unwrap();
+        std::fs::write(DetailedLog::previous(dir.path()), "older").unwrap();
+        let normal = dir.path().join(format!("{FILE_NAME}.log"));
+        std::fs::write(&normal, "kept").unwrap();
+        DetailedLog::remove(dir.path());
+        assert!(!DetailedLog::current(dir.path()).exists());
+        assert!(!DetailedLog::previous(dir.path()).exists());
+        assert!(normal.exists(), "the normal log stays");
     }
 
     #[test]

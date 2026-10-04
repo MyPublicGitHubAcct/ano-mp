@@ -271,3 +271,9 @@ Versions, logs and diagnostics for reporting a problem.
   files in the Finder; **Copy diagnostics** copies a summary to paste into
   a bug report. Neither holds your file names, titles, artists or keys
   ([chapter 13](13-privacy.md#logs-and-diagnostics)).
+- **Detailed logging** (off at first): while it's on, ano-mp also writes a
+  second log file, `ano-mp-detailed.log`, that names the files, folders,
+  titles, artists and web addresses it works with, to trace a problem the
+  normal log can't explain. It stays on until you turn it off or quit. The
+  file is deleted when you turn it off, or the next time ano-mp opens
+  ([chapter 13](13-privacy.md#detailed-logging)).

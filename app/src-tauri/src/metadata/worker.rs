@@ -9,9 +9,14 @@
 //! gets to it. The album playing is queued ahead of that, and the artist
 //! page being looked at ahead of both.
 //!
-//! On exit the worker is told to stop but not waited for: a request can
-//! take up to its 30 s timeout, and nothing it writes is left half-done
-//! (SQLite transactions, and the image cache's rename into place).
+//! On exit the worker is told to stop, and waited for only briefly
+//! (`quitting::WAIT`): it stops between jobs, and a job's requests can take
+//! up to their 30 s timeout. A job cut short loses only its unfinished
+//! work, which background enrichment queues again at the next launch: its
+//! writes are single SQLite statements (a new MusicBrainz match's second
+//! one only forgets an automatic Discogs match, which is checked again
+//! later anyway), and a picture is written under a temporary name and
+//! renamed into place.
 
 use std::sync::{mpsc, Arc, Mutex};
 
@@ -25,6 +30,7 @@ use super::Error;
 use crate::library::art::ArtKey;
 use crate::library::commands::LibraryState;
 use crate::library::db;
+use crate::quitting;
 
 /// Frontend event with a `MetadataChanged` payload.
 pub const METADATA_CHANGED_EVENT: &str = "metadata-changed";
@@ -34,6 +40,8 @@ pub const METADATA_PROGRESS_EVENT: &str = "metadata-progress";
 
 pub struct MetadataWorker {
     shared: Arc<Shared>,
+    /// The thread's end, which quitting waits for.
+    finished: quitting::Finished,
     /// The album last queued as playing, so a queue change that keeps it
     /// doesn't queue it again.
     playing: Mutex<Option<i64>>,
@@ -75,9 +83,11 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let shared = Arc::new(Shared::default());
     let host = TauriHost { app: app.clone() };
     let worker_shared = shared.clone();
+    let (running, finished) = quitting::track();
     std::thread::Builder::new()
         .name("metadata".into())
         .spawn(move || {
+            let _running = running;
             let conn = match db::open(&db_path) {
                 Ok(conn) => conn,
                 Err(error) => {
@@ -101,15 +111,23 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     shared.enrich_library();
     app.manage(MetadataWorker {
         shared,
+        finished,
         playing: Mutex::new(None),
     });
     Ok(())
 }
 
-/// Tells the worker to stop, without waiting for it.
+/// Tells the worker to stop after the job it's on, without waiting for it.
 pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
     if let Some(worker) = app.try_state::<MetadataWorker>() {
         worker.shared.stop();
+    }
+}
+
+/// Waits, until `deadline`, for the worker to finish its job and end.
+pub fn wait<R: Runtime>(app: &AppHandle<R>, deadline: std::time::Instant) {
+    if let Some(worker) = app.try_state::<MetadataWorker>() {
+        worker.finished.wait("metadata", deadline);
     }
 }
 

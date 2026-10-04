@@ -135,6 +135,10 @@ scanning, and the bridge between the UI and the core. Commands are the
 - `lib.rs`: start-up order (`setup`), the command list
   (`generate_handler!`), the `anomp-art` URI scheme, window events and the
   shutdown order on `RunEvent::Exit`.
+- `quitting.rs`: lets quitting wait, for at most a second in all, for the
+  threads that have something to finish (history, analysis, metadata),
+  and ends the process before the C++ static destructors run; it never
+  stops a thread itself.
 - `anomp.rs`: every FFI declaration of `anomp.h` and its safe wrapper
   (`Engine`, `Tags`, `FolderAccess`, `MediaControls`…). All `unsafe` code
   lives here, each block with its `// SAFETY:` comment; nowhere else
@@ -185,8 +189,9 @@ scanning, and the bridge between the UI and the core. Commands are the
   default); never installs anything.
 - `diagnostics.rs`: "Copy diagnostics" (no paths or titles), "Show logs",
   the third-party notices, and the launch-to-first-paint time.
-- `logging.rs`: the log file, its redaction and scrubbing, and the panic
-  hook. Log through the `log` macros, never `eprintln!`.
+- `logging.rs`: the log file, its redaction and scrubbing, detailed
+  logging (debug lines to a file of their own while the user has it on),
+  and the panic hook. Log through the `log` macros, never `eprintln!`.
 - `dev.rs`: the /dev page's commands, debug builds only: they take raw
   paths and bypass the queue.
 - `self_test.rs`: `ano-mp --self-test`, compiled only with the

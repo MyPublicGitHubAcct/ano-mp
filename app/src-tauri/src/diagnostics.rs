@@ -4,8 +4,9 @@
 //! The diagnostics are plain text for a bug report. They name no paths,
 //! titles or artists: versions, the OS, the output device, library
 //! counts, the folders' states (counts only), the feature switches and
-//! online sources that are on, facts about the database, and the log's
-//! last lines at info and above (which are scrubbed, see `logging`).
+//! online sources that are on, facts about the database, whether detailed
+//! logging is on, and the log's last lines at info and above (which are
+//! scrubbed, see `logging`), never the detailed log's.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -33,6 +34,8 @@ pub struct Facts {
     pub features: Vec<String>,
     pub sources: Vec<String>,
     pub database: Vec<(&'static str, String)>,
+    /// Whether detailed logging is on (`logging::detailed`).
+    pub detailed_log: bool,
     pub log: Vec<String>,
 }
 
@@ -75,6 +78,8 @@ pub fn render(facts: &Facts) -> String {
     section("Features on", facts.features.clone());
     section("Online sources on", facts.sources.clone());
     section("Database", pairs(&facts.database));
+    let detailed = if facts.detailed_log { "on" } else { "off" };
+    section("Logging", vec![format!("detailed: {detailed}")]);
     section("Log (last lines)", facts.log.clone());
     text
 }
@@ -186,6 +191,7 @@ fn gather<R: Runtime>(app: &AppHandle<R>) -> Facts {
         features: serde_json::to_value(&settings.features)
             .map(|value| switches_on(&value))
             .unwrap_or_default(),
+        detailed_log: crate::logging::detailed(),
         log: crate::logging::recent_lines(app, LOG_LINES),
         ..Facts::default()
     };
@@ -365,6 +371,7 @@ mod tests {
             features: vec!["cueSheets".into()],
             sources: vec![],
             database: vec![("schema", "9".into())],
+            detailed_log: true,
             log: vec!["t INFO  library: 3 folders".into()],
         };
         assert_eq!(
@@ -394,6 +401,9 @@ cueSheets
 
 ## Database
 schema: 9
+
+## Logging
+detailed: on
 
 ## Log (last lines)
 t INFO  library: 3 folders

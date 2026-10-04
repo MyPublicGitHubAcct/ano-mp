@@ -158,6 +158,10 @@ export const diagnostics = {
   discogsNotice: () => commands.diagnosticsDiscogsNotice(),
   /** The main window has painted: logs the time since launch, once (H18). */
   firstPaint: () => commands.diagnosticsFirstPaint(),
+  /** Whether detailed logging (debug lines to their own file, until the next launch) is on. */
+  detailedLogging: () => commands.loggingDetailed(),
+  /** Turns detailed logging on or off; turning it off deletes its file. Returns whether it's on. */
+  setDetailedLogging: (on: boolean) => commands.loggingSetDetailed({ on }),
 };
 
 export const updates = {

@@ -489,6 +489,10 @@ impl<H: Host> Worker<H> {
         let (enrich, retry_now, call) = {
             let mut state = self.shared.lock();
             if state.stop {
+                // A job under way at the stop may have queued its next step
+                // since: its reply goes, so whoever waits on it hears.
+                state.jobs = Jobs::default();
+                state.calls.clear();
                 return Step::Stopped;
             }
             state.woken = false;
@@ -1218,7 +1222,7 @@ mod tests {
     use crate::library::test_library::{track, Library};
     use crate::metadata::coverartarchive::{release_front_url, release_group_front_url};
     use crate::metadata::http::testing::{response, FakeClock, FakeTransport};
-    use crate::metadata::http::{Response, TransportError};
+    use crate::metadata::http::{Response, Transport, TransportError};
     use crate::metadata::images::testing::JPEG;
     use crate::metadata::musicbrainz::fixtures::{RELEASES, RELEASE_GROUP, SEARCH};
     use crate::metadata::musicbrainz::{release_url, search_url};
@@ -1852,6 +1856,79 @@ mod tests {
         assert_eq!(test.worker.step(), Step::Ran);
         assert!(answer.try_recv().unwrap().is_ok());
         assert_eq!(test.host.take().changed.len(), 1);
+    }
+
+    /// The fake transport, stopping the worker as each request goes out,
+    /// as quitting does when it comes during a job.
+    struct StopsTheWorker {
+        transport: FakeTransport,
+        shared: Arc<Shared>,
+    }
+
+    impl Transport for StopsTheWorker {
+        fn get(
+            &self,
+            url: &str,
+            accept: &str,
+            auth: Option<&str>,
+            limit: u64,
+        ) -> Result<Response, TransportError> {
+            self.shared.stop();
+            self.transport.get(url, accept, auth, limit)
+        }
+
+        fn post(
+            &self,
+            url: &str,
+            content_type: &str,
+            body: &[u8],
+            auth: Option<&str>,
+            limit: u64,
+        ) -> Result<Response, TransportError> {
+            self.shared.stop();
+            self.transport.post(url, content_type, body, auth, limit)
+        }
+    }
+
+    #[test]
+    fn a_quit_during_a_job_keeps_its_step_and_starts_nothing_else() {
+        let mut test = Test::new(library(&["Other"]));
+        let (id, json) = RELEASES[3];
+        test.conn()
+            .execute(
+                "UPDATE albums SET musicbrainz_release_id = ?1 WHERE id = 1",
+                [id],
+            )
+            .unwrap();
+        test.transport.push_status(&release_url(id), 200, json);
+        test.serve_jpeg(&release_front_url(id));
+        test.worker.client = Client::new(
+            Box::new(StopsTheWorker {
+                transport: test.transport.clone(),
+                shared: test.shared.clone(),
+            }),
+            Box::new(test.clock.clone()),
+        );
+        let answer = test.request(Job::Match(1));
+        test.shared.enrich_library();
+
+        // The step under way when the quit came is written whole...
+        assert_eq!(test.worker.step(), Step::Ran);
+        let link = albums::album_link(test.conn(), 1, SourceId::MusicBrainz)
+            .unwrap()
+            .unwrap();
+        assert_eq!(link.status, LinkStatus::Matched);
+        assert_eq!(link.external_id.as_deref(), Some(id));
+        // ...and nothing more starts: the cover and the other album wait
+        // for the next launch's enrichment, and the request is answered.
+        let requests = test.transport.urls();
+        assert_eq!(test.worker.step(), Step::Stopped);
+        assert_eq!(test.transport.urls(), requests);
+        assert!(!requests.contains(&release_front_url(id)));
+        assert!(answer.recv().is_err(), "the worker stopped");
+        assert!(albums::album_link(test.conn(), 2, SourceId::MusicBrainz)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

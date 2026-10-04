@@ -243,6 +243,12 @@ fn reopen_chosen<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Silences playback as the app quits, before the background threads are
+/// waited for; the engine itself goes last (`shutdown`). Main thread.
+pub fn pause_for_quit() {
+    let _ = engine_mut(Engine::pause);
+}
+
 /// Drops the engine, shutting JUCE down. Call on the main thread.
 pub fn shutdown() {
     ENGINE.with_borrow_mut(|slot| *slot = None);

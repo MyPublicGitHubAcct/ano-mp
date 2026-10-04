@@ -61,8 +61,27 @@ problems. **Show logs** in **Settings › About** opens its folder.
 bug report: ano-mp's and macOS's versions, the output device, how many
 tracks, albums and folders the library has (and how many folders can't be
 read), which features and online sources are on, facts about the library's
-database, and the log's last lines. It holds **no file paths, titles or
-artists**. You can read it before you paste it anywhere: it is plain text.
+database, whether detailed logging is on, and the log's last lines. It
+holds **no file paths, titles or artists**. You can read it before you
+paste it anywhere: it is plain text.
+
+### Detailed logging
+
+Sometimes the normal log can't show what went wrong, because it leaves
+out which file, folder or album was involved. **Detailed logging** in
+**Settings › About** fills that gap, only when you choose to:
+
+- While it's on, ano-mp writes a second file, `ano-mp-detailed.log`, next
+  to the normal log. It **does** name your files and folders, titles,
+  artists, albums and the web addresses ano-mp looks things up at. Your
+  keys and tokens are still never written.
+- The normal log doesn't change: it still leaves all of that out.
+- It stays on until you turn it off or quit ano-mp. Turning it off
+  deletes the detailed file; so does opening ano-mp again, so it never
+  holds more than one session. It is kept after you quit so that you
+  can still send it if the problem was in quitting itself.
+- Nothing is sent anywhere. Read the file before you share it (it is
+  plain text), and attach it only to a report you mean to send it to.
 
 Nothing is sent anywhere unless you send it: ano-mp has no analytics and
 no crash reporting.

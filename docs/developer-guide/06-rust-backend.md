@@ -60,8 +60,12 @@ that matters:
 
 Each step logs its error and carries on, so a broken part doesn't stop
 the rest of the app. `RunEvent::Exit` shuts down in roughly the reverse
-order and drops the engine last, on the main thread, before the process
-exits (JUCE must be shut down while the run loop still exists).
+order, waits up to a second for the history, analysis and metadata
+threads (`quitting.rs`; Tauri ends the process soon after the handler
+returns), drops the engine last, on the main thread, while the run loop
+still exists (JUCE must be shut down there), and makes the process end
+before the C++ static destructors run.
+[Chapter 8](08-flows.md#quitting) has the details.
 
 ## The engine on the main thread
 
@@ -328,7 +332,9 @@ minimal (`remote/http.rs`). Any change here needs the security review in
 Everything logs through the `log` macros; `logging.rs` installs
 tauri-plugin-log writing `ano-mp.log` in the app's log folder (info and
 above in release builds, debug too in debug builds, which also print to
-the terminal). Every line is redacted (keys, `Authorization` headers,
+the terminal), and every level to `ano-mp-detailed.log` while the user
+has "Detailed logging" on ([chapter 10](10-troubleshooting.md#the-logs)).
+Every line is redacted (keys, `Authorization` headers,
 token parameters), and at info and above absolute paths and URL paths
 are scrubbed, so titles, artists and paths belong at debug. The core's
 log arrives with the target "core", and the page's uncaught errors with
