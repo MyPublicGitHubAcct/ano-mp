@@ -33,7 +33,10 @@ VolumeWatcher::VolumeWatcher (Handler handlerIn)
         NSNotificationCenter* center = NSWorkspace.sharedWorkspace.notificationCenter;
         auto alive = platform->alive;
         auto* owner = this;
-        auto observe = [&] (NSNotificationName name, bool mounted)
+        // By value: a block inside a [&] lambda captures `alive` and `owner`
+        // as references to this constructor's frame, which is gone by the
+        // time a volume mounts.
+        auto observe = [this, center, alive, owner] (NSNotificationName name, bool mounted)
         {
             id token = [center
                 addObserverForName:name

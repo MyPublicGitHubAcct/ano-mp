@@ -11,6 +11,11 @@ add_executable(anomp_core_tests
     PlayerEngineTests.cpp
     TagReaderTests.cpp)
 
+if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_sources(anomp_core_tests PRIVATE VolumeWatcherTests.mm)
+    set_source_files_properties(VolumeWatcherTests.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+endif()
+
 target_compile_definitions(anomp_core_tests
     PRIVATE ANOMP_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
             ANOMP_PROJECT_VERSION="${ano_mp_VERSION}")

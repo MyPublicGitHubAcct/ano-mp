@@ -83,7 +83,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 
 | Suite | Location |
 |---|---|
-| 115 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
+| 116 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
 | 433 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
 | 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
