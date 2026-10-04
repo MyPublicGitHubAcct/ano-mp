@@ -63,7 +63,7 @@ name = "ano-mp"
 version = "0.1.0"
 dependencies = [
  "apple-native-keyring-store",
- "base64 0.22.1",
+ "base64 0.23.1",
  "cmake",
  "icu_normalizer",
  "icu_properties",
@@ -78,7 +78,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "syn 2.0.119",
+ "syn 3.0.6",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
