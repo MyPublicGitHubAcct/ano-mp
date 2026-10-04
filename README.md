@@ -203,6 +203,68 @@ A run takes about 25 minutes, longer when it has to build FFmpeg and JUCE
 from scratch (the first run, or after a pin or the toolchain changes). Starting a second run on the same branch cancels
 the first.
 
+### Running CI locally
+
+CI's **Check** step is `scripts/check-all.py` and nothing else; the steps
+before it in `ci.yml` only install tools and restore caches. So running it
+from the repository root checks what CI checks, on your working tree
+(committed or not), with no push and no runner time:
+
+1. **Tools, once.** Everything in [Requirements](#requirements-macos),
+   including the full check's extras, as CI installs them:
+   ```sh
+   brew install cmake ninja nasm pkg-config node uv gitleaks llvm@22
+   rustup toolchain install                              # the pinned Rust
+   cargo install cargo-deny --version 0.20.2 --locked    # the version CI installs
+   scripts/doctor.py                                     # anything missing or too old
+   ```
+2. **Builds CI caches, once** (and again after their pins change):
+   ```sh
+   scripts/build-ffmpeg.sh       # skipped when already built at the pin
+   (cd app && npm ci)            # exactly package-lock.json, as CI installs it
+   ```
+3. **Run every check:**
+   ```sh
+   scripts/check-all.py 2>&1 | tee build/check-all.log
+   ```
+   Each step prints `==> name` when it starts and `<== name: ok` or
+   `FAILED` with its time. Every step runs even after one fails, and the
+   last lines list the failures; the exit status is non-zero if any failed.
+   `scripts/check-all.py --list` prints the steps without running them.
+
+The first run takes over an hour: it builds JUCE five times (the `debug`,
+`asan`, `tsan` and `fuzz` presets and Cargo's) and FFmpeg a second time,
+instrumented, for the fuzzers. Later runs reuse `build/` and
+`app/src-tauri/target/` and take about 10 minutes on an Apple silicon Mac,
+most of it the TSan suite (about 5) and a minute per fuzz target. Keep the Mac awake
+(`caffeinate -i scripts/check-all.py`) and plugged in.
+
+To rerun one failed step, run its command alone; `check-all.py --list`
+shows them all, for example `cmake --workflow --preset tsan`,
+`scripts/run-fuzzers.py` or `cargo test` (from `app/src-tauri/`).
+`scripts/check-all.py --quick` runs only the formatters, repo checks,
+script tests and gitleaks, in under a minute: the pre-commit hook's set.
+
+Where a local run differs from CI's:
+
+- **The bundle self-test is skipped.** `self-test-bundle.py` runs only when
+  `CI` is set, because a sandboxed bundle runs in the app's real container
+  (`~/Library/Containers/dev.anomp.player`), which holds your library. To
+  run it, read [docs/bundle-checks.md](docs/bundle-checks.md) first, then
+  `scripts/self-test-bundle.py --local`. Don't set `CI=true` for
+  `check-all.py` to get it.
+- **The fuzzers' linker.** CI's runner defaults to Xcode 16, whose linker
+  can't read clang 22's objects, so CI sets `ANOMP_FUZZ_DEVELOPER_DIR` to
+  Xcode 26.3 for the fuzz build only. A Mac whose default Xcode or Command
+  Line Tools are 26 or later needs nothing; otherwise set it to a newer
+  Xcode's `Contents/Developer`, as CI does.
+- **A different machine.** A local pass doesn't prove the runner's
+  toolchain, image or clean caches work: a fix for a CI-only failure is
+  done when CI passes on GitHub. The weekly audit (`audit.yml`) and
+  fuzzing (`fuzz.yml`) are separate workflows; run `scripts/check-pins.py`,
+  `scripts/audit-deps.py` or `scripts/run-fuzzers.py --seconds N` for
+  theirs.
+
 ### Other ways to set the triggers
 
 To change when CI runs, edit the `on:` block at the top of `ci.yml`. Keep
