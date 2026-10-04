@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "ano-mp music player",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=26.10.0 <27"

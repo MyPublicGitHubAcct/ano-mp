@@ -133,11 +133,15 @@ release gates (§8.1) rather than engineering blockers. The optional
 features in #6 were proposed and accepted on 2026-09-27. #7 (2026-09-27)
 sets priorities rather than open questions.
 
-1. **Licenses: JUCE commercial, closed source (decided).** JUCE 8+ is AGPLv3
-   or commercial. We use the commercial license, starting on the free
-   "Starter" tier and moving to a paid tier before revenue passes its cap
-   (check the current JUCE 9 tiers then). This keeps the source closed and the
-   App Store open to us. FFmpeg is used under the LGPL (see #3), which the app
+1. **Licenses: JUCE commercial; ano-mp's own code MIT (decided; MIT since
+   2026-10-03, closed source before).** JUCE 8+ is AGPLv3 or commercial. We
+   use the commercial license, starting on the free "Starter" tier and moving
+   to a paid tier before revenue passes its cap (check the current JUCE 9
+   tiers then). This keeps the released app off the AGPL and the App Store
+   open to us. The code written here is MIT (`LICENSE`); the components it is
+   built on keep their own licences (`THIRD_PARTY_NOTICES`), so anyone else
+   distributing a build needs their own JUCE licence or must ship it under
+   the AGPLv3. FFmpeg is used under the LGPL (see #3), which the app
    satisfies by shipping FFmpeg as replaceable shared libraries plus a license
    notice and source offer. That is standard on desktop.
    - **Open point: FFmpeg LGPL on the App Store.** Dynamic `.xcframework`s
@@ -624,7 +628,7 @@ for the owner and can take months to answer, so start it early.
   other automated means. Bandcamp's own pages and apps stream through
   private endpoints (signed, expiring 128 kbps MP3 URLs in the album page
   data), so calling those from ano-mp would be scraping. Some open-source
-  players do that. We won't: the app is closed-source and commercial (§4.1),
+  players do that. We won't: the app is commercial (§4.1),
   and a block or takedown would leave users with a broken feature.
 - The Terms of Use (updated 2026-05-07) license content for personal,
   non-commercial use, and let fans preview it "by way of streaming" through
@@ -698,7 +702,7 @@ Revisit it against whatever the agreement actually provides.
 
 **Steps:**
 - [ ] 11.1 **Permission (owner).** Contact Bandcamp through
-  `bandcamp.com/developer`. Describe the app: a closed-source player that
+  `bandcamp.com/developer`. Describe the app: a commercial player (its own code MIT) that
   streams only the signed-in user's purchases, keeps audio only in a
   bounded cache, and links back to Bandcamp. Ask for API access to a fan's
   collection and streams, and for their rules on caching and offline play,

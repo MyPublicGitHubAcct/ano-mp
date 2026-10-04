@@ -3,6 +3,7 @@ name = "ano-mp"
 version = "0.1.0"
 description = "ano-mp music player"
 authors = ["Mark Wagner"]
+license = "MIT"
 edition = "2021"
 publish = false
 

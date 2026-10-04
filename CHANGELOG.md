@@ -14,5 +14,7 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   folders, playlists and smart playlists, details and covers from
   MusicBrainz and the Cover Art Archive, visualizations, an equaliser,
   crossfade, ReplayGain and macOS media controls.
+- ano-mp's own code is licensed under the MIT License (`LICENSE`); the
+  components it is built on keep their own licences (`THIRD_PARTY_NOTICES`).
 - Settings › About checks GitHub for a newer release and links to its
   download page; automatic checks are a switch there, off by default.
