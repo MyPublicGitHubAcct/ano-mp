@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, RecordingState, RecordingStopped, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
 import type { AppSettings, CoverBasis, EffectsSettings, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
@@ -102,6 +102,10 @@ export const commands = {
   effectsPreview: (args: { effects: EffectsSettings }) => invoke<void>("effects_preview", args),
   effectsFreeze: (args: { hold: boolean }) => invoke<boolean>("effects_freeze", args),
   effectsStatus: () => invoke<EffectsStatus>("effects_status"),
+  recordingStatus: () => invoke<RecordingState>("recording_status"),
+  recordingSetFolder: (args: { path: string }) => invoke<RecordingState>("recording_set_folder", args),
+  recordingStart: () => invoke<RecordingState>("recording_start"),
+  recordingStop: () => invoke<RecordingStopped>("recording_stop"),
   analysisStatus: () => invoke<AnalysisProgress>("analysis_status"),
   analysisWaveform: (args: { trackId: number }) => invoke<number[] | null>("analysis_waveform", args),
   analysisTrack: (args: { trackId: number }) => invoke<TrackAnalysis | null>("analysis_track", args),

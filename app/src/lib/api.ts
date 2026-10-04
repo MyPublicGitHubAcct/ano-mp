@@ -32,6 +32,8 @@ import type {
   PlayerState,
   PlaylistImport,
   QueueState,
+  RecordingState,
+  RecordingStopped,
   Repeat,
   RuleSpec,
   ScanProgress,
@@ -291,6 +293,18 @@ export const effects = {
   status: () => commands.effectsStatus(),
 };
 
+// ---- Recording (PLAN.md X6) -----------------------------------------------------
+
+export const recording = {
+  /** Whether a recording runs, its progress, the folder and the formats this build writes. */
+  status: () => commands.recordingStatus(),
+  /** Keeps a folder the user just picked as where recordings go. */
+  setFolder: (path: string) => commands.recordingSetFolder({ path }),
+  start: () => commands.recordingStart(),
+  /** Stops recording; resolves to what was written. */
+  stop: () => commands.recordingStop(),
+};
+
 // ---- Recommendations from outside the library (PLAN.md X5) ------------------------
 
 export const outside = {
@@ -448,6 +462,10 @@ type Events = {
   "playlist-imported": PlaylistImport;
   /** An automatic check found a newer release, once per version. */
   "update-available": UpdateCheck;
+  /** A recording started or stopped (X6). */
+  recording: RecordingState;
+  /** A recording stopped on an error, or the menu couldn't start one. */
+  "recording-failed": RecordingStopped;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

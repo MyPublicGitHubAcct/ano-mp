@@ -88,6 +88,27 @@ TEST_CASE ("Folder bookmarks resolve to their folder", "[folder-access]")
     CHECK (accessedFolder (second) == temp.folder);
 }
 
+TEST_CASE ("Writable folder bookmarks resolve to a folder files can be written in", "[folder-access]")
+{
+    TempFolder temp;
+    char buffer[512] = "unchanged";
+    auto* bookmark =
+        anomp_bookmark_create_writable (temp.folder.getFullPathName().toRawUTF8(), buffer, sizeof (buffer));
+    REQUIRE (bookmark != nullptr);
+    CHECK (std::string (buffer).empty());
+    const std::vector<unsigned char> bytes (bookmark->data, bookmark->data + bookmark->size);
+    anomp_bookmark_free (bookmark);
+
+    std::string error;
+    const auto access = startAccess (bytes, error);
+    REQUIRE (access != nullptr);
+    CHECK (accessedFolder (access) == temp.folder);
+    CHECK (accessedFolder (access).getChildFile ("written.txt").replaceWithText ("recorded"));
+
+    CHECK (anomp_bookmark_create_writable ("relative/folder", buffer, sizeof (buffer)) == nullptr);
+    CHECK (std::string (buffer).rfind ("Path is not absolute", 0) == 0);
+}
+
 #if JUCE_MAC || JUCE_IOS
 TEST_CASE ("Folder bookmarks follow a moved folder", "[folder-access]")
 {

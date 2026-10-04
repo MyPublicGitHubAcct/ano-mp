@@ -408,6 +408,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
         crate::media::queue_changed(app, &state);
         crate::history::queue_changed(app, &state);
+        crate::recording::queue_changed(app, &state);
         // The album playing is looked up ahead of background work, and the
         // track analysed ahead of the library, for its waveform.
         let playing = state.current_item.as_ref().filter(|_| state.loaded);

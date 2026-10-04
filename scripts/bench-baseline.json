@@ -50,6 +50,10 @@
     "similar.*": {
       "max": 300,
       "unit": "ms"
+    },
+    "core.record.*": {
+      "min": 1000,
+      "unit": "x"
     }
   },
   "results": {
@@ -141,6 +145,10 @@
       "value": 1198.89,
       "unit": "x"
     },
+    "core.play.flac_recording": {
+      "value": 953.689,
+      "unit": "x"
+    },
     "core.play.mp3": {
       "value": 30.2163,
       "unit": "x"
@@ -151,6 +159,10 @@
     },
     "core.play.opus": {
       "value": 724.01,
+      "unit": "x"
+    },
+    "core.record.tap_192k": {
+      "value": 43431.1,
       "unit": "x"
     },
     "insert.schema8": {

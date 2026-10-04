@@ -3,7 +3,8 @@
   // engine has it now — the file's codec, bit depth, rate and bit rate, the
   // gain applied, practice mode's stretching, resampling (or not), the
   // effects (X2), the equaliser, crossfeed, crossfading into the next
-  // track, the volume, and the device.
+  // track, a recording in progress (X6, which takes the sound before the
+  // volume), the volume, and the device.
   import { onMount } from "svelte";
   import { player as api, type SignalPathPayload } from "$lib/api";
   import { has, t, type MessageKey } from "$lib/i18n";
@@ -114,6 +115,9 @@
         <span class="step">{t("signal.crossfade")}</span>
         <span>{p.crossfade > 0 ? t("signal.crossfadeSeconds", { seconds: p.crossfade }) : t("signal.off")}</span>
       </li>
+      {#if p.recording}
+        <li><span class="step">{t("signal.recording")}</span><span>{t("signal.recordingOn")}</span></li>
+      {/if}
       <li><span class="step">{t("signal.volume")}</span><span>{db(p.volume)}</span></li>
       <li>
         <span class="step">{t("signal.device")}</span>

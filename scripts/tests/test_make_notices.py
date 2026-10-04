@@ -251,5 +251,9 @@ def test_real_tree(notices):
     )
     assert f"JUCE {juce.group(1)} " in committed
     assert f"ffmpeg-{ffmpeg.group(1)}.tar.xz" in committed
-    for licence in ["MIT", "BSD-3-Clause", "MPL-2.0", "LGPL-2.1"]:
+    lame = re.search(
+        r'^LAME_VERSION="([^"]+)"', (root / "scripts/build-ffmpeg.sh").read_text(), re.MULTILINE
+    )
+    assert f"lame-{lame.group(1)}.tar.gz" in committed
+    for licence in ["MIT", "BSD-3-Clause", "MPL-2.0", "LGPL-2.1", "LGPL-2.0"]:
         assert (root / "scripts/licenses" / f"{licence}.txt").is_file()

@@ -83,6 +83,13 @@ pub fn queue_changed<R: Runtime>(app: &AppHandle<R>, state: &QueueState) {
     notifications::queue_changed(app, state);
 }
 
+/// A recording started or stopped (PLAN.md X6), or the feature was
+/// switched. Main thread.
+pub fn recording_changed<R: Runtime>(app: &AppHandle<R>, recording: bool) {
+    let enabled = crate::settings::current(app).features.recording;
+    menu::recording_changed(app, recording, enabled);
+}
+
 /// The player started or stopped playing. Main thread.
 pub fn playing_changed<R: Runtime>(app: &AppHandle<R>, playing: bool) {
     menu::playing_changed(app, playing);

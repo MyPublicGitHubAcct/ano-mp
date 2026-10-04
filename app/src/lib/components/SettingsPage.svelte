@@ -1,7 +1,7 @@
 <script lang="ts">
   // The settings (⌘,): the library's folders, its sort and grouping rules,
   // what lists and pages show, playback and the output device, the
-  // visualizer, the theme, and the online sources. Sections are listed down the side
+  // visualizer, the theme, recording, and the online sources. Sections are listed down the side
   // (along the top when narrow); every change is saved as it's made. The
   // section components use the shared styles below (`.field`, `.switch`,
   // `.hint`…).
@@ -19,6 +19,7 @@
   import FeaturesOptions from "./settings/FeaturesOptions.svelte";
   import LibraryFolders from "./settings/LibraryFolders.svelte";
   import PlaybackOptions from "./settings/PlaybackOptions.svelte";
+  import RecordingOptions from "./settings/RecordingOptions.svelte";
   import SortRules from "./settings/SortRules.svelte";
   import VisualizerOptions from "./settings/VisualizerOptions.svelte";
 
@@ -31,15 +32,20 @@
     { id: "playback", name: "settings.playback", about: "settings.playbackAbout" },
     { id: "equaliser", name: "settings.equaliser", about: "settings.equaliserAbout" },
     { id: "effects", name: "settings.effects", about: "settings.effectsAbout" },
+    { id: "recording", name: "settings.recording", about: "settings.recordingAbout" },
     { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
     { id: "sources", name: "settings.sources", about: "settings.sourcesAbout" },
     { id: "features", name: "settings.features", about: "settings.featuresAbout" },
     { id: "about", name: "settings.about", about: "settings.aboutAbout" },
   ];
 
-  /** Appearance only while themes are on (PLAN.md X1). */
+  /** Appearance only while themes are on (PLAN.md X1), Recording while recording is (X6). */
   const SECTIONS = $derived(
-    ALL_SECTIONS.filter((candidate) => candidate.id !== "appearance" || appSettings.current.features.themes),
+    ALL_SECTIONS.filter(
+      (candidate) =>
+        (candidate.id !== "appearance" || appSettings.current.features.themes) &&
+        (candidate.id !== "recording" || appSettings.current.features.recording),
+    ),
   );
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
@@ -106,6 +112,8 @@
           <EqualiserOptions />
         {:else if section.id === "effects"}
           <EffectsOptions />
+        {:else if section.id === "recording"}
+          <RecordingOptions />
         {:else if section.id === "general"}
           <GeneralOptions />
         {:else if section.id === "visualizer"}

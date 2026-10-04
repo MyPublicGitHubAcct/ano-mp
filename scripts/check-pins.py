@@ -4,8 +4,8 @@
 Reads each pin from its file (the native libraries' in CMake and
 build-ffmpeg.sh; the formatters', linters' and pytest's in their scripts)
 and asks upstream for the latest release: the repository's tags (with `git
-ls-remote`, which needs no GitHub token), ffmpeg.org's release listing, or
-PyPI. Then summarizes `cargo update --dry-run` (app/src-tauri) and `npm
+ls-remote`, which needs no GitHub token), ffmpeg.org's release listing,
+SourceForge's file listing (LAME), or PyPI. Then summarizes `cargo update --dry-run` (app/src-tauri) and `npm
 outdated` (app/). Report only: it changes nothing, and exits 0 unless a pin
 can't be read from its file. Move a pin with scripts/bump-pin.py; the crates
 and npm packages move with Dependabot's monthly pull requests (§9.1).
@@ -39,7 +39,8 @@ class Pin:
 
     `pattern` finds the pinned version (its `version` group) in `file`.
     `upstream` is "github:OWNER/REPO" (release tags, after `tag_prefix`),
-    "pypi:NAME" or "ffmpeg". bump-pin.py uses the rest: `fetch_id` names
+    "pypi:NAME", "ffmpeg" or "sourceforge:PROJECT/FOLDER" (the release
+    folders in a project's file listing). bump-pin.py uses the rest: `fetch_id` names
     the `anomp_fetch_declare` to rewrite, `url` is the tarball's URL
     template ({version}, or {commit} for a commit's archive), and `label`
     is how the docs name a version ("JUCE 9.0.2").
@@ -109,6 +110,14 @@ PINS = [
         "ffmpeg",
         url="https://ffmpeg.org/releases/ffmpeg-{version}.tar.xz",
         label="FFmpeg {version}",
+    ),
+    Pin(
+        "lame",
+        "scripts/build-ffmpeg.sh",
+        r'LAME_VERSION="(?P<version>[\d.]+)"',
+        "sourceforge:lame/lame",
+        url="https://downloads.sourceforge.net/project/lame/lame/{version}/lame-{version}.tar.gz",
+        label="LAME {version}",
     ),
     Pin(
         "clang-format",
@@ -192,6 +201,12 @@ def ffmpeg_releases(listing):
     return set(re.findall(r'href="ffmpeg-(\d+(?:\.\d+)+)\.tar\.xz"', listing))
 
 
+def sourceforge_releases(listing, project, folder):
+    """The release folders in a SourceForge project's file listing."""
+    pattern = rf'href="/projects/{re.escape(project)}/files/{re.escape(folder)}/(\d+(?:\.\d+)+)/"'
+    return set(re.findall(pattern, listing))
+
+
 def latest(pin, fetch=fetch, run=run):
     """The newest release upstream has for `pin`."""
     kind, _, where = pin.upstream.partition(":")
@@ -204,6 +219,10 @@ def latest(pin, fetch=fetch, run=run):
         versions = {json.loads(fetch(f"https://pypi.org/pypi/{where}/json"))["info"]["version"]}
     elif kind == "ffmpeg":
         versions = ffmpeg_releases(fetch("https://ffmpeg.org/releases/"))
+    elif kind == "sourceforge":
+        project, _, folder = where.partition("/")
+        listing = fetch(f"https://sourceforge.net/projects/{project}/files/{folder}/")
+        versions = sourceforge_releases(listing, project, folder)
     else:
         raise PinError(f"{pin.name}: unknown upstream {pin.upstream}")
     versions = {version for version in versions if RELEASE.match(version)}

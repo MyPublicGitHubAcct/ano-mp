@@ -21,9 +21,10 @@ class FolderAccess
 {
 public:
     /** Creates a bookmark for `folder`, which the app must be able to read
-        now (the user just picked it, or a FolderAccess for it is open).
-        Returns an error message, or an empty string on success. */
-    static juce::String createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark);
+        now (the user just picked it, or a FolderAccess for it is open):
+        read-only, or `writable` for a folder the app writes to (recordings,
+        PLAN.md X6). Returns an error message, or an empty string on success. */
+    static juce::String createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark, bool writable = false);
 
     /** Resolves `bookmark` and starts accessing its folder until the result
         is destroyed. Returns null and sets `error` on failure, e.g. when the

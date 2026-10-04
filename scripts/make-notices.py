@@ -9,6 +9,8 @@ The file is committed at the repo root, bundled into the app (tauri.conf.json
   its licence, or is listed in NOT_SHIPPED with the reason;
 - FFmpeg: the LGPL text, the version and configure flags from BUILD_INFO,
   and the source tarball they were built from;
+- LAME, MP3's encoder for recordings, linked into libavcodec: its version
+  and hash from BUILD_INFO, and the Library GPL's text;
 - TagLib (and the utfcpp it bundles), Signalsmith Stretch and its FFT
   library; Catch2 is named as test-only;
 - the Rust crates the app links (normal dependencies of the app's crate,
@@ -473,6 +475,24 @@ def native_sections(root=REPO_ROOT, deps=DEPS, build_info_path=FFMPEG_BUILD_INFO
         normalise(read(LICENCE_TEXTS / "LGPL-2.1.txt")),
     ]
     sections.append(("FFmpeg", body))
+
+    # MP3's encoder for recordings (PLAN.md X6), linked into libavcodec.
+    if "lame" in info:
+        lame = info["lame"]
+        body = [
+            f"LAME {lame} (https://lame.sourceforge.io): libmp3lame, licensed under the",
+            "GNU Library General Public License version 2. It is linked into FFmpeg's",
+            "libavcodec above, which you may replace with your own build. Built",
+            "without its decoder (mpglib) or programs.",
+            "",
+            f"Source: https://downloads.sourceforge.net/project/lame/lame/{lame}/lame-{lame}.tar.gz",
+            f"SHA-256: {info.get('lame_sha256', '')}",
+            "Copyright (c) 1999-2011 The LAME Project, (c) 1999-2001 Mark Taylor,",
+            "(c) 1998 Michael Cheng, and others.",
+            "",
+            normalise(read(LICENCE_TEXTS / "LGPL-2.0.txt")),
+        ]
+        sections.append(("LAME", body))
 
     taglib_dir = deps / "taglib-src"
     taglib = pinned_version(read(root / "cmake" / "TagLib.cmake"), r"/v([\d.]+)/taglib-", "TagLib")

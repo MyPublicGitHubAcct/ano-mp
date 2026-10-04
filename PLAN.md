@@ -8,9 +8,9 @@ signed release waits on the owner's §8.1 decisions
 (`docs/release-decisions.md`). Phase 7b (themes, effects,
 visualizations, recommendations, recording and similar artists; P3,
 added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
-(effects), X3 (visualizations), X4 (library recommendations) and X5
-(recommendations from outside the library) were built early, at the
-owner's request. Finished work's design notes and records
+(effects), X3 (visualizations), X4 (library recommendations), X5
+(recommendations from outside the library) and X6 (recording) were built
+early, at the owner's request. Finished work's design notes and records
 are in `docs/design/`, linked from each phase.
 
 
@@ -66,7 +66,8 @@ holds and how it was built.
   (`FFmpegAudioFormat`, FFmpeg built by `scripts/build-ffmpeg.sh`), tags
   (`TagReader`, TagLib), playback (`PlayerEngine`, `AudioEngine`: gapless,
   async loads, crossfade, `Equaliser`, `Crossfeed`), visualizer analysis
-  (`SignalTap`, `SpectrumAnalyser`, `AnalysisThread`), `FileAnalyser`, and
+  (`SignalTap`, `SpectrumAnalyser`, `AnalysisThread`), recording
+  (`Recorder`, `FFmpegEncoder`, X6), `FileAnalyser`, and
   platform code (`MediaControls`, `FolderAccess`, `FileStatus`,
   `VolumeWatcher`, `DockMenu`). Fuzz targets in `core/fuzz/`.
 - **Effects** (`effects/`): `anomp_effects`, the real-time effects (X2), a
@@ -78,7 +79,7 @@ holds and how it was built.
   recommendations),
   `queue/`, `media.rs`, `metadata/` (online sources and their worker),
   `history/`, `remote/`, `shell/` (menus, mini player, opened files),
-  `settings.rs`, `visualizer.rs`, `logging.rs`, `diagnostics.rs`,
+  `settings.rs`, `recording.rs`, `visualizer.rs`, `logging.rs`, `diagnostics.rs`,
   `bindings.rs`, `self_test.rs`, `dev.rs` (debug builds only).
 - **Frontend** (`app/src/`): `routes/`, `lib/components/`, `lib/state/`,
   `lib/visualizer/`, `lib/i18n/`, generated types in `lib/generated/`.
@@ -92,10 +93,10 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 
 | Suite | Location |
 |---|---|
-| 146 passing Catch2 tests (123 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 468 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
+| 473 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
 | 59 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 206 pytest tests (`test-python.py`) | `scripts/tests/` |
+| the scripts' 208 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -164,7 +165,9 @@ sets priorities rather than open questions.
      every platform. More (APE, WavPack, DSD) are a configure flag away.
    - Build: our own pinned, **LGPL, audio-only, shared** FFmpeg build (no
      `--enable-gpl`/`--enable-nonfree`, only the needed demuxers and
-     decoders, plus libswresample; no video, network or encoders). This adds a
+     decoders, plus libswresample; no video or network, and only the
+     encoders and muxers recording writes, X6, with LAME for MP3 linked
+     into libavcodec, LGPL too). This adds a
      few MB per platform. We don't use distro or Homebrew FFmpeg, whose builds
      vary (some strip AAC, Homebrew's is GPL).
    - **AAC: FFmpeg's decoder everywhere (decided), pending a licensing
@@ -229,11 +232,11 @@ sets priorities rather than open questions.
 8. **Personalisation, effects and discovery: added 2026-10-03 at P3.**
    X1–X7 (Phase 7b): themes, real-time effects, ten uncommon
    visualizations (X3, five more added 2026-10-04), recommendations from inside and outside the
-   library, recording what is playing to a WAV file (X6, added
+   library, recording what is playing to a file (X6, added
    2026-10-04), and similar artists on artist pages. Low priority: after Phase 7's exit and the first release, but
    before the cross-platform work (Phases 8–10), so the ports carry them.
-   #6's rules apply; X2 and X5 are off by default (they change what is
-   heard and go online).
+   #6's rules apply; X2, X5 and X6 are off by default (they change what is
+   heard, go online and write large files).
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
@@ -573,7 +576,7 @@ acts, off by default if it changes what is heard or goes online.
 | X3 | Ten more visualizations, all uncommon in music players (two of them combinations) | core (analysis), UI | M–L |
 | X4 | Recommendations from the library | Rust, UI | M |
 | X5 | Recommendations from outside the library | Rust (metadata), UI | M (after X4) |
-| X6 | Record what is playing to a WAV file | core, C API, Rust, settings, UI | M |
+| X6 | Record what is playing to a file (WAV, AIFF, FLAC, ALAC, AAC, MP3) | core, C API, Rust, settings, UI | M |
 | X7 | Similar artists on artist pages | Rust, UI | S (after X4; X5 for outside ones) |
 
 - [x] **X1 Themes.** The UI's colours, fonts, density, corner radius and
@@ -911,7 +914,7 @@ acts, off by default if it changes what is heard or goes online.
   - Left to check in the app: suggestions that make sense on the owner's
     library, none of them owned (the exit), the links, and how long a
     first Home takes with ListenBrainz slow.
-- [ ] **X6 Record the output to a WAV file.** Added 2026-10-04 at the
+- [x] **X6 Record the output to a file.** Added 2026-10-04 at the
   owner's request. A Record button (in the now-playing bar, and in the
   Controls menu) writes what is playing, as heard, to a WAV file until
   it is pressed again: across track changes, gapless hand-offs and
@@ -957,6 +960,84 @@ acts, off by default if it changes what is heard or goes online.
     write error and an overrun; and a benchmark (H18) that the tap costs
     the audio thread nothing measurable. A bundle self-test stage (H14)
     writes into a picked folder under the sandbox.
+  - **Built** 2026-10-04, ahead of Phase 7's exit at the owner's request,
+    who asked for a choice of output type ("wav, mp3, etc.") beyond the
+    WAV above. **Decided:** six formats, all written by FFmpeg
+    (`core/src/FFmpegEncoder.cpp`, the second file that includes its
+    headers): WAV (16-bit, 24-bit or 32-bit float, the default; RF64 past
+    4 GB), AIFF and FLAC (16 or 24), Apple Lossless and AAC in .m4a, and
+    MP3, AAC and MP3 at 96–320 kbps. `build-ffmpeg.sh` now enables just
+    those encoders and muxers (`FFmpegBuildTests` checks the exact list)
+    and builds **LAME 4.0** (LGPL, July 2026; its decoder and programs
+    left out) as a static library linked into libavcodec, so MP3 needs no
+    new dylib; the pin is in `check-pins.py`/`bump-pin.py` (a
+    `sourceforge` upstream) and in `THIRD_PARTY_NOTICES`. A lossy encoder
+    that can't take the device's rate is resampled (MP3 to 48/44.1 kHz,
+    AAC to 96/88.2 kHz); the rest record at the device's rate. The tap is
+    **before the volume**, after crossfeed, so the slider doesn't change
+    the recording; a pause fades it out and in with the same one-block
+    ramp as what is heard, and while paused nothing is pushed.
+  - **Core**: `Recorder` (`core/src/Recorder.*`) owns a 2^19-frame
+    `AbstractFifo` (2.7 s at 192 kHz) the audio thread copies into, and a
+    writer thread that wakes every 20 ms and drains it into the encoder;
+    the audio thread never waits or allocates, and what doesn't fit is
+    dropped and counted. A rate change (`prepareToPlay`) records a split
+    at the frame it happened; the writer finishes the file there and opens
+    "name 2.ext". A write error or ENOSPC stops the writer, which
+    finalises the file; `PlayerEngine::dispatchEvents` reports it once
+    (`onRecordingFailed`). Track marks are kept for the cue sheet: one at
+    the start if a track is loaded, then at each `install`, gapless
+    hand-off, and the *start* of a crossfade, accurate to the chunk the
+    hand-off fell in. C API: `anomp_engine_record_start`/`_stop`,
+    `anomp_engine_recording` (frames, seconds, overruns, files),
+    `anomp_engine_recording_file`, `anomp_engine_recording_marks`,
+    `anomp_record_format_available`/`_extension`,
+    `ANOMP_EVENT_RECORDING_FAILED` (`result`: write failed or disk full),
+    `anomp_signal_path.recording`, and `anomp_bookmark_create_writable`
+    (a security-scoped bookmark without the read-only flag).
+  - **Rust** (`recording.rs`): `AppSettings.recording` (format, bits,
+    bitrate, cue sheet: on), the `recording` feature (off). The folder's
+    bookmark is its own `settings` row (`recording.folder`), not part of
+    `AppSettings`, so a data export never carries it; it is resolved (and
+    refreshed when stale) for as long as a recording is written. Files are
+    `ano-mp 2026-10-04 21.15.03.wav`, " (2)" if taken. The tracks that
+    become current (`queue::publish`, once loaded) are matched to the
+    core's marks, and on stop each file gets `<name>.cue` naming them
+    (`library::cue` reads them back as tracks; a file after a rate change
+    starts with the track playing). Commands `recording_status`,
+    `_set_folder`, `_start`, `_stop`; events `recording` and
+    `recording-failed`; coded errors `recordingNoFolder`,
+    `recordingFolderUnavailable`, `recordingStartFailed`,
+    `recordingFailed` (`.diskFull`), `recordingRunning`,
+    `recordingNotRunning`. Turning the feature off, or quitting, stops and
+    finishes the recording.
+  - **UI**: Record in the now-playing bar (a red dot and the time recorded
+    while it runs; the first press asks for a folder if there is none),
+    Controls › Record (⌥⌘R, checked while recording), Settings ›
+    Recording (folder, format, sample size or bitrate, cue sheet, the
+    size a minute), and a Recording row in the signal path.
+  - Tests: `RecorderTests.cpp` (a gapless hand-off and a crossfade
+    recorded and compared with the rendered output sample for sample;
+    pause, volume, a rate change and its numbered file and marks, write
+    errors and a full disk, an overrun that never slows the audio thread,
+    and each of the 14 format/size/rate cases decoded back), C API and
+    writable-bookmark tests; Rust tests for names, settings, formats and
+    cue sheets; a `recording` stage in the bundle self-test (a FLAC into a
+    folder opened through a writable bookmark). Benchmarks:
+    `core.record.tap_192k` (43,000× real time) and
+    `core.play.flac_recording` (954× against 1,202× without) on
+    2026-10-04.
+  - **Known limits:** .m4a files (Apple Lossless, AAC) are readable only
+    once finished: a crash or power loss while recording leaves them
+    without their index, where WAV, AIFF, FLAC and MP3 keep what was
+    written. AIFF has no 64-bit form, so it fails at 4 GB (about 4 hours
+    at 48 kHz 24-bit). Cue marks are accurate to a chunk (about 10 ms), a
+    crossfade cancelled by a seek keeps its mark, and a repeated track is
+    named again by the track before it. Streams (Phase 11) don't exist
+    yet; their rule above (Record disabled while one plays) lands with
+    them. Left to check in the app: the exit's recording across a gapless
+    album, a crossfade and a pause, played back elsewhere; the folder
+    picked in a sandboxed bundle; a full disk; and Controls › Record.
 - [ ] **X7 Similar artists on artist pages.** A "Similar artists" section
   on the artist page (`ArtistPage.svelte`), under the biography: first
   the library's artists most like this one, by X4's artist scoring
@@ -1248,6 +1329,9 @@ Each open item has a brief (options, what it blocks, what was checked) in
 - [ ] **AAC patents** (§4.3): licensing opinion obtained for FFmpeg's AAC
       decoder (the chosen path), or fall back to routing AAC to
       CoreAudio (Apple) / Media Foundation (Windows) / disabled (Linux).
+      Since 2026-10-04 the opinion covers FFmpeg's AAC encoder too (X6
+      records to AAC); the fallback there is to leave AAC out of
+      `build-ffmpeg.sh`'s encoders, which hides it from the format list.
 - [ ] **Name and identity:** the candidate product name is **AnoTracks**
       (runner-up: Anotone). Before committing:
   - [ ] Search the USPTO and EUIPO trademark registers for "ANOTRACKS" and

@@ -15,6 +15,7 @@ mod logging;
 mod media;
 mod metadata;
 mod queue;
+mod recording;
 mod remote;
 #[cfg(any(test, feature = "self-test"))]
 mod self_test;
@@ -230,6 +231,10 @@ pub fn run() {
             effects::effects_preview,
             effects::effects_freeze,
             effects::effects_status,
+            recording::recording_status,
+            recording::recording_set_folder,
+            recording::recording_start,
+            recording::recording_stop,
             features::analysis_status,
             features::analysis_waveform,
             features::analysis_track,
@@ -299,6 +304,7 @@ pub fn run() {
                 updates::shutdown(app);
                 library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
+                recording::shutdown(app);
                 queue::shutdown(app);
                 library::commands::shutdown(app);
                 library::availability::shutdown();

@@ -7,11 +7,13 @@ add_library(anomp_core STATIC
     src/DockMenu.cpp
     src/Equaliser.cpp
     src/FFmpegAudioFormat.cpp
+    src/FFmpegEncoder.cpp
     src/FileAnalyser.cpp
     src/FormatRegistry.cpp
     src/Log.cpp
     src/MediaControls.cpp
     src/PlayerEngine.cpp
+    src/Recorder.cpp
     src/SpectrumAnalyser.cpp
     src/TagReader.cpp
     src/anomp_c_api.cpp)

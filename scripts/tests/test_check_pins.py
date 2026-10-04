@@ -38,10 +38,23 @@ def test_ffmpeg_releases_from_the_listing(pins):
     assert pins.ffmpeg_releases(listing) == {"9.0.2", "10.0"}
 
 
-def fake_upstream(tags="", pypi="1.0", ffmpeg=""):
+def test_sourceforge_releases_from_the_listing(pins):
+    listing = (
+        '<a href="/projects/lame/files/lame/3.100/">3.100</a>'
+        '<a href="/projects/lame/files/lame/3.99/">3.99</a>'
+        '<a href="/projects/lame/files/lame/3.101-beta/">x</a>'
+        '<a href="/projects/other/files/lame/9.0/">x</a>'
+    )
+    assert pins.sourceforge_releases(listing, "lame", "lame") == {"3.100", "3.99"}
+
+
+def fake_upstream(tags="", pypi="1.0", ffmpeg="", sourceforge=""):
     def fetch(url):
         if "pypi.org" in url:
             return json.dumps({"info": {"version": pypi}})
+        if "sourceforge.net" in url:
+            assert url == "https://sourceforge.net/projects/lame/files/lame/"
+            return sourceforge
         assert url == "https://ffmpeg.org/releases/"
         return ffmpeg
 
@@ -57,6 +70,8 @@ def test_latest_asks_each_kind_of_upstream(pins):
     assert pins.latest(pins.by_name("catch2"), fetch, run) == "3.16.0"
     assert pins.latest(pins.by_name("ruff"), fetch, run) == "0.17.0"
     assert pins.latest(pins.by_name("ffmpeg"), fetch, run) == "9.1"
+    fetch, run = fake_upstream(sourceforge='<a href="/projects/lame/files/lame/3.100/">')
+    assert pins.latest(pins.by_name("lame"), fetch, run) == "3.100"
 
 
 def test_latest_refuses_no_releases_and_pre_releases(pins):
@@ -132,8 +147,8 @@ def test_every_real_pin_is_found(pins):
     for pin in pins.PINS:
         assert pins.RELEASE.match(pins.pinned(pin)), pin.name
         kind = pin.upstream.partition(":")[0]
-        assert kind in {"github", "pypi", "ffmpeg"}, pin.name
-        if kind == "github" or pin.name == "ffmpeg":
+        assert kind in {"github", "pypi", "ffmpeg", "sourceforge"}, pin.name
+        if kind in {"github", "sourceforge"} or pin.name == "ffmpeg":
             assert pin.url, pin.name
         if kind == "github":
             assert pin.fetch_id, pin.name

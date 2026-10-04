@@ -5,7 +5,7 @@
 
 namespace anomp
 {
-juce::String FolderAccess::createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark)
+juce::String FolderAccess::createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark, bool)
 {
     if (! folder.isDirectory())
         return "Cannot create a bookmark for " + folder.getFullPathName() + ": not a folder";

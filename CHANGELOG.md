@@ -16,6 +16,15 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfade, ReplayGain and macOS media controls.
 - ano-mp's own code is licensed under the MIT License (`LICENSE`); the
   components it is built on keep their own licences (`THIRD_PARTY_NOTICES`).
+- Recording: with Recording on in Settings › Features, a Record button in
+  the playing bar (and Controls › Record, ⌥⌘R) writes what you hear,
+  effects, equaliser and crossfeed included but not the volume, to a file
+  in a folder you choose, until you press it again: WAV (16-bit, 24-bit or
+  32-bit float), AIFF, FLAC, Apple Lossless, AAC or MP3, set in Settings ›
+  Recording. It carries on across track changes, gapless albums and
+  crossfades, leaves out the time paused, and writes a cue sheet beside
+  the file naming each track. MP3 is encoded by LAME 4.0, now built into
+  the app's FFmpeg.
 - Artists, in the sidebar under Favourites: every artist in the library,
   with a box to narrow the list by name. A click opens the artist's page;
   their menu plays, shuffles, queues or hearts them.

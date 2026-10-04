@@ -3,7 +3,7 @@
 //! page's keydown handler loses them to a focused text field).
 //!
 //! Transport items (play, next, previous, volume, shuffle, repeat, stop
-//! after, the sleep timer) run here, through the queue functions the media
+//! after, the sleep timer, recording) run here, through the queue functions the media
 //! keys use. The rest are the page's to do: they reach it as a `menu`
 //! event naming the item (`MenuAction`).
 
@@ -30,6 +30,7 @@ pub struct MenuState<R: Runtime> {
     repeat: [CheckMenuItem<R>; 3],
     stop_after: CheckMenuItem<R>,
     sleep: Vec<(Option<SleepChoice>, CheckMenuItem<R>)>,
+    record: CheckMenuItem<R>,
 }
 
 /// A sleep timer the menu offers.
@@ -185,6 +186,11 @@ pub fn install(app: &AppHandle<Wry>) -> tauri::Result<()> {
     let stop_after = CheckMenuItemBuilder::with_id("stop-after", "Stop After This Track")
         .accelerator("Alt+CmdOrCtrl+Period")
         .build(app)?;
+    // PLAN.md X6: enabled while the recording feature is on.
+    let record = CheckMenuItemBuilder::with_id("record", "Record")
+        .accelerator("Alt+CmdOrCtrl+R")
+        .enabled(crate::settings::current(app).features.recording)
+        .build(app)?;
     let mut sleep = Vec::new();
     let mut sleep_menu = SubmenuBuilder::new(app, "Sleep Timer");
     for (id, text, choice) in SLEEP_CHOICES {
@@ -231,6 +237,8 @@ pub fn install(app: &AppHandle<Wry>) -> tauri::Result<()> {
         .item(&stop_after)
         .item(&sleep_menu.build()?)
         .separator()
+        .item(&record)
+        .separator()
         .item(&item("go-to-current")?)
         .build()?;
 
@@ -268,6 +276,7 @@ pub fn install(app: &AppHandle<Wry>) -> tauri::Result<()> {
         repeat,
         stop_after,
         sleep,
+        record,
     });
     app.on_menu_event(|app, event| handle(app, event.id().as_ref()));
     Ok(())
@@ -295,6 +304,7 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, id: &str) {
         "repeat-all" => queue::set_repeat(app, Repeat::All),
         "repeat-one" => queue::set_repeat(app, Repeat::One),
         "stop-after" => queue::toggle_stop_after_current(app),
+        "record" => crate::recording::toggle(app),
         "mini-player" => super::mini::toggle(app),
         "show-main" => super::show_main(app),
         _ => {
@@ -318,6 +328,18 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, id: &str) {
     // The check items reflect the queue, not the click: put them back if
     // nothing changed (the next queue state updates them otherwise).
     refresh_checks(app);
+}
+
+/// Whether a recording runs, for the Record item's check.
+static RECORDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A recording started or stopped, or the feature was switched.
+pub fn recording_changed<R: Runtime>(app: &AppHandle<R>, recording: bool, enabled: bool) {
+    RECORDING.store(recording, std::sync::atomic::Ordering::Relaxed);
+    if let Some(state) = app.try_state::<MenuState<R>>() {
+        let _ = state.record.set_checked(recording);
+        let _ = state.record.set_enabled(enabled || recording);
+    }
 }
 
 /// Whether the player is playing, for the Play item's text.
@@ -379,6 +401,9 @@ fn refresh_checks<R: Runtime>(app: &AppHandle<R>) {
     }
     let _ = state.stop_after.set_checked(checks.stop_after_current);
     let _ = state.stop_after.set_enabled(checks.has_current);
+    let _ = state
+        .record
+        .set_checked(RECORDING.load(std::sync::atomic::Ordering::Relaxed));
     for (choice, check) in &state.sleep {
         let _ = check.set_checked(*choice == checks.sleep);
     }
@@ -393,6 +418,7 @@ pub fn shortcuts() -> Vec<(&'static str, &'static str)> {
         ("Increase volume", "CmdOrCtrl+Up"),
         ("Decrease volume", "CmdOrCtrl+Down"),
         ("Stop after this track", "Alt+CmdOrCtrl+Period"),
+        ("Record", "Alt+CmdOrCtrl+R"),
     ];
     list.extend(
         PAGE_ITEMS.iter().filter_map(|(_, text, accelerator)| {

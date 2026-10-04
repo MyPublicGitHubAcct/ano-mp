@@ -2,7 +2,7 @@
 // After changing a command or a type it sends, run
 // `ANOMP_WRITE_BINDINGS=1 cargo test bindings` in src-tauri.
 
-import type { CoverBasis, DeviceInfo, SortRule, SourceId } from "./settings";
+import type { CoverBasis, DeviceInfo, RecordingKind, SortRule, SourceId } from "./settings";
 
 /**
  * An album as the discovery views list it.
@@ -908,6 +908,44 @@ export type RecentTrack = { trackId: number, title: string, artist: string | nul
 folderId: number, };
 
 /**
+ * Whether a recording runs, and where recordings go.
+ */
+export type RecordingState = { recording: boolean, 
+/**
+ * Seconds recorded so far (the last recording's, once it stopped).
+ */
+seconds: number, 
+/**
+ * Times the file fell behind and samples were dropped.
+ */
+overruns: number, 
+/**
+ * The name of the file being written, or last written.
+ */
+fileName: string | null, 
+/**
+ * The folder recordings go in, once picked.
+ */
+folder: string | null, 
+/**
+ * The formats this build can write.
+ */
+formats: Array<RecordingKind>, };
+
+/**
+ * A recording that has stopped.
+ */
+export type RecordingStopped = { 
+/**
+ * The files written (more than one if the sample rate changed), by name.
+ */
+files: Array<string>, seconds: number, overruns: number, 
+/**
+ * Why it stopped, if not at the user's request: a coded error.
+ */
+error: string | null, };
+
+/**
  * An artist linked to another on MusicBrainz.
  */
 export type RelatedArtist = { id: string, name: string, 
@@ -1144,7 +1182,11 @@ effects: Array<string>,
 /**
  * The spectral freeze holds the sound.
  */
-freezeHeld: boolean, };
+freezeHeld: boolean, 
+/**
+ * What is played is being recorded (PLAN.md X6).
+ */
+recording: boolean, };
 
 /**
  * Every step from the file to the speakers (O10).

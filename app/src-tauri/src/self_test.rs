@@ -10,7 +10,9 @@
 //! adds that folder to a scratch library (a security-scoped bookmark), scans
 //! it, resolves the bookmark, reads the tagged fixtures' covers, decodes
 //! every file, and plays the two shortest tracks through a gapless hand-off
-//! on the default output device at volume 0. Each stage prints one line,
+//! on the default output device at volume 0, then records a second of the
+//! shortest into a folder reached through a writable bookmark (PLAN.md X6).
+//! Each stage prints one line,
 //! `self-test: <stage>: ok|skipped|FAILED: <detail>`; a stage that needs a
 //! failed one is skipped. The scratch folder is removed at the end.
 //!
@@ -156,7 +158,7 @@ pub fn run(dir: &Path, options: Options, report: &mut dyn FnMut(&str, &Outcome))
         }
         Err(error) => {
             stage("scan", Outcome::Failed(error));
-            for name in ["bookmark", "covers", "decoding", "playback"] {
+            for name in ["bookmark", "covers", "decoding", "playback", "recording"] {
                 stage(name, Outcome::Skipped("the scan failed".into()));
             }
             return false;
@@ -174,7 +176,13 @@ pub fn run(dir: &Path, options: Options, report: &mut dyn FnMut(&str, &Outcome))
     } else {
         playback(&library, options)
     };
-    stage("playback", outcome);
+    let played = stage("playback", outcome);
+    let outcome = if !played {
+        Outcome::Skipped("playback didn't run".into())
+    } else {
+        outcome_of(recording(&library, dir))
+    };
+    stage("recording", outcome);
     passed
 }
 
@@ -362,6 +370,43 @@ fn hand_off(library: &LibraryState, engine: &mut Engine) -> Result<String, Strin
     ))
 }
 
+/// A second of the shortest track recorded into a folder reached through a
+/// writable bookmark, as the recordings' folder is (PLAN.md X6).
+fn recording(library: &LibraryState, dir: &Path) -> Result<String, String> {
+    let folder = dir.join("recordings");
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let bookmark = anomp::create_writable_bookmark(&folder)?;
+    let access = anomp::FolderAccess::start(&bookmark)?;
+    let file = access.path().join("self-test.flac");
+
+    let mut engine = Engine::new().ok_or("the engine didn't start")?;
+    engine.open_default_device()?;
+    let ids = track_ids(library, "ORDER BY duration, id LIMIT 1")?;
+    let track = track_play(library, *ids.first().ok_or("no tracks")?)?;
+    let _folder = library.open_folder_of(&track.path)?;
+    engine.set_volume(0.0);
+    engine.load_track(&track.path, &track.options(&PlaybackSettings::default()))?;
+    let format = anomp::RecordingFormat {
+        kind: anomp::RecordingKind::Flac,
+        bits: 24,
+        bitrate_kbps: 256,
+    };
+    engine.record_start(&file, &format)?;
+    if !engine.play() {
+        engine.record_stop();
+        return Err("didn't start playing".into());
+    }
+    std::thread::sleep(Duration::from_secs(1));
+    engine.stop();
+    engine.record_stop();
+    let status = engine.recording();
+    let size = std::fs::metadata(&file).map_err(|e| e.to_string())?.len();
+    if status.frames == 0 || size == 0 {
+        return Err(format!("{} frames, {size} bytes written", status.frames));
+    }
+    Ok(format!("{:.1} s, {size} bytes", status.seconds))
+}
+
 fn track_ids(library: &LibraryState, order: &str) -> Result<Vec<i64>, String> {
     let conn = library.conn();
     // `order` is one of this module's fixed clauses, never a value.
@@ -404,11 +449,20 @@ mod tests {
         let names: Vec<&str> = seen.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(
             names,
-            ["sandbox", "fixtures", "scan", "bookmark", "covers", "decoding", "playback"]
+            [
+                "sandbox",
+                "fixtures",
+                "scan",
+                "bookmark",
+                "covers",
+                "decoding",
+                "playback",
+                "recording"
+            ]
         );
         for (name, outcome) in &seen {
             match name.as_str() {
-                "sandbox" | "playback" => assert!(
+                "sandbox" | "playback" | "recording" => assert!(
                     matches!(outcome, Outcome::Skipped(_)),
                     "{name}: {outcome:?}"
                 ),

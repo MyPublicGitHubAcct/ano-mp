@@ -9,6 +9,8 @@ plugins in 2026-10). `{copyright}` is filled in from the package's authors.
 - `MPL-2.0.txt`: Mozilla's text, as the `cssparser` crate ships it.
 - `LGPL-2.1.txt`: FFmpeg's `COPYING.LGPLv2.1` (FFmpeg's source isn't kept
   after its build, so the notices can't read it from there).
+- `LGPL-2.0.txt`: LAME's `COPYING` (the Library GPL, version 2), for the
+  MP3 encoder linked into FFmpeg's libavcodec, for the same reason.
 
 A package whose chosen licence has no text here makes the script fail;
 add the licence's standard text (from https://spdx.org/licenses/) here.

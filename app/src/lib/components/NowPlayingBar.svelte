@@ -2,7 +2,8 @@
   // Along the bottom: the current track (click it for the now-playing view)
   // with its heart (PLAN.md F3), the transport, the seek bar, volume,
   // shuffle, repeat, the sleep timer (F13), the spectral freeze's Hold
-  // while the freeze is on (X2) and the queue toggle. In the mini
+  // while the freeze is on (X2), Record with the time recorded while
+  // recording is on (X6) and the queue toggle. In the mini
   // player (F7, `mini`) the same bar stands alone: the track brings back the
   // main window, and the view toggles are left out.
   import { untrack } from "svelte";
@@ -10,6 +11,8 @@
   import { t } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
   import { effects } from "$lib/state/effects.svelte";
+  import { recording } from "$lib/state/recording.svelte";
+  import { formatTime } from "$lib/format";
   import { attempt } from "$lib/state/toasts.svelte";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
@@ -235,6 +238,22 @@
         onclick={() => effects.toggleHold()}><Icon name="snowflake" /></button
       >
     {/if}
+    {#if !mini && (features.on.recording || recording.recording)}
+      <button
+        class="record"
+        class:on={recording.recording}
+        title={recording.recording ? t("bar.recordStop") : t("bar.recordStart")}
+        aria-label={t("bar.record")}
+        aria-pressed={recording.recording}
+        disabled={recording.busy}
+        onclick={() => recording.toggle()}
+      >
+        <Icon name="record" />
+        {#if recording.recording}
+          <span class="elapsed" role="timer" aria-label={t("bar.recorded")}>{formatTime(recording.state.seconds)}</span>
+        {/if}
+      </button>
+    {/if}
     {#if !mini}
       <button
         class="icon toggle"
@@ -394,6 +413,26 @@
 
   .toggle.on {
     color: var(--accent);
+  }
+
+  .record {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.4rem;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .record.on {
+    color: var(--danger);
+  }
+
+  .record .elapsed {
+    font-size: 0.8rem;
+    color: var(--text);
   }
 
   .repeat {

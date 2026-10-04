@@ -1,6 +1,7 @@
 #include "anomp/anomp.h"
 #include "AudioEngine.h"
 #include "DockMenu.h"
+#include "FFmpegEncoder.h"
 #include "FileAnalyser.h"
 #include "FileStatus.h"
 #include "FolderAccess.h"
@@ -439,7 +440,7 @@ extern "C" void anomp_file_analysis_free (anomp_file_analysis* analysis)
     delete static_cast<FileAnalysisHandle*> (analysis);
 }
 
-extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error, size_t errorSize)
+static anomp_bookmark* createBookmark (const char* path, bool writable, char* error, size_t errorSize)
 {
     try
     {
@@ -451,7 +452,7 @@ extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error,
         else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
             message = "Path is not absolute: " + text;
         else
-            message = anomp::FolderAccess::createBookmark (juce::File (text), bookmark);
+            message = anomp::FolderAccess::createBookmark (juce::File (text), bookmark, writable);
 
         copyUtf8 (message, error, errorSize);
         if (message.isNotEmpty())
@@ -468,6 +469,16 @@ extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error,
         copyUtf8 ("Cannot create a bookmark", error, errorSize);
         return nullptr;
     }
+}
+
+extern "C" anomp_bookmark* anomp_bookmark_create (const char* path, char* error, size_t errorSize)
+{
+    return createBookmark (path, false, error, errorSize);
+}
+
+extern "C" anomp_bookmark* anomp_bookmark_create_writable (const char* path, char* error, size_t errorSize)
+{
+    return createBookmark (path, true, error, errorSize);
 }
 
 extern "C" void anomp_bookmark_free (anomp_bookmark* bookmark) { delete static_cast<BookmarkHandle*> (bookmark); }
@@ -605,6 +616,12 @@ extern "C" anomp_engine* anomp_engine_create (void)
                               : result == anomp::PlayerEngine::LoadResult::failed ? ANOMP_LOAD_FAILED
                                                                                   : ANOMP_LOAD_CANCELLED;
             emit (handle, anomp_event { ANOMP_EVENT_LOAD_FINISHED, 0, 0, 0.0, 0.0, id, code, error.toRawUTF8() });
+        };
+        player.onRecordingFailed = [handle] (anomp::Recorder::Failure failure, const juce::String& message)
+        {
+            const auto code = failure == anomp::Recorder::Failure::diskFull ? ANOMP_RECORDING_DISK_FULL
+                                                                            : ANOMP_RECORDING_WRITE_FAILED;
+            emit (handle, anomp_event { ANOMP_EVENT_RECORDING_FAILED, 0, 0, 0.0, 0.0, 0, code, message.toRawUTF8() });
         };
         return handle;
     }
@@ -1029,7 +1046,114 @@ extern "C" int anomp_engine_signal_path (anomp_engine* engine, anomp_signal_path
         if (info.effects[i])
             path->effects |= 1 << i;
     path->freeze_held = info.freezeHeld ? 1 : 0;
+    path->recording = info.recording ? 1 : 0;
     return 1;
+}
+
+static bool toRecordingKind (int format, anomp::RecordingFormat::Kind& kind)
+{
+    using Kind = anomp::RecordingFormat::Kind;
+    switch (format)
+    {
+        case ANOMP_RECORD_WAV:  kind = Kind::wav; return true;
+        case ANOMP_RECORD_AIFF: kind = Kind::aiff; return true;
+        case ANOMP_RECORD_FLAC: kind = Kind::flac; return true;
+        case ANOMP_RECORD_ALAC: kind = Kind::alac; return true;
+        case ANOMP_RECORD_AAC:  kind = Kind::aac; return true;
+        case ANOMP_RECORD_MP3:  kind = Kind::mp3; return true;
+        default:                return false;
+    }
+}
+
+extern "C" int anomp_record_format_available (int format)
+{
+    anomp::RecordingFormat::Kind kind;
+    return toRecordingKind (format, kind) && anomp::canEncode (kind) ? 1 : 0;
+}
+
+extern "C" const char* anomp_record_format_extension (int format)
+{
+    switch (format)
+    {
+        case ANOMP_RECORD_WAV:  return "wav";
+        case ANOMP_RECORD_AIFF: return "aiff";
+        case ANOMP_RECORD_FLAC: return "flac";
+        case ANOMP_RECORD_ALAC:
+        case ANOMP_RECORD_AAC:  return "m4a";
+        case ANOMP_RECORD_MP3:  return "mp3";
+        default:                return "";
+    }
+}
+
+extern "C" int anomp_engine_record_start (anomp_engine* engine,
+                                          const char* path,
+                                          const anomp_record_format* format,
+                                          char* error,
+                                          size_t errorSize)
+{
+    try
+    {
+        juce::String message;
+        anomp::RecordingFormat recording;
+        if (engine == nullptr)
+            message = "Null engine";
+        else if (path == nullptr || format == nullptr)
+            message = "Null path or format";
+        else if (const auto text = juce::String::fromUTF8 (path); ! juce::File::isAbsolutePath (text))
+            message = "Path is not absolute: " + text;
+        else if (! toRecordingKind (format->format, recording.kind))
+            message = "Unknown recording format " + juce::String (format->format);
+        else
+        {
+            recording.bits = format->bits;
+            recording.bitrateKbps = format->bitrate_kbps;
+            message = engine->engine.player().startRecording (juce::File (text), recording);
+        }
+        copyUtf8 (message, error, errorSize);
+        return message.isEmpty() ? 1 : 0;
+    }
+    catch (...)
+    {
+        copyUtf8 ("Cannot start recording", error, errorSize);
+        return 0;
+    }
+}
+
+extern "C" void anomp_engine_record_stop (anomp_engine* engine)
+{
+    if (engine != nullptr)
+        engine->engine.player().stopRecording();
+}
+
+extern "C" int anomp_engine_recording (anomp_engine* engine, anomp_recording* status)
+{
+    if (engine == nullptr || status == nullptr)
+        return 0;
+    const auto recorded = engine->engine.player().getRecorder().getStatus();
+    *status = {};
+    status->recording = recorded.recording ? 1 : 0;
+    status->frames = recorded.frames;
+    status->seconds = recorded.seconds;
+    status->overruns = recorded.overruns;
+    status->files = recorded.files;
+    return 1;
+}
+
+extern "C" size_t anomp_engine_recording_file (anomp_engine* engine, char* buffer, size_t bufferSize)
+{
+    const auto file = engine != nullptr ? engine->engine.player().getRecorder().getStatus().file : juce::File();
+    return copyUtf8 (file == juce::File() ? juce::String() : file.getFullPathName(), buffer, bufferSize);
+}
+
+extern "C" int anomp_engine_recording_marks (anomp_engine* engine, anomp_recording_mark* marks, int capacity)
+{
+    if (engine == nullptr)
+        return 0;
+    const auto found = engine->engine.player().getRecorder().getMarks();
+    const auto count = static_cast<int> (found.size());
+    for (int i = 0; marks != nullptr && i < juce::jmin (count, capacity); ++i)
+        marks[i] = { found[static_cast<size_t> (i)].file, found[static_cast<size_t> (i)].seconds };
+    return count;
 }
 
 extern "C" int anomp_engine_set_device_sample_rate (anomp_engine* engine, double sampleRate)

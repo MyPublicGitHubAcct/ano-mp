@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Builds the pinned FFmpeg that anomp_core decodes with (PLAN.md §4.3):
-# LGPL, audio-only, shared libraries, no programs, network, video or encoders.
+# LGPL, audio-only, shared libraries, no programs, network or video. Its
+# encoders and muxers are only those recording writes (PLAN.md X6); MP3's is
+# LAME, built here as a static library linked into libavcodec (LGPL too).
 #
 # Output: third_party/ffmpeg/<platform>/{include,lib,BUILD_INFO}
 #   macos-universal   arm64 + x86_64 merged with lipo
@@ -23,12 +25,22 @@ FFMPEG_VERSION="9.0.2"
 FFMPEG_SHA256="8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
 MACOS_MIN="14.0" # PLAN.md §4.5
 
+# LAME, MP3's encoder for recordings (PLAN.md X6). SourceForge publishes
+# no signature, so the hash was checked against Homebrew's formula when the
+# pin was set (2026-10-04).
+LAME_VERSION="4.0"
+LAME_SHA256="3df5124d5ad3a98312ffd7ba6a9b36230e4f8a3e66d3ce0f425e336c32d216eb"
+
 # Formats: MP3, FLAC, WAV, AIFF, Ogg Vorbis, Opus, AAC/M4A, ALAC, WMA.
 DEMUXERS="mp3,flac,wav,aiff,ogg,mov,asf,aac"
 DECODERS="mp3float,flac,vorbis,opus,aac,alac,wmav1,wmav2,wmapro,wmalossless"
 DECODERS+=",pcm_s8,pcm_u8,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_s32be"
 DECODERS+=",pcm_f32le,pcm_f32be,pcm_f64le,pcm_f64be,pcm_alaw,pcm_mulaw"
 PARSERS="mpegaudio,flac,vorbis,opus,aac"
+# Recording (PLAN.md X6): WAV, AIFF, FLAC, ALAC and AAC in M4A, and MP3
+# (libmp3lame, in the macOS build's LAME_FLAGS; the fuzz build has none).
+ENCODERS="pcm_s16le,pcm_s24le,pcm_f32le,pcm_s16be,pcm_s24be,flac,alac,aac"
+MUXERS="wav,aiff,flac,ipod,mp3"
 
 CONFIGURE_FLAGS=(
     --disable-everything
@@ -50,6 +62,12 @@ CONFIGURE_FLAGS=(
     --enable-demuxer="$DEMUXERS"
     --enable-decoder="$DECODERS"
     --enable-parser="$PARSERS"
+    --enable-encoder="$ENCODERS"
+    --enable-muxer="$MUXERS"
+)
+LAME_FLAGS=(
+    --enable-libmp3lame
+    --enable-encoder=libmp3lame
 )
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -78,10 +96,14 @@ log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 build_info() {
-    printf 'ffmpeg %s\nsha256 %s\nplatform %s\nmin_os %s\nconfigure %s\n' \
-        "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$1" "$MACOS_MIN" "${CONFIGURE_FLAGS[*]}"
     if [[ "$1" == *-fuzz ]]; then
+        printf 'ffmpeg %s\nsha256 %s\nplatform %s\nmin_os %s\nconfigure %s\n' \
+            "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$1" "$MACOS_MIN" "${CONFIGURE_FLAGS[*]}"
         printf 'compiler %s\nfuzz %s\n' "$("$FUZZ_LLVM/bin/clang" --version | head -1)" "$FUZZ_FLAGS"
+    else
+        printf 'ffmpeg %s\nsha256 %s\nplatform %s\nmin_os %s\nconfigure %s\nlame %s\nlame_sha256 %s\n' \
+            "$FFMPEG_VERSION" "$FFMPEG_SHA256" "$1" "$MACOS_MIN" "${CONFIGURE_FLAGS[*]} ${LAME_FLAGS[*]}" \
+            "$LAME_VERSION" "$LAME_SHA256"
     fi
 }
 
@@ -102,11 +124,59 @@ fetch_source() {
     tar -xJf "$tarball" -C "$WORK_DIR"
 }
 
+fetch_lame() {
+    local tarball="$WORK_DIR/lame-$LAME_VERSION.tar.gz"
+    mkdir -p "$WORK_DIR"
+    if [[ ! -f "$tarball" ]]; then
+        log "Downloading LAME $LAME_VERSION"
+        curl -fSL --retry 3 -o "$tarball.part" \
+            "https://downloads.sourceforge.net/project/lame/lame/$LAME_VERSION/lame-$LAME_VERSION.tar.gz"
+        mv "$tarball.part" "$tarball"
+    fi
+    echo "$LAME_SHA256  $tarball" | shasum -a 256 -c - >/dev/null \
+        || die "checksum mismatch for $tarball (delete it to re-download)"
+
+    LAME_SRC_DIR="$WORK_DIR/lame-$LAME_VERSION"
+    rm -rf "$LAME_SRC_DIR"
+    tar -xzf "$tarball" -C "$WORK_DIR"
+}
+
+# build_lame_arch <arch> <prefix>: libmp3lame.a only (no frontend or decoder).
+build_lame_arch() {
+    local arch="$1" prefix="$2"
+    local build_dir="$WORK_DIR/build-lame-$arch"
+    local host="aarch64-apple-darwin"
+    [[ "$arch" == x86_64 ]] && host="x86_64-apple-darwin"
+
+    log "Building LAME for macOS $arch"
+    rm -rf "$build_dir" "$prefix"
+    mkdir -p "$build_dir"
+    (
+        cd "$build_dir"
+        CC=clang CFLAGS="-arch $arch -mmacosx-version-min=$MACOS_MIN -O2 -fPIC" \
+            "$LAME_SRC_DIR/configure" \
+            --prefix="$prefix" \
+            --host="$host" \
+            --disable-shared \
+            --enable-static \
+            --disable-frontend \
+            --disable-decoder \
+            --disable-gtktest \
+            --disable-dependency-tracking > configure.log 2>&1 \
+            || { tail -30 configure.log; die "LAME configure failed for $arch"; }
+        make -j"$JOBS" > build.log 2>&1 || { tail -30 build.log; die "LAME build failed for $arch"; }
+        make install > install.log 2>&1 || { tail -30 install.log; die "LAME install failed for $arch"; }
+    )
+}
+
 # build_macos_arch <arch> <prefix>
 build_macos_arch() {
     local arch="$1" prefix="$2"
     local build_dir="$WORK_DIR/build-macos-$arch"
+    local lame="$WORK_DIR/lame-macos-$arch"
     local flags="-arch $arch -mmacosx-version-min=$MACOS_MIN"
+
+    build_lame_arch "$arch" "$lame"
 
     log "Configuring FFmpeg for macOS $arch"
     rm -rf "$build_dir" "$prefix"
@@ -120,9 +190,10 @@ build_macos_arch() {
             --target-os=darwin \
             --arch="$arch" \
             --cc="clang" \
-            --extra-cflags="$flags" \
-            --extra-ldflags="$flags" \
-            "${CONFIGURE_FLAGS[@]}" > configure.log \
+            --extra-cflags="$flags -I$lame/include" \
+            --extra-ldflags="$flags -L$lame/lib" \
+            "${CONFIGURE_FLAGS[@]}" \
+            "${LAME_FLAGS[@]}" > configure.log \
             || { tail -30 configure.log; die "configure failed for $arch (see $build_dir/configure.log)"; }
 
         grep -q '^License: LGPL' configure.log \
@@ -145,6 +216,7 @@ build_macos() {
     fi
 
     fetch_source
+    fetch_lame
     local arm="$WORK_DIR/install-macos-arm64" x86="$WORK_DIR/install-macos-x86_64"
     build_macos_arch arm64 "$arm"
     build_macos_arch x86_64 "$x86"

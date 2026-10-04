@@ -9,6 +9,7 @@ add_executable(anomp_core_tests
     FolderAccessTests.cpp
     MediaControlsTests.cpp
     PlayerEngineTests.cpp
+    RecorderTests.cpp
     TagReaderTests.cpp)
 
 if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")

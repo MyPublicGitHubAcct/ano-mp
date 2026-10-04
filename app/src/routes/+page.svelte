@@ -37,6 +37,7 @@
   import { folderName, library } from "$lib/state/library.svelte";
   import { metadataStatus } from "$lib/state/metadata.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { recording } from "$lib/state/recording.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
@@ -70,6 +71,7 @@
     const stopFeatures = features.connect();
     const stopCollection = collection.connect();
     const stopUpdates = updates.connect();
+    const stopRecording = recording.connect();
     const menu = on("menu", (id) => onMenu(id));
     const drops = getCurrentWebview().onDragDropEvent((event) => {
       const payload = event.payload;
@@ -89,6 +91,7 @@
       stopSettings();
       stopCollection();
       stopUpdates();
+      stopRecording();
       menu.then((stop) => stop());
       drops.then((stop) => stop());
     };

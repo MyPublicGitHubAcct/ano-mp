@@ -1,13 +1,16 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "FFmpegEncoder.h"
 #include "FormatRegistry.h"
 #include "PlayerEngine.h"
+#include "Recorder.h"
 #include "SpectrumAnalyser.h"
 
 #include <anomp/effects/EffectChain.h>
 
 #include <chrono>
 #include <iostream>
+#include <thread>
 #include <vector>
 
 // How fast the core does its work while playing (PLAN.md H18), as a multiple
@@ -35,8 +38,9 @@ void report (const std::string& key, double realTime)
 }
 
 /** Renders `seconds` of `name` through the engine as the device would pull it,
-    replaying the file whenever it ends; returns the multiple of real time. */
-double renderFile (const char* name, bool effects)
+    replaying the file whenever it ends, and with `record` recording it to a
+    temporary WAV file (PLAN.md X6); returns the multiple of real time. */
+double renderFile (const char* name, bool effects, bool record = false)
 {
     anomp::FormatRegistry registry;
     // No read-ahead thread: decoding happens inside getNextAudioBlock, so its
@@ -53,6 +57,9 @@ double renderFile (const char* name, bool effects)
     }
     REQUIRE (player.load (fixtureFile (name)).isEmpty());
     REQUIRE (player.play());
+    const juce::TemporaryFile recording (".wav");
+    if (record)
+        REQUIRE (player.startRecording (recording.getFile(), anomp::RecordingFormat {}) == "");
 
     juce::AudioBuffer<float> block (2, blockSize);
     const auto blocks = static_cast<int> (seconds * deviceRate / blockSize);
@@ -69,6 +76,14 @@ double renderFile (const char* name, bool effects)
         const auto start = Clock::now();
         player.getNextAudioBlock (juce::AudioSourceChannelInfo (block));
         busy += elapsedSeconds (start);
+        // The writer keeps up as it would in real time.
+        if (record && i % 64 == 0)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    if (record)
+    {
+        player.stopRecording();
+        REQUIRE (player.getRecorder().getStatus().overruns == 0);
     }
     return seconds / busy;
 }
@@ -83,6 +98,39 @@ TEST_CASE ("Bench: playback through the engine", "[.][bench]")
     report ("core.play.opus", renderFile ("opus-long-48k.opus", false));
     // With crossfeed and the equaliser on.
     report ("core.play.mp3_effects", renderFile ("mp3-vbr-long-44k.mp3", true));
+    // While recording (PLAN.md X6): next to core.play.flac, the tap's cost.
+    report ("core.play.flac_recording", renderFile ("flac-long-48k-mono.flac", false, true));
+}
+
+TEST_CASE ("Bench: the recording's tap at 192 kHz", "[.][bench]")
+{
+    // What the audio thread does for a recording: copy each block into the
+    // FIFO. A writer that discards keeps the FIFO from filling.
+    struct Discard final : anomp::RecordingEncoder
+    {
+        anomp::RecordingError write (const float*, const float*, int) override { return {}; }
+        anomp::RecordingError finish() override { return {}; }
+    };
+    constexpr double rate = 192000.0;
+    juce::CriticalSection lock;
+    anomp::Recorder recorder (lock, [] (const juce::File&, const anomp::RecordingFormat&, double,
+                                        anomp::RecordingError&) { return std::make_unique<Discard>(); });
+    REQUIRE (recorder.start (juce::File ("/tmp/bench.wav"), {}, rate, false) == "");
+
+    std::vector<float> left (blockSize, 0.25f), right (blockSize, -0.25f);
+    const auto blocks = static_cast<int> (seconds * rate / blockSize);
+    double busy = 0.0;
+    for (int i = 0; i < blocks; ++i)
+    {
+        const juce::ScopedLock sl (lock);
+        const auto start = Clock::now();
+        recorder.push (left.data(), right.data(), blockSize, 1.0f, 1.0f);
+        busy += elapsedSeconds (start);
+        if (i % 256 == 0)
+            std::this_thread::sleep_for (std::chrono::microseconds (200));
+    }
+    recorder.stop();
+    report ("core.record.tap_192k", seconds / busy);
 }
 
 TEST_CASE ("Bench: the visualizer's analysis", "[.][bench]")

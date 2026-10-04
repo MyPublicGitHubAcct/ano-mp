@@ -1,5 +1,6 @@
 #include "PlayerEngine.h"
 #include "FFmpegAudioFormat.h"
+#include "FFmpegEncoder.h"
 #include "Log.h"
 
 #include <signalsmith-stretch/signalsmith-stretch.h>
@@ -299,10 +300,13 @@ private:
 };
 
 //==============================================================================
-PlayerEngine::PlayerEngine (juce::AudioFormatManager& formatsToUse, juce::TimeSliceThread* thread)
+PlayerEngine::PlayerEngine (juce::AudioFormatManager& formatsToUse,
+                            juce::TimeSliceThread* thread,
+                            Recorder::EncoderFactory encoders)
     : formats (formatsToUse),
       readAheadThread (thread),
-      resampler (std::make_unique<Resampler>())
+      resampler (std::make_unique<Resampler>()),
+      recorder (lock, encoders != nullptr ? std::move (encoders) : Recorder::EncoderFactory (openFFmpegEncoder))
 {
 }
 
@@ -400,9 +404,10 @@ void PlayerEngine::install (TrackPtr track)
         pendingEnded = false;
         fadeLength = 0;
         state = State::stopped;
-        appliedGain = 0.0f;
+        appliedGain = recordFade = 0.0f;
         configureRate();
         publishPosition();
+        recorder.markTrack (0);
     }
     effects.trackChanged();
 }
@@ -641,7 +646,7 @@ void PlayerEngine::stop()
         return;
 
     state = State::stopped;
-    appliedGain = 0.0f;
+    appliedGain = recordFade = 0.0f;
     rewind();
     publishPosition();
 }
@@ -784,6 +789,18 @@ void PlayerEngine::setEqualiser (bool enabled, const Equaliser::Gains& gainsDb, 
     equaliser.set (enabled, gainsDb, preampDb);
 }
 
+juce::String PlayerEngine::startRecording (const juce::File& file, const RecordingFormat& format)
+{
+    double rate = 0.0;
+    bool loaded = false;
+    {
+        const juce::ScopedLock sl (lock);
+        rate = deviceRate;
+        loaded = current != nullptr;
+    }
+    return recorder.start (file, format, rate, loaded);
+}
+
 bool PlayerEngine::hasNext() const
 {
     const juce::ScopedLock sl (lock);
@@ -803,6 +820,7 @@ PlayerEngine::SignalInfo PlayerEngine::getSignalInfo() const
         info.effects[i] = effects.isEnabled (type) || effects.isActive (type);
     }
     info.freezeHeld = effects.isFreezeHeld();
+    info.recording = recorder.isRecording();
     if (current != nullptr && next != nullptr)
         if (const auto fade = crossfadeSamples(); fade > 0)
             info.crossfade = static_cast<double> (fade) / current->sampleRate;
@@ -861,6 +879,14 @@ void PlayerEngine::dispatchEvents()
         if (onLoadFinished)
             onLoadFinished (id, result, error);
 
+    juce::String recordingError;
+    if (const auto failure = recorder.takeFailure (recordingError); failure != Recorder::Failure::none)
+    {
+        recorder.stop();
+        if (onRecordingFailed)
+            onRecordingFailed (failure, recordingError);
+    }
+
     if (const auto newState = getState(); newState != reportedState)
     {
         reportedState = newState;
@@ -900,6 +926,7 @@ void PlayerEngine::prepareToPlay (int samplesPerBlockExpected, double sampleRate
     crossfeed.prepare (sampleRate);
     equaliser.prepare (sampleRate);
     effects.prepare (sampleRate);
+    recorder.setSampleRate (sampleRate);
 
     const auto chunkSize = juce::jmax (samplesPerBlockExpected, 256);
     scratch.setSize (outputChannels, chunkSize);
@@ -919,7 +946,8 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
     const auto playing = state == State::playing;
 
     // Paused or stopped once the fade-out has finished: silent, position held.
-    if (current == nullptr || deviceRate <= 0.0 || (! playing && juce::exactlyEqual (appliedGain, 0.0f)))
+    if (current == nullptr || deviceRate <= 0.0
+        || (! playing && juce::exactlyEqual (appliedGain, 0.0f) && juce::exactlyEqual (recordFade, 0.0f)))
     {
         info.clearActiveBufferRegion();
         return;
@@ -930,6 +958,7 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
     for (int done = 0; done < info.numSamples;)
     {
         const auto count = juce::jmin (info.numSamples - done, scratch.getNumSamples());
+        renderedInBlock = done;
         renderChunk (scratch.getArrayOfWritePointers(), count);
         effects.process (scratch.getWritePointer (0), scratch.getWritePointer (1), count);
 
@@ -970,6 +999,15 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
                            info.numSamples);
     }
 
+    // The recording, before the volume, with the pause fade alone.
+    {
+        const auto* left = out.getReadPointer (0, info.startSample);
+        const auto* right = out.getNumChannels() > 1 ? out.getReadPointer (1, info.startSample) : left;
+        const auto targetFade = playing ? 1.0f : 0.0f;
+        recorder.push (left, right, info.numSamples, recordFade, targetFade);
+        recordFade = targetFade;
+    }
+
     // Pause and play fade over one block; volume changes ramp the same way.
     const auto targetGain = playing ? volume.load() : 0.0f;
     out.applyGainRamp (info.startSample, info.numSamples, appliedGain, targetGain);
@@ -978,7 +1016,7 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
     if (current->remaining() == 0 && next == nullptr && loopTrack == nullptr)
     {
         state = State::stopped;
-        appliedGain = 0.0f;
+        appliedGain = recordFade = 0.0f;
         pendingEnded = true;
         rewind();
     }
@@ -1056,7 +1094,11 @@ int PlayerEngine::readSource (juce::AudioBuffer<float>& buffer, int startSample,
         if (fade > 0 && current->remaining() <= fade)
         {
             if (fadeLength == 0)
+            {
+                // The recording's next track starts where the fade does.
                 fadeLength = current->remaining();
+                recorder.markTrack (renderedInBlock);
+            }
             auto count = juce::jmin (static_cast<juce::int64> (numSamples - done), current->remaining());
             if (current->skipFrom > current->position)
                 count = juce::jmin (count, current->skipFrom - current->position);
@@ -1085,6 +1127,8 @@ int PlayerEngine::readSource (juce::AudioBuffer<float>& buffer, int startSample,
 
 void PlayerEngine::handOff()
 {
+    if (fadeLength == 0) // A crossfade marked its start.
+        recorder.markTrack (renderedInBlock);
     retire (std::move (current));
     current = std::move (next);
     fadeLength = 0;

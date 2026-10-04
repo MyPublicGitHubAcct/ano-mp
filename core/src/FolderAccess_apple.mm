@@ -13,15 +13,17 @@ namespace anomp
 namespace
 {
 #if TARGET_OS_OSX
-// Read-only is all a player needs, and matches the entitlement.
+// Read-only is all a player needs; the recordings' folder is written too.
 constexpr NSURLBookmarkCreationOptions creationOptions =
     NSURLBookmarkCreationWithSecurityScope | NSURLBookmarkCreationSecurityScopeAllowOnlyReadAccess;
+constexpr NSURLBookmarkCreationOptions writableCreationOptions = NSURLBookmarkCreationWithSecurityScope;
 constexpr NSURLBookmarkResolutionOptions resolutionOptions = NSURLBookmarkResolutionWithSecurityScope
                                                              | NSURLBookmarkResolutionWithoutUI
                                                              | NSURLBookmarkResolutionWithoutMounting;
 #else
 // On iOS every bookmark carries its scope implicitly.
 constexpr NSURLBookmarkCreationOptions creationOptions = 0;
+constexpr NSURLBookmarkCreationOptions writableCreationOptions = 0;
 constexpr NSURLBookmarkResolutionOptions resolutionOptions =
     NSURLBookmarkResolutionWithoutUI | NSURLBookmarkResolutionWithoutMounting;
 #endif
@@ -44,14 +46,14 @@ juce::File realPath (NSURL* url)
 }
 } // namespace
 
-juce::String FolderAccess::createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark)
+juce::String FolderAccess::createBookmark (const juce::File& folder, juce::MemoryBlock& bookmark, bool writable)
 {
     @autoreleasepool
     {
         NSString* path = [NSString stringWithUTF8String:folder.getFullPathName().toRawUTF8()];
         NSURL* url = [NSURL fileURLWithPath:path isDirectory:YES];
         NSError* error = nil;
-        NSData* data = [url bookmarkDataWithOptions:creationOptions
+        NSData* data = [url bookmarkDataWithOptions:writable ? writableCreationOptions : creationOptions
                      includingResourceValuesForKeys:nil
                                       relativeToURL:nil
                                               error:&error];

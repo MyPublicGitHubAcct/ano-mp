@@ -44,6 +44,8 @@ pub struct AppSettings {
     pub equaliser: EqualiserSettings,
     /// X2: the effects' settings, used while `features.effects` is on.
     pub effects: crate::effects::EffectsSettings,
+    /// X6: what recordings are written as, while `features.recording` is on.
+    pub recording: crate::recording::RecordingSettings,
     pub library: LibrarySettings,
     pub window: WindowSettings,
     pub appearance: crate::theme::AppearanceSettings,
@@ -217,6 +219,9 @@ pub struct FeatureSettings {
     /// artists for the MusicBrainz ids of the artists played most, and
     /// MusicBrainz's relations.
     pub outside_recommendations: bool,
+    /// X6: a Record button that writes what is played to a file in a
+    /// folder the user picks (`AppSettings.recording`).
+    pub recording: bool,
 }
 
 impl Default for FeatureSettings {
@@ -253,6 +258,7 @@ impl Default for FeatureSettings {
             effects: false,
             recommendations: true,
             outside_recommendations: false,
+            recording: false,
         }
     }
 }
@@ -549,6 +555,7 @@ impl AppSettings {
             }
         }
         self.effects.validate().map_err(Error::Invalid)?;
+        self.recording.validate().map_err(Error::Invalid)?;
         self.appearance.validate().map_err(Error::Invalid)?;
         Ok(())
     }
@@ -750,6 +757,7 @@ pub async fn settings_save<R: Runtime>(
         crate::updates::configure(&app);
         crate::history::wake(&app);
         crate::audio::apply_features(&app, features);
+        crate::recording::features_changed(&app, features);
         // Skips, shuffle units and gains may follow different rules now.
         crate::queue::features_changed(&app).await;
         if features.loudness_analysis != old.loudness_analysis
@@ -1007,6 +1015,8 @@ mod bindings {
         declare::<EqualiserProfile>(&cfg, out);
         declare::<crate::effects::EffectsSettings>(&cfg, out);
         declare::<crate::effects::EffectSettings>(&cfg, out);
+        declare::<crate::recording::RecordingSettings>(&cfg, out);
+        declare::<crate::anomp::RecordingKind>(&cfg, out);
         declare::<LibrarySettings>(&cfg, out);
         declare::<WindowSettings>(&cfg, out);
         declare::<crate::theme::AppearanceSettings>(&cfg, out);

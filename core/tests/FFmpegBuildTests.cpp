@@ -1,5 +1,6 @@
 // Checks that third_party/ffmpeg was built as PLAN.md §4.3 requires:
-// LGPL, every planned demuxer and decoder, and no encoders.
+// LGPL, every planned demuxer and decoder, and no encoders or muxers but
+// recording's (PLAN.md X6).
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,6 +11,7 @@ extern "C"
 #include <libswresample/swresample.h>
 }
 
+#include <set>
 #include <string_view>
 
 TEST_CASE ("FFmpeg is licensed under the LGPL", "[ffmpeg]")
@@ -40,15 +42,24 @@ TEST_CASE ("FFmpeg has a decoder for every planned codec", "[ffmpeg]")
     }
 }
 
-TEST_CASE ("FFmpeg contains no encoders", "[ffmpeg]")
+TEST_CASE ("FFmpeg's encoders and muxers are only recording's", "[ffmpeg]")
 {
+    const std::set<std::string_view> encoders { "pcm_s16le", "pcm_s24le", "pcm_f32le", "pcm_s16be", "pcm_s24be",
+                                                "flac",      "alac",      "aac",       "libmp3lame" };
+    std::set<std::string_view> found;
     void* iterator = nullptr;
-
     while (const auto* codec = av_codec_iterate (&iterator))
-    {
-        INFO ("codec " << codec->name);
-        CHECK_FALSE (av_codec_is_encoder (codec));
-    }
+        if (av_codec_is_encoder (codec))
+            found.insert (codec->name);
+    CHECK (found == encoders);
+
+    // ipod (.m4a) brings in mov, which it is built on.
+    const std::set<std::string_view> muxers { "wav", "aiff", "flac", "ipod", "mov", "mp3" };
+    found.clear();
+    iterator = nullptr;
+    while (const auto* muxer = av_muxer_iterate (&iterator))
+        found.insert (muxer->name);
+    CHECK (found == muxers);
 }
 
 TEST_CASE ("FFmpeg resampler can be allocated", "[ffmpeg]")

@@ -114,6 +114,10 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 crate::queue::on_load_finished(&app, request, result);
                 Ok(())
             }
+            Event::RecordingFailed { disk_full, message } => {
+                crate::recording::failed(&app, disk_full, &message);
+                Ok(())
+            }
         };
     });
     let opened = open_output(&mut engine, &output);

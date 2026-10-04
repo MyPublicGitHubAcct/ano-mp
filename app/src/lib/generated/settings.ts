@@ -6,7 +6,11 @@ export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings
 /**
  * X2: the effects' settings, used while `features.effects` is on.
  */
-effects: EffectsSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
+effects: EffectsSettings, 
+/**
+ * X6: what recordings are written as, while `features.recording` is on.
+ */
+recording: RecordingSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -251,7 +255,12 @@ recommendations: boolean,
  * artists for the MusicBrainz ids of the artists played most, and
  * MusicBrainz's relations.
  */
-outsideRecommendations: boolean, };
+outsideRecommendations: boolean, 
+/**
+ * X6: a Record button that writes what is played to a file in a
+ * folder the user picks (`AppSettings.recording`).
+ */
+recording: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 
@@ -296,6 +305,29 @@ mix: number,
  * Every parameter the core lists for it, within its range.
  */
 params: Record<string, number>, };
+
+/**
+ * The recording's format (`AppSettings.recording`).
+ */
+export type RecordingSettings = { format: RecordingKind, 
+/**
+ * For WAV, AIFF, FLAC and Apple Lossless: 16, 24, or 32 (float, WAV
+ * only; the others record 24 then).
+ */
+bits: number, 
+/**
+ * For AAC and MP3: 96 to 320 kbps.
+ */
+bitrateKbps: number, 
+/**
+ * Writes a cue sheet beside each file, naming its tracks.
+ */
+cueSheet: boolean, };
+
+/**
+ * What a recording is written as (PLAN.md X6), in `anomp.h`'s order.
+ */
+export type RecordingKind = "wav" | "aiff" | "flac" | "alac" | "aac" | "mp3";
 
 /**
  * Keeping the library in step with the disk (PLAN.md F9).

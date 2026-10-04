@@ -5,7 +5,8 @@ NAME is one of check-pins.py's pins (`scripts/check-pins.py` lists them and
 what is newer). For the native libraries it downloads the release, computes
 its SHA-256 and rewrites the pin in place: JUCE and Catch2 as GitHub's
 archive of the commit the release tag names (looked up with `git
-ls-remote`), TagLib and Signalsmith as their release tarballs, FFmpeg as
+ls-remote`), TagLib and Signalsmith as their release tarballs, LAME as its
+tarball (rewriting build-ffmpeg.sh's LAME_SHA256), FFmpeg as
 its tarball after checking its GPG signature was made by the key whose
 fingerprint build-ffmpeg.sh records (gpg, in a throwaway keyring). The
 formatters', linters' and pytest's pins are versions uvx fetches from PyPI,
@@ -106,6 +107,14 @@ def rewrite_ffmpeg(text, pin, version, sha256):
     return text
 
 
+def rewrite_lame(text, pin, version, sha256):
+    text = replace_version(text, pin, version)
+    text, count = re.subn(r'(LAME_SHA256=")[0-9a-f]{64}(")', rf"\g<1>{sha256}\g<2>", text)
+    if count != 1:
+        raise BumpError("build-ffmpeg.sh: no LAME_SHA256")
+    return text
+
+
 def ffmpeg_fingerprint(script_text):
     """The signing key's fingerprint build-ffmpeg.sh's comment records."""
     match = re.search(r"signing key\s*\n#\s*([0-9A-F ]+)\)", script_text)
@@ -181,6 +190,12 @@ def bumped(pin, version, text, workdir, download=download, run=run, fetch=check_
         download(FFMPEG_KEY_URL, key)
         verify_signature(tarball, signature, key, ffmpeg_fingerprint(text), run)
         return rewrite_ffmpeg(text, pin, version, sha256)
+    if pin.name == "lame":
+        # SourceForge publishes no signature: compare the hash with a
+        # distribution's (Debian, Homebrew) before committing it.
+        url = pin.url.format(version=version)
+        sha256 = download(url, workdir / url.rsplit("/", 1)[1])
+        return rewrite_lame(text, pin, version, sha256)
     if "{commit}" in pin.url:
         url = pin.url.format(commit=tag_commit(pin, version, run))
     else:
@@ -209,6 +224,13 @@ def mentions(pin, version, root=REPO_ROOT):
 def next_steps(pin):
     """The commands to run after moving `pin`."""
     kind = pin.upstream.partition(":")[0]
+    if pin.name == "lame":
+        return [
+            "compare the SHA-256 with Debian's or Homebrew's for the release",
+            "scripts/build-ffmpeg.sh",
+            "scripts/make-notices.py",
+            "scripts/check-all.py",
+        ]
     if pin.name == "ffmpeg":
         return [
             "scripts/build-ffmpeg.sh && scripts/build-ffmpeg.sh --fuzz",

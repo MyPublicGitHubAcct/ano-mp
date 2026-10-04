@@ -148,6 +148,19 @@ def test_ffmpeg_with_another_or_a_bad_signature_is_refused(bump, tree, status, v
         bumped_file(bump, tree, "ffmpeg", "9.0.3", download=fake_download()[0], run=run)
 
 
+def test_lame_moves_version_and_hash(bump, tree):
+    download, fetched = fake_download()
+    old, new = bumped_file(bump, tree, "lame", "3.101", download=download)
+    assert fetched == [
+        "https://downloads.sourceforge.net/project/lame/lame/3.101/lame-3.101.tar.gz"
+    ]
+    assert 'LAME_VERSION="3.101"' in new
+    assert f'LAME_SHA256="{hashlib.sha256(b"tarball").hexdigest()}"' in new
+    # FFmpeg's pin stays.
+    assert re.search(r'FFMPEG_SHA256="[0-9a-f]{64}"', old).group(0) in new
+    assert len(new.splitlines()) == len(old.splitlines())
+
+
 def test_the_recorded_fingerprint_is_read(bump):
     script = (bump.REPO_ROOT / "scripts" / "build-ffmpeg.sh").read_text()
     assert bump.ffmpeg_fingerprint(script) == "FCF986EA15E6E293A5644F10B4322F04D67658D8"

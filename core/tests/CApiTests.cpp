@@ -82,6 +82,14 @@ TEST_CASE ("C API engine functions accept a null engine", "[c-api][engine]")
     CHECK (anomp_engine_set_effect (nullptr, ANOMP_EFFECT_REVERB, 1, 0.5, reverb, 1) == 0);
     CHECK (anomp_engine_set_freeze (nullptr, 1) == 0);
     CHECK (anomp_engine_freeze_held (nullptr) == 0);
+    const anomp_record_format wav { ANOMP_RECORD_WAV, 32, 0 };
+    CHECK (anomp_engine_record_start (nullptr, "/a.wav", &wav, buffer, sizeof (buffer)) == 0);
+    CHECK (std::string_view (buffer) == "Null engine");
+    anomp_engine_record_stop (nullptr);
+    anomp_recording recording {};
+    CHECK (anomp_engine_recording (nullptr, &recording) == 0);
+    CHECK (anomp_engine_recording_file (nullptr, buffer, sizeof (buffer)) == 0);
+    CHECK (anomp_engine_recording_marks (nullptr, nullptr, 0) == 0);
 
     CHECK (anomp_engine_output_device_count (nullptr) == 0);
     CHECK (anomp_engine_output_device_name (nullptr, 0, buffer, sizeof (buffer)) == 0);
@@ -119,7 +127,35 @@ TEST_CASE ("C API engine without an open device", "[c-api][engine]")
     CHECK (std::string_view (error) == "No output device called \"No such device \xe2\x99\xaa\"");
     CHECK (anomp_engine_device_name (engine, nullptr, 0) == 0);
 
+    // Nothing to record without a device.
+    const anomp_record_format wav { ANOMP_RECORD_WAV, 32, 0 };
+    CHECK (anomp_engine_record_start (engine, "/tmp/a.wav", &wav, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "No output device is open");
+    CHECK (anomp_engine_record_start (engine, "a.wav", &wav, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "Path is not absolute: a.wav");
+    const anomp_record_format unknown { 99, 16, 0 };
+    CHECK (anomp_engine_record_start (engine, "/tmp/a.wav", &unknown, error, sizeof (error)) == 0);
+    CHECK (std::string_view (error) == "Unknown recording format 99");
+    anomp_recording recording { 1, 2, 3.0, 4, 5 };
+    CHECK (anomp_engine_recording (engine, &recording) == 1);
+    CHECK (recording.recording == 0);
+    CHECK (recording.frames == 0);
+    CHECK (anomp_engine_recording_file (engine, error, sizeof (error)) == 0);
+    CHECK (anomp_engine_recording_marks (engine, nullptr, 0) == 0);
+
     anomp_engine_destroy (engine);
+}
+
+TEST_CASE ("C API recording formats", "[c-api][recording]")
+{
+    for (int format = 0; format < ANOMP_RECORD_FORMAT_COUNT; ++format)
+        CHECK (anomp_record_format_available (format) == 1);
+    CHECK (anomp_record_format_available (ANOMP_RECORD_FORMAT_COUNT) == 0);
+    CHECK (anomp_record_format_available (-1) == 0);
+    CHECK (std::string_view (anomp_record_format_extension (ANOMP_RECORD_FLAC)) == "flac");
+    CHECK (std::string_view (anomp_record_format_extension (ANOMP_RECORD_ALAC)) == "m4a");
+    CHECK (std::string_view (anomp_record_format_extension (ANOMP_RECORD_MP3)) == "mp3");
+    CHECK (std::string_view (anomp_record_format_extension (99)).empty());
 }
 
 TEST_CASE ("C API player commands without an open device", "[c-api][engine]")

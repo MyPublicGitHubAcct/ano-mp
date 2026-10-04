@@ -2,6 +2,7 @@
 
 #include "Crossfeed.h"
 #include "Equaliser.h"
+#include "Recorder.h"
 #include "SignalTap.h"
 
 #include <anomp/effects/EffectChain.h>
@@ -39,6 +40,9 @@ namespace anomp
     run on across hand-offs and crossfades, so a reverb's or echo's tail
     carries into the next track; a held freeze lets go as another track
     takes over.
+    A recording (PLAN.md X6) takes what comes out of the crossfeed, before
+    the volume, so it doesn't follow the volume slider; pausing fades it
+    as it fades what is heard, and nothing is recorded while paused.
     Tracks with different sample rates switch at the next chunk boundary,
     which leaves a few milliseconds of silence between them.
 
@@ -88,8 +92,11 @@ public:
     };
 
     /** With a null `readAheadThread`, tracks decode on the audio thread; use
-        that only for offline rendering and tests. */
-    PlayerEngine (juce::AudioFormatManager& formats, juce::TimeSliceThread* readAheadThread);
+        that only for offline rendering and tests. Recordings' files are
+        opened by `encoders` (openFFmpegEncoder by default). */
+    PlayerEngine (juce::AudioFormatManager& formats,
+                  juce::TimeSliceThread* readAheadThread,
+                  Recorder::EncoderFactory encoders = {});
     ~PlayerEngine() override;
 
     //==============================================================================
@@ -214,6 +221,17 @@ public:
         from any thread, without the player's lock. */
     fx::EffectChain& getEffects() noexcept { return effects; }
 
+    /** Starts recording what is played to `file` (PLAN.md X6), at the
+        device's rate; see Recorder. Returns an empty string on success,
+        otherwise the error. */
+    juce::String startRecording (const juce::File& file, const RecordingFormat& format);
+
+    /** Finishes the recording's file; does nothing unless recording. */
+    void stopRecording() { recorder.stop(); }
+
+    /** The recording's status and track marks. */
+    const Recorder& getRecorder() const noexcept { return recorder; }
+
     //==============================================================================
     State getState() const noexcept { return state.load(); }
     double getPositionSeconds() const noexcept { return positionSeconds.load(); }
@@ -239,6 +257,7 @@ public:
         /** Each effect (by fx::EffectType) that is on, or still ringing out. */
         std::array<bool, fx::effectCount> effects {};
         bool freezeHeld = false;
+        bool recording = false;
     };
     SignalInfo getSignalInfo() const;
 
@@ -270,6 +289,9 @@ public:
     /** An asynchronous request is done; `error` is empty unless it failed.
         Reported after the hand-offs and ends, before the state and position. */
     std::function<void (LoadId, LoadResult, const juce::String& error)> onLoadFinished;
+    /** The recording failed (never for stopRecording()): it has stopped,
+        with its file finalised as far as it was written. */
+    std::function<void (Recorder::Failure, const juce::String& message)> onRecordingFailed;
 
     /** For offline rendering with a read-ahead thread: waits until the
         current track's next `numSamples` source samples are buffered (and
@@ -359,6 +381,10 @@ private:
     juce::int64 fadeLength = 0;
     double deviceRate = 0.0;
     float appliedGain = 0.0f; // Gain at the end of the previous block.
+    // The recording's pause fade at the end of the previous block (0 or 1),
+    // and how far into this block the chunk being rendered starts.
+    float recordFade = 0.0f;
+    int renderedInBlock = 0;
     int pendingAdvances = 0;
     bool pendingEnded = false;
 
@@ -366,6 +392,9 @@ private:
     std::atomic<double> positionSeconds { 0.0 }, durationSeconds { 0.0 };
     std::atomic<float> volume { 1.0f };
     std::atomic<juce::int64> advanceCount { 0 };
+
+    // After `lock`, which it takes to switch pushing on and off.
+    Recorder recorder;
 
     // Asynchronous requests not yet reported, in the order they were made
     // (message thread only), and what their threads share with the engine.

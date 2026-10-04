@@ -120,7 +120,10 @@ pub fn player_event(event: &Event) {
         Event::Position { position, duration } => {
             now_playing.position(controls, *position, *duration, now)
         }
-        Event::DeviceChanged | Event::TrackEnded { .. } | Event::LoadFinished { .. } => {}
+        Event::DeviceChanged
+        | Event::TrackEnded { .. }
+        | Event::LoadFinished { .. }
+        | Event::RecordingFailed { .. } => {}
     });
 }
 

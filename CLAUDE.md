@@ -145,7 +145,12 @@ runs the Prettier pinned in `app/package.json`. Reformat in a commit of its own.
 
 FFmpeg is built by `scripts/build-ffmpeg.sh` (pinned version, LGPL, audio-only,
 shared) into `third_party/ffmpeg/<platform>/` (git-ignored); CMake refuses to
-configure without it. `cmake/FFmpeg.cmake` exposes `FFmpeg::avformat`,
+configure without it. Its only encoders and muxers are recording's (X6), and
+MP3's is LAME (pinned in the same script, `LAME_VERSION`), built as a static
+library linked into libavcodec; the fuzz build leaves LAME out. A new
+recording format is an encoder and muxer in the script's lists,
+`FFmpegBuildTests.cpp`'s exact list, a `RecordingFormat::Kind`, an
+`ANOMP_RECORD_*` value and Rust's `RecordingKind`. `cmake/FFmpeg.cmake` exposes `FFmpeg::avformat`,
 `FFmpeg::avcodec`, `FFmpeg::swresample`, `FFmpeg::avutil`. To add a format, add
 its demuxer/decoder/parser to the script's lists (the configure flags stay
 minimal on purpose) and extend `core/tests/FFmpegBuildTests.cpp`.
@@ -344,6 +349,13 @@ an `ANOMP_EFFECT_*` value, a field in Rust's `EffectsSettings` and its
 in `en.json` (`effects.rs` tests check); tests in `effects/tests`, and
 the 192 kHz benchmark stays within its budget.
 
+**Recording** (X6, `recording.rs`). The audio thread only copies into the
+recorder's FIFO (`core/src/Recorder.*`); everything that can wait or fail
+happens on its writer thread. The recordings' folder is a writable bookmark
+in its own `settings` row (`recording.folder`), never in `AppSettings`, and
+is held open (`Session`) for as long as files are written. Files are named
+by date and time, never by title, and logs give counts at info.
+
 **Optional features.** Each checks its switch in `FeatureSettings` where it acts
 (commands refuse, workers idle, the UI hides); a new one gets a switch there, off
 by default if it costs a lot, changes what is heard, goes online or listens on
@@ -453,8 +465,9 @@ Constraints that shape the code and must not be broken casually:
 - **Rust owns all non-audio services** (DB, HTTP, settings), keeping the core small
   and testable.
 - **FFmpeg decodes every format on every platform** (`PLAN.md` §4.3), wrapped as a
-  single JUCE `AudioFormat` (`core/src/FFmpegAudioFormat.*`); only that `.cpp`
-  includes FFmpeg headers. Read `docs/design/phase-1-playback-engine.md` (why
+  single JUCE `AudioFormat` (`core/src/FFmpegAudioFormat.*`), and writes
+  recordings (`core/src/FFmpegEncoder.*`, X6); only those two `.cpp` files
+  include FFmpeg headers. Read `docs/design/phase-1-playback-engine.md` (why
   rewinding reopens the demuxer, the seek margins, the length rule) before
   changing the reader.
 - **Keep the core platform-neutral.** Platform code (media controls, file access, audio

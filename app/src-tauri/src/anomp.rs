@@ -172,6 +172,30 @@ struct RawSignalPath {
     crossfade: f64,
     effects: c_int,
     freeze_held: c_int,
+    recording: c_int,
+}
+
+#[repr(C)]
+struct RawRecordFormat {
+    format: c_int,
+    bits: c_int,
+    bitrate_kbps: c_int,
+}
+
+#[repr(C)]
+struct RawRecording {
+    recording: c_int,
+    frames: i64,
+    seconds: f64,
+    overruns: i64,
+    files: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RawRecordingMark {
+    file: c_int,
+    seconds: f64,
 }
 
 #[repr(C)]
@@ -305,6 +329,8 @@ const ANOMP_EVENT_STATE_CHANGED: c_int = 2;
 const ANOMP_EVENT_POSITION: c_int = 3;
 const ANOMP_EVENT_TRACK_ENDED: c_int = 4;
 const ANOMP_EVENT_LOAD_FINISHED: c_int = 5;
+const ANOMP_EVENT_RECORDING_FAILED: c_int = 6;
+const ANOMP_RECORDING_DISK_FULL: c_int = 2;
 
 const ANOMP_LOAD_LOADED: c_int = 0;
 const ANOMP_LOAD_FAILED: c_int = 1;
@@ -342,6 +368,11 @@ extern "C" {
     fn anomp_file_analysis_free(analysis: *mut RawFileAnalysis);
 
     fn anomp_bookmark_create(
+        path: *const c_char,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> *mut RawBookmark;
+    fn anomp_bookmark_create_writable(
         path: *const c_char,
         error: *mut c_char,
         error_size: usize,
@@ -498,6 +529,27 @@ extern "C" {
     fn anomp_engine_position(engine: *mut RawEngine) -> f64;
     fn anomp_engine_duration(engine: *mut RawEngine) -> f64;
     fn anomp_engine_advance_count(engine: *mut RawEngine) -> i64;
+    fn anomp_record_format_available(format: c_int) -> c_int;
+    fn anomp_record_format_extension(format: c_int) -> *const c_char;
+    fn anomp_engine_record_start(
+        engine: *mut RawEngine,
+        path: *const c_char,
+        format: *const RawRecordFormat,
+        error: *mut c_char,
+        error_size: usize,
+    ) -> c_int;
+    fn anomp_engine_record_stop(engine: *mut RawEngine);
+    fn anomp_engine_recording(engine: *mut RawEngine, status: *mut RawRecording) -> c_int;
+    fn anomp_engine_recording_file(
+        engine: *mut RawEngine,
+        buffer: *mut c_char,
+        buffer_size: usize,
+    ) -> usize;
+    fn anomp_engine_recording_marks(
+        engine: *mut RawEngine,
+        marks: *mut RawRecordingMark,
+        capacity: c_int,
+    ) -> c_int;
     fn anomp_engine_set_analysis_callback(
         engine: *mut RawEngine,
         config: *const RawAnalysisConfig,
@@ -1050,12 +1102,25 @@ impl FileAnalysis {
 /// read the folder now (the user just picked it, or a `FolderAccess` to it is
 /// open). May be called from any thread.
 pub fn create_bookmark(folder: &Path) -> Result<Vec<u8>, String> {
+    bookmark_with(folder, anomp_bookmark_create)
+}
+
+/// `create_bookmark` for a folder the app writes to as well (the
+/// recordings' folder, PLAN.md X6).
+pub fn create_writable_bookmark(folder: &Path) -> Result<Vec<u8>, String> {
+    bookmark_with(folder, anomp_bookmark_create_writable)
+}
+
+type RawBookmarkCreate =
+    unsafe extern "C" fn(*const c_char, *mut c_char, usize) -> *mut RawBookmark;
+
+fn bookmark_with(folder: &Path, create: RawBookmarkCreate) -> Result<Vec<u8>, String> {
     let path = path_to_cstring(folder)?;
     let mut raw = std::ptr::null_mut();
     with_error(|error, size| {
         // SAFETY: `path` is a valid C string and the error buffer is supplied
         // by `with_error`, both for the whole call.
-        raw = unsafe { anomp_bookmark_create(path.as_ptr(), error, size) };
+        raw = unsafe { create(path.as_ptr(), error, size) };
         c_int::from(!raw.is_null())
     })?;
     // SAFETY: `raw` is a non-null result of anomp_bookmark_create whose
@@ -1201,6 +1266,12 @@ pub enum Event {
     LoadFinished {
         request: LoadRequest,
         result: LoadResult,
+    },
+    /// The recording stopped on an error (PLAN.md X6), its file finalised
+    /// as far as it was written.
+    RecordingFailed {
+        disk_full: bool,
+        message: String,
     },
 }
 
@@ -1461,6 +1532,8 @@ pub struct SignalPath {
     pub effects: Vec<String>,
     /// The spectral freeze holds the sound.
     pub freeze_held: bool,
+    /// What is played is being recorded (PLAN.md X6).
+    pub recording: bool,
 }
 
 impl SignalPath {
@@ -1498,8 +1571,98 @@ impl SignalPath {
                 on.into_iter().map(|effect| effect.id).collect()
             },
             freeze_held: raw.freeze_held != 0,
+            recording: raw.recording != 0,
         }
     }
+}
+
+/// What a recording is written as (PLAN.md X6), in `anomp.h`'s order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum RecordingKind {
+    /// PCM: 16-bit, 24-bit or 32-bit float.
+    #[default]
+    Wav,
+    /// PCM: 16-bit or 24-bit.
+    Aiff,
+    /// 16-bit or 24-bit.
+    Flac,
+    /// Apple Lossless (.m4a): 16-bit or 24-bit.
+    Alac,
+    /// AAC (.m4a) at a bitrate.
+    Aac,
+    /// MP3 at a constant bitrate.
+    Mp3,
+}
+
+impl RecordingKind {
+    pub const ALL: [RecordingKind; 6] = [
+        RecordingKind::Wav,
+        RecordingKind::Aiff,
+        RecordingKind::Flac,
+        RecordingKind::Alac,
+        RecordingKind::Aac,
+        RecordingKind::Mp3,
+    ];
+
+    fn raw(self) -> c_int {
+        match self {
+            RecordingKind::Wav => 0,
+            RecordingKind::Aiff => 1,
+            RecordingKind::Flac => 2,
+            RecordingKind::Alac => 3,
+            RecordingKind::Aac => 4,
+            RecordingKind::Mp3 => 5,
+        }
+    }
+
+    /// Whether this build can record it (MP3 needs LAME in FFmpeg).
+    pub fn available(self) -> bool {
+        // SAFETY: a plain query.
+        unsafe { anomp_record_format_available(self.raw()) != 0 }
+    }
+
+    /// The file name extension, without the dot.
+    pub fn extension(self) -> &'static str {
+        // SAFETY: the core returns a static NUL-terminated string.
+        let text = unsafe { CStr::from_ptr(anomp_record_format_extension(self.raw())) };
+        text.to_str().unwrap_or("wav")
+    }
+}
+
+/// A recording's format: the kind, and its sample size or bitrate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RecordingFormat {
+    pub kind: RecordingKind,
+    /// 16, 24 or (WAV only) 32 for float; for the lossless kinds.
+    pub bits: u32,
+    /// For AAC and MP3.
+    pub bitrate_kbps: u32,
+}
+
+impl RecordingFormat {
+    fn to_raw(self) -> RawRecordFormat {
+        RawRecordFormat {
+            format: self.kind.raw(),
+            bits: c_int::try_from(self.bits).unwrap_or(0),
+            bitrate_kbps: c_int::try_from(self.bitrate_kbps).unwrap_or(0),
+        }
+    }
+}
+
+/// A recording's progress (`anomp_engine_recording`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecordingStatus {
+    pub recording: bool,
+    pub frames: u64,
+    pub seconds: f64,
+    /// Times samples were dropped because the file fell behind.
+    pub overruns: u64,
+    /// Files begun (one per sample rate).
+    pub files: u32,
+    /// The file being written, or last written.
+    pub file: Option<PathBuf>,
 }
 
 /// The open output device's settings.
@@ -1844,6 +2007,73 @@ impl Engine {
     pub fn freeze_held(&self) -> bool {
         // SAFETY: `raw` is a live engine.
         unsafe { anomp_engine_freeze_held(self.raw.as_ptr()) != 0 }
+    }
+
+    /// Starts recording what is played to `path` (PLAN.md X6), creating it
+    /// at once; its folder must be writable now.
+    pub fn record_start(&mut self, path: &Path, format: &RecordingFormat) -> Result<(), String> {
+        let path = path_to_cstring(path)?;
+        let raw = self.raw.as_ptr();
+        let format = format.to_raw();
+        // SAFETY: `raw` is a live engine; `path` and `format` are valid for the call.
+        with_error(|error, size| unsafe {
+            anomp_engine_record_start(raw, path.as_ptr(), &format, error, size)
+        })
+    }
+
+    /// Finishes the recording's file; does nothing unless recording.
+    pub fn record_stop(&mut self) {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_record_stop(self.raw.as_ptr()) }
+    }
+
+    /// The recording's progress (the last one's, once it stopped).
+    pub fn recording(&self) -> RecordingStatus {
+        let mut raw = RawRecording {
+            recording: 0,
+            frames: 0,
+            seconds: 0.0,
+            overruns: 0,
+            files: 0,
+        };
+        // SAFETY: `raw` is a live engine and `raw` valid for the call.
+        unsafe { anomp_engine_recording(self.raw.as_ptr(), &mut raw) };
+        let engine = self.raw.as_ptr();
+        let file = read_string(|buffer, size| {
+            // SAFETY: `read_string` supplies a valid buffer and size.
+            unsafe { anomp_engine_recording_file(engine, buffer, size) }
+        });
+        RecordingStatus {
+            recording: raw.recording != 0,
+            frames: u64::try_from(raw.frames).unwrap_or(0),
+            seconds: raw.seconds,
+            overruns: u64::try_from(raw.overruns).unwrap_or(0),
+            files: u32::try_from(raw.files).unwrap_or(0),
+            file: (!file.is_empty()).then(|| PathBuf::from(file)),
+        }
+    }
+
+    /// Where each track began in the recording: the file (0 for the first)
+    /// and seconds into it.
+    pub fn recording_marks(&self) -> Vec<(u32, f64)> {
+        let engine = self.raw.as_ptr();
+        // SAFETY: `raw` is a live engine; a null array with capacity 0 only counts.
+        let count = unsafe { anomp_engine_recording_marks(engine, std::ptr::null_mut(), 0) };
+        let mut marks = vec![
+            RawRecordingMark {
+                file: 0,
+                seconds: 0.0
+            };
+            usize::try_from(count).unwrap_or(0)
+        ];
+        let capacity = c_int::try_from(marks.len()).unwrap_or(0);
+        // SAFETY: `marks` holds `capacity` elements for the call.
+        let count = unsafe { anomp_engine_recording_marks(engine, marks.as_mut_ptr(), capacity) };
+        marks.truncate(usize::try_from(count).unwrap_or(0));
+        marks
+            .into_iter()
+            .map(|mark| (u32::try_from(mark.file).unwrap_or(0), mark.seconds))
+            .collect()
     }
 
     /// Whether the output plays through headphones; `None` if the OS
@@ -2485,6 +2715,18 @@ extern "C" fn on_event(event: *const RawEvent, user_data: *mut c_void) {
                         .into_owned()
                 }),
                 _ => LoadResult::Cancelled,
+            },
+        },
+        ANOMP_EVENT_RECORDING_FAILED => Event::RecordingFailed {
+            disk_full: event.result == ANOMP_RECORDING_DISK_FULL,
+            message: if event.error.is_null() {
+                String::new()
+            } else {
+                // SAFETY: a non-null `error` is a NUL-terminated string,
+                // valid for the duration of the call.
+                unsafe { CStr::from_ptr(event.error) }
+                    .to_string_lossy()
+                    .into_owned()
             },
         },
         _ => return,

@@ -274,6 +274,11 @@ typedef struct anomp_bookmark
     `error` may be null). Free the result with anomp_bookmark_free. */
 anomp_bookmark* anomp_bookmark_create(const char* path, char* error, size_t error_size);
 
+/** anomp_bookmark_create for a folder the app will write to as well (on
+    macOS the bookmark's scope then allows writing; the user must have picked
+    the folder in an open panel, which grants that). */
+anomp_bookmark* anomp_bookmark_create_writable(const char* path, char* error, size_t error_size);
+
 /** Frees a bookmark returned by anomp_bookmark_create. Null is ignored. */
 void anomp_bookmark_free(anomp_bookmark* bookmark);
 
@@ -377,11 +382,12 @@ typedef struct anomp_engine anomp_engine;
     about every 50 ms, never from inside an engine call. */
 enum
 {
-    ANOMP_EVENT_DEVICE_CHANGED = 1, /**< Device list or open output device changed. */
-    ANOMP_EVENT_STATE_CHANGED = 2,  /**< Player state changed; see `state`. */
-    ANOMP_EVENT_POSITION = 3,       /**< Position or duration changed; see `position`, `duration`. */
-    ANOMP_EVENT_TRACK_ENDED = 4,    /**< The current track played to its end; see `advanced`. */
-    ANOMP_EVENT_LOAD_FINISHED = 5   /**< An asynchronous load is done; see `request`, `result`, `error`. */
+    ANOMP_EVENT_DEVICE_CHANGED = 1,  /**< Device list or open output device changed. */
+    ANOMP_EVENT_STATE_CHANGED = 2,   /**< Player state changed; see `state`. */
+    ANOMP_EVENT_POSITION = 3,        /**< Position or duration changed; see `position`, `duration`. */
+    ANOMP_EVENT_TRACK_ENDED = 4,     /**< The current track played to its end; see `advanced`. */
+    ANOMP_EVENT_LOAD_FINISHED = 5,   /**< An asynchronous load is done; see `request`, `result`, `error`. */
+    ANOMP_EVENT_RECORDING_FAILED = 6 /**< The recording stopped on an error; see `result`, `error`. */
 };
 
 /** How an asynchronous load (anomp_engine_load_track_async) ended. */
@@ -410,8 +416,10 @@ typedef struct anomp_event
     double position;   /**< POSITION: seconds into the current track. */
     double duration;   /**< POSITION: length of the current track in seconds. */
     long long request; /**< LOAD_FINISHED: the id the request returned. */
-    int result;        /**< LOAD_FINISHED: one of the ANOMP_LOAD_* values. */
-    const char* error; /**< LOAD_FINISHED: why it failed (UTF-8), else ""; never null. */
+    int result;        /**< LOAD_FINISHED: one of the ANOMP_LOAD_* values;
+                            RECORDING_FAILED: one of the ANOMP_RECORDING_* values. */
+    const char* error; /**< LOAD_FINISHED, RECORDING_FAILED: why it failed (UTF-8),
+                            else ""; never null. */
 } anomp_event;
 
 /** `event` is only valid for the duration of the call. */
@@ -779,6 +787,7 @@ typedef struct anomp_signal_path
     double crossfade; /**< Seconds the next track is set to crossfade over; 0 if none. */
     int effects;      /**< Bit (1 << ANOMP_EFFECT_*) set for each effect on, or still ringing out. */
     int freeze_held;  /**< 1 while the freeze holds. */
+    int recording;    /**< 1 while recording (anomp_engine_record_start). */
 } anomp_signal_path;
 
 /** Fills `path`; returns 0 for a null engine or `path`. */
@@ -790,6 +799,101 @@ int anomp_engine_signal_path(anomp_engine* engine, anomp_signal_path* path);
     have), 0 if it doesn't offer it or none is open. On macOS the rate is
     the device's, so other apps playing through it change too. */
 int anomp_engine_set_device_sample_rate(anomp_engine* engine, double sample_rate);
+
+/* ---- Recording -----------------------------------------------------------
+   Writes what is played to a file until stopped (PLAN.md X6): after the
+   effects, the equaliser and crossfeed, before the volume. Across track
+   changes, gapless hand-offs and crossfades; nothing while paused (a pause
+   fades out and in, as heard). The audio thread never waits for the file:
+   samples it can't hand over are dropped and counted as overruns. A change
+   of the device's sample rate starts another file, named after the first
+   with a number ("name 2.wav"). A write error or a full disk stops the
+   recording, finalises what was written and is reported by
+   ANOMP_EVENT_RECORDING_FAILED. Main thread only, like the rest of the
+   engine. */
+
+/** Recording formats. */
+enum
+{
+    ANOMP_RECORD_WAV = 0,  /**< PCM: bits 16, 24 or 32 (float); RF64 past 4 GB. */
+    ANOMP_RECORD_AIFF = 1, /**< PCM: bits 16 or 24. */
+    ANOMP_RECORD_FLAC = 2, /**< Bits 16 or 24. */
+    ANOMP_RECORD_ALAC = 3, /**< Apple Lossless in .m4a: bits 16 or 24. */
+    ANOMP_RECORD_AAC = 4,  /**< AAC-LC in .m4a at bitrate_kbps; at most 96 kHz (higher rates are resampled). */
+    ANOMP_RECORD_MP3 = 5   /**< MP3 (LAME) at a constant bitrate_kbps; at most 48 kHz (resampled likewise). */
+};
+#define ANOMP_RECORD_FORMAT_COUNT 6
+#define ANOMP_RECORD_MIN_BITRATE 96
+#define ANOMP_RECORD_MAX_BITRATE 320
+
+typedef struct anomp_record_format
+{
+    int format;       /**< An ANOMP_RECORD_* value. */
+    int bits;         /**< For the PCM and lossless formats. */
+    int bitrate_kbps; /**< For AAC and MP3: ANOMP_RECORD_MIN_BITRATE to ANOMP_RECORD_MAX_BITRATE. */
+} anomp_record_format;
+
+/** 1 if this build can record `format` (an ANOMP_RECORD_* value). Any thread. */
+int anomp_record_format_available(int format);
+
+/** The file name extension (without the dot, e.g. "m4a") of `format`, or ""
+    for a value that isn't one. Any thread. */
+const char* anomp_record_format_extension(int format);
+
+/** Ways a recording fails, as ANOMP_EVENT_RECORDING_FAILED's `result`. */
+enum
+{
+    ANOMP_RECORDING_WRITE_FAILED = 1, /**< The file couldn't be written; see `error`. */
+    ANOMP_RECORDING_DISK_FULL = 2     /**< The disk filled up. */
+};
+
+/** Starts recording to `path` (absolute, UTF-8; its folder must exist and
+    be writable, and an existing file is replaced) at the device's sample
+    rate. The file is created at once, so a folder or format that won't do
+    fails here. Returns 1 on success; 0 on failure (already recording, no
+    device open, a format this build can't write or out of range), with the
+    error written as for anomp_engine_load. */
+int anomp_engine_record_start(anomp_engine* engine,
+                              const char* path,
+                              const anomp_record_format* format,
+                              char* error,
+                              size_t error_size);
+
+/** Writes what is still buffered, finalises the file and stops recording.
+    Does nothing unless recording. */
+void anomp_engine_record_stop(anomp_engine* engine);
+
+typedef struct anomp_recording
+{
+    int recording;    /**< 1 from anomp_engine_record_start to anomp_engine_record_stop. */
+    int64_t frames;   /**< Frames written to the files so far. */
+    double seconds;   /**< Their length. */
+    int64_t overruns; /**< Times samples were dropped because the file fell behind. */
+    int files;        /**< Files begun (one per sample rate). */
+} anomp_recording;
+
+/** Fills `status` (the last recording's, after it stopped); 0 for a null
+    engine or `status`. */
+int anomp_engine_recording(anomp_engine* engine, anomp_recording* status);
+
+/** The path of the file being written (or last written) as UTF-8, with the
+    buffer rules of anomp_engine_device_name; "" before any recording. */
+size_t anomp_engine_recording_file(anomp_engine* engine, char* buffer, size_t buffer_size);
+
+/** Where a track began in a recording. */
+typedef struct anomp_recording_mark
+{
+    int file;       /**< Which file: 0 for the first, 1 for "name 2", and so on. */
+    double seconds; /**< Into that file. */
+} anomp_recording_mark;
+
+/** Copies up to `capacity` of the recording's track marks, in order, into
+    `marks` (which may be null when `capacity` is 0): one when the recording
+    began with a track loaded, then one each time another track became
+    current (at the start of a crossfade into it). Returns how many there
+    are, which may be more than `capacity`. Kept after the recording stops,
+    until the next one begins. */
+int anomp_engine_recording_marks(anomp_engine* engine, anomp_recording_mark* marks, int capacity);
 
 /** How many times a next track has taken over gaplessly since the engine was
     created. TRACK_ENDED reports a hand-off up to 50 ms late; this counts it
