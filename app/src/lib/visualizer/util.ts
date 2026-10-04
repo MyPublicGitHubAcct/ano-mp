@@ -57,9 +57,17 @@ export function toHsl([r, g, b]: Rgb): [number, number, number] {
 }
 
 /** Paints the stage, faintly tinted by the palette; `alpha` below 1 leaves a fading trace of the last
-    draw (a phosphor's persistence). */
+    draw (a phosphor's persistence). In a layer, clears to transparent instead. */
 export function clearStage(scene: Scene, alpha = 1) {
   const { ctx, width, height, palette } = scene;
+  if (scene.layer) {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.globalAlpha = alpha;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = alpha;

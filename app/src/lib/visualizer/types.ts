@@ -38,6 +38,9 @@ export type Scene = {
   cover: CanvasImageSource | null;
   palette: Palette;
   settings: { coverBasis: CoverBasis };
+  /** Drawn over another visualization into a layer of its own (`combine.ts`): `clearStage` fades the
+      layer to transparent rather than painting the stage. */
+  layer?: boolean;
 };
 
 export type Renderer = {

@@ -7,6 +7,9 @@
   // Tracks dragged from a list drop onto a playlist or the queue (F4). A
   // folder that can't be opened (an unplugged drive, a folder moved out of
   // reach) says so, and "Locate…" points it at where it is now (F8).
+  //
+  // The Library and Playlists sections fold away under their headings; each
+  // viewer's choice is remembered.
   import { ask } from "@tauri-apps/plugin-dialog";
   import { queue, type Folder, type Playlist } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
@@ -18,7 +21,7 @@
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
-  import { ui } from "$lib/state/ui.svelte";
+  import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
 
   function show(action: () => void) {
@@ -26,6 +29,11 @@
     library.query = "";
     ui.sidebarOpen = false;
   }
+
+  let libraryOpen = $state(loadPreference("sidebarLibraryOpen", true));
+  let playlistsOpen = $state(loadPreference("sidebarPlaylistsOpen", true));
+  $effect(() => savePreference("sidebarLibraryOpen", libraryOpen));
+  $effect(() => savePreference("sidebarPlaylistsOpen", playlistsOpen));
 
   const f = $derived(features.on);
   const views = $derived(
@@ -190,8 +198,21 @@
     </li>
   </ul>
 
-  <h2>{t("library.title")}</h2>
-  <ul>
+  <div class="section-heading">
+    <h2>
+      <button
+        class="disclosure"
+        class:open={libraryOpen}
+        aria-expanded={libraryOpen}
+        aria-controls="sidebar-library"
+        onclick={() => (libraryOpen = !libraryOpen)}
+      >
+        <Icon name="chevron" size="0.9rem" />
+        {t("library.title")}
+      </button>
+    </h2>
+  </div>
+  <ul id="sidebar-library" hidden={!libraryOpen}>
     {#each library.rules.filter((rule) => f.classical || !rule.levels.some((level) => level === "composer" || level === "work")) as rule (rule.id)}
       <li>
         <button
@@ -209,7 +230,18 @@
   </ul>
 
   <div class="section-heading">
-    <h2>{t("sidebar.playlists")}</h2>
+    <h2>
+      <button
+        class="disclosure"
+        class:open={playlistsOpen}
+        aria-expanded={playlistsOpen}
+        aria-controls="sidebar-playlists"
+        onclick={() => (playlistsOpen = !playlistsOpen)}
+      >
+        <Icon name="chevron" size="0.9rem" />
+        {t("sidebar.playlists")}
+      </button>
+    </h2>
     <button
       class="icon"
       title={t("sidebar.newPlaylistMenu")}
@@ -219,7 +251,7 @@
       <Icon name="plus" />
     </button>
   </div>
-  <ul>
+  <ul id="sidebar-playlists" hidden={!playlistsOpen}>
     {#each collection.playlists as playlist (playlist.id)}
       <li class="playlist" data-drop={playlist.rules === null ? `sidebar-playlist:${playlist.id}` : undefined}>
         <button
@@ -407,6 +439,41 @@
     flex: 1;
     margin-top: 0;
     margin-bottom: 0;
+  }
+
+  /* A heading that folds its section away: the heading's own look, with a chevron that turns down while open. */
+  .disclosure {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-left: -0.3rem;
+    padding: 0.1rem 0.3rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+  }
+
+  .disclosure:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  .disclosure :global(svg) {
+    transition: transform 0.15s ease;
+  }
+
+  .disclosure.open :global(svg) {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .disclosure :global(svg) {
+      transition: none;
+    }
   }
 
   .folder,

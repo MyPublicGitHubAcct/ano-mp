@@ -285,6 +285,10 @@ struct RawAnalysisFrame {
     waveform_right: *const f32,
     onset: f32,
     beat: c_int,
+    note_count: c_int,
+    lowest_note: c_int,
+    notes: *const f32,
+    balance: *const f32,
 }
 
 type RawAnalysisCallback = extern "C" fn(frame: *const RawAnalysisFrame, user_data: *mut c_void);
@@ -1235,12 +1239,18 @@ pub struct AnalysisFrame<'a> {
     /// How much louder the spectrum got since the previous frame, 0..=1.
     pub onset: f32,
     pub beat: bool,
+    /// 0..=1 a semitone apart, from MIDI note `lowest_note` up.
+    pub notes: &'a [f32],
+    pub lowest_note: i32,
+    /// Per band, -1 (left) ..= 1 (right); empty if the core sent none.
+    pub balance: &'a [f32],
 }
 
 impl AnalysisFrame<'_> {
     /// # Safety
     /// `raw`'s pointers must be null or valid for their lengths (the
-    /// chroma for 12 values) while the result is used.
+    /// chroma for 12 values, the balance for `band_count`) while the
+    /// result is used.
     unsafe fn from_raw(raw: &RawAnalysisFrame) -> AnalysisFrame<'_> {
         let slice = |data: *const f32, len: c_int| match usize::try_from(len) {
             // SAFETY: the caller's guarantee, for a non-null pointer.
@@ -1266,6 +1276,9 @@ impl AnalysisFrame<'_> {
             right: slice(raw.waveform_right, raw.waveform_length),
             onset: raw.onset,
             beat: raw.beat != 0,
+            notes: slice(raw.notes, raw.note_count),
+            lowest_note: raw.lowest_note,
+            balance: slice(raw.balance, raw.band_count),
         }
     }
 }
@@ -2835,6 +2848,8 @@ mod tests {
         let chroma: [f32; 12] = std::array::from_fn(|i| i as f32 / 11.0);
         let left = [0.25f32, -0.25];
         let right = [0.5f32, -0.5];
+        let notes = [0.0f32, 1.0];
+        let balance = [-1.0f32, 0.0, 0.5];
         let raw = RawAnalysisFrame {
             silent: 0,
             band_count: 3,
@@ -2851,6 +2866,10 @@ mod tests {
             waveform_right: right.as_ptr(),
             onset: 0.2,
             beat: 1,
+            note_count: 2,
+            lowest_note: 36,
+            notes: notes.as_ptr(),
+            balance: balance.as_ptr(),
         };
         // SAFETY: every pointer is valid for its length for the whole test.
         let frame = unsafe { AnalysisFrame::from_raw(&raw) };
@@ -2868,6 +2887,9 @@ mod tests {
                 right: &right,
                 onset: 0.2,
                 beat: true,
+                notes: &notes,
+                lowest_note: 36,
+                balance: &balance,
             }
         );
 
@@ -2881,12 +2903,15 @@ mod tests {
             waveform_left: std::ptr::null(),
             waveform_right: std::ptr::null(),
             beat: 0,
+            notes: std::ptr::null(),
+            balance: std::ptr::null(),
             ..raw
         };
         // SAFETY: as above; null pointers are never read.
         let frame = unsafe { AnalysisFrame::from_raw(&empty) };
         assert!(frame.silent && !frame.beat);
         assert!(frame.bands.is_empty() && frame.left.is_empty() && frame.right.is_empty());
+        assert!(frame.notes.is_empty() && frame.balance.is_empty());
         assert_eq!(frame.chroma, [0.0; 12]);
     }
 }

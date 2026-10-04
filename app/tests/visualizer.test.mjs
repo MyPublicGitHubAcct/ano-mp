@@ -10,8 +10,8 @@ import { estimateKey, keyName } from "../src/lib/visualizer/key.ts";
 
 /** What `visualizer::encode` makes of its test frame (`ENCODED_EXAMPLE` in app/src-tauri/src/visualizer.rs). */
 const ENCODED_EXAMPLE =
-  "01020500030000000000f04100007a466666663fcdcc4c3f0000003fcdcccc3e0000803e" +
-  "1a1a1a1a1a1a1a1a1aff1a1a0080ffff00000000ff7f0180004000c0ff7f";
+  "02020500030003240000f04100007a466666663fcdcc4c3f0000003fcdcccc3e0000803e" +
+  "1a1a1a1a1a1a1a1a1aff1a1a0080ffff000000ff800081c000407f000000ff7f0180004000c0ff7f";
 
 /** @param {string} hex */
 function bytes(hex) {
@@ -47,6 +47,15 @@ test("decodes the backend's frames", () => {
     Array.from(frame.left, (v) => Math.round(v * 100) / 100),
     [0, 1, -1],
   );
+  assert.equal(frame.lowestNote, 36);
+  assert.deepEqual(
+    Array.from(frame.notes, (v) => Math.round(v * 255)),
+    [0, 255, 128],
+  );
+  assert.deepEqual(
+    Array.from(frame.balance, (v) => Math.round(v * 127)),
+    [-127, -64, 0, 64, 127],
+  );
   assert.deepEqual(
     Array.from(frame.right, (v) => Math.round(v * 100) / 100),
     [0.5, -0.5, 1],
@@ -63,10 +72,10 @@ test("reuses the frame's arrays when the sizes match", () => {
 
 test("leaves the frame alone for a buffer it can't read", () => {
   const frame = silentFrame();
-  const truncated = bytes(ENCODED_EXAMPLE).slice(0, 60);
+  const truncated = bytes(ENCODED_EXAMPLE).slice(0, 70);
   assert.equal(decodeFrame(truncated, frame), false);
   const otherVersion = new Uint8Array(bytes(ENCODED_EXAMPLE));
-  otherVersion[0] = 2;
+  otherVersion[0] = 1;
   assert.equal(decodeFrame(otherVersion.buffer, frame), false);
   assert.equal(frame.silent, true);
   assert.equal(frame.bands.length, 64);

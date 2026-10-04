@@ -61,6 +61,7 @@
     import: "M12 15l5-5-1.4-1.4-2.6 2.6V3h-2v8.2L8.4 8.6 7 10zM5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6h-2v6H7v-6z",
     warning: "M12 2 1 21h22zm-1 7h2v6h-2zm0 8h2v2h-2z",
     pip: "M3 5h18a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm1 2v10h16V7zm8 5h7v4h-7z",
+    chevron: "M9.4 6 8 7.4l4.6 4.6L8 16.6 9.4 18l6-6z",
   } as const;
 
   export type IconName = keyof typeof paths;

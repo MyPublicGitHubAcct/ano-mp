@@ -6,7 +6,7 @@
 //! one starts it on the main thread (where the engine lives), the last one
 //! to leave stops it. Frames arrive on the core's analysis thread, and are
 //! sent from there in the compact binary form `encode` describes, about 60
-//! times a second (2.2 KB each), rather than as JSON.
+//! times a second (2.3 KB each), rather than as JSON.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -27,7 +27,7 @@ pub fn config(frame_rate: u32) -> AnalysisConfig {
 }
 
 /// The version byte `encode` starts with.
-pub const FORMAT_VERSION: u8 = 1;
+pub const FORMAT_VERSION: u8 = 2;
 
 const FLAG_SILENT: u8 = 1;
 const FLAG_BEAT: u8 = 2;
@@ -41,30 +41,37 @@ const FLAG_BEAT: u8 = 2;
 /// | 1 | u8 | flags: 1 silent, 2 beat |
 /// | 2 | u16 | band count *n* |
 /// | 4 | u16 | waveform length *m* |
-/// | 6 | u16 | 0 |
+/// | 6 | u8 | note count *k* |
+/// | 7 | u8 | the lowest note's MIDI number |
 /// | 8 | 7 × f32 | lowest Hz, highest Hz, peak L, peak R, RMS L, RMS R, onset |
 /// | 36 | 12 × u8 | chroma, C first, 0..=255 for 0..=1 |
-/// | 48 | *n* × u8 | bands, 0..=255 for 0..=1, then a 0 if *n* is odd |
+/// | 48 | *n* × u8 | bands, 0..=255 for 0..=1 |
+/// | | *k* × u8 | notes, 0..=255 for 0..=1 |
+/// | | *n* × i8 | balance, ±127 for ±1 (all 0 if the core sent none) |
 /// | | *m* × i16 | left samples, ±32767 for ±1 |
 /// | | *m* × i16 | right samples |
 ///
-/// Bands and chroma are only drawn, so 8 bits are plenty; the waveform
-/// keeps 16 so a large scope doesn't step.
+/// Each run of bytes is followed by a 0 if its length is odd, so the
+/// samples start on an even offset. Bands, chroma, notes and balance are
+/// only drawn, so 8 bits are plenty; the waveform keeps 16 so a large
+/// scope doesn't step.
 pub fn encode(frame: &AnalysisFrame<'_>) -> Vec<u8> {
     let bands = frame.bands.len().min(u16::MAX as usize);
+    let notes = frame.notes.len().min(u8::MAX as usize);
     let samples = frame
         .left
         .len()
         .min(frame.right.len())
         .min(u16::MAX as usize);
-    let padded = bands + bands % 2;
-    let mut bytes = Vec::with_capacity(48 + padded + 4 * samples);
+    let even = |length: usize| length + length % 2;
+    let mut bytes = Vec::with_capacity(48 + 2 * even(bands) + even(notes) + 4 * samples);
 
     let flags = if frame.silent { FLAG_SILENT } else { 0 } | if frame.beat { FLAG_BEAT } else { 0 };
     bytes.extend_from_slice(&[FORMAT_VERSION, flags]);
     bytes.extend_from_slice(&(bands as u16).to_le_bytes());
     bytes.extend_from_slice(&(samples as u16).to_le_bytes());
-    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.push(notes as u8);
+    bytes.push(frame.lowest_note.clamp(0, 127) as u8);
     for value in [
         frame.lowest_hz,
         frame.highest_hz,
@@ -78,8 +85,16 @@ pub fn encode(frame: &AnalysisFrame<'_>) -> Vec<u8> {
     }
     let unit = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
     bytes.extend(frame.chroma.iter().map(|&value| unit(value)));
+    let pad = |bytes: &mut Vec<u8>| bytes.resize(even(bytes.len()), 0);
     bytes.extend(frame.bands[..bands].iter().map(|&value| unit(value)));
-    bytes.resize(48 + padded, 0);
+    pad(&mut bytes);
+    bytes.extend(frame.notes[..notes].iter().map(|&value| unit(value)));
+    pad(&mut bytes);
+    let signed = |value: f32| ((value.clamp(-1.0, 1.0) * 127.0).round() as i8) as u8;
+    let balance = frame.balance.get(..bands).unwrap_or(&[]);
+    bytes.extend(balance.iter().map(|&value| signed(value)));
+    bytes.resize(bytes.len() + bands - balance.len(), 0);
+    pad(&mut bytes);
     for channel in [frame.left, frame.right] {
         for &sample in &channel[..samples] {
             let sample = (sample.clamp(-1.0, 1.0) * 32767.0).round() as i16;
@@ -286,6 +301,9 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+    const NOTES: [f32; 3] = [0.0, 1.0, 0.5];
+    const BALANCE: [f32; 5] = [-1.0, -0.5, 0.0, 0.5, 2.0];
+
     fn frame<'a>(bands: &'a [f32], left: &'a [f32], right: &'a [f32]) -> AnalysisFrame<'a> {
         AnalysisFrame {
             silent: false,
@@ -299,6 +317,13 @@ mod tests {
             right,
             onset: 0.25,
             beat: true,
+            notes: &NOTES,
+            lowest_note: 36,
+            balance: if bands.len() == BALANCE.len() {
+                &BALANCE
+            } else {
+                &[]
+            },
         }
     }
 
@@ -321,15 +346,19 @@ mod tests {
         assert_eq!(bytes[1], FLAG_BEAT);
         assert_eq!(u16::from_le_bytes([bytes[2], bytes[3]]), 5);
         assert_eq!(u16::from_le_bytes([bytes[4], bytes[5]]), 3);
+        assert_eq!(&bytes[6..8], &[3, 36]);
         let floats: Vec<f32> = (0..7).map(|i| f32_at(&bytes, 8 + 4 * i)).collect();
         assert_eq!(floats, [30.0, 16000.0, 0.9, 0.8, 0.5, 0.4, 0.25]);
         assert_eq!(bytes[36 + 9], 255);
         assert_eq!(bytes[36], 26); // 0.1
                                    // Clamped to 0..=1, then padded to an even length.
         assert_eq!(&bytes[48..54], &[0, 128, 255, 255, 0, 0]);
-        let samples: Vec<i16> = (0..6).map(|i| i16_at(&bytes, 54 + 2 * i)).collect();
+        assert_eq!(&bytes[54..58], &[0, 255, 128, 0]);
+        let balance: Vec<i8> = bytes[58..64].iter().map(|&byte| byte as i8).collect();
+        assert_eq!(balance, [-127, -64, 0, 64, 127, 0]);
+        let samples: Vec<i16> = (0..6).map(|i| i16_at(&bytes, 64 + 2 * i)).collect();
         assert_eq!(samples, [0, 32767, -32767, 16384, -16384, 32767]);
-        assert_eq!(bytes.len(), 54 + 12);
+        assert_eq!(bytes.len(), 64 + 12);
 
         // The whole frame, which app/tests/visualizer.test.mjs decodes too.
         let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -337,8 +366,8 @@ mod tests {
     }
 
     const ENCODED_EXAMPLE: &str =
-        "01020500030000000000f04100007a466666663fcdcc4c3f0000003fcdcccc3e0000803e\
-                                   1a1a1a1a1a1a1a1a1aff1a1a0080ffff00000000ff7f0180004000c0ff7f";
+        "02020500030003240000f04100007a466666663fcdcc4c3f0000003fcdcccc3e0000803e\
+         1a1a1a1a1a1a1a1a1aff1a1a0080ffff000000ff800081c000407f000000ff7f0180004000c0ff7f";
 
     #[test]
     fn encodes_a_silent_frame_and_the_real_size() {
@@ -351,7 +380,9 @@ mod tests {
         };
         let bytes = encode(&silent);
         assert_eq!(bytes[1], FLAG_SILENT);
-        assert_eq!(bytes.len(), 48 + 64 + 4 * 512);
+        // No balance from the core reads as centred.
+        assert_eq!(bytes.len(), 48 + 64 + 4 + 64 + 4 * 512);
+        assert!(bytes[116..180].iter().all(|&byte| byte == 0));
     }
 
     struct FakeSink {
