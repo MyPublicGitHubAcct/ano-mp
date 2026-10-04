@@ -10,6 +10,7 @@
 #include "TagReader.h"
 #include "VolumeWatcher.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -898,6 +899,89 @@ extern "C" int anomp_engine_set_equaliser (anomp_engine* engine, const double* g
     return 1;
 }
 
+namespace
+{
+static_assert (ANOMP_EFFECT_COUNT == anomp::fx::effectCount && ANOMP_EFFECT_MAX_PARAMS == anomp::fx::maxParams);
+static_assert (ANOMP_EFFECT_LOFI == static_cast<int> (anomp::fx::EffectType::lofi));
+
+bool toEffect (int effect, anomp::fx::EffectType& type)
+{
+    if (effect < 0 || effect >= ANOMP_EFFECT_COUNT)
+        return false;
+    type = static_cast<anomp::fx::EffectType> (effect);
+    return true;
+}
+} // namespace
+
+extern "C" int anomp_effect_describe (int effect, anomp_effect_info* info)
+{
+    anomp::fx::EffectType type {};
+    if (info == nullptr || ! toEffect (effect, type))
+        return 0;
+
+    const auto& described = anomp::fx::describe (type);
+    *info = {};
+    copyUtf8 (described.id, info->id, sizeof (info->id));
+    const auto& order = anomp::fx::chainOrder;
+    info->position = static_cast<int> (std::find (order.begin(), order.end(), type) - order.begin());
+    info->default_mix = described.defaultMix;
+    info->param_count = static_cast<int> (described.numParams);
+    for (size_t i = 0; i < described.numParams; ++i)
+    {
+        const auto& param = described.params[i];
+        auto& out = info->params[i];
+        copyUtf8 (param.id, out.id, sizeof (out.id));
+        out.unit = static_cast<int> (param.unit);
+        out.min = param.min;
+        out.max = param.max;
+        out.default_value = param.defaultValue;
+        out.logarithmic = param.logarithmic ? 1 : 0;
+    }
+    return 1;
+}
+
+extern "C" int anomp_engine_set_effect (anomp_engine* engine,
+                                        int effect,
+                                        int enabled,
+                                        double mix,
+                                        const double* params,
+                                        int paramCount)
+{
+    anomp::fx::EffectType type {};
+    if (engine == nullptr || ! toEffect (effect, type) || ! (mix >= 0.0 && mix <= 1.0))
+        return 0;
+    const auto& described = anomp::fx::describe (type);
+    if (paramCount < 0 || static_cast<size_t> (paramCount) > described.numParams
+        || (paramCount > 0 && params == nullptr))
+        return 0;
+    // Compared as the floats the ranges are, so a bound written as a
+    // double (0.05) is within them.
+    for (size_t i = 0; i < static_cast<size_t> (paramCount); ++i)
+    {
+        const auto& param = described.params[i];
+        const auto value = static_cast<float> (params[i]);
+        if (! (value >= param.min && value <= param.max))
+            return 0;
+    }
+
+    auto& chain = engine->engine.player().getEffects();
+    for (size_t i = 0; i < static_cast<size_t> (paramCount); ++i)
+        chain.setParameter (type, i, static_cast<float> (params[i]));
+    chain.setMix (type, static_cast<float> (mix));
+    chain.setEnabled (type, enabled != 0);
+    return 1;
+}
+
+extern "C" int anomp_engine_set_freeze (anomp_engine* engine, int hold)
+{
+    return engine != nullptr && engine->engine.player().getEffects().setFreezeHeld (hold != 0) ? 1 : 0;
+}
+
+extern "C" int anomp_engine_freeze_held (anomp_engine* engine)
+{
+    return engine != nullptr && engine->engine.player().getEffects().isFreezeHeld() ? 1 : 0;
+}
+
 extern "C" int anomp_engine_output_is_headphones (anomp_engine* engine)
 {
     if (engine == nullptr)
@@ -941,6 +1025,10 @@ extern "C" int anomp_engine_signal_path (anomp_engine* engine, anomp_signal_path
     path->device_buffer_size = hasDevice ? device.bufferSize : 0;
     path->equaliser = info.equaliser ? 1 : 0;
     path->crossfade = info.crossfade;
+    for (size_t i = 0; i < info.effects.size(); ++i)
+        if (info.effects[i])
+            path->effects |= 1 << i;
+    path->freeze_held = info.freezeHeld ? 1 : 0;
     return 1;
 }
 

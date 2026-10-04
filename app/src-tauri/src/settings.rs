@@ -42,6 +42,8 @@ pub struct AppSettings {
     pub visualizer: VisualizerSettings,
     pub features: FeatureSettings,
     pub equaliser: EqualiserSettings,
+    /// X2: the effects' settings, used while `features.effects` is on.
+    pub effects: crate::effects::EffectsSettings,
     pub library: LibrarySettings,
     pub window: WindowSettings,
     pub appearance: crate::theme::AppearanceSettings,
@@ -135,7 +137,7 @@ impl EqualiserSettings {
 /// The optional features (PLAN.md §4.6, O1–O19), each of which the user
 /// can turn on or off. Local, cheap features are on by default; ones that
 /// cost hours of CPU time (the loudness analysis), change what is heard
-/// (crossfeed, sample-rate switching), go online (ListenBrainz, update
+/// (crossfeed, sample-rate switching, effects), go online (ListenBrainz, update
 /// checks) or listen on the network (the remote) are off until the user
 /// turns them on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -205,6 +207,9 @@ pub struct FeatureSettings {
     pub update_check: bool,
     /// X1: the user's theme (`appearance`); off, the default theme shows.
     pub themes: bool,
+    /// X2: real-time effects on what is playing (`AppSettings.effects`);
+    /// off, every effect is off.
+    pub effects: bool,
 }
 
 impl Default for FeatureSettings {
@@ -238,6 +243,7 @@ impl Default for FeatureSettings {
             top_played: true,
             update_check: false,
             themes: true,
+            effects: false,
         }
     }
 }
@@ -529,6 +535,7 @@ impl AppSettings {
                 return invalid("An equaliser preset's id must be 1 to 64 bytes".into());
             }
         }
+        self.effects.validate().map_err(Error::Invalid)?;
         self.appearance.validate().map_err(Error::Invalid)?;
         Ok(())
     }
@@ -710,6 +717,9 @@ pub async fn settings_save<R: Runtime>(
     if settings.equaliser != before.equaliser {
         crate::audio::apply_equaliser(&app, &settings.equaliser);
     }
+    if settings.effects != before.effects || settings.features.effects != before.features.effects {
+        crate::effects::apply(&app, &settings.effects, settings.features.effects);
+    }
     if settings.library != before.library {
         crate::library::watch::configure(&app, &settings.library);
     }
@@ -819,6 +829,7 @@ mod tests {
         assert!(error(|s| s.equaliser.speakers.gains = vec![0.0; 3]).contains("ten bands"));
         assert!(error(|s| s.equaliser.headphones.preamp = 13.0).contains("between"));
         assert!(error(|s| s.appearance.theme.text_size = 40).contains("text size"));
+        assert!(error(|s| s.effects.echo.mix = 2.0).contains("mix"));
         assert_eq!(
             load(&conn).unwrap(),
             AppSettings::default(),
@@ -980,6 +991,8 @@ mod bindings {
         declare::<CrossfeedLevel>(&cfg, out);
         declare::<EqualiserSettings>(&cfg, out);
         declare::<EqualiserProfile>(&cfg, out);
+        declare::<crate::effects::EffectsSettings>(&cfg, out);
+        declare::<crate::effects::EffectSettings>(&cfg, out);
         declare::<LibrarySettings>(&cfg, out);
         declare::<WindowSettings>(&cfg, out);
         declare::<crate::theme::AppearanceSettings>(&cfg, out);

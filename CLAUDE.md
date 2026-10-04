@@ -30,8 +30,8 @@ check safely.
 ```sh
 scripts/build-ffmpeg.sh   # once, and after changing its pin/flags (~1.5 min)
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
-scripts/format-cpp.py     # clang-format core/ after editing it (--check: report only)
-scripts/lint-cpp.py       # clang-tidy over core/src (.clang-tidy; after `cmake --preset debug`)
+scripts/format-cpp.py     # clang-format core/ and effects/ after editing them (--check: report only)
+scripts/lint-cpp.py       # clang-tidy over core/src and effects/src (.clang-tidy; after `cmake --preset debug`)
 scripts/format-python.py  # ruff format + ruff check scripts/*.py after editing them (--check: diff only)
 scripts/format-frontend.py # Prettier over app/ after editing the frontend (--check: report only)
 scripts/check-all.py      # every check, as CI runs it (--quick: formatters, repo checks, script tests, gitleaks)
@@ -179,6 +179,7 @@ Each Catch2 `TEST_CASE` is registered with CTest individually via `catch_discove
 ctest --preset debug -N                              # list test names
 ctest --preset debug -R "FormatRegistry round-trips" # run one by name (regex)
 ./build/debug/core/tests/anomp_core_tests "[formats]" # or run the binary by tag
+./build/debug/effects/tests/anomp_effects_tests       # the effects library's own suite
 ```
 
 The app (run from `app/`; `npm install` once):
@@ -202,8 +203,9 @@ the site with the reason. A crate with a licence outside `deny.toml`'s list
 is an owner decision (`PLAN.md` §8.1).
 
 `app/src-tauri/build.rs` builds `anomp_core` with the `cmake` crate (Ninja, tests off)
-into Cargo's `target/` dir, separate from `build/<preset>`. It reruns when `core/`,
-`cmake/` or the top-level `CMakeLists.txt` changes. FFI declarations and their safe
+into Cargo's `target/` dir, separate from `build/<preset>`, and links it with
+`anomp_effects`. It reruns when `core/`, `effects/`, `cmake/` or the top-level
+`CMakeLists.txt` changes. FFI declarations and their safe
 wrappers live only in `app/src-tauri/src/anomp.rs`; add a wrapper there for each new
 C API function.
 
@@ -329,6 +331,19 @@ with a default and a `validate` rule; stored values are read leniently, so no
 migration is needed. The UI reads settings through `state/settings.svelte.ts`,
 loaded in `routes/+layout.ts` before any page renders.
 
+**Effects** (X2) are `effects/` (`anomp_effects`): plain C++20 with no
+dependencies, JUCE included (JUCE's modules would compile a second copy
+into it), and `include/anomp/effects/EffectChain.h` its only public header.
+Settings reach the audio thread as atomics, never under a lock, and every
+change glides; an effect's `process` turns a chunk into its wet signal, and
+the chain mixes. With every effect off the signal must stay bit-identical.
+A new effect gets an `EffectType` (at the end: the C API passes the
+numbers), a catalogue entry, a place in `chainOrder`, a case in `create`,
+an `ANOMP_EFFECT_*` value, a field in Rust's `EffectsSettings` and its
+`get`, and `effects.<id>`, `effects.<id>About` and `effects.param.<param>`
+in `en.json` (`effects.rs` tests check); tests in `effects/tests`, and
+the 192 kHz benchmark stays within its budget.
+
 **Optional features.** Each checks its switch in `FeatureSettings` where it acts
 (commands refuse, workers idle, the UI hides); a new one gets a switch there, off
 by default if it costs a lot, changes what is heard, goes online or listens on
@@ -419,7 +434,9 @@ through `metadata::keys`, never in the settings JSON, which records only
 Three layers, described in full in `PLAN.md` §1:
 
 1. `core/` — `anomp_core`, a C++20 JUCE static library: decoding, playback, queue and
-   gapless, tag reading, FFT/levels for the visualizer, OS media integration.
+   gapless, tag reading, FFT/levels for the visualizer, OS media integration. Its
+   real-time effects are a library of their own, `effects/` (`anomp_effects`), which it
+   links privately.
 2. `app/src-tauri` — Rust: SQLite library DB, settings, online metadata,
    file scanning; bridges UI to core.
 3. `app/src` — Svelte 5 + TypeScript frontend (SvelteKit with `adapter-static`).
@@ -452,7 +469,8 @@ Constraints that shape the code and must not be broken casually:
   space before the argument list in declarations and calls (`canDecodeExtension (ext)`),
   Allman braces. `juce_recommended_warning_flags` is on — keep it warning-clean.
 - New core source files must be added to the `add_library` list in `core/CMakeLists.txt`
-  (and tests to `core/tests/CMakeLists.txt`); there is no globbing.
+  (and tests to `core/tests/CMakeLists.txt`), and the effects library's to
+  `effects/CMakeLists.txt` (`effects/tests/CMakeLists.txt`); there is no globbing.
 - The version is CMake's `project(VERSION)` (PLAN.md §8.2): `anomp_version()` is
   compiled from it, and the copies the tools need (`Cargo.toml`, `Cargo.lock`,
   `tauri.conf.json`, `package.json`, `package-lock.json`) are set together by

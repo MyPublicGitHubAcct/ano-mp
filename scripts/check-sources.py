@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Checks that the core's CMake source lists match the files on disk.
+"""Checks that the C++ libraries' CMake source lists match the files on disk.
 
-The core's CMakeLists.txt files list their sources by hand (no globbing), so
-a new file that isn't listed is silently left out of the build. Every .cpp
-and .mm under core/src, core/tests and core/fuzz must be listed in that
-directory's owning CMakeLists.txt, and every file listed must exist. Lists
+The core's and the effects library's CMakeLists.txt files list their sources
+by hand (no globbing), so a new file that isn't listed is silently left out
+of the build. Every .cpp and .mm under core/src, core/tests, core/fuzz,
+effects/src and effects/tests must be listed in that directory's owning
+CMakeLists.txt, and every file listed must exist. Lists
 every problem it finds and exits non-zero if there are any. Changes nothing.
 
 Usage: scripts/check-sources.py
@@ -23,6 +24,8 @@ SOURCE_LISTS = [
     ("core/CMakeLists.txt", "core/src"),
     ("core/tests/CMakeLists.txt", "core/tests"),
     ("core/fuzz/CMakeLists.txt", "core/fuzz"),
+    ("effects/CMakeLists.txt", "effects/src"),
+    ("effects/tests/CMakeLists.txt", "effects/tests"),
 ]
 
 
@@ -61,7 +64,7 @@ def compare(cmake_path, source_dir, root=REPO_ROOT):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Check the core's CMake source lists.")
+    parser = argparse.ArgumentParser(description="Check the C++ libraries' CMake source lists.")
     parser.parse_args()
 
     problems = []
@@ -70,7 +73,7 @@ def main():
     for problem in problems:
         print(f"check-sources: {problem}")
     if not problems:
-        print("check-sources: every core source is listed")
+        print("check-sources: every C++ source is listed")
     return 1 if problems else 0
 
 

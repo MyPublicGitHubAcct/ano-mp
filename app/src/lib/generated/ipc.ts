@@ -355,6 +355,50 @@ export type DuplicateGroup = {
 reason: string, tracks: Array<HealthTrack>, };
 
 /**
+ * One of the core's effects (`anomp_effect_info`), PLAN.md X2.
+ */
+export type EffectInfo = { 
+/**
+ * The core's number for it (`ANOMP_EFFECT_*`).
+ */
+number: number, 
+/**
+ * Stable, lower camel case, e.g. "reverb": its key in the settings.
+ */
+id: string, 
+/**
+ * Where it runs in the chain, 0 first.
+ */
+position: number, defaultMix: number, params: Array<EffectParam>, };
+
+/**
+ * One of an effect's parameters (`anomp_effect_param`).
+ */
+export type EffectParam = { 
+/**
+ * Stable, lower camel case, e.g. "preDelay".
+ */
+id: string, unit: EffectUnit, min: number, max: number, defaultValue: number, 
+/**
+ * Best moved on a logarithmic scale.
+ */
+logarithmic: boolean, };
+
+/**
+ * How an effect parameter's value reads (`ANOMP_EFFECT_UNIT_*`).
+ */
+export type EffectUnit = "ratio" | "hertz" | "milliseconds" | "seconds" | "bits";
+
+/**
+ * What the effects are doing now.
+ */
+export type EffectsStatus = { 
+/**
+ * The spectral freeze holds the sound; a new track lets it go.
+ */
+freezeHeld: boolean, };
+
+/**
  * An artist the user hearted.
  */
 export type FavouriteArtist = { id: number, name: string, 
@@ -1044,7 +1088,16 @@ equaliser: boolean,
 /**
  * Seconds the next track crossfades over; 0 if none (PLAN.md F14).
  */
-crossfade: number, };
+crossfade: number, 
+/**
+ * The effects on, or still ringing out, by id in the order they run
+ * (PLAN.md X2).
+ */
+effects: Array<string>, 
+/**
+ * The spectral freeze holds the sound.
+ */
+freezeHeld: boolean, };
 
 /**
  * Every step from the file to the speakers (O10).

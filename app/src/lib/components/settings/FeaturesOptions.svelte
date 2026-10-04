@@ -64,6 +64,12 @@
       title: t("feature.practiceMode"),
       about: t("feature.practiceModeAbout"),
     },
+    {
+      key: "effects",
+      id: "X2",
+      title: t("feature.effects"),
+      about: t("feature.effectsAbout"),
+    },
   ];
 
   const LIBRARY: Switch[] = [

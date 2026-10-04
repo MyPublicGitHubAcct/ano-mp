@@ -68,10 +68,12 @@ def test_real_compile_database_covers_every_compiled_source(lint_cpp):
     database_path = lint_cpp.BUILD_DIR / "compile_commands.json"
     if not database_path.is_file():
         pytest.skip("no debug configure")
-    files = lint_cpp.units(json.loads(database_path.read_text()), lint_cpp.SOURCES)
+    database = json.loads(database_path.read_text())
+    files = [path for sources in lint_cpp.SOURCE_DIRS for path in lint_cpp.units(database, sources)]
     names = {path.name for path in files}
     assert "PlayerEngine.cpp" in names
     assert "anomp_c_api.cpp" in names
+    assert "EffectChain.cpp" in names
     assert all(path.suffix in {".cpp", ".mm"} for path in files)
 
 

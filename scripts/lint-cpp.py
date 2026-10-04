@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Runs clang-tidy over the core's sources (PLAN.md H21).
+"""Runs clang-tidy over the core's and the effects library's sources (PLAN.md H21).
 
 The checks are .clang-tidy's (bugprone-*, performance-* and concurrency-*,
-less those it turns off with their reasons), over every core/src file in the
-debug preset's compile database, so run `cmake --preset debug` first. A
+less those it turns off with their reasons), over every core/src and
+effects/src file in the debug preset's compile database, so run `cmake --preset debug` first. A
 platform's files the database doesn't compile (DockMenu_none.cpp on macOS)
-are linted on their own platform. Warnings in core/src and core/include are
-reported, each once however many files include its header; JUCE's, TagLib's
+are linted on their own platform. Warnings in core/, effects/ (src and
+include) are reported, each once however many files include its header; JUCE's, TagLib's
 and FFmpeg's are not. Exits non-zero if there are any. Silence a finding
 that isn't a bug at its line with `// NOLINT(check-name): reason`.
 
@@ -32,7 +32,7 @@ import sys
 CLANG_TIDY_VERSION = "22.1.8"
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-SOURCES = REPO_ROOT / "core" / "src"
+SOURCE_DIRS = [REPO_ROOT / "core" / "src", REPO_ROOT / "effects" / "src"]
 BUILD_DIR = REPO_ROOT / "build" / "debug"
 
 # The first line of a diagnostic: "path:line:col: warning: text [check]".
@@ -93,7 +93,7 @@ def tidy(command, path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run clang-tidy over the core's sources.")
+    parser = argparse.ArgumentParser(description="Run clang-tidy over the C++ libraries' sources.")
     parser.add_argument("--build-dir", type=pathlib.Path, default=BUILD_DIR)
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
     parser.add_argument("files", nargs="*", type=pathlib.Path, help="only these files")
@@ -106,12 +106,13 @@ def main():
     if not database_path.is_file():
         sys.exit(f"error: no {database_path}; run `cmake --preset debug` first")
 
-    files = units(json.loads(database_path.read_text()), SOURCES)
+    database = json.loads(database_path.read_text())
+    files = sorted({path for sources in SOURCE_DIRS for path in units(database, sources)})
     if args.files:
         wanted = {path.resolve() for path in args.files}
         files = [path for path in files if path in wanted]
     if not files:
-        sys.exit("error: no core/src files to lint in the compile database")
+        sys.exit("error: no core/src or effects/src files to lint in the compile database")
 
     command = [
         uvx,

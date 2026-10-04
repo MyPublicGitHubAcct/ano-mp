@@ -42,6 +42,10 @@
     "core.analysis": {
       "min": 50,
       "unit": "x"
+    },
+    "core.effects.*": {
+      "min": 10,
+      "unit": "x"
     }
   },
   "results": {
@@ -119,6 +123,10 @@
     },
     "core.analysis": {
       "value": 403.396,
+      "unit": "x"
+    },
+    "core.effects.all_192k": {
+      "value": 13.89,
       "unit": "x"
     },
     "core.play.aac": {

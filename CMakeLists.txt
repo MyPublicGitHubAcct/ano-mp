@@ -29,6 +29,7 @@ include(cmake/FFmpeg.cmake)
 include(cmake/TagLib.cmake)
 include(cmake/Signalsmith.cmake)
 
+add_subdirectory(effects)
 add_subdirectory(core)
 
 if(ANOMP_BUILD_TESTS)
@@ -40,6 +41,7 @@ if(ANOMP_BUILD_TESTS)
 
     enable_testing()
     add_subdirectory(core/tests)
+    add_subdirectory(effects/tests)
 endif()
 
 if(ANOMP_BUILD_FUZZERS)

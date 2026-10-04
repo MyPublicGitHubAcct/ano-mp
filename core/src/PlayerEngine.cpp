@@ -404,6 +404,7 @@ void PlayerEngine::install (TrackPtr track)
         configureRate();
         publishPosition();
     }
+    effects.trackChanged();
 }
 
 juce::String PlayerEngine::setNext (const juce::File& file, const TrackOptions& options)
@@ -796,6 +797,12 @@ PlayerEngine::SignalInfo PlayerEngine::getSignalInfo() const
     info.deviceSampleRate = deviceRate;
     info.crossfeed = crossfeedLevel.load();
     info.equaliser = equaliser.isEnabled();
+    for (size_t i = 0; i < info.effects.size(); ++i)
+    {
+        const auto type = static_cast<fx::EffectType> (i);
+        info.effects[i] = effects.isEnabled (type) || effects.isActive (type);
+    }
+    info.freezeHeld = effects.isFreezeHeld();
     if (current != nullptr && next != nullptr)
         if (const auto fade = crossfadeSamples(); fade > 0)
             info.crossfade = static_cast<double> (fade) / current->sampleRate;
@@ -892,6 +899,7 @@ void PlayerEngine::prepareToPlay (int samplesPerBlockExpected, double sampleRate
     tap.setSampleRate (sampleRate);
     crossfeed.prepare (sampleRate);
     equaliser.prepare (sampleRate);
+    effects.prepare (sampleRate);
 
     const auto chunkSize = juce::jmax (samplesPerBlockExpected, 256);
     scratch.setSize (outputChannels, chunkSize);
@@ -923,6 +931,7 @@ void PlayerEngine::getNextAudioBlock (const juce::AudioSourceChannelInfo& info)
     {
         const auto count = juce::jmin (info.numSamples - done, scratch.getNumSamples());
         renderChunk (scratch.getArrayOfWritePointers(), count);
+        effects.process (scratch.getWritePointer (0), scratch.getWritePointer (1), count);
 
         if (out.getNumChannels() == 1)
         {
@@ -1086,6 +1095,7 @@ void PlayerEngine::handOff()
     loopRewindPending = false;
     ++pendingAdvances;
     ++advanceCount;
+    effects.trackChanged();
 }
 
 juce::int64 PlayerEngine::crossfadeSamples() const

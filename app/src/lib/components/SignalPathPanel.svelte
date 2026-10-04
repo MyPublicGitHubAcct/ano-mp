@@ -1,12 +1,12 @@
 <script lang="ts">
   // The signal path (O10): every step from the file to the speakers, as the
   // engine has it now — the file's codec, bit depth, rate and bit rate, the
-  // gain applied, practice mode's stretching, resampling (or not),
-  // the equaliser, crossfeed, crossfading into the next track, the volume,
-  // and the device.
+  // gain applied, practice mode's stretching, resampling (or not), the
+  // effects (X2), the equaliser, crossfeed, crossfading into the next
+  // track, the volume, and the device.
   import { onMount } from "svelte";
   import { player as api, type SignalPathPayload } from "$lib/api";
-  import { t, type MessageKey } from "$lib/i18n";
+  import { has, t, type MessageKey } from "$lib/i18n";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import Popover from "./Popover.svelte";
@@ -28,6 +28,10 @@
     if (linear <= 0) return "−∞ dB";
     const value = 20 * Math.log10(linear);
     return `${value > 0.05 ? "+" : value < -0.05 ? "−" : ""}${Math.abs(value).toFixed(1)} dB`;
+  };
+  const effectName = (id: string) => {
+    const key = `effects.${id}`;
+    return has(key) ? t(key) : id;
   };
   const CROSSFEED: MessageKey[] = [
     "signal.off",
@@ -84,6 +88,15 @@
           {/if}
         </span>
       </li>
+      {#if p.effects.length > 0 || features.on.effects}
+        <li>
+          <span class="step">{t("signal.effects")}</span>
+          <span>
+            {p.effects.length > 0 ? p.effects.map(effectName).join(" · ") : t("signal.off")}
+            {#if p.freezeHeld}<span class="muted">{t("signal.freezeHeld")}</span>{/if}
+          </span>
+        </li>
+      {/if}
       <li>
         <span class="step">{t("signal.equaliser")}</span>
         <span>{t(p.equaliser ? "signal.on" : "signal.off")}</span>

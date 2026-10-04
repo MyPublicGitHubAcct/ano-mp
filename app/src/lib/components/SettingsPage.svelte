@@ -13,6 +13,7 @@
   import AboutOptions from "./settings/AboutOptions.svelte";
   import AppearanceOptions from "./settings/AppearanceOptions.svelte";
   import DisplayOptions from "./settings/DisplayOptions.svelte";
+  import EffectsOptions from "./settings/EffectsOptions.svelte";
   import EqualiserOptions from "./settings/EqualiserOptions.svelte";
   import GeneralOptions from "./settings/GeneralOptions.svelte";
   import FeaturesOptions from "./settings/FeaturesOptions.svelte";
@@ -29,6 +30,7 @@
     { id: "appearance", name: "settings.appearance", about: "settings.appearanceAbout" },
     { id: "playback", name: "settings.playback", about: "settings.playbackAbout" },
     { id: "equaliser", name: "settings.equaliser", about: "settings.equaliserAbout" },
+    { id: "effects", name: "settings.effects", about: "settings.effectsAbout" },
     { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
     { id: "sources", name: "settings.sources", about: "settings.sourcesAbout" },
     { id: "features", name: "settings.features", about: "settings.featuresAbout" },
@@ -102,6 +104,8 @@
           <PlaybackOptions />
         {:else if section.id === "equaliser"}
           <EqualiserOptions />
+        {:else if section.id === "effects"}
+          <EffectsOptions />
         {:else if section.id === "general"}
           <GeneralOptions />
         {:else if section.id === "visualizer"}

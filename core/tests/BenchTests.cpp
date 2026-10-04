@@ -4,6 +4,8 @@
 #include "PlayerEngine.h"
 #include "SpectrumAnalyser.h"
 
+#include <anomp/effects/EffectChain.h>
+
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -106,4 +108,34 @@ TEST_CASE ("Bench: the visualizer's analysis", "[.][bench]")
     for (int i = 0; i < frames; ++i)
         analyser.process (left.data(), right.data(), hop, frame);
     report ("core.analysis", seconds / elapsedSeconds (start));
+}
+
+TEST_CASE ("Bench: every effect at once at 192 kHz", "[.][bench]")
+{
+    // The worst case PLAN.md X2 budgets for: all eight effects on, the
+    // freeze held, at the highest common device rate, in the engine's blocks.
+    constexpr double rate = 192000.0;
+    anomp::fx::EffectChain chain;
+    chain.prepare (rate);
+    for (size_t i = 0; i < anomp::fx::effectCount; ++i)
+        chain.setEnabled (static_cast<anomp::fx::EffectType> (i), true);
+
+    juce::Random random (7);
+    std::vector<float> left (blockSize), right (blockSize);
+    const auto blocks = static_cast<int> (seconds * rate / blockSize);
+    double busy = 0.0;
+    for (int i = 0; i < blocks; ++i)
+    {
+        if (i == 100)
+            chain.setFreezeHeld (true);
+        for (size_t j = 0; j < left.size(); ++j)
+        {
+            left[j] = random.nextFloat() - 0.5f;
+            right[j] = random.nextFloat() - 0.5f;
+        }
+        const auto start = Clock::now();
+        chain.process (left.data(), right.data(), blockSize);
+        busy += elapsedSeconds (start);
+    }
+    report ("core.effects.all_192k", seconds / busy);
 }

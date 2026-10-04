@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <regex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -77,6 +78,10 @@ TEST_CASE ("C API engine functions accept a null engine", "[c-api][engine]")
     CHECK (anomp_engine_duration (nullptr) == 0.0);
     CHECK (anomp_engine_advance_count (nullptr) == 0);
     CHECK (anomp_engine_set_track_gain (nullptr, "/a.flac", 0.5) == 0);
+    const double reverb[] = { 0.5 };
+    CHECK (anomp_engine_set_effect (nullptr, ANOMP_EFFECT_REVERB, 1, 0.5, reverb, 1) == 0);
+    CHECK (anomp_engine_set_freeze (nullptr, 1) == 0);
+    CHECK (anomp_engine_freeze_held (nullptr) == 0);
 
     CHECK (anomp_engine_output_device_count (nullptr) == 0);
     CHECK (anomp_engine_output_device_name (nullptr, 0, buffer, sizeof (buffer)) == 0);
@@ -275,6 +280,85 @@ TEST_CASE ("C API crossfade and equaliser", "[c-api][engine]")
     CHECK (anomp_engine_set_equaliser (engine, nullptr, 0.0) == 1);
     REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
     CHECK (path.equaliser == 0);
+
+    anomp_engine_destroy (engine);
+}
+
+TEST_CASE ("C API describes every effect", "[c-api][effects]")
+{
+    anomp_effect_info info {};
+    CHECK (anomp_effect_describe (-1, &info) == 0);
+    CHECK (anomp_effect_describe (ANOMP_EFFECT_COUNT, &info) == 0);
+    CHECK (anomp_effect_describe (ANOMP_EFFECT_REVERB, nullptr) == 0);
+
+    std::set<std::string> ids;
+    std::set<int> positions;
+    for (int effect = 0; effect < ANOMP_EFFECT_COUNT; ++effect)
+    {
+        REQUIRE (anomp_effect_describe (effect, &info) == 1);
+        ids.insert (info.id);
+        positions.insert (info.position);
+        CHECK (info.param_count > 0);
+        CHECK (info.param_count <= ANOMP_EFFECT_MAX_PARAMS);
+        for (int i = 0; i < info.param_count; ++i)
+        {
+            const auto& param = info.params[i];
+            CHECK (std::string_view (param.id).size() > 0);
+            CHECK (param.min <= param.default_value);
+            CHECK (param.default_value <= param.max);
+        }
+    }
+    CHECK (ids.size() == ANOMP_EFFECT_COUNT);
+    CHECK (positions.size() == ANOMP_EFFECT_COUNT);
+
+    REQUIRE (anomp_effect_describe (ANOMP_EFFECT_ECHO, &info) == 1);
+    CHECK (std::string_view (info.id) == "echo");
+    CHECK (std::string_view (info.params[0].id) == "time");
+    CHECK (info.params[0].unit == ANOMP_EFFECT_UNIT_MILLISECONDS);
+    CHECK (info.params[0].logarithmic == 1);
+}
+
+TEST_CASE ("C API effects and the freeze", "[c-api][engine][effects]")
+{
+    auto* engine = anomp_engine_create();
+    REQUIRE (engine != nullptr);
+    anomp_signal_path path {};
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.effects == 0);
+
+    const double echo[] = { 500.0, 0.4, 0.5, 1.0 };
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_ECHO, 1, 0.3, echo, 4) == 1);
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_REVERB, 1, 0.2, nullptr, 0) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.effects == ((1 << ANOMP_EFFECT_ECHO) | (1 << ANOMP_EFFECT_REVERB)));
+
+    // Out of range, too many, unknown: refused, changing nothing.
+    const double tooLong[] = { 5000.0, 0.4, 0.5, 1.0 };
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_ECHO, 0, 0.3, tooLong, 4) == 0);
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_ECHO, 0, 0.3, echo, 5) == 0);
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_ECHO, 0, 1.5, echo, 4) == 0);
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_ECHO, 0, 0.3, nullptr, 2) == 0);
+    CHECK (anomp_engine_set_effect (engine, 99, 0, 0.3, nullptr, 0) == 0);
+    // A bound written as a double is within the range, though the core keeps floats.
+    const double slowest[] = { 0.05, 1.0 };
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_CHORUS, 0, 0.5, slowest, 2) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK ((path.effects & (1 << ANOMP_EFFECT_ECHO)) != 0);
+
+    // The freeze holds only while it is on.
+    CHECK (anomp_engine_set_freeze (engine, 1) == 0);
+    CHECK (anomp_engine_freeze_held (engine) == 0);
+    const double fade[] = { 0.5 };
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_FREEZE, 1, 1.0, fade, 1) == 1);
+    CHECK (anomp_engine_set_freeze (engine, 1) == 1);
+    CHECK (anomp_engine_freeze_held (engine) == 1);
+    REQUIRE (anomp_engine_signal_path (engine, &path) == 1);
+    CHECK (path.freeze_held == 1);
+    CHECK (anomp_engine_set_freeze (engine, 0) == 0);
+    CHECK (anomp_engine_freeze_held (engine) == 0);
+    CHECK (anomp_engine_set_freeze (engine, 1) == 1);
+    CHECK (anomp_engine_set_effect (engine, ANOMP_EFFECT_FREEZE, 0, 1.0, nullptr, 0) == 1);
+    CHECK (anomp_engine_freeze_held (engine) == 0);
 
     anomp_engine_destroy (engine);
 }

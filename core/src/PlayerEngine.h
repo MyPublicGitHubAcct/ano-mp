@@ -4,6 +4,8 @@
 #include "Equaliser.h"
 #include "SignalTap.h"
 
+#include <anomp/effects/EffectChain.h>
+
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <array>
@@ -31,8 +33,12 @@ namespace anomp
     (read-ahead on a shared background thread); the current and next track are
     joined at the file sample rate, then (while practising) time-stretched,
     then one windowed-sinc resampler converts to the device rate, so the join
-    is sample-exact whatever the device rate. The analysis tap sees that;
-    the equaliser, crossfeed and the volume come after it.
+    is sample-exact whatever the device rate. The effects (PLAN.md X2) come
+    next, so the visualizer shows what they make; the analysis tap sees
+    that; the equaliser, crossfeed and the volume come after it. The effects
+    run on across hand-offs and crossfades, so a reverb's or echo's tail
+    carries into the next track; a held freeze lets go as another track
+    takes over.
     Tracks with different sample rates switch at the next chunk boundary,
     which leaves a few milliseconds of silence between them.
 
@@ -204,6 +210,10 @@ public:
         `preampDb`, or gliding to flat and off. */
     void setEqualiser (bool enabled, const Equaliser::Gains& gainsDb, double preampDb);
 
+    /** The real-time effects (PLAN.md X2). Their settings may be changed
+        from any thread, without the player's lock. */
+    fx::EffectChain& getEffects() noexcept { return effects; }
+
     //==============================================================================
     State getState() const noexcept { return state.load(); }
     double getPositionSeconds() const noexcept { return positionSeconds.load(); }
@@ -226,6 +236,9 @@ public:
         bool equaliser = false;
         /** Seconds the next track crossfades over; 0 if it won't. */
         double crossfade = 0.0;
+        /** Each effect (by fx::EffectType) that is on, or still ringing out. */
+        std::array<bool, fx::effectCount> effects {};
+        bool freezeHeld = false;
     };
     SignalInfo getSignalInfo() const;
 
@@ -336,6 +349,7 @@ private:
     std::unique_ptr<Stretcher> stretcher; // Created on the first setTempo().
     juce::AudioBuffer<float> scratch;
     SignalTap tap;
+    fx::EffectChain effects;
     Crossfeed crossfeed;
     std::atomic<int> crossfeedLevel { 0 };
     Equaliser equaliser;

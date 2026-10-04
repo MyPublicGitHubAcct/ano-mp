@@ -7,8 +7,8 @@ step of its "Order of work" that needs no owner decision is done, and the
 signed release waits on the owner's §8.1 decisions
 (`docs/release-decisions.md`). Phase 7b (themes, effects,
 visualizations, recommendations and similar artists; P3, added
-2026-10-03) follows Phase 7, before the ports; X1 (themes) was built
-early, at the owner's request. Finished work's design notes and records
+2026-10-03) follows Phase 7, before the ports; X1 (themes) and X2
+(effects) were built early, at the owner's request. Finished work's design notes and records
 are in `docs/design/`, linked from each phase.
 
 
@@ -67,6 +67,9 @@ holds and how it was built.
   (`SignalTap`, `SpectrumAnalyser`, `AnalysisThread`), `FileAnalyser`, and
   platform code (`MediaControls`, `FolderAccess`, `FileStatus`,
   `VolumeWatcher`, `DockMenu`). Fuzz targets in `core/fuzz/`.
+- **Effects** (`effects/`): `anomp_effects`, the real-time effects (X2), a
+  dependency-free C++20 library the core links: `EffectChain` (the one
+  public header) and the eight effects behind it.
 - **Rust** (`app/src-tauri/src/`): `anomp.rs` (the C API's wrappers),
   `audio.rs` (the main-thread engine host), `library/` (DB, migrations,
   scanner, browse, search, art and thumbnails, playlists, features),
@@ -86,9 +89,9 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 
 | Suite | Location |
 |---|---|
-| 116 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
-| 442 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
-| 38 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 144 passing Catch2 tests (121 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
+| 446 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 42 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -604,7 +607,7 @@ acts, off by default if it changes what is heard or goes online.
     default; off, the standard theme shows and Appearance is hidden.
     Left to check in the app: the exit's theme round trip between Macs,
     VoiceOver over the editor, and layouts at 22 px text.
-- [ ] **X2 Effects.** An effects chain in the core, after decoding and
+- [x] **X2 Effects.** An effects chain in the core, after decoding and
   before volume, next to the equaliser (F15) and crossfeed (O11): reverb
   (JUCE's `dsp::Reverb`, then perhaps convolution with bundled impulse
   responses), chorus (`dsp::Chorus`) and spectral freeze (an STFT that
@@ -620,6 +623,74 @@ acts, off by default if it changes what is heard or goes online.
   effects behave across a gapless hand-off and a crossfade (reverb tails
   carry over; freeze releases on a track change). Offline render tests in
   the style of `PlayerEngineTests.cpp`.
+  - **Built** 2026-10-03, ahead of Phase 7's exit at the owner's request,
+    as a library of its own: `effects/` (`anomp_effects`), plain C++20
+    with no dependencies, which the core links privately. **Decided:**
+    not `juce_dsp`'s effects: JUCE's CMake modules compile their sources
+    into every target that links them, so a second JUCE library beside
+    the core would carry JUCE twice, and a library without dependencies
+    builds, tests and benchmarks alone and ports with nothing else. It
+    takes the core's warning flags (JUCE's flag targets, which compile no
+    JUCE code) and has its own Catch2 suite (`effects/tests`).
+    `EffectChain.h` is its one public header: the catalogue (each
+    effect's id, default mix, and parameters with unit, range, default
+    and whether they move logarithmically) and the chain.
+  - Eight effects, run in a fixed order: spectral freeze, lo-fi
+    (bits, sample rate), tremolo and auto-pan (rate, depth, stereo),
+    phaser (six allpasses; rate, depth, feedback), flanger (rate, depth,
+    feedback), chorus (two voices a channel; rate, depth), echo (time,
+    feedback, tone in the feedback, spread from straight to ping-pong; a
+    new time crossfades over 50 ms rather than bending the pitch) and
+    reverb (Freeverb's combs and allpasses, public domain, scaled to the
+    rate; size, damping, width, pre-delay). Convolution with impulse
+    responses wasn't built. The freeze keeps the magnitudes of the last
+    0.15 s (an 8192-point Hann FFT at 44.1 and 48 kHz, longer above) and
+    resynthesises them every quarter window with random phases, each
+    bin keeping the phase difference between the channels so the image
+    stays put, at the input's loudness; holding and letting go crossfade
+    at equal power over its `fade`.
+  - **The chain**: each effect's switch, mix and parameters are atomics,
+    set from any thread and read by the audio thread every 64 samples;
+    every change glides. An effect switched on fades in over 50 ms; one
+    switched off stops taking input and lets its tail (reverb, echo)
+    ring out before its wet signal fades. With every effect off the
+    signal is untouched (the engine's exact-output tests still pass).
+    The chain runs after the resampler and before the analysis tap, so
+    the visualizer shows what the effects make; the equaliser,
+    crossfeed and volume follow. Tails carry across a gapless hand-off
+    and a crossfade; a held freeze lets go when a track takes over or
+    another is loaded. While paused nothing is processed, so a tail
+    resumes with the music.
+  - **C API**: `anomp_effect_describe`, `anomp_engine_set_effect`
+    (switch, mix, parameters; out of range refused, compared as the
+    floats the core keeps), `anomp_engine_set_freeze`,
+    `anomp_engine_freeze_held`; the signal path gains `effects` (a bit
+    per effect on or ringing out) and `freeze_held`.
+  - **Rust** (`effects.rs`): `AppSettings.effects`, each effect's switch,
+    mix and parameters by id, validated against the core's catalogue;
+    the `effects` feature switch, off by default (it changes what is
+    heard), turns them all off. Commands: `effects_catalog`,
+    `effects_preview` (plays settings without saving, while a slider
+    moves), `effects_freeze`, `effects_status`.
+  - **UI**: Settings › Effects, always listed (hidden at first while
+    off, it couldn't be found), its first switch the feature's own (also
+    in Features), the rest greyed out while off: a preset
+    (eleven, `lib/effects.ts`, each replacing every effect's settings),
+    then each effect in chain order with its switch, mix and parameters
+    (logarithmic sliders for rates and times), heard as they move and
+    saved when let go; the freeze's Hold button follows a new track
+    letting go. While the freeze is on, a snowflake button in the
+    now-playing bar holds and lets go too (`state/effects.svelte.ts`,
+    shared with Settings, asking the engine again as the track changes
+    and every second while held, since the core lets go by itself). The
+    signal path panel lists the effects in use and a held freeze. Global settings only; per-track ones (O7) weren't asked
+    for.
+  - **CPU** (`core.effects.all_192k`, H18): all eight on, the freeze
+    held, at 192 kHz in 512-sample blocks, 13.9 times real time
+    on the baseline machine; its budget is at least 10.
+  - Left to check in the app: each effect by ear, including during a
+    gapless hand-off, a crossfade and a seek, with no clicks or dropouts
+    at the smallest buffer size.
 - [ ] **X3 Five visualizations** that few players have, beside Phase 5's.
   Candidates, to settle with the owner before building:
   - a **Tonnetz**: the harmonic lattice, lit by the chroma Phase 5
@@ -912,6 +983,10 @@ ano-mp/
     src/
     tests/         Catch2
     tests/fixtures/ small audio files for tests
+  effects/         C++ real-time effects (static lib, no dependencies), linked by core
+    include/anomp/effects/ its public header
+    src/
+    tests/         Catch2
   scripts/         build-ffmpeg.sh and the Python tooling (§9)
     tests/         pytest for the scripts
   third_party/     built FFmpeg per platform (git-ignored, CI-cached)

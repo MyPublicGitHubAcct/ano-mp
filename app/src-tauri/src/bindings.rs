@@ -550,6 +550,8 @@ fn declare_types(cfg: &Config, settings: &BTreeSet<String>) -> Vec<Declared> {
         crate::features::Prefs,
         crate::metadata::jobs::Progress,
         crate::audio::SignalPathPayload,
+        crate::anomp::EffectInfo,
+        crate::effects::EffectsStatus,
     );
     collect.out
 }

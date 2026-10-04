@@ -20,6 +20,7 @@ in Settings › Features. Current work is hardening for a first signed release. 
 | Layer | Location | Technology |
 |---|---|---|
 | Audio core: decoding, playback, tags, device output | `core/` | C++20, [JUCE](https://juce.com), [FFmpeg](https://ffmpeg.org), [TagLib](https://taglib.org) |
+| Real-time effects, linked into the core | `effects/` | C++20, no dependencies |
 | Backend: library database, settings, online services | `app/src-tauri/` | Rust, [Tauri 2](https://tauri.app), SQLite |
 | Frontend | `app/src/` | Svelte 5, TypeScript |
 
@@ -304,6 +305,7 @@ and keep `workflow_dispatch:`, so it can still be run by hand.
 
 ```
 core/          C++ audio core (static library), its C API and Catch2 tests
+effects/       C++ real-time effects (static library the core links) and their Catch2 tests
 app/           Tauri app: Svelte frontend (src/) and Rust backend (src-tauri/)
 scripts/       build-ffmpeg.sh, the checks, format, release and test tooling
 cmake/         CMake helpers (pinned downloads, FFmpeg, TagLib, Signalsmith)

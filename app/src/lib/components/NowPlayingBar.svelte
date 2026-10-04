@@ -1,13 +1,15 @@
 <script lang="ts">
   // Along the bottom: the current track (click it for the now-playing view)
   // with its heart (PLAN.md F3), the transport, the seek bar, volume,
-  // shuffle, repeat, the sleep timer (F13) and the queue toggle. In the mini
+  // shuffle, repeat, the sleep timer (F13), the spectral freeze's Hold
+  // while the freeze is on (X2) and the queue toggle. In the mini
   // player (F7, `mini`) the same bar stands alone: the track brings back the
   // main window, and the view toggles are left out.
   import { untrack } from "svelte";
   import { marks, player as playerApi, shell } from "$lib/api";
   import { t } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
+  import { effects } from "$lib/state/effects.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
@@ -60,6 +62,12 @@
           ? `${p.codec.toUpperCase()} ${p.bitsPerSample ? `${p.bitsPerSample}/` : ""}${(p.fileSampleRate / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}`
           : "";
     });
+  });
+
+  // A new track lets go of a held freeze: ask again as it changes.
+  $effect(() => {
+    void [player.currentItem?.uid, player.loaded, effects.freezeOn];
+    if (effects.freezeOn) untrack(() => void effects.refresh());
   });
 
   const togglePanel = (which: "signal" | "practice" | "sleep") => (panel = panel === which ? null : which);
@@ -214,6 +222,17 @@
         aria-label={t("bar.practice")}
         aria-expanded={panel === "practice"}
         onclick={() => togglePanel("practice")}><Icon name="sliders" /></button
+      >
+    {/if}
+    {#if !mini && effects.freezeOn}
+      <button
+        class="icon toggle"
+        class:on={effects.held}
+        title={effects.held ? t("bar.freezeRelease") : t("bar.freezeHold")}
+        aria-label={t("bar.freeze")}
+        aria-pressed={effects.held}
+        disabled={!item && !effects.held}
+        onclick={() => effects.toggleHold()}><Icon name="snowflake" /></button
       >
     {/if}
     {#if !mini}

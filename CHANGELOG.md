@@ -25,3 +25,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   album's cover, with every change shown as it's made and colours that
   fall short of WCAG AA flagged. Themes are saved by name and export to
   and import from JSON files.
+- Effects on whatever is playing (Settings › Features › Effects, off by
+  default): reverb, chorus, flanger, phaser, echo (with ping-pong),
+  tremolo and auto-pan, lo-fi, and a spectral freeze that holds a moment
+  of the music as a drone, held from Settings or the snowflake in the
+  player bar. Each has a mix and its own controls, heard as they move,
+  with presets; reverb and echo tails ring on into the next
+  track, and the signal path lists the effects in use.

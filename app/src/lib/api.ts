@@ -8,7 +8,15 @@
 import { Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "./generated/commands";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppSettings, CoverBasis, ServiceSettings, SortRule, SourceId, Theme } from "./generated/settings";
+import type {
+  AppSettings,
+  CoverBasis,
+  EffectsSettings,
+  ServiceSettings,
+  SortRule,
+  SourceId,
+  Theme,
+} from "./generated/settings";
 
 import type {
   AlbumPrefs,
@@ -268,6 +276,18 @@ export const player = {
   /** Loops the current track, or clears the loop with nulls. */
   setLoop: (start: number | null, end: number | null) => commands.playerSetLoop({ start, end }),
   setTempo: (rate: number, semitones: number) => commands.playerSetTempo({ rate, semitones }),
+};
+
+// ---- Effects (PLAN.md X2) -------------------------------------------------------
+
+export const effects = {
+  /** Every effect the core has, its parameters and their ranges. */
+  catalog: () => commands.effectsCatalog(),
+  /** Plays these settings without saving them, while a control moves. */
+  preview: (effects: EffectsSettings) => commands.effectsPreview({ effects }),
+  /** Holds the spectral freeze, or lets it go; resolves to whether it holds. */
+  freeze: (hold: boolean) => commands.effectsFreeze({ hold }),
+  status: () => commands.effectsStatus(),
 };
 
 // ---- Optional features (PLAN.md O1–O19) -----------------------------------------

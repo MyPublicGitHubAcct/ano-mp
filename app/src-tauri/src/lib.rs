@@ -7,6 +7,7 @@ mod collection;
 #[cfg(debug_assertions)]
 mod dev;
 mod diagnostics;
+mod effects;
 mod features;
 mod history;
 mod library;
@@ -225,6 +226,10 @@ pub fn run() {
             audio::player_set_tempo,
             audio::player_practice,
             audio::player_signal_path,
+            effects::effects_catalog,
+            effects::effects_preview,
+            effects::effects_freeze,
+            effects::effects_status,
             features::analysis_status,
             features::analysis_waveform,
             features::analysis_track,

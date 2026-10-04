@@ -1,4 +1,5 @@
-# clang-tidy for the core (PLAN.md H21), run by scripts/lint-cpp.py.
+# clang-tidy for the core and the effects library (PLAN.md H21), run by
+# scripts/lint-cpp.py.
 # A check turned off here has its reason; a single finding that isn't a
 # bug is allowed at its line with `// NOLINT(check-name): reason`.
 #
@@ -20,5 +21,5 @@ Checks: >-
   -bugprone-multi-level-implicit-pointer-conversion,
   -performance-enum-size
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*/core/(src|include)/.*'
+HeaderFilterRegex: '.*/(core|effects)/(src|include)/.*'
 SystemHeaders: false

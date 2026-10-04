@@ -677,6 +677,84 @@ int anomp_engine_output_is_headphones(anomp_engine* engine);
     milliseconds. Returns 0, changing nothing, for values out of range. */
 int anomp_engine_set_equaliser(anomp_engine* engine, const double* gains_db, double preamp_db);
 
+/* ---- Effects -------------------------------------------------------------
+   Real-time effects on what is playing (the anomp_effects library), after
+   the resampler and before the analysis tap, so the visualizer shows what
+   they make; the equaliser, crossfeed and volume come after them. They run
+   in a fixed order (each effect's `position`) and carry on across a
+   hand-off or a crossfade, so tails ring into the next track; a held
+   freeze lets go when another track takes over. Each has a switch, a
+   wet/dry mix and up to ANOMP_EFFECT_MAX_PARAMS parameters; every change
+   glides, so none clicks. All off, the signal is untouched. Settings may be
+   changed from any thread; they reach the audio thread without locks. */
+
+#define ANOMP_EFFECT_COUNT 8
+#define ANOMP_EFFECT_MAX_PARAMS 4
+
+enum
+{
+    ANOMP_EFFECT_REVERB = 0,  /**< A room: size, damping, width, pre-delay. */
+    ANOMP_EFFECT_CHORUS = 1,  /**< Drifting copies: rate, depth. */
+    ANOMP_EFFECT_FREEZE = 2,  /**< Spectral freeze: holds the sound (anomp_engine_set_freeze); fade. */
+    ANOMP_EFFECT_ECHO = 3,    /**< Repeats: time, feedback, tone, spread (ping-pong). */
+    ANOMP_EFFECT_FLANGER = 4, /**< A swept comb: rate, depth, feedback. */
+    ANOMP_EFFECT_PHASER = 5,  /**< Swept notches: rate, depth, feedback. */
+    ANOMP_EFFECT_TREMOLO = 6, /**< Level or pan moving: rate, depth, stereo. */
+    ANOMP_EFFECT_LOFI = 7     /**< Fewer bits, a lower rate: bits, sample rate. */
+};
+
+/** How a parameter's value reads. */
+enum
+{
+    ANOMP_EFFECT_UNIT_RATIO = 0, /**< 0 to 1 (or -1 to 1); show as a percentage. */
+    ANOMP_EFFECT_UNIT_HERTZ = 1,
+    ANOMP_EFFECT_UNIT_MILLISECONDS = 2,
+    ANOMP_EFFECT_UNIT_SECONDS = 3,
+    ANOMP_EFFECT_UNIT_BITS = 4
+};
+
+typedef struct anomp_effect_param
+{
+    char id[32]; /**< Stable, lower camel case, e.g. "preDelay". */
+    int unit;    /**< An ANOMP_EFFECT_UNIT_* value. */
+    double min;
+    double max;
+    double default_value;
+    int logarithmic; /**< 1 if best moved on a logarithmic scale. */
+} anomp_effect_param;
+
+typedef struct anomp_effect_info
+{
+    char id[32];  /**< Stable, lower camel case, e.g. "reverb". */
+    int position; /**< Where it runs in the chain, 0 first. */
+    double default_mix;
+    int param_count;
+    anomp_effect_param params[ANOMP_EFFECT_MAX_PARAMS];
+} anomp_effect_info;
+
+/** Describes `effect` (an ANOMP_EFFECT_* value). Needs no engine. Returns 0
+    for an unknown effect or a null `info`. */
+int anomp_effect_describe(int effect, anomp_effect_info* info);
+
+/** Switches `effect` on or off with its wet/dry `mix` (0 to 1) and
+    `param_count` parameters (as anomp_effect_describe lists them, each within
+    its range; fewer leave the rest as they were). Returns 0, changing
+    nothing, for an unknown effect, too many parameters, or a value out of
+    range. Switching the freeze off lets go of it. */
+int anomp_engine_set_effect(anomp_engine* engine,
+                            int effect,
+                            int enabled,
+                            double mix,
+                            const double* params,
+                            int param_count);
+
+/** Holds the spectral freeze's sound (1) or lets it go (0). Holding needs
+    the freeze on. Returns 1 if it holds afterwards. */
+int anomp_engine_set_freeze(anomp_engine* engine, int hold);
+
+/** 1 while the freeze holds. A track taking over lets it go. */
+int anomp_engine_freeze_held(anomp_engine* engine);
+
 /* ---- Signal path ---------------------------------------------------------
    Every step between the file and the speakers, for showing the user. */
 
@@ -699,6 +777,8 @@ typedef struct anomp_signal_path
     int device_buffer_size;
     int equaliser;    /**< 1 while the equaliser is on. */
     double crossfade; /**< Seconds the next track is set to crossfade over; 0 if none. */
+    int effects;      /**< Bit (1 << ANOMP_EFFECT_*) set for each effect on, or still ringing out. */
+    int freeze_held;  /**< 1 while the freeze holds. */
 } anomp_signal_path;
 
 /** Fills `path`; returns 0 for a null engine or `path`. */

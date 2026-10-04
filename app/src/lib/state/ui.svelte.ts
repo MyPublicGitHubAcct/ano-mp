@@ -30,6 +30,7 @@ export type SettingsSection =
   | "appearance"
   | "playback"
   | "equaliser"
+  | "effects"
   | "visualizer"
   | "sources"
   | "features"

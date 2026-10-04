@@ -120,6 +120,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let current = settings::current(&app_for_init);
     apply_crossfeed(&mut engine, &current.features);
     apply_equaliser_to(&mut engine, &current.equaliser);
+    crate::effects::apply_to(&mut engine, &current.effects, current.features.effects);
     ENGINE.with_borrow_mut(|slot| *slot = Some(engine));
     opened
 }

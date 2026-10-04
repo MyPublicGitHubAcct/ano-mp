@@ -1062,6 +1062,86 @@ TEST_CASE ("PlayerEngine equalises after the tap, with its preamp", "[player][eq
     CHECK (maxError (h.output, 4096, whole, 4096, 4096, 0.5f) < 1e-5f);
 }
 
+TEST_CASE ("PlayerEngine runs its effects before the tap", "[player][effects]")
+{
+    using anomp::fx::EffectType;
+    Harness h (44100.0, false);
+    const auto whole = decode ("flac-44k.flac");
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    auto& effects = h.player.getEffects();
+    effects.setParameter (EffectType::tremolo, 1, 1.0f); // Full depth.
+    effects.setMix (EffectType::tremolo, 1.0f);
+    effects.setEnabled (EffectType::tremolo, true);
+    CHECK (h.player.getSignalInfo().effects[static_cast<size_t> (EffectType::tremolo)]);
+    REQUIRE (h.player.play());
+    h.render (8192);
+    CHECK (maxError (h.output, 4096, whole, 4096, 4096) > 0.05f);
+
+    // The visualizer sees what the effects made: the tap's latest block is
+    // the output's (at full volume, no equaliser).
+    std::vector<float> left (blockSize), right (blockSize);
+    h.player.getTap().readLatest (left.data(), right.data(), blockSize);
+    const auto last = static_cast<size_t> (length (h.output) - blockSize);
+    for (size_t i = 0; i < static_cast<size_t> (blockSize); ++i)
+        REQUIRE (left[i] == h.output[0][last + i]);
+}
+
+TEST_CASE ("PlayerEngine carries an echo's tail across a gapless hand-off", "[player][effects][gapless]")
+{
+    using anomp::fx::EffectType;
+    Harness h (44100.0, false);
+    const auto first = decode ("flac-44k.flac");
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+
+    // Wet only: one repeat 100 ms late, as bright as it gets.
+    auto& effects = h.player.getEffects();
+    const std::array<float, 4> echo { 100.0f, 0.0f, 1.0f, 0.0f };
+    for (size_t i = 0; i < echo.size(); ++i)
+        effects.setParameter (EffectType::echo, i, echo[i]);
+    effects.setMix (EffectType::echo, 1.0f);
+    effects.setEnabled (EffectType::echo, true);
+    REQUIRE (h.player.play());
+    h.takeEvents();
+    h.render (length (first) + 8192);
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+
+    // Just after the hand-off the output is still the first track's last
+    // 100 ms, repeated.
+    constexpr int delay = 4410;
+    const auto handOff = length (first);
+    const auto error = maxError (h.output, handOff, first, handOff - delay, delay - 64);
+    const auto level = peak (h.output, handOff, handOff + delay - 64);
+    CHECK (level > 0.05f);
+    CHECK (error < 0.15f * level);
+}
+
+TEST_CASE ("PlayerEngine lets go of a held freeze when a track takes over", "[player][effects][gapless]")
+{
+    using anomp::fx::EffectType;
+    Harness h (44100.0, false);
+    const auto first = decode ("flac-44k.flac");
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    REQUIRE (h.player.setNext (fixtureFile ("wav-s16-44k.wav")).isEmpty());
+    auto& effects = h.player.getEffects();
+    effects.setEnabled (EffectType::freeze, true);
+    REQUIRE (h.player.play());
+    h.takeEvents();
+    h.render (16384);
+    REQUIRE (effects.setFreezeHeld (true));
+    h.render (4096);
+    CHECK (h.player.getSignalInfo().freezeHeld);
+
+    h.render (length (first));
+    CHECK (h.takeEvents() == std::vector<std::string> { "advanced" });
+    CHECK_FALSE (effects.isFreezeHeld());
+
+    // Loading another track lets go too.
+    REQUIRE (effects.setFreezeHeld (true));
+    REQUIRE (h.player.load (fixtureFile ("flac-44k.flac")).isEmpty());
+    CHECK_FALSE (effects.isFreezeHeld());
+}
+
 TEST_CASE ("PlayerEngine hands off while an audio thread renders", "[player][gapless][threads]")
 {
     // As with a device: one thread renders while the message thread queues

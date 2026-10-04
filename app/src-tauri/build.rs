@@ -79,7 +79,7 @@ fn build_core() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let repo_root = manifest_dir.join("../..").canonicalize().unwrap();
 
-    for path in ["CMakeLists.txt", "cmake", "core"] {
+    for path in ["CMakeLists.txt", "cmake", "core", "effects"] {
         println!("cargo:rerun-if-changed={}", repo_root.join(path).display());
     }
 
@@ -96,6 +96,12 @@ fn build_core() {
         dst.join("build/core").display()
     );
     println!("cargo:rustc-link-lib=static=anomp_core");
+    // The effects (PLAN.md X2), a static library the core links.
+    println!(
+        "cargo:rustc-link-search=native={}",
+        dst.join("build/effects").display()
+    );
+    println!("cargo:rustc-link-lib=static=anomp_effects");
     // TagLib (cmake/TagLib.cmake), a static dependency of the core.
     println!(
         "cargo:rustc-link-search=native={}",

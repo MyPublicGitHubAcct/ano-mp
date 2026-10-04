@@ -170,6 +170,28 @@ struct RawSignalPath {
     device_buffer_size: c_int,
     equaliser: c_int,
     crossfade: f64,
+    effects: c_int,
+    freeze_held: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RawEffectParam {
+    id: [c_char; 32],
+    unit: c_int,
+    min: f64,
+    max: f64,
+    default_value: f64,
+    logarithmic: c_int,
+}
+
+#[repr(C)]
+struct RawEffectInfo {
+    id: [c_char; 32],
+    position: c_int,
+    default_mix: f64,
+    param_count: c_int,
+    params: [RawEffectParam; EFFECT_MAX_PARAMS],
 }
 
 #[repr(C)]
@@ -448,6 +470,17 @@ extern "C" {
         gains_db: *const f64,
         preamp_db: f64,
     ) -> c_int;
+    fn anomp_effect_describe(effect: c_int, info: *mut RawEffectInfo) -> c_int;
+    fn anomp_engine_set_effect(
+        engine: *mut RawEngine,
+        effect: c_int,
+        enabled: c_int,
+        mix: f64,
+        params: *const f64,
+        param_count: c_int,
+    ) -> c_int;
+    fn anomp_engine_set_freeze(engine: *mut RawEngine, hold: c_int) -> c_int;
+    fn anomp_engine_freeze_held(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_output_is_headphones(engine: *mut RawEngine) -> c_int;
     fn anomp_engine_signal_path(engine: *mut RawEngine, path: *mut RawSignalPath) -> c_int;
     fn anomp_engine_set_device_sample_rate(engine: *mut RawEngine, sample_rate: f64) -> c_int;
@@ -1242,6 +1275,110 @@ impl AnalysisFrame<'_> {
 pub const EQ_BANDS: usize = 10;
 pub const EQ_MAX_GAIN: f64 = 12.0;
 
+/// Effects the core has (`ANOMP_EFFECT_COUNT`), and the most parameters
+/// one takes (`ANOMP_EFFECT_MAX_PARAMS`).
+pub const EFFECT_COUNT: usize = 8;
+pub const EFFECT_MAX_PARAMS: usize = 4;
+
+/// How an effect parameter's value reads (`ANOMP_EFFECT_UNIT_*`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum EffectUnit {
+    /// 0 to 1 (or -1 to 1), shown as a percentage.
+    Ratio,
+    Hertz,
+    Milliseconds,
+    Seconds,
+    Bits,
+}
+
+/// One of an effect's parameters (`anomp_effect_param`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct EffectParam {
+    /// Stable, lower camel case, e.g. "preDelay".
+    pub id: String,
+    pub unit: EffectUnit,
+    pub min: f64,
+    pub max: f64,
+    pub default_value: f64,
+    /// Best moved on a logarithmic scale.
+    pub logarithmic: bool,
+}
+
+/// One of the core's effects (`anomp_effect_info`), PLAN.md X2.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct EffectInfo {
+    /// The core's number for it (`ANOMP_EFFECT_*`).
+    pub number: u32,
+    /// Stable, lower camel case, e.g. "reverb": its key in the settings.
+    pub id: String,
+    /// Where it runs in the chain, 0 first.
+    pub position: u32,
+    pub default_mix: f64,
+    pub params: Vec<EffectParam>,
+}
+
+/// A bound the core keeps as a float, as the shortest decimal that is that
+/// float (0.05 rather than 0.0500000007…), so values written as decimals
+/// compare as the core compares them.
+fn from_float(value: f64) -> f64 {
+    (value as f32).to_string().parse().unwrap_or(value)
+}
+
+/// Every effect the core has, by number.
+pub fn effects() -> Vec<EffectInfo> {
+    (0..EFFECT_COUNT)
+        .filter_map(|number| {
+            let number = c_int::try_from(number).ok()?;
+            // SAFETY: an all-zero RawEffectInfo is valid (no pointers inside).
+            let mut raw: RawEffectInfo = unsafe { std::mem::zeroed() };
+            // SAFETY: `raw` is valid for the call.
+            if unsafe { anomp_effect_describe(number, &mut raw) } == 0 {
+                return None;
+            }
+            let text = |id: &[c_char; 32]| {
+                // SAFETY: the core NUL-terminates ids within their arrays,
+                // and the zeroed array ends in a NUL whatever it writes.
+                unsafe { CStr::from_ptr(id.as_ptr()) }
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            let count = usize::try_from(raw.param_count)
+                .unwrap_or(0)
+                .min(EFFECT_MAX_PARAMS);
+            let params = raw.params[..count]
+                .iter()
+                .map(|param| EffectParam {
+                    id: text(&param.id),
+                    unit: match param.unit {
+                        1 => EffectUnit::Hertz,
+                        2 => EffectUnit::Milliseconds,
+                        3 => EffectUnit::Seconds,
+                        4 => EffectUnit::Bits,
+                        _ => EffectUnit::Ratio,
+                    },
+                    min: from_float(param.min),
+                    max: from_float(param.max),
+                    default_value: from_float(param.default_value),
+                    logarithmic: param.logarithmic != 0,
+                })
+                .collect();
+            Some(EffectInfo {
+                number: number.unsigned_abs(),
+                id: text(&raw.id),
+                position: raw.position.unsigned_abs(),
+                default_mix: from_float(raw.default_mix),
+                params,
+            })
+        })
+        .collect()
+}
+
 /// Largest gain `Engine::load` and friends apply (about +18 dB); the core
 /// clamps to it (`ANOMP_MAX_TRACK_GAIN`).
 pub const MAX_TRACK_GAIN: f64 = 8.0;
@@ -1306,6 +1443,11 @@ pub struct SignalPath {
     pub equaliser: bool,
     /// Seconds the next track crossfades over; 0 if none (PLAN.md F14).
     pub crossfade: f64,
+    /// The effects on, or still ringing out, by id in the order they run
+    /// (PLAN.md X2).
+    pub effects: Vec<String>,
+    /// The spectral freeze holds the sound.
+    pub freeze_held: bool,
 }
 
 impl SignalPath {
@@ -1334,6 +1476,15 @@ impl SignalPath {
             device_buffer_size: positive(raw.device_buffer_size).unwrap_or(0),
             equaliser: raw.equaliser != 0,
             crossfade: raw.crossfade,
+            effects: {
+                let mut on: Vec<EffectInfo> = effects()
+                    .into_iter()
+                    .filter(|effect| raw.effects & (1 << effect.number) != 0)
+                    .collect();
+                on.sort_by_key(|effect| effect.position);
+                on.into_iter().map(|effect| effect.id).collect()
+            },
+            freeze_held: raw.freeze_held != 0,
         }
     }
 }
@@ -1644,6 +1795,42 @@ impl Engine {
         // SAFETY: `raw` is a live engine, and `gains` is null or points to
         // EQ_BANDS values for the whole call.
         unsafe { anomp_engine_set_equaliser(self.raw.as_ptr(), gains, preamp) != 0 }
+    }
+
+    /// Switches effect `number` (`EffectInfo::number`) on or off with its
+    /// wet/dry `mix` (0 to 1) and its parameters in `EffectInfo::params`
+    /// order (fewer leave the rest as they were). False, changing nothing,
+    /// for an unknown effect or a value out of range.
+    pub fn set_effect(&mut self, number: u32, enabled: bool, mix: f64, params: &[f64]) -> bool {
+        let (Ok(number), Ok(count)) = (c_int::try_from(number), c_int::try_from(params.len()))
+        else {
+            return false;
+        };
+        // SAFETY: `raw` is a live engine, and `params` holds `count` values
+        // for the whole call.
+        unsafe {
+            anomp_engine_set_effect(
+                self.raw.as_ptr(),
+                number,
+                c_int::from(enabled),
+                mix,
+                params.as_ptr(),
+                count,
+            ) != 0
+        }
+    }
+
+    /// Holds the spectral freeze's sound, or lets it go; true if it holds
+    /// afterwards (holding needs the freeze on).
+    pub fn set_freeze(&mut self, hold: bool) -> bool {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_set_freeze(self.raw.as_ptr(), c_int::from(hold)) != 0 }
+    }
+
+    /// Whether the freeze holds; a track taking over lets it go.
+    pub fn freeze_held(&self) -> bool {
+        // SAFETY: `raw` is a live engine.
+        unsafe { anomp_engine_freeze_held(self.raw.as_ptr()) != 0 }
     }
 
     /// Whether the output plays through headphones; `None` if the OS

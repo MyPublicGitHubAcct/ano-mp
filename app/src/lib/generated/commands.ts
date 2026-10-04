@@ -4,8 +4,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
-import type { AppSettings, CoverBasis, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
+import type { AppSettings, CoverBasis, EffectsSettings, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
 export const commands = {
@@ -98,6 +98,10 @@ export const commands = {
   playerSetTempo: (args: { rate: number; semitones: number }) => invoke<void>("player_set_tempo", args),
   playerPractice: () => invoke<Practice>("player_practice"),
   playerSignalPath: () => invoke<SignalPathPayload>("player_signal_path"),
+  effectsCatalog: () => invoke<EffectInfo[]>("effects_catalog"),
+  effectsPreview: (args: { effects: EffectsSettings }) => invoke<void>("effects_preview", args),
+  effectsFreeze: (args: { hold: boolean }) => invoke<boolean>("effects_freeze", args),
+  effectsStatus: () => invoke<EffectsStatus>("effects_status"),
   analysisStatus: () => invoke<AnalysisProgress>("analysis_status"),
   analysisWaveform: (args: { trackId: number }) => invoke<number[] | null>("analysis_waveform", args),
   analysisTrack: (args: { trackId: number }) => invoke<TrackAnalysis | null>("analysis_track", args),

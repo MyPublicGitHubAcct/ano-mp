@@ -29,7 +29,9 @@ def test_batches_cover_every_file_in_order(format_cpp):
 
 def test_real_core_fits_in_batches(format_cpp):
     files = format_cpp.source_files(format_cpp.CORE, format_cpp.REPO_ROOT)
+    files += format_cpp.source_files(format_cpp.EFFECTS, format_cpp.REPO_ROOT)
     assert "core/include/anomp/anomp.h" in files
+    assert "effects/include/anomp/effects/EffectChain.h" in files
     batches = format_cpp.batches(files)
     assert [file for batch in batches for file in batch] == files
     # Well inside Windows' 32K-character command line.

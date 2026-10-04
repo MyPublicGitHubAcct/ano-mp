@@ -61,6 +61,8 @@ target_link_libraries(anomp_core
         # FFT for the visualizer's analysis (SpectrumAnalyser).
         juce::juce_dsp
     PRIVATE
+        # The real-time effects (PLAN.md X2), a library of their own.
+        anomp_effects
         FFmpeg::avformat
         TagLib::tag
         Signalsmith::stretch

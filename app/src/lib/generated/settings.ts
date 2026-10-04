@@ -2,7 +2,11 @@
 // `bindings`); don't edit. After changing them, run
 // `ANOMP_WRITE_BINDINGS=1 cargo test bindings` in src-tauri.
 
-export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, equaliser: EqualiserSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
+export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, equaliser: EqualiserSettings, 
+/**
+ * X2: the effects' settings, used while `features.effects` is on.
+ */
+effects: EffectsSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -103,7 +107,7 @@ export type CoverBasis = "year" | "artist";
  * The optional features (PLAN.md §4.6, O1–O19), each of which the user
  * can turn on or off. Local, cheap features are on by default; ones that
  * cost hours of CPU time (the loudness analysis), change what is heard
- * (crossfeed, sample-rate switching), go online (ListenBrainz, update
+ * (crossfeed, sample-rate switching, effects), go online (ListenBrainz, update
  * checks) or listen on the network (the remote) are off until the user
  * turns them on.
  */
@@ -226,7 +230,12 @@ updateCheck: boolean,
 /**
  * X1: the user's theme (`appearance`); off, the default theme shows.
  */
-themes: boolean, };
+themes: boolean, 
+/**
+ * X2: real-time effects on what is playing (`AppSettings.effects`);
+ * off, every effect is off.
+ */
+effects: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 
@@ -253,6 +262,24 @@ export type EqualiserProfile = {
  * The preset these came from ("flat", "bassBoost"…), or "custom".
  */
 preset: string, preamp: number, gains: Array<number>, };
+
+/**
+ * Each effect's settings, by its id in the core.
+ */
+export type EffectsSettings = { reverb: EffectSettings, chorus: EffectSettings, freeze: EffectSettings, echo: EffectSettings, flanger: EffectSettings, phaser: EffectSettings, tremolo: EffectSettings, lofi: EffectSettings, };
+
+/**
+ * One effect: on or off, its wet/dry mix and its parameters by id.
+ */
+export type EffectSettings = { enabled: boolean, 
+/**
+ * 0 (the music only) to 1 (the effect only).
+ */
+mix: number, 
+/**
+ * Every parameter the core lists for it, within its range.
+ */
+params: Record<string, number>, };
 
 /**
  * Keeping the library in step with the disk (PLAN.md F9).
