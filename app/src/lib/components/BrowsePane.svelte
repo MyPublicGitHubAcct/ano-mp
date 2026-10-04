@@ -11,7 +11,7 @@
   // hearted, and tracks rated (F3); "Favourites only" keeps what is hearted,
   // or on a hearted album or by a hearted artist. Inside an artist, the
   // header links to their page; inside an album, the album's details show
-  // above its tracks.
+  // above its tracks, which always keep room for a few rows.
   import { untrack } from "svelte";
   import {
     library as api,
@@ -46,6 +46,8 @@
   type Entry = { kind: "group"; group: Group } | { kind: "track"; track: Track };
 
   const PAGE = 200;
+  /** Rows of an album's tracks kept in view however much its details need. */
+  const ALBUM_ROWS_KEPT = 4;
 
   let total = $state(0);
   let loaded = $state(false);
@@ -337,7 +339,7 @@
       {/if}
     </div>
   {:else}
-    <div class="list">
+    <div class="list" style:min-height={nodeAlbum ? `${Math.min(total, ALBUM_ROWS_KEPT) * rowHeight}px` : null}>
       {#key `${library.ruleId}/${JSON.stringify(library.path)}/${library.version}/${favouritesOnly}`}
         <VirtualList
           count={total}
@@ -494,7 +496,7 @@
   }
 
   .list {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     container-type: inline-size;
   }

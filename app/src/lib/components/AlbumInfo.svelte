@@ -375,6 +375,13 @@
 
 <style>
   .album-info {
+    /* In the browse pane's column, above the tracks: at most half the
+       pane, scrolling when its open sections need more, and giving way
+       to the tracks' few rows the pane keeps for them. */
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 50%;
+    overflow-y: auto;
     padding: 0 1rem 0.75rem;
     border-bottom: 1px solid var(--border);
   }

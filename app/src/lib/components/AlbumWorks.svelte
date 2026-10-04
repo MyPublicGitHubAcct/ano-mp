@@ -1,11 +1,13 @@
 <script lang="ts">
   // An album's classical works (O6): each work's movements under it, with
   // the composer and conductor, and "Play work" to queue the whole work.
-  // Shown on album pages whose tracks carry work tags.
+  // Shown on album pages whose tracks carry work tags, folded away until
+  // opened.
   import { t } from "$lib/i18n";
   import { queue, type AlbumTrack } from "$lib/api";
   import { formatTime } from "$lib/format";
   import { attempt } from "$lib/state/toasts.svelte";
+  import Fold from "./Fold.svelte";
 
   let { tracks }: { tracks: AlbumTrack[] } = $props();
 
@@ -58,42 +60,46 @@
 </script>
 
 {#if works.length > 0}
-  <section class="works" aria-label={t("works.label")}>
-    {#each works as work (work.name)}
-      <div class="work">
-        <div class="head">
-          <div>
-            <h3>{work.name}</h3>
-            <p class="muted small">
-              {[work.composer, work.conductor ? t("works.conductedBy", { name: work.conductor }) : null]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
+  <section aria-label={t("works.label")}>
+    <Fold key="album.works" heading={t("works.label")} level={3}>
+      <div class="works">
+        {#each works as work (work.name)}
+          <div class="work">
+            <div class="head">
+              <div>
+                <h3>{work.name}</h3>
+                <p class="muted small">
+                  {[work.composer, work.conductor ? t("works.conductedBy", { name: work.conductor }) : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <button onclick={() => playWork(work)}>{t("works.play")}</button>
+            </div>
+            <ol>
+              {#each work.movements as movement (movement.id)}
+                <li>
+                  <button
+                    class="link"
+                    onclick={() =>
+                      attempt(() =>
+                        queue.play(
+                          work.movements.map((m) => m.id),
+                          work.movements.indexOf(movement),
+                        ),
+                      )}
+                  >
+                    {movement.movementNumber ? `${roman(movement.movementNumber)}. ` : ""}{movement.movementName ??
+                      movement.title}
+                  </button>
+                  <span class="muted small">{formatTime(movement.duration)}</span>
+                </li>
+              {/each}
+            </ol>
           </div>
-          <button onclick={() => playWork(work)}>{t("works.play")}</button>
-        </div>
-        <ol>
-          {#each work.movements as movement (movement.id)}
-            <li>
-              <button
-                class="link"
-                onclick={() =>
-                  attempt(() =>
-                    queue.play(
-                      work.movements.map((m) => m.id),
-                      work.movements.indexOf(movement),
-                    ),
-                  )}
-              >
-                {movement.movementNumber ? `${roman(movement.movementNumber)}. ` : ""}{movement.movementName ??
-                  movement.title}
-              </button>
-              <span class="muted small">{formatTime(movement.duration)}</span>
-            </li>
-          {/each}
-        </ol>
+        {/each}
       </div>
-    {/each}
+    </Fold>
   </section>
 {/if}
 
@@ -101,7 +107,6 @@
   .works {
     display: grid;
     gap: 0.75rem;
-    margin-top: 0.75rem;
   }
 
   .work {

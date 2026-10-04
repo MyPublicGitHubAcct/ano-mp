@@ -380,6 +380,9 @@
     grid-area: main;
     min-width: 0;
     min-height: 0;
+    /* Each view scrolls within itself; whatever outgrows the area is cut
+       off rather than drawn over the now-playing bar. */
+    overflow: hidden;
   }
 
   .queue {
