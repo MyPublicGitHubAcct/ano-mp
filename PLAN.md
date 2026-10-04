@@ -6,9 +6,9 @@ the app (each phase says what). Phase 7 (hardening) is under way: every
 step of its "Order of work" that needs no owner decision is done, and the
 signed release waits on the owner's §8.1 decisions
 (`docs/release-decisions.md`). Phase 7b (themes, effects,
-visualizations, recommendations and similar artists; P3, added
-2026-10-03) follows Phase 7, before the ports; X1 (themes) and X2
-(effects) were built early, at the owner's request. Finished work's design notes and records
+visualizations, recommendations, recording and similar artists; P3,
+added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
+(effects) and X3 (visualizations) were built early, at the owner's request. Finished work's design notes and records
 are in `docs/design/`, linked from each phase.
 
 
@@ -89,9 +89,9 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 
 | Suite | Location |
 |---|---|
-| 144 passing Catch2 tests (121 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
+| 146 passing Catch2 tests (123 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 446 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
-| 42 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 55 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -224,9 +224,10 @@ sets priorities rather than open questions.
    and where it differs from the proposal. What remains is checking them
    in the app (Phase 6c's exit).
 8. **Personalisation, effects and discovery: added 2026-10-03 at P3.**
-   X1–X6 (Phase 7b): themes, real-time effects, five uncommon
-   visualizations, recommendations from inside and outside the
-   library, and similar artists on artist pages. Low priority: after Phase 7's exit and the first release, but
+   X1–X7 (Phase 7b): themes, real-time effects, ten uncommon
+   visualizations (X3, five more added 2026-10-04), recommendations from inside and outside the
+   library, recording what is playing to a WAV file (X6, added
+   2026-10-04), and similar artists on artist pages. Low priority: after Phase 7's exit and the first release, but
    before the cross-platform work (Phases 8–10), so the ports carry them.
    #6's rules apply; X2 and X5 are off by default (they change what is
    heard and go online).
@@ -299,7 +300,7 @@ Each item's proposal and its **Decision** line are in
 Each phase ends with a demonstrable result and green tests. Platform order:
 macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9), then
 Windows (Phase 10). Phase 7b (themes, effects, visualizations,
-recommendations and similar artists, P3) comes after Phase 7 and before the ports, so those
+recommendations, recording and similar artists, P3) comes after Phase 7 and before the ports, so those
 features are settled on macOS first. Xcode is not needed until Phase 8.
 Phase 11 (Bandcamp streaming) is a feature, not a platform, and depends
 on Bandcamp's permission. Its engineering starts after Phase 7. The phases
@@ -556,7 +557,7 @@ The open items and parts:
 
 ### Phase 7b — Personalisation, effects and discovery (macOS)
 Added 2026-10-03 at the owner's request. **Priority: P3 (§4 #8)**: none of
-X1–X6 is needed for a release, and none starts before Phase 7's exit. They
+X1–X7 is needed for a release, and none starts before Phase 7's exit. They
 come before the ports (Phases 8–10), so each is built and settled once on
 macOS and then ported with the rest of the app. Each is an optional feature
 under §4 #6's rules: a switch in `FeatureSettings` that it checks where it
@@ -566,10 +567,11 @@ acts, off by default if it changes what is heard or goes online.
 |---|---|---|---|
 | X1 | Themes: the user changes the look and feel | UI, settings | M |
 | X2 | Real-time effects on what is playing (reverb, chorus, spectral freeze) | core DSP, C API, Rust, settings, UI | L |
-| X3 | Five more visualizations, all uncommon in music players | core (analysis), UI | M–L |
+| X3 | Ten more visualizations, all uncommon in music players (two of them combinations) | core (analysis), UI | M–L |
 | X4 | Recommendations from the library | Rust, UI | M |
 | X5 | Recommendations from outside the library | Rust (metadata), UI | M (after X4) |
-| X6 | Similar artists on artist pages | Rust, UI | S (after X4; X5 for outside ones) |
+| X6 | Record what is playing to a WAV file | core, C API, Rust, settings, UI | M |
+| X7 | Similar artists on artist pages | Rust, UI | S (after X4; X5 for outside ones) |
 
 - [x] **X1 Themes.** The UI's colours, fonts, density, corner radius and
   the cover-derived accent become design tokens (CSS custom properties on
@@ -691,8 +693,9 @@ acts, off by default if it changes what is heard or goes online.
   - Left to check in the app: each effect by ear, including during a
     gapless hand-off, a crossfade and a seek, with no clicks or dropouts
     at the smallest buffer size.
-- [ ] **X3 Five visualizations** that few players have, beside Phase 5's.
-  Candidates, to settle with the owner before building:
+- [x] **X3 Ten visualizations** that few players have, beside Phase 5's.
+  The five candidates, which the owner took, and on 2026-10-04 five more
+  at the owner's request, two of them combinations of the others:
   - a **Tonnetz**: the harmonic lattice, lit by the chroma Phase 5
     already computes, so chords and modulations show as moving shapes;
   - a **recurrence plot** that builds up over the track, showing its
@@ -701,13 +704,73 @@ acts, off by default if it changes what is heard or goes online.
   - a **phase portrait**: a delay-embedded attractor of the waveform,
     whose shape follows timbre;
   - a **pitch spiral**: the spectrum wrapped one octave per turn, so
-    notes line up along spokes and harmonics form patterns.
+    notes line up along spokes and harmonics form patterns;
+  - a **harmonograph**: damped-pendulum figures tuned, in just
+    intonation, to the interval between the two loudest notes;
+  - **rhythm rings**: one bar a turn, each bar a ring, the onsets marked
+    where they fall, so a repeating rhythm lines up from ring to ring;
+  - a **stereo stage**: each band placed between the speakers by its
+    balance, bass at the bottom;
+  - **Resonance** (a combination): cymatics with the phase portrait
+    over it;
+  - **Harmony** (a combination): the pitch spiral beside the Tonnetz.
 
   Each takes the cover's colours and obeys the flash guard and
   `prefers-reduced-motion` (F18). New analysis (the recurrence plot's
   features) goes in the core's analysis thread and the frame encoding,
   with tests on synthetic signals as in Phase 5. Check each one's CPU
   cost at Retina size.
+  - **Built** 2026-10-04, ahead of Phase 7's exit at the owner's request.
+    **New analysis** (`SpectrumAnalyser`, tests in `AnalysisTests.cpp`):
+    `notes`, 84 semitones from C2 (MIDI 36) to B8, each the loudest
+    component within half a semitone on the bands' scale, read from the
+    chroma's 8192-point transform; and `balance`, per band, where its
+    sound sits from left (-1) to right (+1), from 2048-point transforms
+    of each channel, 0 for a band under the floor. Both cross the C API
+    at the end of `anomp_analysis_frame` (`note_count`, `lowest_note`,
+    `notes`, `balance`) and the frame format, now version 2 (`encode`:
+    the notes as bytes, the balance as signed bytes; 2.3 KB a frame).
+    **Decided:** the recurrence plot's features stay in the frontend, not
+    the core: the chroma and bands each frame carries are its features,
+    so the core has nothing new to compute for it.
+  - **Pure logic** (`lib/visualizer/music.ts`, `recurrence.ts`; tests in
+    `tests/visualizations.test.mjs`): the strongest triad (its weakest
+    note above the mean of the other nine), the strongest interval named
+    the consonant way round, the Tonnetz's lattice (fifths along a row,
+    major thirds up), the Chladni mode each note rings (the square
+    plate's modes in order of m² + n²), the embedding delay (the
+    autocorrelation's first zero), and the tempo (`TempoTracker`): the
+    autocorrelation of the last 8 s of onset strength, spread ±40 ms,
+    over 50–200 bpm, leaning gently towards 120 bpm, with the beats where
+    the onsets line up best on that period. A first version fitted the
+    core's discrete beats and, on real music, never found a tempo:
+    onsets are single-frame spikes and real beats are irregular. Compared
+    on five synthetic grooves at 60–180 bpm, this finds 158 of 180, every
+    miss an octave off at the extremes (60 read as 120, 180 as 90). Its
+    threshold is low, so music without a pulse may show a tempo. The
+    recurrence plot sums a feature (the chroma, and the bands pooled
+    into eight about their mean) over half-second steps in a 256-step
+    grid, and when it fills merges pairs and doubles the step, so the
+    whole track always fits; it starts again with each track.
+  - **Renderers** (`lib/visualizer/renderers/`): `tonnetz`,
+    `recurrence`, `cymatics`, `portrait`, `spiral`, `harmonograph`,
+    `rhythm`, `stage`, `resonance`, `harmony`, listed after Phase 5's.
+    The combinations are `combine.ts`'s `overlay` (the top one drawn into
+    a layer of its own, where `clearStage` fades to transparent; the
+    scene's `layer`) and `sideBySide` (one above the other on a tall
+    stage). Names, descriptions and their few
+    words (chords, intervals, tempo) are in `en.json`.
+  - **CPU** at Retina size (640 × 400 points at 2×), measured in an
+    offscreen WKWebView on synthetic frames, mean per draw including the
+    canvas's flush: under 2 ms for the Tonnetz, recurrence plot, phase
+    portrait, harmonograph, rhythm rings and stereo stage; 7 to 10 ms
+    for cymatics, the pitch spiral and both combinations, with 95% of
+    draws within 5 ms. The stereo stage's 64 glows are sprites painted
+    once per palette: drawn as gradients they cost 52 ms.
+  - Left to check in the app: each one on real music (the recurrence
+    plot on a song with a chorus, the rhythm rings' tempo against a
+    known one), in calm mode, full screen on a Retina display, and in
+    the auto-cycle.
 - [ ] **X4 Recommendations from the library.** "More like this" for a
   track, album or artist, and a Home row of library items the user hasn't
   played lately that resemble what they have. Offline and local: scores
@@ -730,7 +793,53 @@ acts, off by default if it changes what is heard or goes online.
   and anything the user already owns is filtered out by MBID and folded
   names. Dismissed suggestions are remembered. Recorded fixtures in
   `metadata/fixtures/`, no network in tests.
-- [ ] **X6 Similar artists on artist pages.** A "Similar artists" section
+- [ ] **X6 Record the output to a WAV file.** Added 2026-10-04 at the
+  owner's request. A Record button (in the now-playing bar, and in the
+  Controls menu) writes what is playing, as heard, to a WAV file until
+  it is pressed again: across track changes, gapless hand-offs and
+  crossfades, with the effects (X2), equaliser (F15) and crossfeed
+  (O11) applied.
+  - **Core**: a tap after crossfeed and before volume, so the recording
+    doesn't depend on the volume slider (decide: before or after
+    volume). The audio thread only pushes samples into a lock-free FIFO;
+    a writer thread drains it to the file (JUCE's
+    `AudioFormatWriter::ThreadedWriter` over `WavAudioFormat`, which
+    `juce_audio_formats` already has). 32-bit float at the engine's
+    rate by default, 24-bit as an option; RF64 past 4 GB. While paused
+    nothing is written, so a pause leaves no silence. A change of the
+    engine's rate (O10's sample-rate matching) starts a new file with
+    a numbered suffix rather than resampling. A full disk or a write
+    error stops the recording, keeps what was written (the header
+    finalised) and reports it through an event. A FIFO overrun (the
+    writer falling behind) is counted and reported, never blocks the
+    audio thread.
+  - **C API**: `anomp_engine_record_start` (UTF-8 path, format),
+    `anomp_engine_record_stop`, `anomp_engine_recording` (state, frames
+    written, overruns), and a `RecordingStopped` event with its reason;
+    main-thread only, like the rest of the engine. The signal path
+    panel (O10) shows a recording in progress.
+  - **Rust** (a new `recording` module): the recordings folder, picked once with
+    the folder picker and kept as a read-write security-scoped bookmark
+    (the sandbox already has `files.user-selected.read-write`); a file
+    named by date and time (`ano-mp 2026-10-04 21.15.03.wav`), never by
+    title. Optionally a cue sheet beside it listing the tracks and their
+    offsets, so the recording reopens as tracks (Tracks are parts of
+    files). Logs follow H9: ids and counts at info, the file name at
+    debug.
+  - **UI**: the Record button with an elapsed time and a red dot while
+    recording; Settings › Recording for the folder, the sample format
+    and the cue sheet. Strings in `en.json`, errors through `errorText`.
+  - Switch: `recording`, off by default (it writes large files: about
+    23 MB a minute at 48 kHz float). Streams (Phase 11) are never
+    recorded: the button is disabled while one plays, under Bandcamp's
+    terms.
+  - Tests: offline renders in the style of `PlayerEngineTests.cpp` that
+    record a gapless hand-off and a crossfade and compare the file with
+    the rendered output, sample for sample; pause, a rate change, a
+    write error and an overrun; and a benchmark (H18) that the tap costs
+    the audio thread nothing measurable. A bundle self-test stage (H14)
+    writes into a picked folder under the sandbox.
+- [ ] **X7 Similar artists on artist pages.** A "Similar artists" section
   on the artist page (`ArtistPage.svelte`), under the biography: first
   the library's artists most like this one, by X4's artist scoring
   (shared genres, credits and MusicBrainz relations, co-listening), each
@@ -753,9 +862,11 @@ acts, off by default if it changes what is heard or goes online.
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade
   and a seek, with no clicks and no dropouts at the smallest buffer
-  size; the five visualizations on real music, and their CPU cost;
+  size; the ten visualizations on real music, and their CPU cost;
   library recommendations that make sense on the owner's library;
   outside recommendations with ListenBrainz, none of them already owned;
+  a recording across a gapless album, a crossfade and a pause, played
+  back in another app without gaps or clicks;
   similar artists that make sense on the owner's library, with and
   without X5.
 

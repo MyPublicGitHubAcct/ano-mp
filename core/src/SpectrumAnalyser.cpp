@@ -26,6 +26,9 @@ constexpr float chromaLowestHz = 80.0f;
 constexpr float chromaHighestHz = 5000.0f;
 constexpr float chromaSilence = 1.0e-4f; // Summed normalised magnitude.
 
+// Balance: a band quieter than this (on the bands' 0..1 scale) isn't placed.
+constexpr float balanceFloor = 0.05f;
+
 // Levels and the waveform trigger search, in samples.
 constexpr int levelSamples = 2048;
 constexpr int triggerSearch = 2048;
@@ -51,6 +54,25 @@ std::vector<float> hann (int size)
     return window;
 }
 
+/** The loudest of `magnitude`'s bins from `lowBin` to `highBin`, or, for a
+    range narrower than a bin, the magnitude interpolated at `centreBin`. */
+template <typename Magnitude>
+float loudestIn (float lowBin, float highBin, float centreBin, int lastBin, Magnitude magnitude)
+{
+    const auto first = static_cast<int> (std::ceil (lowBin));
+    const auto last = juce::jmin (lastBin, static_cast<int> (std::ceil (highBin)) - 1);
+    if (first <= last)
+    {
+        float value = 0.0f;
+        for (auto bin = first; bin <= last; ++bin)
+            value = juce::jmax (value, magnitude (bin));
+        return value;
+    }
+    const auto below = static_cast<int> (std::floor (centreBin));
+    const auto fraction = centreBin - static_cast<float> (below);
+    return magnitude (below) * (1.0f - fraction) + magnitude (below + 1) * fraction;
+}
+
 float toUnit (float magnitude, float tiltDb)
 {
     const auto db = 20.0f * std::log10 (magnitude + 1.0e-9f) + tiltDb;
@@ -66,6 +88,7 @@ SpectrumAnalyser::SpectrumAnalyser (int bands, int waveform)
       bandWindow (hann (bandFftSize)),
       chromaWindow (hann (windowSize)),
       fftData (2 * static_cast<size_t> (windowSize)),
+      rightData (2 * static_cast<size_t> (bandFftSize)),
       mono (windowSize),
       previousBands (static_cast<size_t> (numBands)),
       fluxHistory (beatHistoryCapacity)
@@ -95,6 +118,18 @@ void SpectrumAnalyser::prepare (double rate)
             ++lowBandCount;
     }
 
+    // Notes from the chroma's longer transform, half a semitone either side.
+    noteMap.clear();
+    const auto noteBinHz = static_cast<float> (rate) / static_cast<float> (windowSize);
+    for (int i = 0; i < AnalysisFrame::noteCount; ++i)
+    {
+        const auto note = static_cast<float> (AnalysisFrame::lowestNote + i);
+        const auto centre = 440.0f * std::pow (2.0f, (note - 69.0f) / 12.0f);
+        const auto halfStep = std::pow (2.0f, 1.0f / 24.0f);
+        noteMap.push_back ({ centre / halfStep / noteBinHz, centre * halfStep / noteBinHz, centre / noteBinHz,
+                             tiltDbPerOctave * std::log2 (centre / 1000.0f) });
+    }
+
     resetHistory();
 }
 
@@ -108,7 +143,9 @@ void SpectrumAnalyser::process (const float* left, const float* right, int newSa
         mono[static_cast<size_t> (i)] = 0.5f * (left[i] + right[i]);
 
     computeBands (mono.data() + windowSize - bandFftSize, frame);
+    computeBalance (left + windowSize - bandFftSize, right + windowSize - bandFftSize, frame);
     computeChroma (mono.data(), frame);
+    computeNotes (frame); // From the chroma's transform, still in fftData.
     computeLevels (left, right, frame);
     computeWaveform (left, right, mono.data(), frame);
     detectBeat (newSamples, frame);
@@ -120,6 +157,8 @@ void SpectrumAnalyser::processSilence (AnalysisFrame& frame)
     frame.silent = true;
     std::fill (frame.bands.begin(), frame.bands.end(), 0.0f);
     frame.chroma.fill (0.0f);
+    frame.notes.fill (0.0f);
+    std::fill (frame.balance.begin(), frame.balance.end(), 0.0f);
     frame.peak.fill (0.0f);
     frame.rms.fill (0.0f);
     std::fill (frame.left.begin(), frame.left.end(), 0.0f);
@@ -139,6 +178,7 @@ void SpectrumAnalyser::resetHistory()
 void SpectrumAnalyser::resize (AnalysisFrame& frame) const
 {
     frame.bands.resize (static_cast<size_t> (numBands));
+    frame.balance.resize (static_cast<size_t> (numBands));
     frame.left.resize (static_cast<size_t> (waveformLength));
     frame.right.resize (static_cast<size_t> (waveformLength));
 
@@ -164,23 +204,39 @@ void SpectrumAnalyser::computeBands (const float* samples, AnalysisFrame& frame)
     for (size_t b = 0; b < bandMap.size(); ++b)
     {
         const auto& band = bandMap[b];
-        const auto first = static_cast<int> (std::ceil (band.lowBin));
-        const auto last = juce::jmin (lastBin, static_cast<int> (std::ceil (band.highBin)) - 1);
+        frame.bands[b] =
+            toUnit (loudestIn (band.lowBin, band.highBin, band.centreBin, lastBin, magnitude), band.tiltDb);
+    }
+}
 
-        float value = 0.0f;
-        if (first <= last)
+void SpectrumAnalyser::computeBalance (const float* left, const float* right, AnalysisFrame& frame)
+{
+    std::fill (fftData.begin(), fftData.end(), 0.0f);
+    std::fill (rightData.begin(), rightData.end(), 0.0f);
+    for (size_t i = 0; i < static_cast<size_t> (bandFftSize); ++i)
+    {
+        fftData[i] = left[i] * bandWindow[i];
+        rightData[i] = right[i] * bandWindow[i];
+    }
+    bandFft->performFrequencyOnlyForwardTransform (fftData.data(), true);
+    bandFft->performFrequencyOnlyForwardTransform (rightData.data(), true);
+
+    const auto scale = 4.0f / static_cast<float> (bandFftSize);
+    const auto lastBin = bandFftSize / 2;
+    const auto in = [&] (const std::vector<float>& data)
+    {
+        return [&data, scale] (int bin)
         {
-            for (auto bin = first; bin <= last; ++bin)
-                value = juce::jmax (value, magnitude (bin));
-        }
-        else
-        {
-            // Narrower than a bin: interpolate at the band's centre.
-            const auto below = static_cast<int> (std::floor (band.centreBin));
-            const auto fraction = band.centreBin - static_cast<float> (below);
-            value = magnitude (below) * (1.0f - fraction) + magnitude (below + 1) * fraction;
-        }
-        frame.bands[b] = toUnit (value, band.tiltDb);
+            return data[static_cast<size_t> (juce::jlimit (0, lastBin, bin))] * scale;
+        };
+    };
+
+    for (size_t b = 0; b < bandMap.size(); ++b)
+    {
+        const auto& band = bandMap[b];
+        const auto l = loudestIn (band.lowBin, band.highBin, band.centreBin, lastBin, in (fftData));
+        const auto r = loudestIn (band.lowBin, band.highBin, band.centreBin, lastBin, in (rightData));
+        frame.balance[b] = toUnit (juce::jmax (l, r), band.tiltDb) < balanceFloor ? 0.0f : (r - l) / (r + l);
     }
 }
 
@@ -215,6 +271,25 @@ void SpectrumAnalyser::computeChroma (const float* samples, AnalysisFrame& frame
     const auto strongest = *std::max_element (energy.begin(), energy.end());
     for (size_t i = 0; i < 12; ++i)
         frame.chroma[i] = total > chromaSilence && strongest > 0.0f ? energy[i] / strongest : 0.0f;
+}
+
+void SpectrumAnalyser::computeNotes (AnalysisFrame& frame) const
+{
+    const auto scale = 4.0f / static_cast<float> (windowSize);
+    const auto lastBin = windowSize / 2;
+    const auto magnitude = [&] (int bin)
+    {
+        return fftData[static_cast<size_t> (juce::jlimit (0, lastBin, bin))] * scale;
+    };
+
+    for (size_t n = 0; n < noteMap.size(); ++n)
+    {
+        const auto& note = noteMap[n];
+        frame.notes[n] =
+            note.highBin >= static_cast<float> (lastBin) * 0.9f
+                ? 0.0f
+                : toUnit (loudestIn (note.lowBin, note.highBin, note.centreBin, lastBin, magnitude), note.tiltDb);
+    }
 }
 
 void SpectrumAnalyser::computeLevels (const float* left, const float* right, AnalysisFrame& frame) const

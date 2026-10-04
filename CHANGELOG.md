@@ -32,3 +32,13 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   player bar. Each has a mix and its own controls, heard as they move,
   with presets; reverb and echo tails ring on into the next
   track, and the signal path lists the effects in use.
+- Ten new visualizations: a Tonnetz that lights the chords as they're
+  played, a recurrence plot that shows a song's repeats as it builds up,
+  cymatics (sand on a plate ringing with the notes), a phase portrait of
+  the sound's timbre, a pitch spiral, a harmonograph tuned to the
+  interval sounding, rhythm rings that line up each bar's beats, a
+  stereo stage showing where each sound sits between the speakers, and
+  two combinations: Resonance (cymatics under the phase portrait) and
+  Harmony (the pitch spiral beside the Tonnetz).
+- The sidebar's Library and Playlists sections fold away under their
+  headings, and stay as you left them.

@@ -171,6 +171,8 @@ TEST_CASE ("SpectrumAnalyser reads silence as zero", "[analysis]")
     CHECK_FALSE (frame.silent); // Silent audio is still audio; only the thread reports none.
     CHECK (std::all_of (frame.bands.begin(), frame.bands.end(), [] (float v) { return v == 0.0f; }));
     CHECK (std::all_of (frame.chroma.begin(), frame.chroma.end(), [] (float v) { return v == 0.0f; }));
+    CHECK (std::all_of (frame.notes.begin(), frame.notes.end(), [] (float v) { return v == 0.0f; }));
+    CHECK (std::all_of (frame.balance.begin(), frame.balance.end(), [] (float v) { return v == 0.0f; }));
     CHECK (frame.peak == std::array<float, 2> {});
     CHECK (frame.rms == std::array<float, 2> {});
     CHECK_FALSE (frame.beat);
@@ -207,6 +209,51 @@ TEST_CASE ("SpectrumAnalyser names the pitch classes played", "[analysis]")
         CHECK (std::vector<size_t> (order.begin(), order.begin() + 3) == std::vector<size_t> { 0, 4, 7 });
         CHECK (frame.chroma[order[3]] < 0.35f);
     }
+}
+
+TEST_CASE ("SpectrumAnalyser puts a tone on its note", "[analysis]")
+{
+    const auto rate = GENERATE (44100.0, 48000.0);
+    const auto midi = GENERATE (45, 57, 69, 81, 100); // A2, A3, A4, A5, E7.
+    CAPTURE (rate, midi);
+
+    const auto frequency = 440.0 * std::pow (2.0, (midi - 69) / 12.0);
+    const auto tone = sine (frequency, 0.1, rate, window);
+    const auto frame = analyse (tone, tone, rate);
+
+    const auto expected = static_cast<size_t> (midi - anomp::AnalysisFrame::lowestNote);
+    const auto loudest = std::max_element (frame.notes.begin(), frame.notes.end()) - frame.notes.begin();
+    CHECK (static_cast<size_t> (loudest) == expected);
+    CHECK (frame.notes[expected] > 0.5f);
+    // Two semitones away is more than 20 dB down; an octave away, nothing.
+    CHECK (frame.notes[expected - 2] < frame.notes[expected] - 0.3f);
+    CHECK (frame.notes[expected + 2] < frame.notes[expected] - 0.3f);
+    if (expected >= 12)
+        CHECK (frame.notes[expected - 12] < 0.1f);
+}
+
+TEST_CASE ("SpectrumAnalyser places each band between the channels", "[analysis]")
+{
+    constexpr double rate = 48000.0;
+    const auto tone = sine (1000.0, 0.5, rate, window);
+    const auto half = sine (1000.0, 0.25, rate, window);
+    const std::vector<float> silence (window);
+
+    const auto balanceAt = [] (const anomp::AnalysisFrame& frame)
+    {
+        return frame.balance[bandOf (frame, 1000.0)];
+    };
+
+    const auto leftOnly = analyse (tone, silence, rate);
+    REQUIRE (leftOnly.balance.size() == leftOnly.bands.size());
+    CHECK (balanceAt (leftOnly) == Catch::Approx (-1.0).margin (0.001));
+    CHECK (balanceAt (analyse (silence, tone, rate)) == Catch::Approx (1.0).margin (0.001));
+    CHECK (balanceAt (analyse (tone, tone, rate)) == Catch::Approx (0.0).margin (0.001));
+    // Twice as loud on the left: a third of the way left.
+    CHECK (balanceAt (analyse (tone, half, rate)) == Catch::Approx (-1.0 / 3.0).margin (0.01));
+    // Bands with nothing in them aren't placed.
+    CHECK (leftOnly.balance[bandOf (leftOnly, 60.0)] == 0.0f);
+    CHECK (leftOnly.balance[bandOf (leftOnly, 10000.0)] == 0.0f);
 }
 
 TEST_CASE ("SpectrumAnalyser measures each channel's level", "[analysis]")
@@ -292,6 +339,8 @@ TEST_CASE ("SpectrumAnalyser clamps its sizes and zeroes a silent frame", "[anal
     CHECK (frame.bands.size() == 4);
     CHECK (std::all_of (frame.bands.begin(), frame.bands.end(), [] (float v) { return v == 0.0f; }));
     CHECK (std::all_of (frame.left.begin(), frame.left.end(), [] (float v) { return v == 0.0f; }));
+    CHECK (std::all_of (frame.notes.begin(), frame.notes.end(), [] (float v) { return v == 0.0f; }));
+    CHECK (frame.balance.size() == 4);
     CHECK (frame.peak == std::array<float, 2> {});
     CHECK (frame.onset == 0.0f);
 }
@@ -388,7 +437,8 @@ TEST_CASE ("C API analysis callback", "[c-api][analysis]")
 
     struct Received
     {
-        std::atomic<int> frames { 0 }, silent { 0 }, bands { 0 }, waveform { 0 };
+        std::atomic<int> frames { 0 }, silent { 0 }, bands { 0 }, waveform { 0 }, notes { 0 }, lowestNote { 0 };
+        std::atomic<bool> pointers { false };
     } received;
 
     const auto callback = [] (const anomp_analysis_frame* frame, void* userData)
@@ -396,6 +446,9 @@ TEST_CASE ("C API analysis callback", "[c-api][analysis]")
         auto& r = *static_cast<Received*> (userData);
         r.bands = frame->band_count;
         r.waveform = frame->waveform_length;
+        r.notes = frame->note_count;
+        r.lowestNote = frame->lowest_note;
+        r.pointers = frame->notes != nullptr && frame->balance != nullptr;
         r.silent += frame->silent;
         ++r.frames;
     };
@@ -414,6 +467,9 @@ TEST_CASE ("C API analysis callback", "[c-api][analysis]")
     CHECK (received.silent == 1);
     CHECK (received.bands == 64);
     CHECK (received.waveform == 512);
+    CHECK (received.notes == 84);
+    CHECK (received.lowestNote == 36);
+    CHECK (received.pointers);
 
     // Stopped: nothing more arrives.
     juce::Thread::sleep (300);

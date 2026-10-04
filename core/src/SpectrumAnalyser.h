@@ -30,6 +30,16 @@ struct AnalysisFrame
     /** Energy per pitch class (C, C#, … B), 0..1, the strongest as 1. */
     std::array<float, 12> chroma {};
 
+    /** The notes from MIDI `lowestNote` (C2, 65.4 Hz) up a semitone each:
+        the loudest component within half a semitone of each, on the bands'
+        scale (0 at -70 dB, 1 at full scale, tilted alike). */
+    static constexpr int lowestNote = 36, noteCount = 84;
+    std::array<float, noteCount> notes {};
+
+    /** Per band, where its sound sits between the left (-1) and the right
+        (+1) channel; 0 for a band too quiet to place. */
+    std::vector<float> balance;
+
     /** Linear, per channel (left, right), over about the last 40 ms. */
     std::array<float, 2> peak {}, rms {};
 
@@ -85,6 +95,8 @@ private:
 
     void computeBands (const float* mono, AnalysisFrame& frame);
     void computeChroma (const float* mono, AnalysisFrame& frame);
+    void computeNotes (AnalysisFrame& frame) const;
+    void computeBalance (const float* left, const float* right, AnalysisFrame& frame);
     void computeLevels (const float* left, const float* right, AnalysisFrame& frame) const;
     void computeWaveform (const float* left, const float* right, const float* mono, AnalysisFrame& frame) const;
     void detectBeat (int newSamples, AnalysisFrame& frame);
@@ -95,8 +107,8 @@ private:
     double sampleRate = 0.0;
 
     std::unique_ptr<juce::dsp::FFT> bandFft, chromaFft;
-    std::vector<float> bandWindow, chromaWindow, fftData, mono;
-    std::vector<Band> bandMap;
+    std::vector<float> bandWindow, chromaWindow, fftData, rightData, mono;
+    std::vector<Band> bandMap, noteMap;
     std::vector<float> previousBands;
     int lowBandCount = 0; // Bands below 250 Hz, for the beat detector.
 

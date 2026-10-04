@@ -851,6 +851,18 @@ typedef struct anomp_analysis_frame
     /** 1 when this frame starts a beat: a jump in the bass well above the
         last second and a half, at most 4 a second. */
     int beat;
+
+    /** `note_count` values, 0..1, a semitone apart from MIDI note
+        `lowest_note` (36, C2) up: the loudest component within half a
+        semitone of each, on the bands' scale. */
+    int note_count;
+    int lowest_note;
+    const float* notes;
+
+    /** `band_count` values, -1..1: where each band's sound sits between
+        the left (-1) and the right (+1) channel; 0 for a band too quiet to
+        place. */
+    const float* balance;
 } anomp_analysis_frame;
 
 typedef void (*anomp_analysis_callback)(const anomp_analysis_frame* frame, void* user_data);

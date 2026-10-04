@@ -1135,6 +1135,10 @@ extern "C" int anomp_engine_set_analysis_callback (anomp_engine* engine,
                     frame.right.data(),
                     frame.onset,
                     frame.beat ? 1 : 0,
+                    anomp::AnalysisFrame::noteCount,
+                    anomp::AnalysisFrame::lowestNote,
+                    frame.notes.data(),
+                    frame.balance.data(),
                 };
                 callback (&event, userData);
             },
