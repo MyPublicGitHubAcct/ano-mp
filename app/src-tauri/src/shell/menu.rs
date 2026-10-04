@@ -261,8 +261,10 @@ pub fn install(app: &AppHandle<Wry>) -> tauri::Result<()> {
         .item(&PredefinedMenuItem::maximize(app, None)?)
         .build()?;
 
-    // Logs join it with H9 (PLAN.md Phase 7).
+    // The user guide, bundled (PLAN.md Phase 7c D1), and the shortcuts sheet.
     let help = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("help", "ano-mp Help").build(app)?)
+        .separator()
         .item(&item("shortcuts")?)
         .build()?;
 
@@ -306,6 +308,7 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, id: &str) {
         "stop-after" => queue::toggle_stop_after_current(app),
         "record" => crate::recording::toggle(app),
         "mini-player" => super::mini::toggle(app),
+        "help" => super::help::open(app),
         "show-main" => super::show_main(app),
         _ => {
             if let Some((_, _, choice)) = SLEEP_CHOICES.iter().find(|(item, ..)| *item == id) {

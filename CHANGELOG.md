@@ -25,6 +25,11 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfades, leaves out the time paused, and writes a cue sheet beside
   the file naming each track. MP3 is encoded by LAME 4.0, now built into
   the app's FFmpeg.
+- A user guide, in the app under Help › ano-mp Help (bundled, so it works
+  offline) and in `docs/user-guide/`: fourteen chapters from adding your
+  music to troubleshooting, covering every view, setting, feature and
+  error message, with appendices of keyboard shortcuts, formats, a
+  glossary, and a settings reference listing every setting's default.
 - Similar artists on each artist's page, under the biography: the
   library's artists most like this one, each saying why (a genre, a band
   member, played together), and with recommendations from outside the

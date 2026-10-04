@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
@@ -64,6 +64,10 @@ export default defineConfig(({ command }) => ({
           port: 1421,
         }
       : undefined,
+    // The user guide's pages, which the Help window bundles (routes/help).
+    fs: {
+      allow: [searchForWorkspaceRoot(process.cwd()), "../docs/user-guide"],
+    },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],

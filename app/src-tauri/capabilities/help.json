@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "help",
+  "description": "Capability for the Help window (PLAN.md Phase 7c D1): events, reading the settings for the theme (permissions/help-window.toml), opening https links in the browser, and logging its errors (PLAN.md H9)",
+  "windows": ["help"],
+  "permissions": [
+    "core:default",
+    "help-window",
+    "log:allow-log",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }]
+    }
+  ]
+}

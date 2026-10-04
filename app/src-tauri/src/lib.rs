@@ -9,6 +9,8 @@ mod dev;
 mod diagnostics;
 mod effects;
 mod features;
+#[cfg(test)]
+mod guide;
 mod history;
 mod library;
 mod logging;

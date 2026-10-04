@@ -13,7 +13,8 @@ search, playlists, favourites and cover art, macOS Now Playing, media keys and
 menus, online details (MusicBrainz, Cover Art Archive, Wikipedia, optionally
 Discogs), visualizations, a Settings screen, and optional features you can turn on
 in Settings › Features. Current work is hardening for a first signed release. See
-[PLAN.md](PLAN.md) for the roadmap and current phase.
+[PLAN.md](PLAN.md) for the roadmap and current phase, and the
+[user guide](docs/user-guide/README.md) for how to use the app.
 
 ## How it's built
 
@@ -310,7 +311,7 @@ app/           Tauri app: Svelte frontend (src/) and Rust backend (src-tauri/)
 scripts/       build-ffmpeg.sh, the checks, format, release and test tooling
 cmake/         CMake helpers (pinned downloads, FFmpeg, TagLib, Signalsmith)
 third_party/   locally built FFmpeg (git-ignored)
-docs/          checklists, release decisions, and finished phases' design (design/)
+docs/          the user guide (user-guide/), checklists, release decisions, and finished phases' design (design/)
 PLAN.md        roadmap, status, decisions, risks and release plan
 CLAUDE.md      conventions and rules for AI-assisted development
 ```

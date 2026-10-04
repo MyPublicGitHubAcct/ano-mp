@@ -1,0 +1,9 @@
+# What the Help window may call (PLAN.md Phase 7c D1): the settings, which
+# its theme follows. It shows the bundled user guide and nothing else.
+
+[[set]]
+identifier = "help-window"
+description = "The Help window's commands."
+permissions = [
+    "allow-settings-get",
+]

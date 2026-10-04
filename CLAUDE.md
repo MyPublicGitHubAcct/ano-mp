@@ -131,8 +131,9 @@ run `check-all.py` locally before pushing, and CI by hand on a branch whose
 result matters (Dependabot's). The repo checks are read-only scripts:
 `check-c-api.py` (each `anomp.h` function bound in `anomp.rs` with the same
 parameter count, unless in its `NOT_BOUND` list), `check-sources.py`,
-`check-migrations.py`, `check-docs.py` (every path and link in the docs exists)
-and `version.py --check`. Scripts use the standard library only; their tests
+`check-migrations.py`, `check-docs.py` (every path and link in the docs exists),
+`check-user-guide.py` (the user guide names every sidebar item, Settings
+section, feature switch, menu item and error message) and `version.py --check`. Scripts use the standard library only; their tests
 are in `scripts/tests/` (pytest, `scripts/test-python.py`), each repo check
 with one test against the real tree. Actions are pinned by commit SHA (look a
 new one up with `git ls-remote`, never guess it); Dependabot proposes updates
@@ -197,7 +198,7 @@ npm test                     # frontend unit tests (node --test tests/, plain .m
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
 cargo clippy --all-targets -- -D warnings  # Rust lint, as check-all runs it
 cargo deny check             # advisories, licences, bans, sources (deny.toml)
-ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/ (settings, ipc, commands)
+ANOMP_WRITE_BINDINGS=1 cargo test bindings  # regenerate src/lib/generated/ and the guide's settings reference
 ../scripts/format-rust.py    # rustfmt the Rust code after editing it (--check: diff only)
 ```
 
@@ -384,6 +385,29 @@ message in `en.json` (`tests/i18n.test.mjs` checks); the UI shows a command's
 error through `errorText`, never `String(error)`. A coded error with a `reason`
 param may have `error.<code>.<reason>` messages, which `errorText` prefers;
 `errorCode` reads a code to branch on.
+
+**User guide** (Phase 7c D1). `docs/user-guide/` explains the app to
+someone who only uses it; a new view, setting, feature, menu item or
+user-facing error isn't done until the guide covers it, in the same
+commit. Name controls exactly as `en.json` words them, explain concepts in
+the user's terms (never "bookmark", "migration", "FTS"), and keep
+backquoted paths out of it. `check-user-guide.py` fails on a sidebar item,
+Settings section, `FeatureSettings` field, `PAGE_ITEMS` menu item or
+`error.*` message the guide lacks (an error goes in
+`appendix-d-errors.md`, placeholders written "…"); a field whose label
+isn't `feature.<field>` goes in its `SWITCH_LABELS`. The settings
+reference (`settings-reference.md`) is generated from the defaults by
+`guide.rs`, whose test fails while it is stale or a setting has no row:
+add one there. Screenshots are marked with `<!-- Screenshot: … -->`
+comments until the release build's are taken. The app bundles the guide:
+Help › ano-mp Help opens `routes/help` in its own window (`shell/help.rs`;
+its capability, `capabilities/help.json`, allows the settings and https
+links only), which compiles in every page of the folder and draws it from
+`lib/guide.ts`'s parse, never as HTML. That parser knows only the Markdown
+the guide uses (headings, paragraphs, nested lists, tables, bold,
+emphasis, code, links; comments dropped): keep to it, or extend it with a
+test. `tests/guide.test.mjs` fails on markup left unparsed or a link the
+window can't follow (only links to the guide's pages and https).
 
 **Themes** (X1). Components take colours, radii (`--radius-sm`,
 `--radius`, `--radius-lg`) and the font from the theme's custom

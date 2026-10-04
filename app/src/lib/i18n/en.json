@@ -730,6 +730,10 @@
     "one": "Removed from favourites",
     "other": "Removed {count} from favourites"
   },
+  "help.back": "Back",
+  "help.backHint": "Back to the page before (⌘[)",
+  "help.contents": "Contents",
+  "help.title": "ano-mp Help",
   "history.albums": "Albums",
   "history.artists": "Artists",
   "history.earlier": "Earlier",

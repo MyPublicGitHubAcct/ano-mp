@@ -9,6 +9,7 @@
 //! bring it back.
 
 mod dock;
+pub mod help;
 pub mod menu;
 pub mod mini;
 mod notifications;
