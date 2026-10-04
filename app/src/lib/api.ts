@@ -346,6 +346,8 @@ export const features = {
   similarTracks: (trackId: number) => commands.librarySimilarTracks({ trackId }),
   similarAlbums: (albumId: number) => commands.librarySimilarAlbums({ albumId }),
   similarArtists: (artistId: number) => commands.librarySimilarArtists({ artistId }),
+  /** The artist page's "Similar artists" from the library (X7), behind its own switch. */
+  artistPageSimilar: (artistId: number) => commands.libraryArtistPageSimilar({ artistId }),
   /** Home's suggestions: albums not played lately like what is played. */
   forYou: () => commands.libraryForYou(),
   health: () => commands.libraryHealth(),

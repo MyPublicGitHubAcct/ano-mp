@@ -250,6 +250,7 @@ pub fn run() {
             features::library_similar_tracks,
             features::library_similar_albums,
             features::library_similar_artists,
+            features::library_artist_page_similar,
             features::library_for_you,
             features::outside_for_you,
             features::outside_like_artist,

@@ -121,6 +121,7 @@ export const commands = {
   librarySimilarTracks: (args: { trackId: number }) => invoke<SimilarTrack[]>("library_similar_tracks", args),
   librarySimilarAlbums: (args: { albumId: number }) => invoke<SimilarAlbum[]>("library_similar_albums", args),
   librarySimilarArtists: (args: { artistId: number }) => invoke<SimilarArtist[]>("library_similar_artists", args),
+  libraryArtistPageSimilar: (args: { artistId: number }) => invoke<SimilarArtist[]>("library_artist_page_similar", args),
   libraryForYou: () => invoke<SimilarAlbum[]>("library_for_you"),
   outsideForYou: () => invoke<OutsideArtist[]>("outside_for_you"),
   outsideLikeArtist: (args: { artistId: number }) => invoke<OutsideArtist[]>("outside_like_artist", args),

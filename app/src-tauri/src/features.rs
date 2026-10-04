@@ -1,7 +1,7 @@
-//! Tauri commands for the optional features (PLAN.md §4.6, O1–O19, and
-//! X4's and X5's recommendations) that read or change the library: thin wrappers
-//! over `library`, `history` and the analysis, each refusing when its
-//! feature is off. The queue's (radio, practice) and the remote's are with
+//! Tauri commands for the optional features (PLAN.md §4.6, O1–O19, X4's
+//! and X5's recommendations, and X7's similar artists) that read or change
+//! the library: thin wrappers over `library`, `history` and the analysis,
+//! each refusing when its feature is off. The queue's (radio, practice) and the remote's are with
 //! them.
 
 use rusqlite::Connection;
@@ -264,6 +264,25 @@ pub async fn library_similar_artists<R: Runtime>(
     artist_id: i64,
 ) -> Result<Vec<SimilarArtist>, String> {
     require(&app, |f| f.recommendations, RECOMMENDATIONS)?;
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        similar::similar_artists(&library.conn(), artist_id, &unreadable, similar::SHOWN)
+    })
+    .await
+}
+
+/// The artist page's library artists like `artist_id` (X7): X4's
+/// scoring, behind X7's own switch.
+#[tauri::command]
+pub async fn library_artist_page_similar<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+) -> Result<Vec<SimilarArtist>, String> {
+    require(
+        &app,
+        |f| f.similar_artists,
+        ("similarArtists", "Similar artists"),
+    )?;
     let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
         similar::similar_artists(&library.conn(), artist_id, &unreadable, similar::SHOWN)

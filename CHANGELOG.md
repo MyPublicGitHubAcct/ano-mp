@@ -25,6 +25,11 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfades, leaves out the time paused, and writes a cue sheet beside
   the file naming each track. MP3 is encoded by LAME 4.0, now built into
   the app's FFmpeg.
+- Similar artists on each artist's page, under the biography: the
+  library's artists most like this one, each saying why (a genre, a band
+  member, played together), and with recommendations from outside the
+  library on, artists you don't have, as links out. A switch in
+  Settings › Features, on by default.
 - Artists, in the sidebar under Favourites: every artist in the library,
   with a box to narrow the list by name. A click opens the artist's page;
   their menu plays, shuffles, queues or hearts them.

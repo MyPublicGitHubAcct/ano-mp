@@ -9,8 +9,10 @@ signed release waits on the owner's §8.1 decisions
 visualizations, recommendations, recording and similar artists; P3,
 added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
 (effects), X3 (visualizations), X4 (library recommendations), X5
-(recommendations from outside the library) and X6 (recording) were built
-early, at the owner's request. Finished work's design notes and records
+(recommendations from outside the library), X6 (recording) and X7
+(similar artists) were built early, at the owner's request. Phase 7c (user and developer
+documentation and a dictionary of classes, added 2026-10-04) is
+planned; its user guide is part of the first release. Finished work's design notes and records
 are in `docs/design/`, linked from each phase.
 
 
@@ -94,7 +96,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 473 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 474 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
 | 59 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 208 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -307,7 +309,9 @@ Each phase ends with a demonstrable result and green tests. Platform order:
 macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9), then
 Windows (Phase 10). Phase 7b (themes, effects, visualizations,
 recommendations, recording and similar artists, P3) comes after Phase 7 and before the ports, so those
-features are settled on macOS first. Xcode is not needed until Phase 8.
+features are settled on macOS first. Phase 7c (documentation) runs
+alongside: its user guide (D1) is needed for the first release, and the
+developer guide and dictionary of classes follow. Xcode is not needed until Phase 8.
 Phase 11 (Bandcamp streaming) is a feature, not a platform, and depends
 on Bandcamp's permission. Its engineering starts after Phase 7. The phases
 cover making the app work on each platform; packaging, signing and
@@ -1038,7 +1042,7 @@ acts, off by default if it changes what is heard or goes online.
     them. Left to check in the app: the exit's recording across a gapless
     album, a crossfade and a pause, played back elsewhere; the folder
     picked in a sandboxed bundle; a full disk; and Controls › Record.
-- [ ] **X7 Similar artists on artist pages.** A "Similar artists" section
+- [x] **X7 Similar artists on artist pages.** A "Similar artists" section
   on the artist page (`ArtistPage.svelte`), under the biography: first
   the library's artists most like this one, by X4's artist scoring
   (`similar::similar_artists`, already built and shown in X4's dialog:
@@ -1058,6 +1062,36 @@ acts, off by default if it changes what is heard or goes online.
   decide: how many to show (a row of about eight, with "More"), and
   whether band members and member-of relations show here or stay in the
   artist's details.
+  - **Built** 2026-10-04, ahead of Phase 7's exit at the owner's request.
+    **Decided:** a row of eight of each half, and "More" shows the rest
+    in place (up to X4's and X5's twelve each) rather than opening X4's
+    dialog, whose switches differ; "More Like This" stays in the page's
+    header. Band members, subgroups and collaborations show here as
+    reasons ("Radiohead member"), scored as X4 scores them (a link is
+    worth 4, enough alone); the page lists no members of its own, as
+    MusicBrainz's relations are read only for scoring. Reasons are X4's
+    and X5's as worded (`similar.reason.*`, `outside.reason.*`) rather
+    than new counts ("shares 3 genres"), so the dialog and the page
+    agree.
+  - **Library half**: `library_artist_page_similar`, X4's
+    `similar::similar_artists` behind X7's switch, so the section works
+    with X4's off; X4's threshold (`MIN_SCORE`, 3) and unreadable folders
+    as X4 applies them (`artists_need_enough_in_common_and_a_readable_folder`
+    on X4's fixture library: a genre alone is enough, a year alone or
+    another genre isn't, and an artist only in an unreadable folder is
+    left out). **Outside half**: X5's `outside_like_artist` (cached and
+    on the metadata worker as X5's), called only while both switches
+    are on and loaded apart from the library half, so a slow
+    ListenBrainz never holds it back; its rows are X5's
+    (`OutsideArtists`: links out through `openWebLink`, "Not
+    Interested").
+  - **UI**: `ArtistSimilar.svelte` under the About section of
+    `ArtistPage.svelte`, hidden while both halves are empty; the library
+    half reloads with the library, the outside half only for another
+    artist or a switch. Switch: `similarArtists` (X7 in Settings ›
+    Features), on by default.
+  - Left to check in the app: similar artists that make sense on the
+    owner's library, with and without X5 (the exit).
 - **Exit (to check in the app)**: a theme edited, saved, exported and
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade
@@ -1069,6 +1103,239 @@ acts, off by default if it changes what is heard or goes online.
   back in another app without gaps or clicks;
   similar artists that make sense on the owner's library, with and
   without X5.
+
+### Phase 7c — Documentation
+Added 2026-10-04 at the owner's request. The repo documents decisions
+and designs well (this plan, `CLAUDE.md`, `docs/design/`), but that is
+written for whoever is building the next step: it records why, in the
+order things happened, and assumes the reader knows the codebase.
+Nothing explains the app to someone who just wants to use it, and
+nothing lets a developer new to the code find their way from "this
+behaves oddly" to the file that does it. Phase 7c writes three
+documents for human readers, judged first on being **complete** (every
+screen, setting and component is covered) and **useful** (a reader with
+a question finds the answer in a minute or two), then on polish.
+
+| # | Document | Reader | Priority |
+|---|---|---|---|
+| D1 | User guide: using the app | anyone who plays music with it | P1 (part of the first release) |
+| D2 | Developer guide: how the code is built and works | developers, testers, technically minded users | P2 (P1 for the parts §8.1's reviewers need) |
+| D3 | Dictionary of classes and types | developers, alongside D2 | P2 |
+
+They live in the repo as Markdown, beside the code they describe, so a
+change and its documentation land in one commit and `check-docs.py`
+checks their paths and links: D1 in a docs/user-guide folder (one page
+per chapter, with an index), D2 in docs/developer-guide, D3 as
+docs/class-dictionary.md (or a folder per layer, if one page grows too
+long). They describe the app as it is, not its history: the reasons and
+the record of how each part was built stay in `docs/design/`, and D2
+links to them rather than repeating them.
+
+- [ ] **D1 User guide.** How the app is meant to be used, in plain
+  words, for someone who has never seen it and knows nothing of how it
+  is built. Every feature the user can reach is described: what it is
+  for, where to find it, what each control does, and what to expect
+  (including when something is off by default, needs a service account,
+  or goes online). No internal terms ("bookmark", "FTS", "migration"):
+  where the user meets a concept, it is explained in their terms
+  ("ano-mp remembers the folders you allowed it to read").
+  - **Shape.** Task-first chapters ("Add your music", "Make a
+    playlist"), each opening with what the reader can do there, then the
+    steps, then the details. Short sentences, numbered steps, the
+    controls' names exactly as the UI shows them (from `en.json`), and a
+    screenshot (light theme, the standard theme, a demo library with no
+    real artists' covers) wherever a screen is first introduced.
+    Keyboard shortcuts beside each action and collected in an appendix
+    (the same list as the shortcuts sheet, F6).
+  - **Chapters**, at least:
+    1. *Getting started*: what ano-mp is, the formats it plays, the
+       first run (F8), adding a music folder and what the scan does, why
+       macOS asks for permission, and a tour of the window (sidebar,
+       browse pane, Now Playing bar, queue).
+    2. *Finding music*: every sidebar view (Home and its suggestions,
+       library, artists, albums, genres, Recently added, Recently played,
+       On this day, favourites, history, playlists), browsing and
+       grouping, sorting rules, search (words, parts of words, fields,
+       F12), artist and album pages (biography, discography, works and
+       movements, similar albums and artists, "more in this genre").
+    3. *Playing music*: play, pause, seek (and the waveform seek bar),
+       next and previous, the queue (adding, reordering, drag and drop,
+       multi-select, F4), shuffle, segue-aware shuffle and repeat,
+       library radio and "keep playing when the queue ends", gapless
+       albums, crossfade, resume on launch, stop after this track and the
+       sleep timer, per-track and per-album preferences (O7), volume
+       levelling (ReplayGain and the loudness analysis, O1).
+    4. *Playlists and favourites*: playlists, M3U8 import and export,
+       smart playlists and their rules, favourites and ratings.
+    5. *Track and album details*: Get Info, lyrics (synced and plain,
+       `.lrc` files), cover art (choosing, replacing), cue sheets and
+       chapters shown as tracks, compilations and multiple artists.
+    6. *Online information*: what each service (MusicBrainz, Cover Art
+       Archive, Wikipedia, Discogs, ListenBrainz) adds, what is sent to
+       it and when, how to turn each on or off, adding a Discogs token,
+       fixing a wrong match ("Find details", "Find artist"), and what
+       happens offline.
+    7. *Sound*: the equaliser, crossfeed, effects (reverb, chorus,
+       spectral freeze), practice mode (A–B loop, tempo), sample-rate
+       matching and the signal path panel: what each does to the sound
+       and when to use it.
+    8. *Visualizations*: each visualization with a picture, its settings,
+       and the safe-visualizer options (F18).
+    9. *Recording*: recording what is playing, the formats and what to
+       choose, where files go, and what is and isn't recorded (effects,
+       volume).
+    10. *Other ways to control it*: the menu bar and Controls menu, the
+        Dock menu, the mini player and menu-bar controls, media keys and
+        the lock screen's Now Playing, notifications, opening files from
+        Finder, and the LAN remote (setting it up on a phone and what it
+        exposes).
+    11. *Settings*: every Settings section (General, Library folders,
+        Display, Sort rules, Playback, Equaliser, Effects, Visualizer,
+        Recording, Appearance and themes, Features, Services, About),
+        each option with what it changes and its default. Generated where
+        possible (below), so no option is missed.
+    12. *Keeping the library healthy*: the library health report,
+        missing and unreadable folders (why tracks stay, dimmed),
+        files in iCloud ("Optimize Mac Storage"), removing missing
+        tracks, moving or renaming files, rescans and file watching,
+        exporting and importing your data (F20), and the database repair
+        dialog.
+    13. *Privacy*: what stays on the Mac, what goes online and only when
+        switched on, what the logs and "Copy diagnostics" contain.
+    14. *Troubleshooting and FAQ*: no sound, a folder that won't scan, a
+        file that won't play, wrong tags or covers, high CPU, the app not
+        opening after an update; each with what to try and what to send
+        with a bug report.
+    - Appendices: keyboard shortcuts, supported formats, glossary of the
+      words the UI uses, and every error message the UI can show
+      (`error.*` in `en.json`) with what it means and what to do.
+  - **Kept complete.** A check in `check-all.py` (a new script with its
+    test, per §9.2's rules) compares the guide with the app: every
+    sidebar view, Settings section and feature switch in
+    `FeatureSettings` is named in the guide, and every `error.<code>`
+    has an entry in the errors appendix. The Settings reference is
+    generated from `AppSettings` (labels from `en.json`, defaults from
+    Rust) and committed, like `THIRD_PARTY_NOTICES`, so it can't drift.
+    A new feature or setting isn't done until the guide covers it (add
+    to this plan's definition of done and `CLAUDE.md`).
+  - **Shipped.** Help › "ano-mp Help" opens the guide. Decide first:
+    bundle it in the app (HTML built from the Markdown, opened in its
+    own window under the existing CSP, works offline) or host it and
+    open it with `openWebLink` (smaller app, always current, needs the
+    owner's site from §8.1). Bundling is the default proposal, since
+    the app otherwise works offline.
+  - **Exit:** someone who hasn't used the app follows the guide from a
+    fresh install to a playing library, a playlist, an online lookup and
+    a changed setting without help; every screen and setting is in it;
+    the check passes.
+- [ ] **D2 Developer guide.** How the code is organised and how it works,
+  detailed enough that a developer can go straight to the part that
+  interests them, understand what it does, and diagnose a problem there
+  without reading the whole codebase. It assumes a programmer, not a
+  JUCE, Rust or Svelte expert, and points to `CLAUDE.md`'s rules rather
+  than restating them (and `CLAUDE.md` points back for explanations).
+  - **Chapters**, at least:
+    1. *Overview*: the three layers (§1), why the core is a static
+       library and not a sidecar, the one C API, who owns which thread,
+       and a diagram of a track's journey from a file on disk to the
+       speaker and the visualizer.
+    2. *Getting set up*: tools (`doctor.py`), first build, running the
+       app, the tests and `check-all.py`, the presets (debug, ASan, TSan,
+       fuzz, bench), and the common first-build failures and their fixes.
+    3. *Repository map*: every top-level folder and every module in
+       `core/src`, `effects/src`, `app/src-tauri/src` and `app/src`, one
+       or two lines each: what it owns and what it must not do.
+    4. *The core* (C++): `AudioEngine` and `PlayerEngine`, the FFmpeg
+       reader, gapless hand-off and crossfade, tag reading, analysis for
+       the visualizer, recording, folder access, media controls, logging,
+       and the C API's conventions (errors, ownership, callbacks).
+    5. *Effects*: the chain, how settings reach the audio thread, the
+       bit-identical rule, adding an effect step by step.
+    6. *The Rust backend*: start-up order (`lib.rs`), the engine on the
+       main thread (`audio.rs`), the queue (model, opening off the main
+       thread, the saved queue), the library (database, migrations,
+       scanner, browse and search, availability and folder access,
+       analysis, art and thumbnails), metadata services and the worker,
+       settings and features, history and ListenBrainz, the shell (menus,
+       Dock, tray, mini player, notifications), the LAN remote, logging
+       and diagnostics, recovery at launch.
+    7. *The frontend*: routes and windows, the state modules
+       (`state/`), how a component calls a command (`api.ts`, the
+       generated `commands.ts`) and receives events, i18n, themes,
+       virtual lists, the visualizer's rendering.
+    8. *How things flow*: worked sequences, each naming the functions in
+       order across the layers: pressing play on a track; a gapless
+       hand-off and a crossfade; adding a folder and its scan; a search
+       keystroke; an album's details arriving from MusicBrainz; a setting
+       changed in the UI reaching the engine; quitting.
+    9. *Data*: the database schema table by table (what each column
+       means, which code writes it), the settings file, the caches and
+       where every file the app writes lives on disk (sandboxed and not).
+    10. *Troubleshooting*: where the logs are and how to raise their
+        level, reading "Copy diagnostics", the /dev page, running one
+        test, reproducing a fuzzer crash, the bundle self-test, checking
+        a sandboxed bundle safely, and a symptom table ("no sound",
+        "folder shows as unavailable", "covers missing", "scan never
+        ends", "bindings are stale", "clippy fails on unsafe") pointing
+        to the code and the log lines to look at.
+    11. *Recipes*: adding a C API function, a command, a setting, a
+        feature switch, a migration, a metadata source, an effect, a
+        visualization, a theme colour, a UI string; each the full list of
+        places to touch, in the order `CLAUDE.md`'s rules require.
+    12. *Testing*: what each suite covers, fixtures and how they're made,
+        fakes (`FakeBookmarks`, the fake engine, `http::testing`),
+        benchmarks and their budgets, fuzzing.
+    13. *Building and releasing*: a pointer to §8 and the release
+        scripts, with what each step checks.
+  - **Diagrams** as text (Mermaid in the Markdown, which GitHub renders)
+    so they are diffed and reviewed like code: the layers, the threads,
+    the playback path, the scan, the metadata worker.
+  - **Kept accurate.** Paths and links are checked by `check-docs.py`
+    already; the repository map is checked against the tree (every
+    module named, nothing named that's gone) by the same new check as
+    D1's. A change that moves a responsibility updates D2 in the same
+    commit.
+  - **Exit:** a developer new to the repo, given three real bugs from
+    the history, finds the responsible code from the guide alone, and
+    adds a setting by following its recipe with no other help.
+- [ ] **D3 Dictionary of classes.** An alphabetical reference of every
+  named type a developer meets: C++ classes and structs in `core/` and
+  `effects/` (public and private), the C API's types and enums, Rust
+  structs, enums and traits in `app/src-tauri`, and the frontend's
+  TypeScript types, state modules and Svelte components. Each entry
+  gives: the name, its layer and file (linked), one or two sentences on
+  what it is responsible for, its main collaborators (what it owns, what
+  calls it), the thread it lives on where that matters, and a link to
+  the D2 section that explains it in context. Generated types
+  (`generated/`) are listed once, by where they come from.
+  - **Generated skeleton, written descriptions.** A stdlib-only script
+    lists the types from the sources (C++ `class`/`struct` declarations,
+    Rust `pub struct`/`enum`/`trait` items, TS exported types, Svelte
+    files) and checks the dictionary against it: a type without an entry,
+    or an entry for a type that's gone, fails `check-all.py`. The
+    descriptions are written by hand, since a generated one would only
+    repeat the name; where a type has a doc comment, the entry and the
+    comment say the same thing (the comment wins and the entry is
+    copied from it). Tiny private helpers may be listed by name only,
+    marked as such, so the list stays complete without padding.
+  - Indexes beside the alphabetical list: by layer and by folder, so a
+    reader can scan "everything in the queue" as easily as look up one
+    name.
+  - **Exit:** every type in the tree has an entry and the check passes;
+    a sample of twenty entries, picked at random, read correctly
+    against the code.
+- **Order:** D2's overview and repository map first (they shape the rest
+  and help anyone reviewing §8.1's decisions), then D1 (needed for the
+  release), then the rest of D2 and D3 together, since writing the
+  dictionary exposes what D2 misses. Screenshots are taken last, against
+  the release build's UI. Phase 7b's features are documented as each is
+  built (X7 when it lands).
+- **Decide first:** whether the user guide is bundled or hosted (above);
+  the screenshot library (a demo library of free-licensed music, so
+  covers and names can be published); and whether D1 is translated
+  when the UI is (F19), or English only at first.
+- **Exit (to check)**: D1–D3's exits, `check-all.py` green with the new
+  checks, and the owner reading D1 end to end on the release build.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account

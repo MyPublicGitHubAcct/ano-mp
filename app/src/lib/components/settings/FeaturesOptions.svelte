@@ -174,6 +174,12 @@
       title: t("feature.outsideRecommendations"),
       about: t("feature.outsideRecommendationsAbout"),
     },
+    {
+      key: "similarArtists",
+      id: "X7",
+      title: t("feature.similarArtists"),
+      about: t("feature.similarArtistsAbout"),
+    },
   ];
 
   const LOOK: Switch[] = [

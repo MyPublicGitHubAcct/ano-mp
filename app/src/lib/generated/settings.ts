@@ -257,6 +257,12 @@ recommendations: boolean,
  */
 outsideRecommendations: boolean, 
 /**
+ * X7: a "Similar artists" section on artist pages, from the library
+ * (X4's scoring) and, while `outside_recommendations` is on, from
+ * outside it.
+ */
+similarArtists: boolean, 
+/**
  * X6: a Record button that writes what is played to a file in a
  * folder the user picks (`AppSettings.recording`).
  */

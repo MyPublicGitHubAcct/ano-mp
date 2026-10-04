@@ -4,7 +4,8 @@
   // descriptions off), their albums grouped by release
   // type, and the albums of others they appear on. Once matched on
   // MusicBrainz, it links to their releases the library lacks
-  // (DiscographyPage). Reloads when the
+  // (DiscographyPage). Under the biography, similar artists (X7,
+  // ArtistSimilar). Reloads when the
   // metadata worker names the artist in `metadata-changed`. Click an album
   // to open it in the browser, double-click to play it. The heart marks the
   // artist a favourite (PLAN.md F3).
@@ -22,6 +23,7 @@
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
   import Art from "./Art.svelte";
+  import ArtistSimilar from "./ArtistSimilar.svelte";
   import Heart from "./Heart.svelte";
   import Icon from "./Icon.svelte";
 
@@ -298,6 +300,8 @@
         {/if}
       </div>
     </section>
+
+    <ArtistSimilar artistId={page.id} />
 
     {#each sections as section (section.name)}
       <section class="discography" aria-label={sectionName(section.name)}>

@@ -1483,6 +1483,34 @@ mod tests {
         assert_eq!(names, ["Two"]);
     }
 
+    /// X7's library half: artists with too little in common, or only in
+    /// unreadable folders, are left out.
+    #[test]
+    fn artists_need_enough_in_common_and_a_readable_folder() {
+        let library = fixture();
+        let away = library.add_folder("/Volumes/Away");
+        for t in album_tracks("Away", "Septet", "Jazz", 1994) {
+            library.add(away, t);
+        }
+        let seed = artist(&library, "Quartet");
+        let names_with = |unreadable: &[i64]| -> Vec<String> {
+            similar_artists(&library.conn, seed, unreadable, 10)
+                .unwrap()
+                .into_iter()
+                .map(|a| a.name)
+                .collect()
+        };
+        let names = names_with(&[]);
+        // Jazz is enough; Band's year alone and Other's metal aren't.
+        for name in ["Trio", "Elder", "Septet"] {
+            assert!(names.contains(&name.to_owned()), "{name} in {names:?}");
+        }
+        for name in ["Band", "Other", "Quartet"] {
+            assert!(!names.contains(&name.to_owned()), "{name} in {names:?}");
+        }
+        assert!(!names_with(&[away]).contains(&"Septet".to_owned()));
+    }
+
     #[test]
     fn suggests_albums_not_played_lately() {
         let now = 100 * 86400;

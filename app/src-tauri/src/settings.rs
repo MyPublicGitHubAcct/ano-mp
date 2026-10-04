@@ -219,6 +219,10 @@ pub struct FeatureSettings {
     /// artists for the MusicBrainz ids of the artists played most, and
     /// MusicBrainz's relations.
     pub outside_recommendations: bool,
+    /// X7: a "Similar artists" section on artist pages, from the library
+    /// (X4's scoring) and, while `outside_recommendations` is on, from
+    /// outside it.
+    pub similar_artists: bool,
     /// X6: a Record button that writes what is played to a file in a
     /// folder the user picks (`AppSettings.recording`).
     pub recording: bool,
@@ -258,6 +262,7 @@ impl Default for FeatureSettings {
             effects: false,
             recommendations: true,
             outside_recommendations: false,
+            similar_artists: true,
             recording: false,
         }
     }
