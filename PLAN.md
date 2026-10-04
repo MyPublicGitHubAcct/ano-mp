@@ -5,8 +5,10 @@ complete; the exit checks of Phases 4, 5, 6, 6b and 6c wait to be done in
 the app (each phase says what). Phase 7 (hardening) is under way: every
 step of its "Order of work" that needs no owner decision is done, and the
 signed release waits on the owner's §8.1 decisions
-(`docs/release-decisions.md`). Finished work's design notes and records
-are in `docs/design/`, linked from each phase.
+(`docs/release-decisions.md`). Phase 7b (themes, effects, visualizations
+and recommendations; P3, added 2026-10-03) follows Phase 7, before the
+ports. Finished work's design notes and records are in `docs/design/`,
+linked from each phase.
 
 
 ## 1. Architecture
@@ -217,6 +219,13 @@ sets priorities rather than open questions.
    priority (Phase 6c); each item's **Decision** line in §4.7 says how,
    and where it differs from the proposal. What remains is checking them
    in the app (Phase 6c's exit).
+8. **Personalisation, effects and discovery: added 2026-10-03 at P3.**
+   X1–X5 (Phase 7b): themes, real-time effects, five uncommon
+   visualizations, and recommendations from inside and outside the
+   library. Low priority: after Phase 7's exit and the first release, but
+   before the cross-platform work (Phases 8–10), so the ports carry them.
+   #6's rules apply; X2 and X5 are off by default (they change what is
+   heard and go online).
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
@@ -285,11 +294,13 @@ Each item's proposal and its **Decision** line are in
 
 Each phase ends with a demonstrable result and green tests. Platform order:
 macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9), then
-Windows (Phase 10). Xcode is not needed until Phase 8. Phase 11 (Bandcamp
-streaming) is a feature, not a platform, and depends on Bandcamp's
-permission. Its engineering starts after Phase 7. The phases cover making
-the app work on each platform; packaging, signing and shipping it are all
-in §8.
+Windows (Phase 10). Phase 7b (themes, effects, visualizations and
+recommendations, P3) comes after Phase 7 and before the ports, so those
+features are settled on macOS first. Xcode is not needed until Phase 8.
+Phase 11 (Bandcamp streaming) is a feature, not a platform, and depends
+on Bandcamp's permission. Its engineering starts after Phase 7. The phases
+cover making the app work on each platform; packaging, signing and
+shipping it are all in §8.
 
 Rules from the start, so the later ports stay cheap:
 - Keep platform code behind small interfaces in the core (media controls,
@@ -538,6 +549,96 @@ The open items and parts:
 
 - **Exit:** the macOS app is ready for the first release in §8.3, with
   the P1 items of §4.7 and of H1–H22 done.
+
+### Phase 7b — Personalisation, effects and discovery (macOS)
+Added 2026-10-03 at the owner's request. **Priority: P3 (§4 #8)**: none of
+X1–X5 is needed for a release, and none starts before Phase 7's exit. They
+come before the ports (Phases 8–10), so each is built and settled once on
+macOS and then ported with the rest of the app. Each is an optional feature
+under §4 #6's rules: a switch in `FeatureSettings` that it checks where it
+acts, off by default if it changes what is heard or goes online.
+
+| # | Feature | Touches | Size |
+|---|---|---|---|
+| X1 | Themes: the user changes the look and feel | UI, settings | M |
+| X2 | Real-time effects on what is playing (reverb, chorus, spectral freeze) | core DSP, C API, Rust, settings, UI | L |
+| X3 | Five more visualizations, all uncommon in music players | core (analysis), UI | M–L |
+| X4 | Recommendations from the library | Rust, UI | M |
+| X5 | Recommendations from outside the library | Rust (metadata), UI | M (after X4) |
+
+- [ ] **X1 Themes.** The UI's colours, fonts, density, corner radius and
+  the cover-derived accent become design tokens (CSS custom properties on
+  `:root`), which every component already reads or is moved to read. The
+  user picks a built-in theme (light, dark, high contrast, and a few
+  others) or edits one in Settings › Appearance, with a live preview. A
+  theme is stored in `AppSettings` as token values, each validated
+  (colours, a fixed list of fonts, numbers in range), never as raw CSS,
+  so the CSP and `validate` stay meaningful. Themes export and import as
+  JSON. High contrast and the system's light/dark and larger text sizes
+  keep working (F18); a theme that fails WCAG AA contrast for text is
+  flagged in the editor.
+- [ ] **X2 Effects.** An effects chain in the core, after decoding and
+  before volume, next to the equaliser (F15) and crossfeed (O11): reverb
+  (JUCE's `dsp::Reverb`, then perhaps convolution with bundled impulse
+  responses), chorus (`dsp::Chorus`) and spectral freeze (an STFT that
+  holds the current magnitudes with randomised phases while held). Each
+  effect has a bypass, a wet/dry mix and a few parameters, smoothed so
+  changes never click; the chain's order is fixed at first. Parameters
+  cross the C API as plain values and reach the audio thread lock-free.
+  Settings are global with optional presets; per-track settings (O7) only
+  if asked for. The signal path panel (O10) lists active effects. Off by
+  default (it changes what is heard). Decide first: whether `juce_dsp`
+  joins the core's modules (it has no GUI dependency), the CPU budget at
+  the highest sample rate (a benchmark in `BenchTests.cpp`, H18), and how
+  effects behave across a gapless hand-off and a crossfade (reverb tails
+  carry over; freeze releases on a track change). Offline render tests in
+  the style of `PlayerEngineTests.cpp`.
+- [ ] **X3 Five visualizations** that few players have, beside Phase 5's.
+  Candidates, to settle with the owner before building:
+  - a **Tonnetz**: the harmonic lattice, lit by the chroma Phase 5
+    already computes, so chords and modulations show as moving shapes;
+  - a **recurrence plot** that builds up over the track, showing its
+    repeats (verses, choruses) as a self-similarity matrix;
+  - **cymatics**: Chladni plate figures driven by the dominant partials;
+  - a **phase portrait**: a delay-embedded attractor of the waveform,
+    whose shape follows timbre;
+  - a **pitch spiral**: the spectrum wrapped one octave per turn, so
+    notes line up along spokes and harmonics form patterns.
+
+  Each takes the cover's colours and obeys the flash guard and
+  `prefers-reduced-motion` (F18). New analysis (the recurrence plot's
+  features) goes in the core's analysis thread and the frame encoding,
+  with tests on synthetic signals as in Phase 5. Check each one's CPU
+  cost at Retina size.
+- [ ] **X4 Recommendations from the library.** "More like this" for a
+  track, album or artist, and a Home row of library items the user hasn't
+  played lately that resemble what they have. Offline and local: scores
+  from shared genres, artists and credits (MusicBrainz relations already
+  fetched), era, the analysis (O1's loudness, Phase 5's key and tempo if
+  stored), and co-listening in the history (O8). It extends what radio
+  (O9) and O18 already pick, sharing their code, and leaves out
+  unreadable folders (`availability::unreadable`). The scoring is a pure
+  function, tested on a fixture library; run the benchmarks (H18) on a
+  50k-track library.
+- [ ] **X5 Recommendations from outside the library.** Artists and
+  releases the user doesn't own, seeded from their library and history:
+  candidates are ListenBrainz's similar-artist and recommendation data
+  and MusicBrainz relations, checked first against each source's terms
+  as in Phase 4's sources table (Last.fm stays excluded). Through
+  `http::Client` and the metadata worker, off by default, named in the
+  privacy policy (§8.1); what is sent (artist ids, not the library) is
+  shown in Settings. Results are links out (MusicBrainz, the artist's
+  site, Bandcamp's page; through `webLink`), never streams or downloads,
+  and anything the user already owns is filtered out by MBID and folded
+  names. Dismissed suggestions are remembered. Recorded fixtures in
+  `metadata/fixtures/`, no network in tests.
+- **Exit (to check in the app)**: a theme edited, saved, exported and
+  imported on another Mac, with VoiceOver and high contrast still usable;
+  each effect by ear, including during a gapless hand-off, a crossfade
+  and a seek, with no clicks and no dropouts at the smallest buffer
+  size; the five visualizations on real music, and their CPU cost;
+  library recommendations that make sense on the owner's library;
+  outside recommendations with ListenBrainz, none of them already owned.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account
