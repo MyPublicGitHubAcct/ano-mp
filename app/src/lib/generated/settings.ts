@@ -103,8 +103,9 @@ export type CoverBasis = "year" | "artist";
  * The optional features (PLAN.md §4.6, O1–O19), each of which the user
  * can turn on or off. Local, cheap features are on by default; ones that
  * cost hours of CPU time (the loudness analysis), change what is heard
- * (crossfeed, sample-rate switching), go online (ListenBrainz) or listen
- * on the network (the remote) are off until the user turns them on.
+ * (crossfeed, sample-rate switching), go online (ListenBrainz, update
+ * checks) or listen on the network (the remote) are off until the user
+ * turns them on.
  */
 export type FeatureSettings = { 
 /**
@@ -216,7 +217,12 @@ moreInGenre: boolean,
  * O19: the most played tracks, albums and artists of a year or month
  * (needs the history).
  */
-topPlayed: boolean, };
+topPlayed: boolean, 
+/**
+ * Checks the GitHub Releases page for a newer version at launch and
+ * daily (`updates`).
+ */
+updateCheck: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 

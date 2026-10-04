@@ -1249,3 +1249,28 @@ gainOffset?: number | null,
  * Seconds cut off the start and the end.
  */
 trimStart?: number | null, trimEnd?: number | null, };
+
+/**
+ * What a check found.
+ */
+export type UpdateCheck = { 
+/**
+ * This build's version.
+ */
+current: string, 
+/**
+ * The latest release's version; null while there is none.
+ */
+latest: string | null, 
+/**
+ * Its page on GitHub, to download from.
+ */
+url: string | null, 
+/**
+ * Whether `latest` is newer than `current`.
+ */
+newer: boolean, 
+/**
+ * When it was checked, in Unix seconds.
+ */
+checkedAt: number, };

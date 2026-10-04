@@ -134,8 +134,9 @@ impl EqualiserSettings {
 /// The optional features (PLAN.md §4.6, O1–O19), each of which the user
 /// can turn on or off. Local, cheap features are on by default; ones that
 /// cost hours of CPU time (the loudness analysis), change what is heard
-/// (crossfeed, sample-rate switching), go online (ListenBrainz) or listen
-/// on the network (the remote) are off until the user turns them on.
+/// (crossfeed, sample-rate switching), go online (ListenBrainz, update
+/// checks) or listen on the network (the remote) are off until the user
+/// turns them on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -198,6 +199,9 @@ pub struct FeatureSettings {
     /// O19: the most played tracks, albums and artists of a year or month
     /// (needs the history).
     pub top_played: bool,
+    /// Checks the GitHub Releases page for a newer version at launch and
+    /// daily (`updates`).
+    pub update_check: bool,
 }
 
 impl Default for FeatureSettings {
@@ -229,6 +233,7 @@ impl Default for FeatureSettings {
             on_this_day: true,
             more_in_genre: true,
             top_played: true,
+            update_check: false,
         }
     }
 }
@@ -714,6 +719,7 @@ pub async fn settings_save<R: Runtime>(
     if features != old {
         crate::library::analysis::configure(&app, features);
         crate::remote::configure(&app, features);
+        crate::updates::configure(&app);
         crate::history::wake(&app);
         crate::audio::apply_features(&app, features);
         // Skips, shuffle units and gains may follow different rules now.

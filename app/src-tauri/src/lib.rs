@@ -19,6 +19,7 @@ mod remote;
 mod self_test;
 mod settings;
 mod shell;
+mod updates;
 mod visualizer;
 
 use tauri::webview::PageLoadEvent;
@@ -80,6 +81,9 @@ pub fn run() {
                 log::error!("{error}");
             }
             remote::init(app.handle());
+            if let Err(error) = updates::init(app.handle()) {
+                log::error!("{error}");
+            }
             // After the queue: the menus and the Dock follow it.
             if let Err(error) = shell::init(app.handle()) {
                 log::error!("{error}");
@@ -263,6 +267,8 @@ pub fn run() {
             remote::remote_status,
             remote::remote_new_code,
             remote::remote_forget,
+            updates::updates_status,
+            updates::updates_check,
             visualizer::visualizer_subscribe,
             visualizer::visualizer_unsubscribe
         ])
@@ -272,6 +278,7 @@ pub fn run() {
             tauri::RunEvent::Exit => {
                 log::info!("quitting");
                 remote::shutdown(app);
+                updates::shutdown(app);
                 library::analysis::shutdown(app);
                 metadata::worker::shutdown(app);
                 queue::shutdown(app);

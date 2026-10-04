@@ -543,6 +543,7 @@ fn declare_types(cfg: &Config, settings: &BTreeSet<String>) -> Vec<Declared> {
         crate::library::prefs::AlbumPrefs,
         crate::remote::RemoteStatus,
         crate::remote::RemoteDevice,
+        crate::updates::UpdateCheck,
         crate::shell::DroppedPaths,
         crate::library::browse::Filter,
         crate::library::playlists::ImportReport,

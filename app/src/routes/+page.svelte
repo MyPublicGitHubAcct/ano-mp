@@ -41,6 +41,7 @@
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { features } from "$lib/state/features.svelte";
+  import { updates } from "$lib/state/updates.svelte";
   import HomeView from "$lib/components/HomeView.svelte";
   import HistoryView from "$lib/components/HistoryView.svelte";
   import HealthView from "$lib/components/HealthView.svelte";
@@ -67,6 +68,7 @@
     const stopSettings = appSettings.connect();
     const stopFeatures = features.connect();
     const stopCollection = collection.connect();
+    const stopUpdates = updates.connect();
     const menu = on("menu", (id) => onMenu(id));
     const drops = getCurrentWebview().onDragDropEvent((event) => {
       const payload = event.payload;
@@ -85,6 +87,7 @@
       stopVisualizer();
       stopSettings();
       stopCollection();
+      stopUpdates();
       menu.then((stop) => stop());
       drops.then((stop) => stop());
     };

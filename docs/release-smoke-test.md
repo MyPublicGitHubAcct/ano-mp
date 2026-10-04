@@ -18,9 +18,9 @@ Before starting:
   album, and a gapless album (a live album or a continuous mix) in any of
   them. A copy, not your only one.
 - Media keys: a keyboard with them, or AirPods/headphones with a button.
-- For the update check (once the updater exists, Part 1 of the signed
-  release): the previous release installed and run once, with this test
-  music in its library.
+- For the update (section 5): the previous release installed and run
+  once, with this test music in its library. The first release has none:
+  skip section 5 for it.
 
 ## 1. Download and first launch
 
@@ -75,17 +75,23 @@ Before starting:
 
 ## 5. Update from the previous version
 
-Only once the updater exists (`PLAN.md` §8.2); until then, skip this
-section and say so in the results.
+After the release is published (the check ignores drafts). There is no
+installer: the app links to the release, and the DMG replaces the app
+(`PLAN.md` §8.2).
 
-- [ ] **The update offer.** On the Mac with the previous release, check
-  for updates. Pass: the new version is offered with its notes.
-- [ ] **The update.** Install it. Pass: the app relaunches as the new
-  version (Settings › About); the library, playlists, settings and
-  online sources' keys are all still there; folders are still readable;
-  Gatekeeper raises no dialog.
-- [ ] **Updates off.** With updates turned off, relaunch. Pass: nothing
-  is checked (no request in the log).
+- [ ] **The update offer.** On the Mac with the previous release, click
+  Settings › About › Check for updates. Pass: the new version is named,
+  and "Download from GitHub" opens its release page in the browser.
+- [ ] **Automatic checks.** Turn on "Check for updates automatically"
+  and relaunch. Pass: within a minute a toast names the new version.
+- [ ] **The update.** Download the DMG from that page, quit the app and
+  drag the new one over the old in Applications. Pass: it launches as
+  the new version (Settings › About), and Check for updates says it's
+  the latest; the library, playlists, settings and online sources' keys
+  are all still there; folders are still readable; Gatekeeper raises no
+  dialog beyond the first launch of a download.
+- [ ] **Updates off.** With automatic checks off, relaunch. Pass:
+  nothing is checked (no "latest release" line in the log).
 
 ## 6. Performance (PLAN.md H18)
 

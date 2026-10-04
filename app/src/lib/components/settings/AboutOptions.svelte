@@ -2,13 +2,19 @@
   // About (PLAN.md H9): the versions, and help for a bug report: the log
   // files in the Finder, and diagnostics to paste (versions, the OS, the
   // output device, counts, the folders' states, the switches that are on
-  // and the log's last lines; no paths or titles). Then the third-party
-  // notices (PLAN.md §8.2) and Discogs' non-affiliation notice (§8.1).
+  // and the log's last lines; no paths or titles). With the versions, the
+  // third-party notices (PLAN.md §8.2) and Discogs' non-affiliation notice
+  // (§8.1); then newer releases (§8.2: a check by hand, the automatic
+  // checks' switch, and the release's page to download from).
   import { onMount } from "svelte";
   import { diagnostics } from "$lib/api";
+  import { formatDay } from "$lib/format";
   import { t } from "$lib/i18n";
+  import { openWebLink } from "$lib/openLink";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt, toasts } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
+  import { updates } from "$lib/state/updates.svelte";
 
   let text = $state<string | null>(null);
   let discogsNotice = $state<string | null>(null);
@@ -58,6 +64,45 @@
 {#if discogsNotice}
   <p class="muted small">{discogsNotice}</p>
 {/if}
+
+<h3>{t("updates.title")}</h3>
+{#if updates.last}
+  {@const last = updates.last}
+  <p>
+    {#if last.newer && last.latest}
+      {t("updates.newer", { version: last.latest })}
+    {:else if last.latest}
+      {t("updates.upToDate")}
+    {:else}
+      {t("updates.noRelease")}
+    {/if}
+    <span class="muted">{t("updates.checked", { day: formatDay(last.checkedAt) })}</span>
+  </p>
+{/if}
+<div class="actions">
+  <button disabled={updates.checking} onclick={() => updates.check()}>
+    {updates.checking ? t("updates.checking") : t("updates.check")}
+  </button>
+  {#if updates.last?.newer && updates.last.url}
+    {@const url = updates.last.url}
+    <button onclick={() => openWebLink(url)}>{t("updates.download")}</button>
+  {/if}
+</div>
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={appSettings.current.features.updateCheck}
+    disabled={appSettings.saving}
+    onchange={(event) => {
+      const on = event.currentTarget.checked;
+      void appSettings.save((next) => (next.features.updateCheck = on));
+    }}
+  />
+  <span>
+    <span class="title">{t("updates.automatic")}</span>
+    <span class="hint">{t("updates.automaticHint")}</span>
+  </span>
+</label>
 
 <h3>{t("about.help")}</h3>
 <p class="muted">{t("about.helpHint")}</p>

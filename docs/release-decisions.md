@@ -3,8 +3,9 @@
 The §8.1 items in `PLAN.md` that only the owner can decide (Phase 7 Step 6),
 ordered by how much they block. Each brief says what has to be decided, the
 options, what it blocks in §8.2–8.3, and what could be checked from the
-repo. Nothing here is decided (asked again 2026-10-02, Step 8: all eight
-still open); only the drafts at the end are reviewed. Record each decision in `PLAN.md` §8.1 (and
+repo. Only the distribution channel is decided (2, 2026-10-03); the
+rest were still open when asked again on 2026-10-02 (Step 8), and the
+drafts at the end are reviewed. Record each decision in `PLAN.md` §8.1 (and
 §4 where it changes a decision there), with its date.
 
 Written 2026-10-02. Checks made from here: the code, read-only DNS and
@@ -59,17 +60,21 @@ and the stores.
 Store, or both (§8.1 proposes direct download first). Linux and Windows
 can wait for their phases.
 
+**Decided 2026-10-03 (owner):** builds are distributed from the
+repository's GitHub Releases page, as a direct download; the Mac App
+Store is not planned for now. Updates are a check against that page,
+not the Tauri updater, whose install can't run in the sandbox (`PLAN.md`
+§8.2, 2026-10-03).
+
 **Blocks:**
-- The updater (§8.2): the Tauri updater plugin is a new crate and npm
-  package (licence to check against `deny.toml`) and only fits direct
-  downloads; the Mac App Store forbids it. I'll ask before adding it, once
-  this is decided. Its signing key, once made, must be backed up offline:
-  losing it strands every install.
+- Updates (§8.2): done as a check of the latest GitHub Release
+  (2026-10-03), so no updater key. The repository's URL is compiled into
+  every build (`updates.rs`): moving or renaming the repository (for the
+  name, 1) strands the checks of builds already out, unless GitHub's
+  redirect holds.
 - Where releases are hosted: the repository was made public on
-  2026-10-03 (owner), so its GitHub Releases can serve public downloads
-  and an update manifest, and its Actions minutes are free. A separate
-  public repository or a website remain options; whichever URL the
-  updater uses is compiled into every build.
+  2026-10-03 (owner), so its GitHub Releases serve public downloads, and
+  its Actions minutes are free.
 - The Mac App Store needs its own certificates and provisioning, App Store
   Connect's privacy answers (see 6), and review notes; the app is already
   sandboxed, which the store requires.
@@ -134,12 +139,12 @@ their wording. Depends on 8 (crash reporting) and 7 (the contact address).
 | Wikipedia and Wikidata (`en.wikipedia.org`, `www.wikidata.org`) | On | Artist pages and album descriptions | Wikidata ids and article titles that MusicBrainz links to |
 | Discogs (`api.discogs.com`) | Off; needs the user's own token | Album details, when the user turns it on | Album titles and artist names, with the user's token |
 | ListenBrainz (`api.listenbrainz.org`) | Off; needs the user's own token | After each play, when turned on | Title, artist, album, duration, MusicBrainz ids, the time of the play, the user's token |
+| GitHub (`api.github.com`) | Off; checking by hand in Settings › About works either way | Shortly after launch and daily while "Check for updates automatically" is on, and when the user clicks "Check for updates" | Nothing but the request: the app's `User-Agent` and the user's IP address |
 | LAN remote | Off | While on | Nothing leaves the local network: it answers only local addresses and paired phones, serving the now-playing state, the queue and album covers |
 
 Every online request goes through one client (`metadata/http.rs`).
 "Online sources" can be turned off as a whole in Settings. Nothing else
-goes out: no analytics, no crash reports, no update checks (the updater
-would add one: 2). Keys are in the macOS keychain. The log stays on the
+goes out: no analytics, no crash reports; update checks only as above. Keys are in the macOS keychain. The log stays on the
 Mac; "Copy diagnostics" copies to the clipboard only when clicked, and
 holds no paths, titles or artists. The policy must also name each new
 source or feature that goes online (§4 #6's rule).

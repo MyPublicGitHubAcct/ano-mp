@@ -84,7 +84,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 116 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
-| 433 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 439 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
 | 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -443,8 +443,10 @@ Waiting on the owner, in the order the owner takes them (set 2026-10-03):
 2. the distribution channel and where releases are hosted (Part 1,
    the updater, if a direct download). The owner made the
    repository public on 2026-10-03, so its GitHub Releases can host
-   downloads and Actions minutes are free; the channel is still
-   open, and iPhone and iPad wait for the last steps;
+   downloads and Actions minutes are free. Decided 2026-10-03: a
+   direct download from GitHub Releases (§8.1), with an update check
+   rather than the updater (§8.2); iPhone and iPad wait for the last
+   steps;
 3. the Developer Program and the Developer ID certificate (Part 2),
    then the App Store Connect API key and the six secrets (Part 3);
 4. the JUCE licence, the AAC opinion, the privacy policy and support
@@ -800,7 +802,10 @@ Each open item has a brief (options, what it blocks, what was checked) in
 - [ ] **Distribution channels:**
   - macOS: notarized direct download (DMG) and/or Mac App Store. The store
     requires the App Sandbox and does not allow the built-in updater.
-    Proposal: direct download first.
+    Proposal: direct download first. **Decided 2026-10-03 (owner):**
+    builds are distributed from this repository's GitHub Releases page
+    (the DMG, the zipped app and `SHA256SUMS` that `release.py` makes);
+    the Mac App Store is not planned for now.
   - Linux: `.deb` and AppImage first (Tauri builds both, plus `.rpm`).
     Flatpak/Flathub reaches more distros but adds sandbox work; later.
   - Windows: NSIS installer (proposal) and/or MSI. Microsoft Store and winget
@@ -835,9 +840,10 @@ Each open item has a brief (options, what it blocks, what was checked) in
 
 ### 8.2 Cross-platform release setup
 Build once (after Phase 7), reused for every platform. **Done 2026-10-02
-for macOS, except the signing secrets, the updater and the icon set,
-which wait on §8.1** (Phase 7, Step 7): the version, the notices and the
-release workflow are in place, unsigned until the secrets exist.
+for macOS, except the signing secrets and the icon set, which wait on
+§8.1** (Phase 7, Step 7): the version, the notices, the release workflow
+and the update check (2026-10-03) are in place, unsigned until the
+secrets exist.
 
 - **Single version number:** CMake `project(VERSION)` is the source of truth;
   generate `anomp_version()` from it instead of the hard-coded string, and
@@ -857,11 +863,21 @@ release workflow are in place, unsigned until the secrets exist.
   signing, updater key) stored as CI secrets, with an offline backup. Losing
   the updater key strands existing installs. **Waits on the owner**:
   `release.yml`'s header lists the six Apple secrets it reads.
-- **Auto-updates** for direct-download builds: Tauri updater plugin with a
-  signed update manifest hosted with the releases. Store builds (App Store,
-  Microsoft Store, Flathub) update through the store instead.
-  **Waits on the distribution decision (§8.1)**; the plugin is a new crate
-  and npm package, to be agreed with the owner first.
+- **Updates** for direct-download builds: an update check, not the Tauri
+  updater. **Done 2026-10-03 for macOS** (`app/src-tauri/src/updates.rs`):
+  it reads the repository's latest GitHub Release (§8.1) through
+  `http::Client`, compares versions, and Settings › About links to the
+  release's page to download the DMG. Checking by hand always works;
+  automatic checks (shortly after launch, then daily, with a toast once
+  per newer version) are a feature switch, `updateCheck`, off by default
+  since it goes online. The owner chose this over the plugin (2026-10-03):
+  `tauri-plugin-updater` 2.13.1 installs on macOS by renaming the `.app`
+  in place, falling back to an administrator AppleScript, and the App
+  Sandbox allows neither; its check alone needs a signing key and a
+  signed manifest, and verifies nothing until the download. So there
+  is no updater key or manifest. Revisit if the plugin learns to install
+  from a sandbox. Store builds (App Store, Microsoft Store, Flathub)
+  update through the store instead.
 - **Third-party notices:** a generated `THIRD_PARTY_NOTICES` file shipped in
   every package and shown in the app's About screen. It covers JUCE; FFmpeg
   (LGPL text, exact version and configure flags, link to the matching
@@ -958,7 +974,8 @@ release workflow are in place, unsigned until the secrets exist.
 6. Smoke test each artifact on a clean machine: install/upgrade, play MP3,
    FLAC and AAC, seek, gapless album, media keys, MusicBrainz lookup
    (`docs/release-smoke-test.md` on macOS).
-7. Publish the GitHub Release and the updater manifest; submit store builds
+7. Publish the GitHub Release (the update check finds it once it's
+   neither a draft nor a pre-release); submit store builds
    (TestFlight → App Store review).
 8. After release: watch crash reports (if enabled) and issue tracker; keep
    the previous version's artifacts available for rollback.
@@ -993,8 +1010,8 @@ shell everywhere (MSYS2 on Windows).
 | Library DB copies (H10) | Each migration | Confirm the copy is written before the migration, and that old copies are pruned | none (tests) |
 | Version number | Each release | One version everywhere (§8.2) | `version.py` |
 | Third-party notices | Each release and each dependency change | Regenerate and check every licence is known (§8.2) | `make-notices.py` |
-| Release artifacts | Each release | SHA-256 checksums, updater manifest, release notes from `CHANGELOG.md` (§8.2) | `release.py` |
-| Signing material: Apple certificates (distribution and provisioning profiles yearly, Developer ID every five years), notarization key, Windows certificate, updater key | Monthly check once §8.3 is set up | Renew before expiry; keep the offline backups current | `check-signing.py` |
+| Release artifacts | Each release | SHA-256 checksums, release notes from `CHANGELOG.md` (§8.2) | `release.py` |
+| Signing material: Apple certificates (distribution and provisioning profiles yearly, Developer ID every five years), notarization key, Windows certificate | Monthly check once §8.3 is set up | Renew before expiry; keep the offline backups current | `check-signing.py` |
 | Service terms and limits (MusicBrainz, Cover Art Archive, Wikimedia, later sources), the `User-Agent` contact, the MetaBrainz supporter plan | Yearly and before each release (§8.1) | Read the terms; update the sources table (`docs/design/phase-4-online-metadata.md`) | none (manual) |
 | JUCE licence tier against revenue; App Store rules (SDK minimums, privacy manifests); minimum OS targets (§4.5) | Yearly (after WWDC for Apple) | Owner decisions; record them in §4 | none (manual) |
 
@@ -1033,10 +1050,11 @@ Steps:
 - [x] M5 Dependency tools. Done 2026-10-03 (Step 8's Part 6):
   `check-pins.py`, `bump-pin.py`, `audit-deps.py` and the weekly
   `audit.yml`.
-- [ ] M6 Release tools (with §8.2). Done 2026-10-02: `version.py`,
+- [x] M6 Release tools (with §8.2). Done 2026-10-02: `version.py`,
   `make-notices.py`, `release.py`, `check-signing.py`, `build-app.py`,
-  `check-bundle.py` and `notarize.py`. Open: `release.py`'s updater
-  manifest (after the updater, §8.2).
+  `check-bundle.py` and `notarize.py`. `release.py`'s updater manifest
+  isn't needed: the update check reads GitHub's release (§8.2,
+  2026-10-03).
 - **Exit:** `check-all.py` runs in CI (by hand and on each version tag
   since 2026-10-02; the pre-commit hook runs `--quick`), the scheduled job
   reports outdated pins and advisories, and each §9.1 row either has its

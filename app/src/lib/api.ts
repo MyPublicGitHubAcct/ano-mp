@@ -33,6 +33,7 @@ import type {
   SmartRules,
   TopKind,
   TrackPrefs,
+  UpdateCheck,
 } from "./generated/ipc";
 
 export type * from "./generated/settings";
@@ -146,6 +147,13 @@ export const diagnostics = {
   discogsNotice: () => commands.diagnosticsDiscogsNotice(),
   /** The main window has painted: logs the time since launch, once (H18). */
   firstPaint: () => commands.diagnosticsFirstPaint(),
+};
+
+export const updates = {
+  /** The last check for a newer release that worked since launch, if any. */
+  status: () => commands.updatesStatus(),
+  /** Checks GitHub for a newer release now, whether or not automatic checks are on. */
+  check: () => commands.updatesCheck(),
 };
 
 export const shell = {
@@ -389,6 +397,8 @@ type Events = {
   "player-volume": number;
   /** A playlist file opened from the Finder was imported. */
   "playlist-imported": PlaylistImport;
+  /** An automatic check found a newer release, once per version. */
+  "update-available": UpdateCheck;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

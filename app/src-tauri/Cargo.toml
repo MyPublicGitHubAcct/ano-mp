@@ -63,6 +63,9 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "gzip"
 # SHA-256 for the image cache's file names, which must not change between
 # builds; already linked in through rustls, so it adds no new code.
 ring = "0.17"
+# Comparing versions for the update check (updates.rs); already in the
+# dependency tree through Tauri, so it adds no new code.
+semver = "1"
 # Embedded pictures as data: URLs in Get Info (PLAN.md F16); already in the
 # dependency tree through Tauri.
 base64 = "0.22"

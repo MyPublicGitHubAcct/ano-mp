@@ -75,6 +75,7 @@ dependencies = [
  "notify-rust",
  "ring",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "syn 2.0.119",

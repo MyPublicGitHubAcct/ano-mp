@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs } from "./ipc";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
 import type { AppSettings, CoverBasis, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
@@ -141,6 +141,8 @@ export const commands = {
   remoteStatus: () => invoke<RemoteStatus>("remote_status"),
   remoteNewCode: () => invoke<RemoteStatus>("remote_new_code"),
   remoteForget: (args: { deviceId: number }) => invoke<RemoteStatus>("remote_forget", args),
+  updatesStatus: () => invoke<UpdateCheck | null>("updates_status"),
+  updatesCheck: () => invoke<UpdateCheck>("updates_check"),
   visualizerSubscribe: (args: { channel: Channel<ArrayBuffer> }) => invoke<number>("visualizer_subscribe", args),
   visualizerUnsubscribe: (args: { id: number }) => invoke<void>("visualizer_unsubscribe", args),
 };
