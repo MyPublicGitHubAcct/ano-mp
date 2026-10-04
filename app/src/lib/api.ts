@@ -290,6 +290,21 @@ export const effects = {
   status: () => commands.effectsStatus(),
 };
 
+// ---- Recommendations from outside the library (PLAN.md X5) ------------------------
+
+export const outside = {
+  /** Home's artists the library doesn't have, like the ones played most. */
+  forYou: () => commands.outsideForYou(),
+  /** Artists the library doesn't have, like library artist `artistId`. */
+  likeArtist: (artistId: number) => commands.outsideLikeArtist({ artistId }),
+  /** A suggestion's links out; its homepage and Bandcamp page may take a MusicBrainz lookup. */
+  links: (mbid: string) => commands.outsideLinks({ mbid }),
+  dismiss: (mbid: string, name: string) => commands.outsideDismiss({ mbid, name }),
+  /** What is sent, and how many suggestions were dismissed. */
+  status: () => commands.outsideStatus(),
+  forgetDismissed: () => commands.outsideForgetDismissed(),
+};
+
 // ---- Optional features (PLAN.md O1–O19) -----------------------------------------
 
 export const features = {
@@ -312,6 +327,12 @@ export const features = {
       day: date.getDate(),
     }),
   moreInGenre: (albumId: number, genre: string, seed: number) => commands.libraryMoreInGenre({ albumId, genre, seed }),
+  /** "More like this" (X4): tracks on other albums, other albums, other artists. */
+  similarTracks: (trackId: number) => commands.librarySimilarTracks({ trackId }),
+  similarAlbums: (albumId: number) => commands.librarySimilarAlbums({ albumId }),
+  similarArtists: (artistId: number) => commands.librarySimilarArtists({ artistId }),
+  /** Home's suggestions: albums not played lately like what is played. */
+  forYou: () => commands.libraryForYou(),
   health: () => commands.libraryHealth(),
   lyrics: (trackId: number) => commands.libraryLyrics({ trackId }),
   prefs: (ids: { trackId?: number; albumId?: number }) =>

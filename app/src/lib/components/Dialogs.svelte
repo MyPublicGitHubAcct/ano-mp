@@ -7,6 +7,7 @@
   import NoticesDialog from "./NoticesDialog.svelte";
   import PrefsDialog from "./PrefsDialog.svelte";
   import ShortcutsDialog from "./ShortcutsDialog.svelte";
+  import SimilarDialog from "./SimilarDialog.svelte";
   import SmartPlaylistDialog from "./SmartPlaylistDialog.svelte";
   import TrackInfoDialog from "./TrackInfoDialog.svelte";
 
@@ -29,4 +30,6 @@
   <ShortcutsDialog onclose={close} />
 {:else if ui.dialog?.kind === "notices"}
   <NoticesDialog onclose={close} />
+{:else if ui.dialog?.kind === "similar"}
+  {#key ui.dialog}<SimilarDialog seed={ui.dialog.seed} onclose={close} />{/key}
 {/if}

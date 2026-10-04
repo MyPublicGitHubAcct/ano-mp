@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
 import type { AppSettings, CoverBasis, EffectsSettings, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
@@ -114,6 +114,16 @@ export const commands = {
   libraryRecentlyAdded: (args: { limit: number }) => invoke<AlbumCard[]>("library_recently_added", args),
   libraryOnThisDay: (args: { year: number; month: number; day: number }) => invoke<AlbumCard[]>("library_on_this_day", args),
   libraryMoreInGenre: (args: { albumId: number; genre: string; seed: number }) => invoke<AlbumCard[]>("library_more_in_genre", args),
+  librarySimilarTracks: (args: { trackId: number }) => invoke<SimilarTrack[]>("library_similar_tracks", args),
+  librarySimilarAlbums: (args: { albumId: number }) => invoke<SimilarAlbum[]>("library_similar_albums", args),
+  librarySimilarArtists: (args: { artistId: number }) => invoke<SimilarArtist[]>("library_similar_artists", args),
+  libraryForYou: () => invoke<SimilarAlbum[]>("library_for_you"),
+  outsideForYou: () => invoke<OutsideArtist[]>("outside_for_you"),
+  outsideLikeArtist: (args: { artistId: number }) => invoke<OutsideArtist[]>("outside_like_artist", args),
+  outsideLinks: (args: { mbid: string }) => invoke<OutsideLinks>("outside_links", args),
+  outsideDismiss: (args: { mbid: string; name: string }) => invoke<void>("outside_dismiss", args),
+  outsideStatus: () => invoke<OutsideStatus>("outside_status"),
+  outsideForgetDismissed: () => invoke<void>("outside_forget_dismissed"),
   libraryHealth: () => invoke<HealthReport>("library_health"),
   libraryLyrics: (args: { trackId: number }) => invoke<Lyrics | null>("library_lyrics", args),
   prefsGet: (args: { trackId?: number | null; albumId?: number | null }) => invoke<FeaturePrefs>("prefs_get", args),

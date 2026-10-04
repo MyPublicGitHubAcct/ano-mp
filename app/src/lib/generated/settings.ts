@@ -28,7 +28,12 @@ albumFacts: Array<AlbumFact>,
 /**
  * Album descriptions and artist biographies (from Wikipedia).
  */
-showDescriptions: boolean, };
+showDescriptions: boolean, 
+/**
+ * A "Now Playing" item in the sidebar (the now-playing bar opens the
+ * same page either way).
+ */
+sidebarNowPlaying: boolean, };
 
 export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate" | "playCount" | "lastPlayed" | "dateAdded" | "composer" | "rating";
 
@@ -235,7 +240,18 @@ themes: boolean,
  * X2: real-time effects on what is playing (`AppSettings.effects`);
  * off, every effect is off.
  */
-effects: boolean, };
+effects: boolean, 
+/**
+ * X4: "More like this" for tracks, albums and artists, and Home's
+ * suggestions, from the library alone.
+ */
+recommendations: boolean, 
+/**
+ * X5: artists outside the library, from ListenBrainz's similar
+ * artists for the MusicBrainz ids of the artists played most, and
+ * MusicBrainz's relations.
+ */
+outsideRecommendations: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 

@@ -98,6 +98,23 @@
   </span>
 </label>
 
+<h3>{t("display.sidebar")}</h3>
+<label class="switch">
+  <input
+    type="checkbox"
+    checked={display.sidebarNowPlaying}
+    disabled={appSettings.saving}
+    onchange={(event) => {
+      const show = event.currentTarget.checked;
+      appSettings.save((next) => (next.display.sidebarNowPlaying = show));
+    }}
+  />
+  <span>
+    <span class="title">{t("display.sidebarNowPlaying")}</span>
+    <span class="hint">{t("display.sidebarNowPlayingHint")}</span>
+  </span>
+</label>
+
 <div class="actions">
   <button onclick={() => appSettings.reset("display")} disabled={appSettings.saving}>{t("settings.reset")}</button>
 </div>

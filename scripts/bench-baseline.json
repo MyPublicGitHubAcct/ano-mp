@@ -46,6 +46,10 @@
     "core.effects.*": {
       "min": 10,
       "unit": "x"
+    },
+    "similar.*": {
+      "max": 300,
+      "unit": "ms"
     }
   },
   "results": {
@@ -299,6 +303,26 @@
     },
     "search.zzz.tracks": {
       "value": 0.203,
+      "unit": "ms"
+    },
+    "similar.albums": {
+      "value": 77.34,
+      "unit": "ms"
+    },
+    "similar.artists": {
+      "value": 58.49,
+      "unit": "ms"
+    },
+    "similar.home": {
+      "value": 82.047,
+      "unit": "ms"
+    },
+    "similar.radio": {
+      "value": 75.233,
+      "unit": "ms"
+    },
+    "similar.tracks": {
+      "value": 73.709,
       "unit": "ms"
     }
   }

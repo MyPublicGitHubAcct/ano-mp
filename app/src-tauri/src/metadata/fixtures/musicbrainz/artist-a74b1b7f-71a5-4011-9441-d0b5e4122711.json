@@ -1,132 +1,173 @@
 {
-  "name": "Radiohead",
-  "life-span": {
-    "end": null,
-    "begin": "1991",
-    "ended": false
-  },
-  "disambiguation": "",
-  "country": "GB",
-  "ipis": [],
-  "end-area": null,
-  "begin-area": {
-    "type-id": null,
-    "type": null,
-    "sort-name": "Abingdon-on-Thames",
-    "id": "d840d4b3-8987-4626-928b-398de760cc24",
-    "name": "Abingdon-on-Thames",
-    "disambiguation": ""
-  },
-  "type": "Group",
-  "isnis": [
-    "0000000115475162"
-  ],
   "id": "a74b1b7f-71a5-4011-9441-d0b5e4122711",
+  "type-id": "e431f5f6-b5d2-343d-8b36-72607fffb74b",
   "relations": [
     {
+      "ended": false,
+      "attribute-values": {},
+      "type": "discogs",
+      "target-credit": "",
       "attributes": [],
+      "attribute-ids": {},
       "source-credit": "",
       "direction": "forward",
-      "type": "discogs",
-      "attribute-values": {},
-      "target-type": "url",
-      "attribute-ids": {},
-      "ended": false,
-      "begin": null,
       "type-id": "04a5b104-a4c2-4bac-99a1-7b837c37d9e4",
-      "end": null,
-      "target-credit": "",
       "url": {
         "id": "f49de6eb-d9db-4474-9406-f3b02ec95b42",
         "resource": "https://www.discogs.com/artist/3840"
-      }
+      },
+      "target-type": "url",
+      "end": null,
+      "begin": null
     },
     {
-      "attribute-values": {},
       "ended": false,
+      "attribute-values": {},
+      "type": "free streaming",
+      "target-credit": "",
+      "attributes": [],
       "attribute-ids": {},
-      "target-type": "url",
-      "target-credit": "",
-      "end": null,
+      "source-credit": "",
+      "direction": "forward",
       "type-id": "769085a1-c2f7-4c24-a532-2375a77693bd",
-      "begin": null,
       "url": {
-        "id": "6e039c97-4476-4ddc-ab54-d226e8db5fb4",
-        "resource": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb"
+        "resource": "https://open.spotify.com/artist/4Z8W4fKeB5YxbusRsdQVPb",
+        "id": "6e039c97-4476-4ddc-ab54-d226e8db5fb4"
       },
-      "attributes": [],
-      "source-credit": "",
-      "direction": "forward",
-      "type": "free streaming"
-    },
-    {
-      "direction": "forward",
-      "type": "official homepage",
-      "attributes": [],
-      "source-credit": "",
-      "type-id": "fe33d22f-c3b0-4d68-bd53-a856badf2b15",
-      "begin": null,
-      "target-credit": "",
-      "end": null,
-      "url": {
-        "id": "3731db81-d717-4658-a7b1-f2ef13c3033b",
-        "resource": "http://www.radiohead.com/"
-      },
-      "attribute-values": {},
       "target-type": "url",
-      "ended": false,
-      "attribute-ids": {}
+      "begin": null,
+      "end": null
     },
     {
+      "ended": false,
+      "attribute-values": {},
+      "type": "official homepage",
+      "target-credit": "",
+      "attributes": [],
+      "attribute-ids": {},
+      "source-credit": "",
+      "direction": "forward",
+      "type-id": "fe33d22f-c3b0-4d68-bd53-a856badf2b15",
+      "url": {
+        "resource": "http://www.radiohead.com/",
+        "id": "3731db81-d717-4658-a7b1-f2ef13c3033b"
+      },
+      "target-type": "url",
+      "end": null,
+      "begin": null
+    },
+    {
+      "direction": "forward",
+      "begin": null,
+      "end": null,
+      "target-type": "url",
       "url": {
         "id": "0d8cb250-f92f-4481-bb00-a0b40391912b",
         "resource": "https://www.wikidata.org/wiki/Q44190"
       },
       "type-id": "689870a4-a1e4-4912-b17f-7b2664215698",
-      "begin": null,
-      "target-credit": "",
-      "end": null,
-      "target-type": "url",
-      "ended": false,
-      "attribute-ids": {},
-      "attribute-values": {},
       "type": "wikidata",
-      "direction": "forward",
+      "attribute-values": {},
+      "ended": false,
       "source-credit": "",
-      "attributes": []
+      "attribute-ids": {},
+      "attributes": [],
+      "target-credit": ""
+    },
+    {
+      "target-credit": "",
+      "attributes": [],
+      "attribute-ids": {},
+      "source-credit": "",
+      "ended": false,
+      "attribute-values": {},
+      "type": "bandcamp",
+      "type-id": "c550166e-0548-4a18-b1d4-e2ae423a3e88",
+      "url": {
+        "id": "146f8bf6-cc29-4317-aae4-459579ebacb2",
+        "resource": "https://radiohead.bandcamp.com/"
+      },
+      "target-type": "url",
+      "begin": null,
+      "end": null,
+      "direction": "forward"
+    },
+    {
+      "ended": false,
+      "artist": {
+        "name": "Thom Yorke",
+        "id": "8ed2e0b3-aa4c-4e13-bec3-dc7393ed4d6b",
+        "disambiguation": ""
+      },
+      "attribute-values": {},
+      "type": "member of band",
+      "target-credit": "",
+      "attributes": [
+        "lead vocals",
+        "original"
+      ],
+      "attribute-ids": {},
+      "source-credit": "",
+      "direction": "backward",
+      "type-id": "5be4c609-9afa-4ea0-910b-12ffb71e3821",
+      "target-type": "artist",
+      "begin": null,
+      "end": null
+    },
+    {
+      "artist": {
+        "disambiguation": "side group of Radiohead",
+        "id": "9055fca5-69bc-4d47-b569-ab2012a19565",
+        "name": "The Smile"
+      },
+      "ended": false,
+      "type": "subgroup",
+      "attribute-values": {},
+      "target-credit": "",
+      "source-credit": "",
+      "attribute-ids": {},
+      "attributes": [],
+      "direction": "forward",
+      "type-id": "7802f96b-d995-4ce9-8f70-6366faad758e",
+      "target-type": "artist",
+      "begin": "2021-05-22",
+      "end": null
     }
   ],
+  "life-span": {
+    "ended": false,
+    "begin": "1991",
+    "end": null
+  },
   "area": {
-    "disambiguation": "",
-    "id": "8a754a16-0027-3a29-b6d7-2b40ea0481ed",
+    "type": null,
     "name": "United Kingdom",
     "type-id": null,
-    "type": null,
+    "sort-name": "United Kingdom",
     "iso-3166-1-codes": [
       "GB"
     ],
-    "sort-name": "United Kingdom"
+    "disambiguation": "",
+    "id": "8a754a16-0027-3a29-b6d7-2b40ea0481ed"
   },
-  "gender-id": null,
-  "type-id": "e431f5f6-b5d2-343d-8b36-72607fffb74b",
   "genres": [
     {
-      "id": "ceeaa283-5d7b-4202-8d1d-e25d116b2a18",
-      "name": "alternative rock",
+      "count": 43,
       "disambiguation": "",
-      "count": 43
+      "id": "ceeaa283-5d7b-4202-8d1d-e25d116b2a18",
+      "name": "alternative rock"
     },
     {
-      "name": "art rock",
+      "count": 30,
       "id": "b7ef058e-6d83-4ca4-8123-9724bff4648b",
       "disambiguation": "",
-      "count": 30
+      "name": "art rock"
     },
     {
-      "count": 19,
       "id": "0e3fc579-2d24-4f20-9dae-736e1ec78798",
+      "disambiguation": "",
       "name": "rock",
-      "disambiguation": ""
+      "count": 19
     },
     {
       "name": "electronic",
@@ -135,12 +176,30 @@
       "count": 14
     },
     {
-      "count": 14,
       "disambiguation": "",
       "id": "65c97e89-b42b-45c2-a70e-0eca1b8f0ff7",
-      "name": "experimental rock"
+      "name": "experimental rock",
+      "count": 14
     }
   ],
+  "ipis": [],
+  "begin-area": {
+    "sort-name": "Abingdon-on-Thames",
+    "type-id": null,
+    "name": "Abingdon-on-Thames",
+    "type": null,
+    "disambiguation": "",
+    "id": "d840d4b3-8987-4626-928b-398de760cc24"
+  },
   "gender": null,
-  "sort-name": "Radiohead"
+  "disambiguation": "",
+  "sort-name": "Radiohead",
+  "country": "GB",
+  "gender-id": null,
+  "type": "Group",
+  "isnis": [
+    "0000000115475162"
+  ],
+  "name": "Radiohead",
+  "end-area": null
 }

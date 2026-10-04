@@ -210,6 +210,13 @@ pub struct FeatureSettings {
     /// X2: real-time effects on what is playing (`AppSettings.effects`);
     /// off, every effect is off.
     pub effects: bool,
+    /// X4: "More like this" for tracks, albums and artists, and Home's
+    /// suggestions, from the library alone.
+    pub recommendations: bool,
+    /// X5: artists outside the library, from ListenBrainz's similar
+    /// artists for the MusicBrainz ids of the artists played most, and
+    /// MusicBrainz's relations.
+    pub outside_recommendations: bool,
 }
 
 impl Default for FeatureSettings {
@@ -244,6 +251,8 @@ impl Default for FeatureSettings {
             update_check: false,
             themes: true,
             effects: false,
+            recommendations: true,
+            outside_recommendations: false,
         }
     }
 }
@@ -285,6 +294,9 @@ pub struct DisplaySettings {
     pub album_facts: Vec<AlbumFact>,
     /// Album descriptions and artist biographies (from Wikipedia).
     pub show_descriptions: bool,
+    /// A "Now Playing" item in the sidebar (the now-playing bar opens the
+    /// same page either way).
+    pub sidebar_now_playing: bool,
 }
 
 impl Default for DisplaySettings {
@@ -295,6 +307,7 @@ impl Default for DisplaySettings {
             track_columns: vec![TrackNumber, Artist, Album, Duration],
             album_facts: vec![Date, Label, Country, AlbumFact::Format, Type],
             show_descriptions: true,
+            sidebar_now_playing: false,
         }
     }
 }
@@ -872,6 +885,7 @@ mod tests {
         );
         assert_eq!(settings.display.album_facts, defaults.display.album_facts);
         assert!(!settings.display.show_descriptions);
+        assert!(!settings.display.sidebar_now_playing, "off unless stored");
         assert_eq!(settings.playback.replay_gain, ReplayGainMode::Off);
         assert_eq!(settings.playback.preamp, 0.0);
         assert_eq!(settings.playback.untagged_gain, -6.0);

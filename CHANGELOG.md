@@ -40,5 +40,24 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   stereo stage showing where each sound sits between the speakers, and
   two combinations: Resonance (cymatics under the phase portrait) and
   Harmony (the pitch spiral beside the Tonnetz).
-- The sidebar's Library and Playlists sections fold away under their
-  headings, and stay as you left them.
+- More like this: tracks, albums and artists in your library like the
+  one you're looking at (from a right-click, on album pages and on
+  artist pages), and a "You might like" row on Home of albums you
+  haven't played lately that resemble what you play. Each says why
+  (a shared genre, era, label, artist, composer or band member, or being
+  played together), and nothing leaves your Mac. Library radio picks
+  its tracks the same way, so it now follows composers and what you
+  play together too.
+- Recommendations from outside the library (Settings › Features, off by
+  default): artists you don't have, like the ones you play most, from
+  ListenBrainz's similar artists and MusicBrainz's band members and
+  side projects. They show on Home ("Beyond your library") and in More
+  Like This for an artist, each saying why, with links to MusicBrainz,
+  ListenBrainz, the artist's website and Bandcamp page. Only the
+  MusicBrainz ids of your most-played artists are sent (Settings lists
+  them); "Not Interested" stops suggesting an artist.
+- The sidebar's Library and Playlists sections, Home's "You might like"
+  and "Beyond your library", and an album's "More like this" fold away
+  under their headings: closed at first, then as you left them.
+- The sidebar's Now Playing item is hidden unless you turn it on in
+  Settings › Display › Sidebar; the now-playing bar opens the same page.

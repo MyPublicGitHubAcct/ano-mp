@@ -59,6 +59,14 @@ def test_select_reports_items_no_longer_upstream(rf):
     assert missing == ["releases ['gone']"]
 
 
+def test_select_from_a_response_that_is_a_list(rf):
+    response = [{"id": "a", "x": 1}, {"id": "b", "x": 2}, {"id": "c", "x": 3}]
+    rule = {"select": {"": {"by": ["id"], "items": [["c"], ["a"], ["gone"]]}}, "keep": {"id": True}}
+    value, missing = rf.trim(response, rule)
+    assert value == [{"id": "c"}, {"id": "a"}]
+    assert missing == [" ['gone']"]
+
+
 def test_keep_takes_only_the_shapes_keys(rf):
     rule = {"keep": {"count": True, "releases": {"id": True, "genres": {"id": True}}}}
     value, _ = rf.trim(RESPONSE, rule)

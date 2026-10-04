@@ -1,7 +1,8 @@
 <script lang="ts">
   // A row (or grid) of albums with their covers, as the Home and History
-  // views and "More in this genre" list them: click to open the album,
-  // the play button to play it, right-click for more.
+  // views, "More in this genre" and "More like this" list them: click to
+  // open the album, the play button to play it, right-click for more.
+  // `onopen` hears an album or artist opened (a dialog closes then).
   import { t } from "$lib/i18n";
   import { queue, type AlbumCard, type FolderState } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
@@ -14,7 +15,12 @@
   /** An album none of whose tracks can be opened now, with its folder's state (H22b), is dimmed. */
   type Card = AlbumCard & { unavailable?: FolderState | null };
 
-  let { albums, wrap = false, label }: { albums: Card[]; wrap?: boolean; label: string } = $props();
+  let {
+    albums,
+    wrap = false,
+    label,
+    onopen,
+  }: { albums: Card[]; wrap?: boolean; label: string; onopen?: () => void } = $props();
 
   const albumRule = adHocRule(["album"]);
 
@@ -28,6 +34,7 @@
       albumArtistId: album.artistId,
     });
     if (!shown) play(album);
+    else onopen?.();
   }
 
   function menu(event: MouseEvent, album: AlbumCard) {
@@ -40,7 +47,9 @@
         label: t("menu.goToArtist"),
         disabled: album.artistId === null,
         action: () => {
-          if (album.artistId !== null) ui.showArtist({ id: album.artistId, name: album.artist ?? "" });
+          if (album.artistId === null) return;
+          ui.showArtist({ id: album.artistId, name: album.artist ?? "" });
+          onopen?.();
         },
       },
     ]);

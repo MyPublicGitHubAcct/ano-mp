@@ -1,21 +1,28 @@
-//! Tauri commands for the optional features (PLAN.md §4.6, O1–O19) that
-//! read or change the library: thin wrappers over `library`, `history`
-//! and the analysis, each refusing when its feature is off. The queue's
-//! (radio, practice) and the remote's are with them.
+//! Tauri commands for the optional features (PLAN.md §4.6, O1–O19, and
+//! X4's and X5's recommendations) that read or change the library: thin wrappers
+//! over `library`, `history` and the analysis, each refusing when its
+//! feature is off. The queue's (radio, practice) and the remote's are with
+//! them.
 
+use rusqlite::Connection;
 use serde::Serialize;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::history::listenbrainz::{self, ListenBrainzStatus};
 use crate::history::views::{self, Highlights, RecentEntry, TopKind, TopPlayed};
 use crate::library::analysis::{self, AnalysisProgress, TrackAnalysis};
-use crate::library::commands::on_library;
+use crate::library::commands::{on_library, LibraryState};
 use crate::library::discover::{self, AlbumCard};
 use crate::library::health::{self, HealthReport};
 use crate::library::lyrics::{self, Lyrics};
 use crate::library::prefs::{self, AlbumPrefs, TrackPrefs};
+use crate::library::similar::{self, SimilarAlbum, SimilarArtist, SimilarTrack};
 use crate::library::Error;
 use crate::metadata::keys::{self, Account};
+use crate::metadata::listenbrainz as metadata_listenbrainz;
+use crate::metadata::outside::{self, Fetch, OutsideArtist, OutsideLinks, OutsideStatus};
+use crate::metadata::settings as metadata_settings;
+use crate::metadata::{musicbrainz, worker, Error as MetadataError};
 use crate::settings::{self, FeatureSettings};
 
 fn require<R: Runtime>(
@@ -216,6 +223,216 @@ pub async fn library_more_in_genre<R: Runtime>(
     let unreadable = crate::library::availability::unreadable(&app);
     on_library(&app, move |library| {
         discover::more_in_genre(&library.conn(), album_id, &genre, seed, 5, &unreadable)
+    })
+    .await
+}
+
+// ---- Recommendations (X4) -----------------------------------------------------
+
+const RECOMMENDATIONS: (&str, &str) = ("recommendations", "Recommendations");
+
+/// Tracks like `track_id` on other albums.
+#[tauri::command]
+pub async fn library_similar_tracks<R: Runtime>(
+    app: AppHandle<R>,
+    track_id: i64,
+) -> Result<Vec<SimilarTrack>, String> {
+    require(&app, |f| f.recommendations, RECOMMENDATIONS)?;
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        similar::similar_tracks(&library.conn(), track_id, &unreadable, similar::SHOWN)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn library_similar_albums<R: Runtime>(
+    app: AppHandle<R>,
+    album_id: i64,
+) -> Result<Vec<SimilarAlbum>, String> {
+    require(&app, |f| f.recommendations, RECOMMENDATIONS)?;
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        similar::similar_albums(&library.conn(), album_id, &unreadable, similar::SHOWN)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn library_similar_artists<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+) -> Result<Vec<SimilarArtist>, String> {
+    require(&app, |f| f.recommendations, RECOMMENDATIONS)?;
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        similar::similar_artists(&library.conn(), artist_id, &unreadable, similar::SHOWN)
+    })
+    .await
+}
+
+/// Home's suggestions, varied by the day.
+#[tauri::command]
+pub async fn library_for_you<R: Runtime>(app: AppHandle<R>) -> Result<Vec<SimilarAlbum>, String> {
+    require(&app, |f| f.recommendations, RECOMMENDATIONS)?;
+    let unreadable = crate::library::availability::unreadable(&app);
+    on_library(&app, move |library| {
+        let now = crate::library::unix_now();
+        similar::for_you(
+            &library.conn(),
+            &unreadable,
+            similar::SHOWN,
+            now,
+            Some((now / 86400) as u64),
+        )
+    })
+    .await
+}
+
+// ---- Recommendations from outside the library (X5) ---------------------------
+
+const OUTSIDE: (&str, &str) = (
+    "outsideRecommendations",
+    "Recommendations from outside the library",
+);
+
+/// Whether online services may be contacted (Settings › Online sources).
+fn online<R: Runtime>(app: &AppHandle<R>) -> Result<bool, MetadataError> {
+    let library = app
+        .try_state::<LibraryState>()
+        .ok_or_else(|| MetadataError::Invalid("The library is not available".into()))?;
+    let online = metadata_settings::service_settings(&library.conn())?.online;
+    Ok(online)
+}
+
+/// Runs `f` with ListenBrainz's lists: on the metadata worker, fetching
+/// as needed, while online services are on; else on a library connection
+/// with what the response cache has.
+async fn with_outside<R: Runtime, T: Send + 'static>(
+    app: &AppHandle<R>,
+    f: impl FnOnce(&Connection, &mut Fetch) -> Result<T, MetadataError> + Send + 'static,
+) -> Result<T, String> {
+    require(app, |f| f.outside_recommendations, OUTSIDE)?;
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<T, MetadataError> {
+        if online(&app)? {
+            worker::call(&app, move |context| {
+                let (client, conn) = (context.client, context.conn);
+                f(conn, &mut |mbid| {
+                    metadata_listenbrainz::similar_artists(client, conn, mbid)
+                })
+            })
+        } else {
+            let library = app
+                .try_state::<LibraryState>()
+                .ok_or_else(|| MetadataError::Invalid("The library is not available".into()))?;
+            let conn = library.conn();
+            f(&conn, &mut |mbid| {
+                metadata_listenbrainz::cached_similar_artists(&conn, mbid)
+            })
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Home's artists from outside the library.
+#[tauri::command]
+pub async fn outside_for_you<R: Runtime>(app: AppHandle<R>) -> Result<Vec<OutsideArtist>, String> {
+    with_outside(&app, |conn, fetch| {
+        let seeds = outside::seeds(conn, crate::library::unix_now(), outside::SEEDS)?;
+        let found = outside::recommend(conn, &seeds, fetch, outside::SHOWN)?;
+        log::info!("{} from {} seed artists", found.len(), seeds.len());
+        Ok(found)
+    })
+    .await
+}
+
+/// Artists outside the library like library artist `artist_id`; none
+/// while it has no MusicBrainz id.
+#[tauri::command]
+pub async fn outside_like_artist<R: Runtime>(
+    app: AppHandle<R>,
+    artist_id: i64,
+) -> Result<Vec<OutsideArtist>, String> {
+    with_outside(&app, move |conn, fetch| {
+        match outside::artist_seed(conn, artist_id)? {
+            Some(seed) => outside::recommend(conn, &[seed], fetch, outside::SHOWN),
+            None => Ok(Vec::new()),
+        }
+    })
+    .await
+}
+
+/// A suggestion's links out: its homepage and Bandcamp page come from
+/// MusicBrainz while it may be contacted, or from an earlier lookup.
+#[tauri::command]
+pub async fn outside_links<R: Runtime>(
+    app: AppHandle<R>,
+    mbid: String,
+) -> Result<OutsideLinks, String> {
+    require(&app, |f| f.outside_recommendations, OUTSIDE)?;
+    if !musicbrainz::is_mbid(&mbid) {
+        return Err(format!("Not a MusicBrainz id: {mbid}"));
+    }
+    tauri::async_runtime::spawn_blocking(move || -> Result<OutsideLinks, MetadataError> {
+        let usable = {
+            let library = app
+                .try_state::<LibraryState>()
+                .ok_or_else(|| MetadataError::Invalid("The library is not available".into()))?;
+            let settings = metadata_settings::service_settings(&library.conn())?;
+            settings.is_usable(metadata_settings::SourceId::MusicBrainz)
+        };
+        let artist = if usable {
+            let id = mbid.clone();
+            // Without the homepage, the other links still serve.
+            worker::call(&app, move |context| {
+                musicbrainz::lookup_artist(context.client, context.conn, &id)
+            })
+            .map_err(|error| log::debug!("{error}"))
+            .ok()
+        } else {
+            None
+        };
+        Ok(outside::links(&mbid, artist.as_ref()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}
+
+/// Stops suggesting `mbid`.
+#[tauri::command]
+pub async fn outside_dismiss<R: Runtime>(
+    app: AppHandle<R>,
+    mbid: String,
+    name: String,
+) -> Result<(), String> {
+    require(&app, |f| f.outside_recommendations, OUTSIDE)?;
+    on_library(&app, move |library| {
+        outside::dismiss(&library.conn(), &mbid, &name, crate::library::unix_now())
+            .map_err(Error::from)
+    })
+    .await
+}
+
+/// What Settings shows: the artists whose ids are sent, and how many
+/// suggestions were dismissed.
+#[tauri::command]
+pub async fn outside_status<R: Runtime>(app: AppHandle<R>) -> Result<OutsideStatus, String> {
+    on_library(&app, |library| {
+        outside::status(&library.conn(), crate::library::unix_now()).map_err(Error::from)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn outside_forget_dismissed<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    on_library(&app, |library| {
+        outside::forget_dismissed(&library.conn())
+            .map(drop)
+            .map_err(Error::from)
     })
     .await
 }

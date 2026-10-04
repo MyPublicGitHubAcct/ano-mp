@@ -25,6 +25,7 @@
   import Art from "./Art.svelte";
   import Icon from "./Icon.svelte";
   import MoreInGenre from "./MoreInGenre.svelte";
+  import SimilarAlbums from "./SimilarAlbums.svelte";
 
   let { album }: { album: AlbumRef } = $props();
 
@@ -338,6 +339,9 @@
   {/if}
   {#if details && features.on.moreInGenre && details.genres.length > 0}
     {#key details.id}<MoreInGenre albumId={details.id} genres={details.genres} />{/key}
+  {/if}
+  {#if details && features.on.recommendations}
+    <SimilarAlbums albumId={details.id} />
   {/if}
   {#if open && rows.length > 0}
     <div class="table">

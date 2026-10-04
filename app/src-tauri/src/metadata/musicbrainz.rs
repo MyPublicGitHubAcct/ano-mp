@@ -187,6 +187,10 @@ pub struct Artist {
     pub wikipedia: Option<String>,
     /// The official homepage.
     pub homepage: Option<String>,
+    /// The artist's Bandcamp page (PLAN.md X5's links out). Missing in
+    /// details stored before it.
+    #[serde(default)]
+    pub bandcamp: Option<String>,
     /// Bands they were in (or members of the band), collaborations and
     /// subgroups, for library radio (PLAN.md O9). Missing in details
     /// stored before it.
@@ -746,13 +750,23 @@ impl Links<'_> {
             .find(|url| url.starts_with("https://") || url.starts_with("http://"))
             .map(String::from)
     }
+
+    fn bandcamp(&self) -> Option<String> {
+        self.of("bandcamp")
+            .find(|url| url.starts_with("https://") || url.starts_with("http://"))
+            .map(String::from)
+    }
 }
 
 impl RawArtistEntry {
     fn into_artist(self) -> Artist {
         let links = Links(&self.relations);
-        let (wikidata, wikipedia, homepage) =
-            (links.wikidata(), links.wikipedia(), links.homepage());
+        let (wikidata, wikipedia, homepage, bandcamp) = (
+            links.wikidata(),
+            links.wikipedia(),
+            links.homepage(),
+            links.bandcamp(),
+        );
         let area = |area: Option<RawArea>| non_empty(area.and_then(|area| area.name));
         let (begin, end, ended) = match self.life_span {
             Some(span) => (span.begin, span.end, span.ended.unwrap_or(false)),
@@ -775,6 +789,7 @@ impl RawArtistEntry {
             wikidata,
             wikipedia,
             homepage,
+            bandcamp,
             related: self
                 .relations
                 .iter()
@@ -1100,6 +1115,19 @@ mod tests {
             artist.homepage.as_deref(),
             Some("http://www.radiohead.com/")
         );
+        assert_eq!(
+            artist.bandcamp.as_deref(),
+            Some("https://radiohead.bandcamp.com/")
+        );
+        let related: Vec<(&str, &str)> = artist
+            .related
+            .iter()
+            .map(|r| (r.name.as_str(), r.relation.as_str()))
+            .collect();
+        assert_eq!(
+            related,
+            [("Thom Yorke", "member of band"), ("The Smile", "subgroup")]
+        );
     }
 
     #[test]
@@ -1112,7 +1140,8 @@ mod tests {
                 {"type": "wikipedia", "url": {"resource": "https://fr.wikipedia.org/wiki/X"}},
                 {"type": "wikipedia", "url": {"resource": "https://en.wikipedia.org/wiki/X"}},
                 {"type": "official homepage", "url": {"resource": "ftp://x.example/"}},
-                {"type": "official homepage"}
+                {"type": "official homepage"},
+                {"type": "bandcamp", "url": {"resource": "javascript:alert(1)"}}
             ]}"#,
         )
         .unwrap();
@@ -1122,6 +1151,7 @@ mod tests {
             Some("https://en.wikipedia.org/wiki/X")
         );
         assert_eq!(artist.homepage, None);
+        assert_eq!(artist.bandcamp, None);
     }
 
     #[test]

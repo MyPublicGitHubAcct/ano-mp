@@ -23,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/010_dataless.sql"),
     include_str!("migrations/011_queue_items.sql"),
     include_str!("migrations/012_art_thumbs.sql"),
+    include_str!("migrations/013_outside_dismissed.sql"),
 ];
 
 /// How many copies `back_up` keeps: the newest two.
@@ -223,6 +224,7 @@ mod tests {
                 "kept_artists",
                 "listens_pending",
                 "mb_cache",
+                "outside_dismissed",
                 "playlist_items",
                 "playlists",
                 "plays",
@@ -442,6 +444,23 @@ mod tests {
             )
             .unwrap();
         assert!(value.contains("\"tracks\":[11,12,13]"));
+    }
+
+    #[test]
+    fn dismissed_suggestions_get_a_table() {
+        // Migration 013 (PLAN.md X5), on a file, so the copy is written.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 12);
+        let conn = open(&path).unwrap();
+        conn.execute(
+            "INSERT INTO outside_dismissed (musicbrainz_id, name, dismissed_at)
+             VALUES ('5b11f4ce-a62d-471e-81fc-a69a8278c7da', 'Nirvana', 1)",
+            [],
+        )
+        .unwrap();
+        let copy = Connection::open(dir.path().join("library.sqlite3.pre-13")).unwrap();
+        assert_eq!(user_version(&copy), 12);
     }
 
     #[test]

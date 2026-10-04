@@ -652,6 +652,11 @@ wikipedia: string | null,
  */
 homepage: string | null, 
 /**
+ * The artist's Bandcamp page (PLAN.md X5's links out). Missing in
+ * details stored before it.
+ */
+bandcamp: string | null, 
+/**
  * Bands they were in (or members of the band), collaborations and
  * subgroups, for library radio (PLAN.md O9). Missing in details
  * stored before it.
@@ -662,6 +667,43 @@ related: Array<RelatedArtist>, };
  * MusicBrainz ids from the tags, as MusicBrainz's pages take them.
  */
 export type MusicBrainzIds = { recording: string | null, release: string | null, releaseGroup: string | null, releaseTrack: string | null, artists: Array<string>, albumArtists: Array<string>, work: string | null, };
+
+/**
+ * An artist the library doesn't have.
+ */
+export type OutsideArtist = { 
+/**
+ * MusicBrainz's id.
+ */
+mbid: string, name: string, 
+/**
+ * MusicBrainz's disambiguation, e.g. "UK rock band".
+ */
+disambiguation: string | null, 
+/**
+ * The strongest first; at most two.
+ */
+reasons: Array<OutsideReason>, };
+
+/**
+ * Where a suggestion's links lead: its MusicBrainz and ListenBrainz pages
+ * always, and its homepage and Bandcamp page when MusicBrainz has them.
+ */
+export type OutsideLinks = { musicbrainz: string, listenbrainz: string, homepage: string | null, bandcamp: string | null, };
+
+/**
+ * Why an artist is suggested, for the UI to say (`outside.reason.*`).
+ */
+export type OutsideReason = { "kind": "listenBrainz", name: string, } | { "kind": "linked", name: string, relation: SimilarRelation, };
+
+/**
+ * What Settings shows: what is sent, and how many were dismissed.
+ */
+export type OutsideStatus = { 
+/**
+ * The artists whose MusicBrainz ids Home's suggestions send now.
+ */
+sent: Array<Seed>, dismissed: number, };
 
 export type PictureView = { kind: string, mimeType: string, description: string, size: number, 
 /**
@@ -1062,6 +1104,11 @@ export type SearchKind = "artists" | "albums" | "tracks";
 export type SearchResults = { artists: Array<ArtistHit>, artistTotal: number, albums: Array<AlbumHit>, albumTotal: number, tracks: Array<Track>, trackTotal: number, };
 
 /**
+ * A library artist whose id is sent.
+ */
+export type Seed = { mbid: string, name: string, };
+
+/**
  * Every step between the file and the speakers (`anomp_signal_path`).
  */
 export type SignalPath = { loaded: boolean, 
@@ -1103,6 +1150,30 @@ freezeHeld: boolean, };
  * Every step from the file to the speakers (O10).
  */
 export type SignalPathPayload = { path: SignalPath, device: DeviceInfo | null, headphones: boolean | null, };
+
+export type SimilarAlbum = { album: AlbumCard, reasons: Array<SimilarReason>, };
+
+export type SimilarArtist = { artistId: number, name: string, reasons: Array<SimilarReason>, };
+
+/**
+ * Why something was recommended, for the UI to say (`similar.reason.*`).
+ */
+export type SimilarReason = { "kind": "genre", name: string, } | { "kind": "era", year: number, } | { "kind": "label", name: string, } | { "kind": "linked", name: string, relation: SimilarRelation, } | { "kind": "artist", name: string, } | { "kind": "composer", name: string, } | { "kind": "together", times: number, } | { "kind": "loudness" };
+
+/**
+ * How an artist is linked to the seed's.
+ */
+export type SimilarRelation = "member" | "subgroup" | "with";
+
+export type SimilarTrack = { trackId: number, title: string, artist: string | null, album: string | null, albumId: number | null, 
+/**
+ * Seconds.
+ */
+duration: number, 
+/**
+ * The strongest first; at most two.
+ */
+reasons: Array<SimilarReason>, };
 
 /**
  * A track that couldn't be opened and was passed over.

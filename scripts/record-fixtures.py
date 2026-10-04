@@ -15,7 +15,8 @@ A rule has up to three parts, applied in this order:
 - "select": {"path": {"by": [field, ...], "items": [[value, ...], ...]}}
   keeps, in the order listed, the items of the list at `path` whose
   fields (dotted paths, like "url.id") have the values listed; an item no
-  longer upstream is reported, not invented.
+  longer upstream is reported, not invented. The path "" is the response
+  itself, for a service that answers with a list (ListenBrainz Labs).
 - "keep": a nested object of the keys to keep (true for a whole value),
   applied to every item of a list on the way.
 - "set": {"path": value} replaces a value, for counts that must match a
@@ -129,7 +130,12 @@ def trim(response, rule):
     value = copy.deepcopy(response)
     missing = []
     for path, selection in rule.get("select", {}).items():
-        select(value, path, selection, missing)
+        if path == "":
+            holder = {"": value}
+            select(holder, path, selection, missing)
+            value = holder[""]
+        else:
+            select(value, path, selection, missing)
     if "keep" in rule:
         value = keep(value, rule["keep"])
     for path, new in rule.get("set", {}).items():

@@ -18,7 +18,7 @@
     type SearchResults,
     type Track,
   } from "$lib/api";
-  import { albumFeatureItems } from "$lib/featureMenu";
+  import { albumFeatureItems, artistFeatureItems } from "$lib/featureMenu";
   import { fileName } from "$lib/format";
   import { count, t } from "$lib/i18n";
   import { click, emptySelection, rowsFor, type Selection } from "$lib/selection";
@@ -162,6 +162,7 @@
       { label: t("menu.play"), action: () => playArtist(artist) },
       { label: t("menu.goToArtist"), action: () => showArtist(artist) },
       { label: t("heart.addShort"), action: () => collection.setFavourite("artist", [artist.id], true) },
+      ...artistFeatureItems(artist),
     ]);
   }
 

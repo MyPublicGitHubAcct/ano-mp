@@ -8,8 +8,8 @@
   // folder that can't be opened (an unplugged drive, a folder moved out of
   // reach) says so, and "Locate…" points it at where it is now (F8).
   //
-  // The Library and Playlists sections fold away under their headings; each
-  // viewer's choice is remembered.
+  // The Library and Playlists sections fold away under their headings,
+  // closed until opened; each viewer's choice is remembered.
   import { ask } from "@tauri-apps/plugin-dialog";
   import { queue, type Folder, type Playlist } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
@@ -20,6 +20,7 @@
   import { metadataStatus } from "$lib/state/metadata.svelte";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
@@ -30,10 +31,18 @@
     ui.sidebarOpen = false;
   }
 
-  let libraryOpen = $state(loadPreference("sidebarLibraryOpen", true));
-  let playlistsOpen = $state(loadPreference("sidebarPlaylistsOpen", true));
-  $effect(() => savePreference("sidebarLibraryOpen", libraryOpen));
-  $effect(() => savePreference("sidebarPlaylistsOpen", playlistsOpen));
+  // Closed until opened; saved only when toggled, so the default reaches
+  // whoever hasn't chosen (the old keys were saved at every launch).
+  let libraryOpen = $state(loadPreference("fold.sidebar.library", false));
+  let playlistsOpen = $state(loadPreference("fold.sidebar.playlists", false));
+  function toggleLibrary() {
+    libraryOpen = !libraryOpen;
+    savePreference("fold.sidebar.library", libraryOpen);
+  }
+  function togglePlaylists() {
+    playlistsOpen = !playlistsOpen;
+    savePreference("fold.sidebar.playlists", playlistsOpen);
+  }
 
   const f = $derived(features.on);
   const views = $derived(
@@ -165,16 +174,18 @@
         </button>
       </li>
     {/each}
-    <li>
-      <button
-        class="item"
-        class:active={ui.nowPlayingInMain && library.query === ""}
-        onclick={() => show(() => ui.showNowPlaying())}
-      >
-        <span class="with-icon"><Icon name="note" size="1.1rem" /> {t("sidebar.nowPlaying")}</span>
-        <span class="muted small">{player.currentItem?.title ?? t("sidebar.nothingPlaying")}</span>
-      </button>
-    </li>
+    {#if appSettings.display.sidebarNowPlaying}
+      <li>
+        <button
+          class="item"
+          class:active={ui.nowPlayingInMain && library.query === ""}
+          onclick={() => show(() => ui.showNowPlaying())}
+        >
+          <span class="with-icon"><Icon name="note" size="1.1rem" /> {t("sidebar.nowPlaying")}</span>
+          <span class="muted small">{player.currentItem?.title ?? t("sidebar.nothingPlaying")}</span>
+        </button>
+      </li>
+    {/if}
     <li>
       <button
         class="item"
@@ -205,7 +216,7 @@
         class:open={libraryOpen}
         aria-expanded={libraryOpen}
         aria-controls="sidebar-library"
-        onclick={() => (libraryOpen = !libraryOpen)}
+        onclick={toggleLibrary}
       >
         <Icon name="chevron" size="0.9rem" />
         {t("library.title")}
@@ -236,7 +247,7 @@
         class:open={playlistsOpen}
         aria-expanded={playlistsOpen}
         aria-controls="sidebar-playlists"
-        onclick={() => (playlistsOpen = !playlistsOpen)}
+        onclick={togglePlaylists}
       >
         <Icon name="chevron" size="0.9rem" />
         {t("sidebar.playlists")}

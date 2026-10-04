@@ -1,20 +1,35 @@
 <script lang="ts">
   // Ways into the library besides browsing it, each shown while its
-  // feature is on: albums released on this day in earlier years (O17),
-  // recently played with runs from one album together (O16), recently
-  // added grouped by this week, this month and earlier (O15), and the
-  // history's highlights (O8): favourites not played for a year, what was
-  // playing a year ago today, and albums never played.
+  // feature is on, in this order: artists outside the library like the
+  // ones the user plays (X5), albums released on this day in earlier
+  // years (O17), recently played with runs from one album together
+  // (O16), the history's highlights (O8: what was playing a year ago
+  // today, favourites not played for a year), recently added grouped by
+  // this week, this month and earlier (O15), albums never played (O8),
+  // and albums like what the user plays, not played lately (X4). The
+  // recommendations fold away, closed until opened.
   import { count, t } from "$lib/i18n";
   import { untrack } from "svelte";
-  import { features as api, queue, type AlbumCard, type Highlights, type RecentEntry } from "$lib/api";
+  import {
+    features as api,
+    outside,
+    queue,
+    type AlbumCard,
+    type Highlights,
+    type RecentEntry,
+    type OutsideArtist,
+    type SimilarAlbum,
+  } from "$lib/api";
   import { FOLDER_SHORT, unavailableEntryState, unavailableState } from "$lib/folders";
+  import { reasonsText } from "$lib/similar";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import AlbumCards from "./AlbumCards.svelte";
+  import Fold from "./Fold.svelte";
   import Icon from "./Icon.svelte";
+  import OutsideArtists from "./OutsideArtists.svelte";
 
   const f = $derived(features.on);
 
@@ -22,6 +37,8 @@
   let recent = $state.raw<RecentEntry[] | null>(null);
   let added = $state.raw<AlbumCard[] | null>(null);
   let highlights = $state.raw<Highlights | null>(null);
+  let forYou = $state.raw<SimilarAlbum[] | null>(null);
+  let outsideArtists = $state.raw<OutsideArtist[]>([]);
 
   const quiet = <T,>(promise: Promise<T>) => promise.catch(() => null);
 
@@ -35,14 +52,24 @@
       f.recentlyPlayed,
       f.recentlyAdded,
       f.listeningHistory,
+      f.recommendations,
     ];
     untrack(async () => {
-      [onThisDay, recent, added, highlights] = await Promise.all([
+      [onThisDay, recent, added, highlights, forYou] = await Promise.all([
         f.onThisDay ? quiet(api.onThisDay(new Date())) : null,
         f.listeningHistory && f.recentlyPlayed ? quiet(api.recentlyPlayed(12)) : null,
         f.recentlyAdded ? quiet(api.recentlyAdded(120)) : null,
         f.listeningHistory ? quiet(api.highlights()) : null,
+        f.recommendations ? quiet(api.forYou()) : null,
       ]);
+    });
+  });
+
+  // Apart from the rest: ListenBrainz can take a while to answer.
+  $effect(() => {
+    void [library.version, features.historyVersion, f.outsideRecommendations];
+    untrack(async () => {
+      outsideArtists = f.outsideRecommendations ? ((await quiet(outside.forYou())) ?? []) : [];
     });
   });
 
@@ -76,8 +103,17 @@
   );
   const recentTracks = $derived((recent ?? []).filter((entry) => entry.album === null));
 
+  const forYouCards = $derived(
+    (forYou ?? []).map(({ album, reasons }) => ({ ...album, note: reasonsText(reasons, t) })),
+  );
+
   const nothing = $derived(
-    !f.onThisDay && !f.recentlyAdded && !(f.listeningHistory && f.recentlyPlayed) && !f.listeningHistory,
+    !f.recommendations &&
+      !f.outsideRecommendations &&
+      !f.onThisDay &&
+      !f.recentlyAdded &&
+      !(f.listeningHistory && f.recentlyPlayed) &&
+      !f.listeningHistory,
   );
 </script>
 
@@ -92,6 +128,16 @@
       <button class="link" onclick={() => ui.showSettings("features")}>{t("health.settingsFeatures")}</button>
       {t("home.nothingAfter")}
     </p>
+  {/if}
+
+  {#if outsideArtists.length > 0}
+    <Fold key="home.outside" heading={t("home.outside")}>
+      <OutsideArtists
+        artists={outsideArtists}
+        label={t("home.outsideLabel")}
+        ondismissed={(mbid) => (outsideArtists = outsideArtists.filter((artist) => artist.mbid !== mbid))}
+      />
+    </Fold>
   {/if}
 
   {#if onThisDay && onThisDay.length > 0}
@@ -137,6 +183,12 @@
   {#if highlights && highlights.neverPlayed.length > 0}
     <h2>{t("home.neverPlayed")}</h2>
     <AlbumCards albums={highlights.neverPlayed} label={t("home.neverPlayed")} />
+  {/if}
+
+  {#if forYouCards.length > 0}
+    <Fold key="home.forYou" heading={t("home.forYou")}>
+      <AlbumCards albums={forYouCards} label={t("home.forYouLabel")} />
+    </Fold>
   {/if}
 </section>
 

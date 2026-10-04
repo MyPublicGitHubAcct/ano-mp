@@ -139,6 +139,7 @@ their wording. Depends on 8 (crash reporting) and 7 (the contact address).
 | Wikipedia and Wikidata (`en.wikipedia.org`, `www.wikidata.org`) | On | Artist pages and album descriptions | Wikidata ids and article titles that MusicBrainz links to |
 | Discogs (`api.discogs.com`) | Off; needs the user's own token | Album details, when the user turns it on | Album titles and artist names, with the user's token |
 | ListenBrainz (`api.listenbrainz.org`) | Off; needs the user's own token | After each play, when turned on | Title, artist, album, duration, MusicBrainz ids, the time of the play, the user's token |
+| ListenBrainz Labs (`labs.api.listenbrainz.org`) | Off ("Recommendations from outside the library", X5, added 2026-10-04) | Home, and "More Like This" for an artist, at most monthly per artist (cached) | The MusicBrainz ids of the five artists played most (Settings › Features lists them), or of the one artist; the `User-Agent` and the user's IP address. No token, titles, plays or file names. Opening a suggestion's links also looks that artist's id up on MusicBrainz |
 | GitHub (`api.github.com`) | Off; checking by hand in Settings › About works either way | Shortly after launch and daily while "Check for updates automatically" is on, and when the user clicks "Check for updates" | Nothing but the request: the app's `User-Agent` and the user's IP address |
 | LAN remote | Off | While on | Nothing leaves the local network: it answers only local addresses and paired phones, serving the now-playing state, the queue and album covers |
 

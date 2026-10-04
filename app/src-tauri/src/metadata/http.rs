@@ -38,10 +38,14 @@ pub const IMAGE_LIMIT: u64 = 32 << 20;
 
 /// Minimum time between requests to a host. MusicBrainz allows about one a
 /// second per IP address and answers 503 beyond it; Discogs 60 a minute
-/// with a token (a moving window), answering 429 beyond it.
+/// with a token (a moving window), answering 429 beyond it; ListenBrainz
+/// asks each client for no more than one a second.
 fn request_interval(host: &str) -> Duration {
     match host {
-        "musicbrainz.org" | "api.discogs.com" => Duration::from_secs(1),
+        "musicbrainz.org"
+        | "api.discogs.com"
+        | "api.listenbrainz.org"
+        | "labs.api.listenbrainz.org" => Duration::from_secs(1),
         _ => Duration::from_millis(250),
     }
 }

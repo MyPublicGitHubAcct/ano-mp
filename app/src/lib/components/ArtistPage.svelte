@@ -234,6 +234,14 @@
         <Icon name="shuffle" />
         {t("bar.shuffle")}
       </button>
+      {#if page && (appSettings.current.features.recommendations || appSettings.current.features.outsideRecommendations)}
+        <button
+          onclick={() =>
+            page && (ui.dialog = { kind: "similar", seed: { kind: "artist", id: page.id, name: page.name } })}
+        >
+          {t("menu.moreLikeThis")}
+        </button>
+      {/if}
       <button class="icon" title={t("header.back")} aria-label={t("header.back")} onclick={() => ui.back()}
         ><Icon name="close" /></button
       >

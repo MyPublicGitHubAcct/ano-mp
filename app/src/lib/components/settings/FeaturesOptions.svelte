@@ -1,15 +1,17 @@
 <script lang="ts">
   // Every optional feature (PLAN.md §4.6, O1–O19) with a switch, and each
   // one's options under it: the loudness analysis's progress, crossfeed's
-  // strength, the ListenBrainz token, the remote's pairing code and paired
-  // phones. Saved as they change, like the other sections.
+  // strength, the ListenBrainz token, what outside recommendations send
+  // (X5), the remote's pairing code and paired phones. Saved as they change, like the other sections.
   import { onMount } from "svelte";
   import {
     features as api,
     on,
+    outside,
     type CrossfeedLevel,
     type FeatureSettings,
     type ListenBrainzStatus,
+    type OutsideStatus,
     type RemoteStatus,
   } from "$lib/api";
   import { formatDay } from "$lib/format";
@@ -154,6 +156,18 @@
       title: t("feature.moreInGenre"),
       about: t("feature.moreInGenreAbout"),
     },
+    {
+      key: "recommendations",
+      id: "X4",
+      title: t("feature.recommendations"),
+      about: t("feature.recommendationsAbout"),
+    },
+    {
+      key: "outsideRecommendations",
+      id: "X5",
+      title: t("feature.outsideRecommendations"),
+      about: t("feature.outsideRecommendationsAbout"),
+    },
   ];
 
   const LOOK: Switch[] = [
@@ -173,12 +187,14 @@
   ];
 
   let listenBrainz = $state.raw<ListenBrainzStatus | null>(null);
+  let outsideStatus = $state.raw<OutsideStatus | null>(null);
   let token = $state("");
   let remote = $state.raw<RemoteStatus | null>(null);
   let port = $state(String(appSettings.current.features.remotePort));
 
   const refresh = async () => {
     listenBrainz = await api.listenBrainzStatus().catch(() => null);
+    outsideStatus = await outside.status().catch(() => null);
     remote = await api.remoteStatus().catch(() => null);
   };
 
@@ -275,6 +291,28 @@
           <span class="value">{t("features.seconds", { seconds: f.skipSilenceAfter })}</span>
         </span>
       </label>
+    {:else if item.key === "outsideRecommendations" && f.outsideRecommendations && outsideStatus}
+      <div class="sub">
+        <p class="hint">
+          {outsideStatus.sent.length > 0
+            ? t("features.outsideSent", {
+                artists: new Intl.ListFormat(undefined, { type: "conjunction" }).format(
+                  outsideStatus.sent.map((artist) => artist.name),
+                ),
+              })
+            : t("features.outsideNothingSent")}
+        </p>
+        {#if outsideStatus.dismissed > 0}
+          <p class="row">
+            <button
+              onclick={async () => {
+                await attempt(outside.forgetDismissed);
+                await refresh();
+              }}>{count("features.outsideForget", outsideStatus.dismissed)}</button
+            >
+          </p>
+        {/if}
+      </div>
     {:else if item.key === "healthReport" && f.healthReport}
       <p class="sub"><button class="link" onclick={() => ui.showView("health")}>{t("features.openHealth")}</button></p>
     {:else if item.key === "listeningHistory"}

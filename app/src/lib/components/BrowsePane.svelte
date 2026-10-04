@@ -33,7 +33,7 @@
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { loadPreference, savePreference, ui, type MenuItem } from "$lib/state/ui.svelte";
-  import { albumFeatureItems } from "$lib/featureMenu";
+  import { albumFeatureItems, artistFeatureItems } from "$lib/featureMenu";
   import { dragLabel, playlistItems, trackMenu } from "$lib/trackMenu";
   import AlbumInfo from "./AlbumInfo.svelte";
   import Art from "./Art.svelte";
@@ -200,7 +200,11 @@
     if (one && typeof one.key === "number") {
       if (isArtistLevel(library.level) && library.level !== "composer") {
         const artist = { id: one.key, name: one.name };
-        items.push({ separator: true }, { label: t("menu.goToArtist"), action: () => ui.showArtist(artist) });
+        items.push(
+          { separator: true },
+          { label: t("menu.goToArtist"), action: () => ui.showArtist(artist) },
+          ...artistFeatureItems(artist),
+        );
       }
       if (library.level === "album") {
         const album = { id: one.key, title: one.name };

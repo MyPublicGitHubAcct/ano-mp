@@ -29,6 +29,7 @@ pub mod recovery;
 pub mod rules;
 pub mod scanner;
 pub mod search;
+pub mod similar;
 pub mod smart;
 pub mod sort_key;
 #[cfg(test)]

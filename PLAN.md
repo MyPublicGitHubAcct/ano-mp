@@ -1,6 +1,6 @@
 # ano-mp — Implementation Plan
 
-Status as of 2026-10-03: Phases 0–6c are built on macOS. Phases 0–3 are
+Status as of 2026-10-04: Phases 0–6c are built on macOS. Phases 0–3 are
 complete; the exit checks of Phases 4, 5, 6, 6b and 6c wait to be done in
 the app (each phase says what). Phase 7 (hardening) is under way: every
 step of its "Order of work" that needs no owner decision is done, and the
@@ -8,7 +8,9 @@ signed release waits on the owner's §8.1 decisions
 (`docs/release-decisions.md`). Phase 7b (themes, effects,
 visualizations, recommendations, recording and similar artists; P3,
 added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
-(effects) and X3 (visualizations) were built early, at the owner's request. Finished work's design notes and records
+(effects), X3 (visualizations), X4 (library recommendations) and X5
+(recommendations from outside the library) were built early, at the
+owner's request. Finished work's design notes and records
 are in `docs/design/`, linked from each phase.
 
 
@@ -72,7 +74,8 @@ holds and how it was built.
   public header) and the eight effects behind it.
 - **Rust** (`app/src-tauri/src/`): `anomp.rs` (the C API's wrappers),
   `audio.rs` (the main-thread engine host), `library/` (DB, migrations,
-  scanner, browse, search, art and thumbnails, playlists, features),
+  scanner, browse, search, art and thumbnails, playlists, features,
+  recommendations),
   `queue/`, `media.rs`, `metadata/` (online sources and their worker),
   `history/`, `remote/`, `shell/` (menus, mini player, opened files),
   `settings.rs`, `visualizer.rs`, `logging.rs`, `diagnostics.rs`,
@@ -90,9 +93,9 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 146 passing Catch2 tests (123 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 446 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
-| 55 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
+| 468 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks) and 7 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 59 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| the scripts' 206 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -771,7 +774,7 @@ acts, off by default if it changes what is heard or goes online.
     plot on a song with a chorus, the rhythm rings' tempo against a
     known one), in calm mode, full screen on a Retina display, and in
     the auto-cycle.
-- [ ] **X4 Recommendations from the library.** "More like this" for a
+- [x] **X4 Recommendations from the library.** "More like this" for a
   track, album or artist, and a Home row of library items the user hasn't
   played lately that resemble what they have. Offline and local: scores
   from shared genres, artists and credits (MusicBrainz relations already
@@ -781,7 +784,60 @@ acts, off by default if it changes what is heard or goes online.
   unreadable folders (`availability::unreadable`). The scoring is a pure
   function, tested on a fixture library; run the benchmarks (H18) on a
   50k-track library.
-- [ ] **X5 Recommendations from outside the library.** Artists and
+  - **Built** 2026-10-04, ahead of Phase 7's exit at the owner's request,
+    in `library/similar.rs`. An item (a track, an album, an artist, or
+    the user's taste) is a **profile** of its tracks, each weighted: the
+    share of them in each genre (folded, so "jazz" is "Jazz"), its
+    artists (every credited one and the album artist, never Various
+    Artists), composers and its albums' MusicBrainz labels (the heaviest
+    few of each), its era (the weighted median year, only while the
+    middle half spans at most ten years, so an artist across decades has
+    none), and its mean loudness where O1 has analysed it. **Decided:**
+    key and tempo aren't used: Phase 5 computes them live for the
+    visualizer and stores neither, and storing them would mean a second
+    analysis pass; loudness is the analysis that counts.
+  - **The score** (`score`, pure, tested on hand-made profiles): a
+    genre, 3 points times the share both have in common, up to one more
+    for a second; the era, 2 within two years, 1 within five; a label, 3;
+    an artist linked to the seed's (radio's: band members, subgroups and
+    collaborations on MusicBrainz either way, or sharing an album in the
+    library), 4; a shared artist, 2 between albums and 1 between tracks
+    ("more by"); a shared composer who isn't a shared artist, 2;
+    listening sessions together (plays no more than 30 minutes apart,
+    O8), 2 for one, rising to 4 at three; and a point for loudness within
+    1.5 LU, only beside something else. Recommendations need 3 (a genre
+    alone is enough, an era alone isn't); the two strongest reasons worth
+    a point each go to the UI as data (`Reason`) and are worded there
+    (`lib/similar.ts`, `similar.reason.*`).
+  - **What is recommended**: for a track, tracks on other albums (one an
+    album, two an artist); for an album, albums (two an album artist);
+    for an artist, artists, which X7's library half can show as they
+    are. Candidates are made of their tracks outside unreadable folders,
+    so an album only there is never one; a seed is all of its tracks
+    wherever they are. **Home's "You might like"** takes the taste from
+    the last 90 days' plays (a point a play) and the favourites (a track
+    2, an album or an artist 3 spread over its tracks), or the last 200
+    plays when nothing was played lately, and suggests albums none of
+    whose tracks were in it, nor favourite albums, two an album artist,
+    each raised by up to 15% by the day so the row changes daily.
+    **Radio** (O9) now scores with the same function, keeping its
+    randomness, its penalty for last week's plays and its limits, so it
+    gains composers and sessions; its reasons stay its own few English
+    words, as the queue shows them. O18 stays random by design.
+  - Commands `library_similar_tracks`, `_albums`, `_artists` and
+    `library_for_you`, behind the `recommendations` switch (on by
+    default: local and cheap). UI: "More Like This" on tracks', albums'
+    and artists' context menus and on the artist page opens a dialog
+    (tracks with Play All and Add All to Queue; album cards; artists);
+    album pages show a "More like this" row under "More in this genre";
+    Home shows "You might like" first. Each hides while it has nothing.
+  - **Benchmarks** (`bench_recommendations`, `similar.*`, budget 300 ms)
+    on the 50k-track library with 20,000 plays: 58 to 82 ms for each
+    kind, Home and a radio refill, every one reading the whole library
+    (no cache to keep in step).
+  - Left to check in the app: recommendations that make sense on the
+    owner's library (the exit), and whether the weights want tuning.
+- [x] **X5 Recommendations from outside the library.** Artists and
   releases the user doesn't own, seeded from their library and history:
   candidates are ListenBrainz's similar-artist and recommendation data
   and MusicBrainz relations, checked first against each source's terms
@@ -793,6 +849,68 @@ acts, off by default if it changes what is heard or goes online.
   and anything the user already owns is filtered out by MBID and folded
   names. Dismissed suggestions are remembered. Recorded fixtures in
   `metadata/fixtures/`, no network in tests.
+  - **Built** 2026-10-04, ahead of Phase 7's exit at the owner's request,
+    in `metadata/outside.rs` and `metadata/listenbrainz.rs`. **Terms**
+    (read 2026-10-04): ListenBrainz's data is MetaBrainz's, "available for
+    commercial use" with the same supporter tiers as MusicBrainz (§8.1's
+    MetaBrainz decision covers both); its API asks each client for at most
+    one call a second, which `http.rs` now applies to both ListenBrainz
+    hosts. The sources table in `docs/design/phase-4-online-metadata.md`
+    and the privacy table in `docs/release-decisions.md` have its row.
+  - **Seeds**: the artists of the user's taste as X4 reads it (the last
+    90 days' plays, else the last 200; a favourite track 2, a favourite
+    album or artist 3), the heaviest five with a MusicBrainz id (the
+    artist's match, else the tags'; never Various Artists). Only those
+    ids go out, to the Labs API's `similar-artists` query (the algorithm
+    ListenBrainz's own artist pages show), cached 30 days in the response
+    cache like MusicBrainz's. Settings › Features lists the artists whose
+    ids are sent. While online services are off, only cached lists are
+    used.
+  - **Candidates**: each seed's 30 best similar artists, scored by their
+    place in its list (its score over the list's best) times the seed's
+    share of the taste, summed across seeds; and MusicBrainz's relations
+    stored with the seed's match (members, subgroups, collaborations; X4
+    reads the same) at 0.8 of a list's best, with no request. Left out:
+    anything the library has by MBID (tags or match) or by folded name,
+    Various Artists, and dismissed ones (`outside_dismissed`, migration
+    013, carried by F20's export). The two strongest reasons go to the UI
+    ("like Radiohead on ListenBrainz", "Radiohead member"). A seed whose
+    list fails still counts for its relations; the failure shows only
+    when nothing was found.
+  - **UI**: Home's "Beyond your library" after "You might like" (loaded
+    apart from Home's other rows, as Labs can be slow); "More Like This"
+    for an artist gains "Not in your library" (and shows while either
+    switch is on). A suggestion's name opens a menu of links: MusicBrainz
+    and ListenBrainz always, the homepage and Bandcamp page from a
+    MusicBrainz lookup of that artist (`Artist::bandcamp`, new) while
+    MusicBrainz may be contacted; each through `openWebLink`. "Not
+    Interested" (the row's ×, or the menu) dismisses; Settings offers to
+    suggest the dismissed again.
+  - Commands `outside_for_you`, `outside_like_artist` (one seed: what X7's
+    outside half will call), `outside_links`, `outside_dismiss`,
+    `outside_status` and `outside_forget_dismissed`, behind the
+    `outsideRecommendations` switch (off by default: it goes online).
+    Fixtures: ListenBrainz's list for Radiohead, and Radiohead's
+    MusicBrainz artist re-recorded with its Bandcamp link, a member and a
+    subgroup (`record-fixtures.py` now selects from a response that is a
+    list, path `""`); `live_similar_artists` checks the real service.
+  - **Decided:** ListenBrainz's per-user recommendations
+    (`/1/cf/recommendation/user/<name>/recording`) aren't used: they need
+    the user's ListenBrainz name (known only with O8's token) and return
+    recordings, each needing a MusicBrainz lookup at one a second to name
+    its artist, while the seeds' similar artists already give artists
+    the user doesn't own. Releases the user doesn't own are Phase 4's
+    discography on the artist page (an owned artist's missing release
+    groups), so X5 suggests artists only.
+  - **Known limits:** Labs is ListenBrainz's experimental API: answers
+    took 1 to 40 s on 2026-10-04, and one failed. A timeout marks the
+    host unreachable (`http.rs`), so the other seeds fail at once and
+    the cached lists and MusicBrainz's relations still show; the
+    algorithm's name may change, which `live_similar_artists` would
+    catch (§6).
+  - Left to check in the app: suggestions that make sense on the owner's
+    library, none of them owned (the exit), the links, and how long a
+    first Home takes with ListenBrainz slow.
 - [ ] **X6 Record the output to a WAV file.** Added 2026-10-04 at the
   owner's request. A Record button (in the now-playing bar, and in the
   Controls menu) writes what is playing, as heard, to a WAV file until
@@ -842,7 +960,8 @@ acts, off by default if it changes what is heard or goes online.
 - [ ] **X7 Similar artists on artist pages.** A "Similar artists" section
   on the artist page (`ArtistPage.svelte`), under the biography: first
   the library's artists most like this one, by X4's artist scoring
-  (shared genres, credits and MusicBrainz relations, co-listening), each
+  (`similar::similar_artists`, already built and shown in X4's dialog:
+  shared genres, credits and MusicBrainz relations, co-listening), each
   opening its own artist page; then, while X5 is on, artists the user
   doesn't own from X5's sources (ListenBrainz's similar artists for the
   artist's MBID), as links out through `webLink`. It needs no data of its
@@ -1075,6 +1194,7 @@ Revisit it against whatever the agreement actually provides.
 | FFmpeg build complexity across 4 OSes and several architectures | One script, pinned version, CI-cached artifacts; done per platform in its phase |
 | FFmpeg and TagLib parser vulnerabilities (large attack surface; users' folders hold arbitrary files) | Minimal configure (only needed demuxers/decoders); fuzzing of the tag reader and decoder with sanitizers (H5, H6); a weekly CI job checks the pin against FFmpeg's security releases, and `bump-pin.py` makes the bump quick (§9) |
 | MusicBrainz rate limits and bans | Strict limiter, caching, User-Agent with contact info |
+| ListenBrainz's Labs API (X5's similar artists) is experimental: slow (1–40 s), sometimes down, and its algorithm names may change | Off by default; cached 30 days with a stale fallback; a timeout backs the host off, and MusicBrainz's relations still show; the ignored `live_similar_artists` test catches a renamed algorithm (run before each release with the other live tests) |
 | Decoder behaviour differing across platforms | Same FFmpeg version and flags everywhere; the Phase 1 format tests run on every CI OS |
 | WebKitGTK (Linux) and WebView2 (Windows) behave differently from WKWebView | Keep the frontend to standard web APIs; run frontend smoke tests on each OS in CI |
 | Bandcamp refuses, limits or withdraws access (no API for fans; scraping forbidden) | Phase 11 starts only with written permission; the Bandcamp code is one Rust module behind the library-source kind, so it can be dropped without touching local playback; fallback 11.7 (purchases as local files) |
@@ -1171,7 +1291,10 @@ Each open item has a brief (options, what it blocks, what was checked) in
       opt-in must appear in the privacy policy.
 - [ ] **ListenBrainz** (O8): read its terms for a commercial client, and
       name it in the privacy policy (listens are sent with the user's
-      token when they turn it on).
+      token when they turn it on). X5 (2026-10-04) read them for its
+      similar artists: commercial use allowed under MetaBrainz's
+      supporter tiers, as for MusicBrainz; the privacy policy must also
+      name X5's requests (the MusicBrainz ids of the artists played most).
 - [ ] **LAN remote security review** (O14): review `remote/` (address
       checks, pairing limits, token hashing, request bounds, what it
       serves) before a release ships it, and describe it in the privacy

@@ -1,6 +1,7 @@
 //! Exporting and importing what the user made (PLAN.md F20): one JSON file
 //! with the settings, sort rules and online source settings, the user's
-//! picks (album and artist matches they chose, covers), playlists,
+//! picks (album and artist matches they chose, covers, outside
+//! suggestions they dismissed), playlists,
 //! favourites, ratings, the listening history, playback preferences, where
 //! long tracks were left, and the queue.
 //!
@@ -58,6 +59,9 @@ pub struct UserData {
     pub album_links: Vec<(usize, Value)>,
     pub album_art: Vec<(usize, Value)>,
     pub artist_links: Vec<(usize, Value)>,
+    /// (MusicBrainz artist id, name, when): suggestions from outside the
+    /// library the user dismissed (PLAN.md X5).
+    pub outside_dismissed: Vec<(String, String, i64)>,
     pub playlists: Vec<PlaylistData>,
     pub queue: Option<QueueData>,
 }
@@ -282,6 +286,11 @@ pub fn export(
             updated_at,
         });
     }
+
+    data.outside_dismissed = conn
+        .prepare("SELECT musicbrainz_id, name, dismissed_at FROM outside_dismissed ORDER BY 1")?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<_, _>>()?;
 
     if let Some((ids, current, position, repeat)) = queue.filter(|(ids, ..)| !ids.is_empty()) {
         let mut tracks = Vec::with_capacity(ids.len());
@@ -726,6 +735,16 @@ pub fn import(
         }
     }
 
+    for (mbid, name, at) in &data.outside_dismissed {
+        if crate::metadata::musicbrainz::is_mbid(mbid) {
+            report.picks += tx.execute(
+                "INSERT INTO outside_dismissed (musicbrainz_id, name, dismissed_at)
+                 VALUES (?1, ?2, ?3) ON CONFLICT (musicbrainz_id) DO NOTHING",
+                params![mbid.to_ascii_lowercase(), name, at],
+            )?;
+        }
+    }
+
     for playlist in &data.playlists {
         let name = playlist.name.trim();
         if name.is_empty() {
@@ -821,6 +840,8 @@ mod tests {
                                       checked_at)
              VALUES ({2}, 'musicbrainz', 'matched', 'rel', 1, 'user', 5),
                     ({2}, 'discogs', 'matched', 'auto-one', 0.9, 'auto', 5);
+             INSERT INTO outside_dismissed (musicbrainz_id, name, dismissed_at)
+             VALUES ('5b11f4ce-a62d-471e-81fc-a69a8278c7da', 'Nirvana', 7);
              INSERT INTO settings (key, value) VALUES ('library.sort', '{{\"ignoredArticles\":[]}}');",
             t[0], t[1], album
         ))
@@ -866,7 +887,7 @@ mod tests {
         );
         assert_eq!(
             (report.preferences, report.picks, report.playlists),
-            (2, 2, 1)
+            (2, 3, 1)
         );
         assert!(report.missing.is_empty());
         let three = ids(&to.conn, "SELECT id FROM tracks WHERE title = 'Three'")[0];
@@ -882,9 +903,10 @@ mod tests {
                 again.favourites,
                 again.plays,
                 again.playlists,
-                again.preferences
+                again.preferences,
+                again.picks
             ),
-            (0, 0, 0, 0)
+            (0, 0, 0, 0, 0)
         );
         let plays: i64 = to
             .conn

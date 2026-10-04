@@ -1,0 +1,66 @@
+[
+  {
+    "artist_mbid": "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",
+    "name": "The Beatles",
+    "comment": "UK rock band, “The Fab Four”",
+    "type": "Group",
+    "score": 3835,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "8bfac288-ccc5-448d-9573-c33ea2aa5c30",
+    "name": "Red Hot Chili Peppers",
+    "comment": "",
+    "type": "Group",
+    "score": 3654,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "1dce970e-34bc-48b2-ab51-48d87544a4c2",
+    "name": "David Gilmour",
+    "comment": "Pink Floyd",
+    "type": "Person",
+    "score": 3419,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "52074ba6-e495-4ef3-9bb4-0703888a9f68",
+    "name": "Arcade Fire",
+    "comment": "",
+    "type": "Group",
+    "score": 3382,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "789f6768-5830-4b08-8b4f-f38566b2eb1d",
+    "name": "Black Francis",
+    "comment": "US singer, songwriter & guitarist",
+    "type": "Person",
+    "score": 3301,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "ada7a83c-e3e1-40f1-93f9-3e73dbc9298a",
+    "name": "Arctic Monkeys",
+    "comment": "",
+    "type": "Group",
+    "score": 3195,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "3144bf1e-4033-4de0-900f-a59726a9681f",
+    "name": "Dominic Howard",
+    "comment": "",
+    "type": "Person",
+    "score": 3139,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  },
+  {
+    "artist_mbid": "5b11f4ce-a62d-471e-81fc-a69a8278c7da",
+    "name": "Nirvana",
+    "comment": "1980s–1990s US grunge band",
+    "type": "Group",
+    "score": 3125,
+    "reference_mbid": "a74b1b7f-71a5-4011-9441-d0b5e4122711"
+  }
+]

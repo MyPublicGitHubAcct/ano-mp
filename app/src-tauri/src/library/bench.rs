@@ -555,3 +555,59 @@ fn bench_cover_thumbnails() {
     }
     report("art.cover_size", cover.len() as f64 / 1e6, "MB");
 }
+
+#[test]
+#[ignore]
+fn bench_recommendations() {
+    // "More like this" and Home's suggestions (X4), and a radio refill
+    // (O9), which scores the same way, over a library with two years of
+    // history: 20,000 plays in sessions of ten tracks.
+    use super::similar::{for_you, similar_albums, similar_artists, similar_tracks, SHOWN};
+    let library = library();
+    let now = super::unix_now();
+    library.conn.execute_batch("BEGIN").unwrap();
+    let mut words = Words(11);
+    for play in 0..20_000i64 {
+        let track = (words.random() % TRACKS) as i64 + 1;
+        let at = now - 2 * 365 * 86400 + (play / 10) * 3 * 3600 + (play % 10) * 240;
+        crate::history::record(&library.conn, track, at, 240.0).unwrap();
+    }
+    library.conn.execute_batch("COMMIT").unwrap();
+    let (track, album, artist): (i64, i64, i64) = library
+        .conn
+        .query_row(
+            "SELECT id, album_id, artist_id FROM tracks WHERE id = 1234",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    let conn = &library.conn;
+    let tracks = time(5, || similar_tracks(conn, track, &[], SHOWN).unwrap());
+    let albums = time(5, || similar_albums(conn, album, &[], SHOWN).unwrap());
+    let artists = time(5, || similar_artists(conn, artist, &[], SHOWN).unwrap());
+    let home = time(5, || for_you(conn, &[], SHOWN, now, Some(1)).unwrap());
+    let radio = time(5, || {
+        crate::queue::radio::picks(
+            conn,
+            track,
+            &std::collections::HashSet::new(),
+            &[],
+            crate::queue::radio::BATCH,
+            1,
+        )
+        .unwrap()
+    });
+    println!(
+        "recommendations: tracks {}, albums {}, artists {}, home {}, radio {}",
+        ms(tracks),
+        ms(albums),
+        ms(artists),
+        ms(home),
+        ms(radio)
+    );
+    report_ms("similar.tracks", tracks);
+    report_ms("similar.albums", albums);
+    report_ms("similar.artists", artists);
+    report_ms("similar.home", home);
+    report_ms("similar.radio", radio);
+}

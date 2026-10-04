@@ -38,6 +38,8 @@ export type SettingsSection =
   | "about";
 export type ArtistRef = { id: number; name: string };
 export type AlbumRef = { id: number; title: string };
+/** What "More like this" (X4) is about. */
+export type SimilarSeed = { kind: "track" | "album" | "artist"; id: number; name: string };
 
 /** The modal dialog showing, if any. */
 export type Dialog =
@@ -52,7 +54,9 @@ export type Dialog =
   /** The keyboard shortcuts (F6). */
   | { kind: "shortcuts" }
   /** The third-party notices (Settings › About, PLAN.md §8.2). */
-  | { kind: "notices" };
+  | { kind: "notices" }
+  /** "More like this" for a track, an album or an artist (X4). */
+  | { kind: "similar"; seed: SimilarSeed };
 
 /** Views that `back` returns from. */
 const OPENED: MainView[] = [

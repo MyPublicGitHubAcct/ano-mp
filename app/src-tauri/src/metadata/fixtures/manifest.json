@@ -1,5 +1,5 @@
 {
-  "about": "How each file here was made; scripts/record-fixtures.py re-records the fetched ones (PLAN.md §9.2 M3). A rule's select keeps listed items in order, keep the keys shown, set replaces values. MusicBrainz, Cover Art Archive, Wikidata and Discogs' CC0 fields are CC0; Wikipedia's extracts are replaced by stand-in text (CC BY-SA).",
+  "about": "How each file here was made; scripts/record-fixtures.py re-records the fetched ones (PLAN.md §9.2 M3). A rule's select keeps listed items in order, keep the keys shown, set replaces values. MusicBrainz, Cover Art Archive, Wikidata, ListenBrainz and Discogs' CC0 fields are CC0; Wikipedia's extracts are replaced by stand-in text (CC BY-SA).",
   "fixtures": {
     "coverartarchive/front-500.jpg": {
       "made_by_hand": "an 8x8 JPEG made for the tests, standing in for a cover (images.rs)"
@@ -397,6 +397,50 @@
     "discogs/search-in-rainbows.json": {
       "made_by_hand": "Discogs' search needs a token, so this was put together in the documented format from the three recorded releases (discogs.rs's fixtures)."
     },
+    "listenbrainz/similar-artists-a74b1b7f-71a5-4011-9441-d0b5e4122711.json": {
+      "url": "https://labs.api.listenbrainz.org/similar-artists/json?artist_mbids=a74b1b7f-71a5-4011-9441-d0b5e4122711&algorithm=session_based_days_7500_session_300_contribution_3_threshold_10_limit_100_filter_True_skip_30",
+      "select": {
+        "": {
+          "by": [
+            "artist_mbid"
+          ],
+          "items": [
+            [
+              "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
+            ],
+            [
+              "8bfac288-ccc5-448d-9573-c33ea2aa5c30"
+            ],
+            [
+              "1dce970e-34bc-48b2-ab51-48d87544a4c2"
+            ],
+            [
+              "52074ba6-e495-4ef3-9bb4-0703888a9f68"
+            ],
+            [
+              "789f6768-5830-4b08-8b4f-f38566b2eb1d"
+            ],
+            [
+              "ada7a83c-e3e1-40f1-93f9-3e73dbc9298a"
+            ],
+            [
+              "3144bf1e-4033-4de0-900f-a59726a9681f"
+            ],
+            [
+              "5b11f4ce-a62d-471e-81fc-a69a8278c7da"
+            ]
+          ]
+        }
+      },
+      "keep": {
+        "artist_mbid": true,
+        "name": true,
+        "comment": true,
+        "type": true,
+        "score": true,
+        "reference_mbid": true
+      }
+    },
     "musicbrainz/artist-a74b1b7f-71a5-4011-9441-d0b5e4122711.json": {
       "url": "https://musicbrainz.org/ws/2/artist/a74b1b7f-71a5-4011-9441-d0b5e4122711?inc=url-rels+genres+artist-rels&fmt=json",
       "select": {
@@ -425,24 +469,44 @@
         "relations": {
           "by": [
             "type",
-            "url.id"
+            "url.id",
+            "artist.id"
           ],
           "items": [
             [
               "discogs",
-              "f49de6eb-d9db-4474-9406-f3b02ec95b42"
+              "f49de6eb-d9db-4474-9406-f3b02ec95b42",
+              null
             ],
             [
               "free streaming",
-              "6e039c97-4476-4ddc-ab54-d226e8db5fb4"
+              "6e039c97-4476-4ddc-ab54-d226e8db5fb4",
+              null
             ],
             [
               "official homepage",
-              "3731db81-d717-4658-a7b1-f2ef13c3033b"
+              "3731db81-d717-4658-a7b1-f2ef13c3033b",
+              null
             ],
             [
               "wikidata",
-              "0d8cb250-f92f-4481-bb00-a0b40391912b"
+              "0d8cb250-f92f-4481-bb00-a0b40391912b",
+              null
+            ],
+            [
+              "bandcamp",
+              "146f8bf6-cc29-4317-aae4-459579ebacb2",
+              null
+            ],
+            [
+              "member of band",
+              null,
+              "8ed2e0b3-aa4c-4e13-bec3-dc7393ed4d6b"
+            ],
+            [
+              "subgroup",
+              null,
+              "9055fca5-69bc-4d47-b569-ab2012a19565"
             ]
           ]
         }
@@ -493,7 +557,12 @@
           "target-type": true,
           "attribute-ids": {},
           "ended": true,
-          "attribute-values": {}
+          "attribute-values": {},
+          "artist": {
+            "id": true,
+            "name": true,
+            "disambiguation": true
+          }
         },
         "id": true,
         "isnis": true,

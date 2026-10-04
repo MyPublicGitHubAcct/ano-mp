@@ -1,7 +1,8 @@
 //! Ways into the library besides browsing it (PLAN.md §4.6): the albums
 //! added most recently (O15), albums released on this day in earlier years
 //! (O17), and a few random albums in the same genre as one (O18). The
-//! history's views (O8, O16, O19) are in `history::views`.
+//! history's views (O8, O16, O19) are in `history::views`, and
+//! recommendations (X4) in `similar`.
 
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -50,6 +51,18 @@ fn card(row: &rusqlite::Row, at: Option<i64>, note: Option<String>) -> rusqlite:
         at,
         note,
     })
+}
+
+/// The cards of the albums `ids`, in no particular order (recommendations,
+/// PLAN.md X4).
+pub(crate) fn cards(conn: &Connection, ids: &[i64]) -> Result<Vec<AlbumCard>, Error> {
+    let mut statement = conn.prepare_cached(&format!(
+        "SELECT {CARD_COLUMNS}
+         FROM albums al LEFT JOIN artists ar ON ar.id = al.artist_id
+         WHERE al.id IN (SELECT value FROM json_each(?1))"
+    ))?;
+    let rows = statement.query_map([json_ids(ids)], |row| card(row, None, None))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 /// Albums by when their newest track arrived, newest first (O15), counting
