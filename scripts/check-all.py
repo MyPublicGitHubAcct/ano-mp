@@ -4,7 +4,7 @@
 First doctor.py, which checks the tools are installed (--quick: those the
 quick checks need). Then the quick checks: each formatter in --check mode, the repo checks
 (check-c-api.py, check-sources.py, check-migrations.py, version.py
---check, check-docs.py, check-user-guide.py), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
+--check, check-docs.py, check-user-guide.py, check-developer-guide.py), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
 test suites: the core (CMake debug preset, clang-tidy through lint-cpp.py
 and ctest, then ctest again under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
@@ -64,6 +64,7 @@ STEPS = [
     Step("version number", script("version.py", "--check")),
     Step("docs' paths and links", script("check-docs.py")),
     Step("user guide coverage", script("check-user-guide.py")),
+    Step("developer guide's map", script("check-developer-guide.py")),
     Step("script tests", script("test-python.py", "-q")),
     # Every commit's changes; scripts/hooks/pre-commit checks the staged ones.
     Step("secrets", ["gitleaks", "git", "--redact", "--no-banner", "--log-level", "warn"]),

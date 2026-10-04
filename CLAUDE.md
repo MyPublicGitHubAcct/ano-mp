@@ -25,6 +25,14 @@ are finished: a whole phase, or one of Phase 7's steps or H items
 the release decisions' briefs, the release smoke test and how to run a bundle
 check safely.
 
+`docs/developer-guide/` (Phase 7c D2) explains how the code is organised
+and works: the layers and threads, each part, worked sequences across the
+layers, the data, troubleshooting, and step-by-step recipes for common
+changes. The rules stay here; the guide explains them and links back.
+Read its repository map (`03-repository-map.md`) to find the file behind a
+behaviour, and its recipes (`11-recipes.md`) before adding a command,
+setting, migration, effect or the like.
+
 ## Build & test
 
 ```sh
@@ -133,7 +141,10 @@ result matters (Dependabot's). The repo checks are read-only scripts:
 parameter count, unless in its `NOT_BOUND` list), `check-sources.py`,
 `check-migrations.py`, `check-docs.py` (every path and link in the docs exists),
 `check-user-guide.py` (the user guide names every sidebar item, Settings
-section, feature switch, menu item and error message) and `version.py --check`. Scripts use the standard library only; their tests
+section, feature switch, menu item and error message), `check-developer-guide.py`
+(the developer guide's repository map names every module of `core/src`,
+`effects/src`, `app/src-tauri/src` and `app/src`, and nothing that's gone)
+and `version.py --check`. Scripts use the standard library only; their tests
 are in `scripts/tests/` (pytest, `scripts/test-python.py`), each repo check
 with one test against the real tree. Actions are pinned by commit SHA (look a
 new one up with `git ls-remote`, never guess it); Dependabot proposes updates
@@ -408,6 +419,17 @@ the guide uses (headings, paragraphs, nested lists, tables, bold,
 emphasis, code, links; comments dropped): keep to it, or extend it with a
 test. `tests/guide.test.mjs` fails on markup left unparsed or a link the
 window can't follow (only links to the guide's pages and https).
+
+**Developer guide** (Phase 7c D2). `docs/developer-guide/` describes the
+code as it is, for a developer new to it; history and reasons stay in
+`PLAN.md` and `docs/design/`, which it links. A new, renamed or removed
+source file changes its line in the repository map
+(`03-repository-map.md`) in the same commit: `check-developer-guide.py`
+fails otherwise. C++ units are named by stem (platform files fold into
+their unit), Rust and frontend files by their path in the section's folder
+or its `###` folder heading. A change that moves a responsibility, adds a
+thread, event or table, or changes a rule here updates the chapter that
+explains it (a rule's recipe in `11-recipes.md` too). Diagrams are Mermaid.
 
 **Themes** (X1). Components take colours, radii (`--radius-sm`,
 `--radius`, `--radius-lg`) and the font from the theme's custom
