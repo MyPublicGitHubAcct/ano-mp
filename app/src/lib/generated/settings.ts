@@ -2,7 +2,7 @@
 // `bindings`); don't edit. After changing them, run
 // `ANOMP_WRITE_BINDINGS=1 cargo test bindings` in src-tauri.
 
-export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, equaliser: EqualiserSettings, library: LibrarySettings, window: WindowSettings, };
+export type AppSettings = { display: DisplaySettings, playback: PlaybackSettings, output: OutputSettings, visualizer: VisualizerSettings, features: FeatureSettings, equaliser: EqualiserSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -222,7 +222,11 @@ topPlayed: boolean,
  * Checks the GitHub Releases page for a newer version at launch and
  * daily (`updates`).
  */
-updateCheck: boolean, };
+updateCheck: boolean, 
+/**
+ * X1: the user's theme (`appearance`); off, the default theme shows.
+ */
+themes: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 
@@ -284,6 +288,83 @@ trackNotifications: boolean,
  * The visualizer's note about flashing lights was read (F18).
  */
 visualizerNoteSeen: boolean, };
+
+/**
+ * The look of the app.
+ */
+export type AppearanceSettings = { 
+/**
+ * The theme in use.
+ */
+theme: Theme, 
+/**
+ * The user's themes, by name, at most `MAX_SAVED`.
+ */
+saved: Array<Theme>, 
+/**
+ * Uses the high-contrast theme's colours while the system asks for
+ * more contrast (F18).
+ */
+followSystemContrast: boolean, };
+
+/**
+ * One theme's tokens.
+ */
+export type Theme = { 
+/**
+ * What the user called it; the UI names built-in ones itself.
+ */
+name: string, 
+/**
+ * The built-in theme these came from ("system", "dark"…), or "custom".
+ */
+preset: string, 
+/**
+ * Which palette shows: the system's choice, or always one.
+ */
+scheme: Scheme, light: ThemePalette, dark: ThemePalette, font: Font, 
+/**
+ * The base text size in px, 12 to 22; everything sized in rem follows.
+ */
+textSize: number, density: Density, 
+/**
+ * Corner radius in px, 0 to 16.
+ */
+radius: number, 
+/**
+ * The accent takes the current cover's main colour, made readable.
+ */
+accentFromCover: boolean, };
+
+/**
+ * A theme's colours, each `#rrggbb`. The names are the CSS custom
+ * properties', in camel case.
+ */
+export type ThemePalette = { bg: string, surface: string, 
+/**
+ * Raised controls, and hover.
+ */
+surface2: string, text: string, textMuted: string, 
+/**
+ * Icons and separators, never text.
+ */
+textFaint: string, border: string, accent: string, 
+/**
+ * Text on the accent.
+ */
+accentText: string, danger: string, heart: string, star: string, };
+
+export type Scheme = "system" | "light" | "dark";
+
+/**
+ * The fonts a theme can use; the frontend maps each to a font stack.
+ */
+export type Font = "system" | "rounded" | "serif" | "mono" | "humanist";
+
+/**
+ * How much room lists and controls take.
+ */
+export type Density = "compact" | "regular" | "roomy";
 
 /**
  * The output devices, and which one plays.

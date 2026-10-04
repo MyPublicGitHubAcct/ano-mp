@@ -44,6 +44,7 @@ pub struct AppSettings {
     pub equaliser: EqualiserSettings,
     pub library: LibrarySettings,
     pub window: WindowSettings,
+    pub appearance: crate::theme::AppearanceSettings,
 }
 
 /// Keeping the library in step with the disk (PLAN.md F9).
@@ -202,6 +203,8 @@ pub struct FeatureSettings {
     /// Checks the GitHub Releases page for a newer version at launch and
     /// daily (`updates`).
     pub update_check: bool,
+    /// X1: the user's theme (`appearance`); off, the default theme shows.
+    pub themes: bool,
 }
 
 impl Default for FeatureSettings {
@@ -234,6 +237,7 @@ impl Default for FeatureSettings {
             more_in_genre: true,
             top_played: true,
             update_check: false,
+            themes: true,
         }
     }
 }
@@ -525,6 +529,7 @@ impl AppSettings {
                 return invalid("An equaliser preset's id must be 1 to 64 bytes".into());
             }
         }
+        self.appearance.validate().map_err(Error::Invalid)?;
         Ok(())
     }
 
@@ -813,6 +818,7 @@ mod tests {
         assert!(error(|s| s.playback.crossfade = 13.0).contains("crossfade"));
         assert!(error(|s| s.equaliser.speakers.gains = vec![0.0; 3]).contains("ten bands"));
         assert!(error(|s| s.equaliser.headphones.preamp = 13.0).contains("between"));
+        assert!(error(|s| s.appearance.theme.text_size = 40).contains("text size"));
         assert_eq!(
             load(&conn).unwrap(),
             AppSettings::default(),
@@ -976,6 +982,12 @@ mod bindings {
         declare::<EqualiserProfile>(&cfg, out);
         declare::<LibrarySettings>(&cfg, out);
         declare::<WindowSettings>(&cfg, out);
+        declare::<crate::theme::AppearanceSettings>(&cfg, out);
+        declare::<crate::theme::Theme>(&cfg, out);
+        declare::<crate::theme::ThemePalette>(&cfg, out);
+        declare::<crate::theme::Scheme>(&cfg, out);
+        declare::<crate::theme::Font>(&cfg, out);
+        declare::<crate::theme::Density>(&cfg, out);
         declare::<crate::audio::OutputStatus>(&cfg, out);
         declare::<crate::anomp::DeviceInfo>(&cfg, out);
         declare::<rules::SortSettings>(&cfg, out);

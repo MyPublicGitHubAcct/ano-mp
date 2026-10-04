@@ -118,7 +118,7 @@
     background: none;
     aspect-ratio: 1;
     width: 100%;
-    border-radius: 6px;
+    border-radius: var(--radius);
     overflow: hidden;
   }
 

@@ -190,7 +190,7 @@
     width: 7rem;
     height: 7rem;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: var(--radius);
   }
 
   .artist {
@@ -274,7 +274,7 @@
     height: 10rem;
     object-fit: contain;
     background: var(--surface-2);
-    border-radius: 6px;
+    border-radius: var(--radius);
   }
 
   .small {

@@ -26,6 +26,7 @@
   import { count, t } from "$lib/i18n";
   import { fileName } from "$lib/format";
   import { emptySelection, rowsFor, type Selection } from "$lib/selection";
+  import { appearance } from "$lib/state/appearance.svelte";
   import { collection } from "$lib/state/collection.svelte";
   import { groupName, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
@@ -61,7 +62,7 @@
   const filter = $derived<BrowseFilter | null>(favouritesOnly ? { favourites: true } : null);
   const albums = $derived(library.level === "album");
   const showNumbers = $derived(appSettings.display.trackColumns.includes("trackNumber"));
-  const rowHeight = $derived(albums ? 60 : 40);
+  const rowHeight = $derived(appearance.rowHeight(albums ? 60 : 40));
   const title = $derived(library.crumbs.at(-1)?.name ?? library.rule?.name ?? t("library.title"));
 
   const isArtistLevel = (level: Level | undefined | null) =>
@@ -548,7 +549,7 @@
     display: block;
     height: 0.8rem;
     width: 40%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface-2);
   }
 

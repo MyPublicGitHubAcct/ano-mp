@@ -358,6 +358,15 @@ error through `errorText`, never `String(error)`. A coded error with a `reason`
 param may have `error.<code>.<reason>` messages, which `errorText` prefers;
 `errorCode` reads a code to branch on.
 
+**Themes** (X1). Components take colours, radii (`--radius-sm`,
+`--radius`, `--radius-lg`) and the font from the theme's custom
+properties, never literals (the visualizer's stage excepted), and list
+rows take their height from `appearance.rowHeight`. A new colour token
+goes in `ThemePalette` (`theme.rs`), every theme in
+`app/src/lib/themes.json` (AA-checked by `tests/contrast.test.mjs`), and
+`theme.ts`'s `COLOR_TOKENS` and `PAIRS`. Theme values reach CSS only
+through `setProperty` after `validate`, never as CSS text.
+
 **Developer surface** (H2). The /dev page and its commands (`src/dev.rs`) exist
 in debug builds only: the commands are registered under
 `#[cfg(debug_assertions)]` in `generate_handler!`, and the page loads only when

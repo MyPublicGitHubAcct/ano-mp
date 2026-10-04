@@ -5,7 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
 import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
-import type { AppSettings, CoverBasis, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId } from "./settings";
+import type { AppSettings, CoverBasis, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
 export const commands = {
@@ -22,6 +22,8 @@ export const commands = {
   audioOutputStatus: () => invoke<OutputStatus>("audio_output_status"),
   settingsGet: () => invoke<SettingsPayload>("settings_get"),
   settingsSave: (args: { settings: AppSettings }) => invoke<AppSettings>("settings_save", args),
+  themeExport: (args: { path: string; theme: Theme }) => invoke<void>("theme_export", args),
+  themeImport: (args: { path: string }) => invoke<Theme>("theme_import", args),
   playerSetVolume: (args: { volume: number }) => invoke<void>("player_set_volume", args),
   playerStatus: () => invoke<PlayerStatus>("player_status"),
   diagnosticsText: () => invoke<string>("diagnostics_text"),

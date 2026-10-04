@@ -92,7 +92,7 @@
     border: none;
     background: none;
     padding: 0.2rem 0.3rem;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     max-width: 16rem;
     overflow: hidden;

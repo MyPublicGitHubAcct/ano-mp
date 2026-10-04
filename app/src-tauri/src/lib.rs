@@ -19,6 +19,7 @@ mod remote;
 mod self_test;
 mod settings;
 mod shell;
+mod theme;
 mod updates;
 mod visualizer;
 
@@ -148,6 +149,8 @@ pub fn run() {
             audio::audio_output_status,
             settings::settings_get,
             settings::settings_save,
+            theme::theme_export,
+            theme::theme_import,
             audio::player_set_volume,
             audio::player_status,
             diagnostics::diagnostics_text,

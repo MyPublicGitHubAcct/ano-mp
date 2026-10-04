@@ -10,6 +10,7 @@
   import { count, t } from "$lib/i18n";
   import { fileName, formatTime } from "$lib/format";
   import { dropIndex, emptySelection, rowsFor, type Selection } from "$lib/selection";
+  import { appearance } from "$lib/state/appearance.svelte";
   import { collection } from "$lib/state/collection.svelte";
   import { registerDropTarget } from "$lib/state/drag.svelte";
   import { library } from "$lib/state/library.svelte";
@@ -23,7 +24,7 @@
   import VirtualList from "./VirtualList.svelte";
 
   const PAGE = 200;
-  const ROW = 40;
+  const ROW = $derived(appearance.rowHeight(40));
 
   const playlist = $derived(collection.byId(ui.playlistId));
   const smart = $derived(playlist?.rules !== null && playlist?.rules !== undefined);
@@ -416,7 +417,7 @@
     font-weight: 700;
     color: inherit;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: none;
     padding: 0.05rem 0.3rem;
     margin-left: -0.3rem;
@@ -496,7 +497,7 @@
     display: block;
     height: 0.8rem;
     width: 40%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface-2);
     margin-left: 1rem;
   }

@@ -1,15 +1,17 @@
 <script lang="ts">
   // The settings (⌘,): the library's folders, its sort and grouping rules,
   // what lists and pages show, playback and the output device, the
-  // visualizer, and the online sources. Sections are listed down the side
+  // visualizer, the theme, and the online sources. Sections are listed down the side
   // (along the top when narrow); every change is saved as it's made. The
   // section components use the shared styles below (`.field`, `.switch`,
   // `.hint`…).
   import { t, type MessageKey } from "$lib/i18n";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { ui, type SettingsSection } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
   import ServicesPanel from "./ServicesPanel.svelte";
   import AboutOptions from "./settings/AboutOptions.svelte";
+  import AppearanceOptions from "./settings/AppearanceOptions.svelte";
   import DisplayOptions from "./settings/DisplayOptions.svelte";
   import EqualiserOptions from "./settings/EqualiserOptions.svelte";
   import GeneralOptions from "./settings/GeneralOptions.svelte";
@@ -19,11 +21,12 @@
   import SortRules from "./settings/SortRules.svelte";
   import VisualizerOptions from "./settings/VisualizerOptions.svelte";
 
-  const SECTIONS: { id: SettingsSection; name: MessageKey; about: MessageKey }[] = [
+  const ALL_SECTIONS: { id: SettingsSection; name: MessageKey; about: MessageKey }[] = [
     { id: "general", name: "settings.general", about: "settings.generalAbout" },
     { id: "library", name: "settings.library", about: "settings.libraryAbout" },
     { id: "sorting", name: "settings.sorting", about: "settings.sortingAbout" },
     { id: "display", name: "settings.display", about: "settings.displayAbout" },
+    { id: "appearance", name: "settings.appearance", about: "settings.appearanceAbout" },
     { id: "playback", name: "settings.playback", about: "settings.playbackAbout" },
     { id: "equaliser", name: "settings.equaliser", about: "settings.equaliserAbout" },
     { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
@@ -31,6 +34,11 @@
     { id: "features", name: "settings.features", about: "settings.featuresAbout" },
     { id: "about", name: "settings.about", about: "settings.aboutAbout" },
   ];
+
+  /** Appearance only while themes are on (PLAN.md X1). */
+  const SECTIONS = $derived(
+    ALL_SECTIONS.filter((candidate) => candidate.id !== "appearance" || appSettings.current.features.themes),
+  );
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
 
@@ -88,6 +96,8 @@
           <SortRules />
         {:else if section.id === "display"}
           <DisplayOptions />
+        {:else if section.id === "appearance"}
+          <AppearanceOptions />
         {:else if section.id === "playback"}
           <PlaybackOptions />
         {:else if section.id === "equaliser"}
@@ -291,7 +301,7 @@
 
   .panel :global(.card) {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
   }
 

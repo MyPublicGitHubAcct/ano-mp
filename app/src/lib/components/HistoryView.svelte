@@ -251,11 +251,11 @@
   }
 
   .segmented button:first-child {
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--radius) 0 0 var(--radius);
   }
 
   .segmented button:last-child {
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
   }
 
   .segmented button.on {

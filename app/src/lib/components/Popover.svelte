@@ -31,7 +31,7 @@
     width: min(22rem, calc(100vw - 2rem));
     padding: 0.75rem 1rem;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     box-shadow: var(--shadow);
     text-align: left;

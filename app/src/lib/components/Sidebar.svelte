@@ -370,7 +370,7 @@
     min-width: 0;
     padding: 0.35rem 0.5rem;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: none;
     text-align: left;
   }
@@ -413,7 +413,7 @@
   .playlist {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius);
   }
 
   .missing .name {

@@ -53,7 +53,7 @@
     max-height: min(88vh, 56rem);
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     color: var(--text);
     box-shadow: var(--shadow);

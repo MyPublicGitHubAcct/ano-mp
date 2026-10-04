@@ -150,6 +150,15 @@
     },
   ];
 
+  const LOOK: Switch[] = [
+    {
+      key: "themes",
+      id: "X1",
+      title: t("feature.themes"),
+      about: t("feature.themesAbout"),
+    },
+  ];
+
   const CROSSFEED: { id: CrossfeedLevel; name: string }[] = [
     { id: "off", name: t("signal.off") },
     { id: "light", name: t("signal.crossfeedLight") },
@@ -356,6 +365,9 @@
 <h3>{t("features.listening")}</h3>
 {@render switches(LISTENING)}
 
+<h3>{t("features.look")}</h3>
+{@render switches(LOOK)}
+
 <h3>{t("features.remote")} <span class="badge">O14</span></h3>
 <label class="switch">
   <input
@@ -434,7 +446,7 @@
     font-weight: 600;
     color: var(--text-muted);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 0 0.3rem;
     margin-left: 0.25rem;
     vertical-align: 1px;

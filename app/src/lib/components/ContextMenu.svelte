@@ -203,7 +203,7 @@
     overflow-y: auto;
     padding: 0.25rem;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     box-shadow: var(--shadow);
     outline: none;
@@ -217,7 +217,7 @@
     background: none;
     text-align: left;
     padding: 0.4rem 0.75rem 0.4rem 0.35rem;
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
   }
 
   .label {

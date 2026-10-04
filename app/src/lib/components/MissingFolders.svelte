@@ -86,7 +86,7 @@
     padding: 0.75rem 1rem;
     border: 1px solid var(--border);
     border-left: 4px solid var(--star);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
   }
 

@@ -3,12 +3,14 @@
 // See: https://svelte.dev/docs/kit/single-page-apps
 // See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
 import { logErrors } from "$lib/logErrors";
+import { appearance } from "$lib/state/appearance.svelte";
 import { appSettings } from "$lib/state/settings.svelte";
 
 export const ssr = false;
 
-/** The settings, which much of the UI reads as it renders. */
+/** The settings, which much of the UI reads as it renders, and the theme, so the first paint has it. */
 export async function load() {
   logErrors();
   await appSettings.load();
+  appearance.apply();
 }

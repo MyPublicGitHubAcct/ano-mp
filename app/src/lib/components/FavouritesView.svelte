@@ -7,6 +7,7 @@
   import { count, t } from "$lib/i18n";
   import { fileName } from "$lib/format";
   import { emptySelection, rowsFor, type Selection } from "$lib/selection";
+  import { appearance } from "$lib/state/appearance.svelte";
   import { collection } from "$lib/state/collection.svelte";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
@@ -109,7 +110,7 @@
         <div class="tracks" style:height="{Math.min(tracks.length, 12) * 40 + 2}px">
           <VirtualList
             count={tracks.length}
-            rowHeight={40}
+            rowHeight={appearance.rowHeight(40)}
             item={(index) => tracks[index]}
             label={t("favourites.tracks")}
             multiple
@@ -190,7 +191,7 @@
     display: flex;
     align-items: center;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
   }
 
@@ -207,7 +208,7 @@
     container-type: inline-size;
     margin: 0 0.5rem;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     max-height: 60vh;
   }
 

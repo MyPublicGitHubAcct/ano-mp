@@ -80,6 +80,35 @@ export function paletteFrom(image: CanvasImageSource): Palette | null {
   return { colors, shade: mix(average, [0, 0, 0], 0.55), fromCover: true };
 }
 
+/** Loads the cover at `url` with CORS so its colours can be read, then calls `done` with the image and its
+    palette (null if its colours can't be read), or with nulls if it doesn't load. Returns a function that
+    cancels. */
+export function loadCover(
+  url: string,
+  done: (image: HTMLImageElement | null, palette: Palette | null) => void,
+): () => void {
+  let current = true;
+  const load = (cors: boolean) => {
+    const image = new Image();
+    if (cors) image.crossOrigin = "anonymous";
+    image.decoding = "async";
+    image.onload = () => {
+      if (current) done(image, paletteFrom(image));
+    };
+    image.onerror = () => {
+      if (!current) return;
+      // A copy cached before the art had CORS headers fails with CORS; show it without its colours.
+      if (cors) load(false);
+      else done(null, null);
+    };
+    image.src = url;
+  };
+  load(true);
+  return () => {
+    current = false;
+  };
+}
+
 /** The hue at a saturation and lightness that shows on the dark stage. */
 function vivid(h: number, s: number, l: number): Rgb {
   return hsl(((h % 360) + 360) % 360, Math.min(0.95, Math.max(0.5, s)), Math.min(0.75, Math.max(0.58, l)));

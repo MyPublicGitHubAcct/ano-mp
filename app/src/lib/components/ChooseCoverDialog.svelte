@@ -197,7 +197,7 @@
 
   .note {
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--surface-2);
   }
 
@@ -237,7 +237,7 @@
     display: grid;
     place-items: center;
     aspect-ratio: 1;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--surface-2);
   }

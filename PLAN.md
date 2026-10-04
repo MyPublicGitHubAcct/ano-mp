@@ -5,10 +5,11 @@ complete; the exit checks of Phases 4, 5, 6, 6b and 6c wait to be done in
 the app (each phase says what). Phase 7 (hardening) is under way: every
 step of its "Order of work" that needs no owner decision is done, and the
 signed release waits on the owner's §8.1 decisions
-(`docs/release-decisions.md`). Phase 7b (themes, effects, visualizations
-and recommendations; P3, added 2026-10-03) follows Phase 7, before the
-ports. Finished work's design notes and records are in `docs/design/`,
-linked from each phase.
+(`docs/release-decisions.md`). Phase 7b (themes, effects,
+visualizations, recommendations and similar artists; P3, added
+2026-10-03) follows Phase 7, before the ports; X1 (themes) was built
+early, at the owner's request. Finished work's design notes and records
+are in `docs/design/`, linked from each phase.
 
 
 ## 1. Architecture
@@ -86,8 +87,8 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 116 passing Catch2 tests, also clean under ASan, UBSan and TSan | `core/tests` |
-| 439 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
-| 30 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 442 passing `cargo test` tests, plus 7 ignored benchmarks (50,000 tracks) and 6 ignored live tests (one per online source) | `app/src-tauri/src` |
+| 38 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 205 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -220,9 +221,9 @@ sets priorities rather than open questions.
    and where it differs from the proposal. What remains is checking them
    in the app (Phase 6c's exit).
 8. **Personalisation, effects and discovery: added 2026-10-03 at P3.**
-   X1–X5 (Phase 7b): themes, real-time effects, five uncommon
-   visualizations, and recommendations from inside and outside the
-   library. Low priority: after Phase 7's exit and the first release, but
+   X1–X6 (Phase 7b): themes, real-time effects, five uncommon
+   visualizations, recommendations from inside and outside the
+   library, and similar artists on artist pages. Low priority: after Phase 7's exit and the first release, but
    before the cross-platform work (Phases 8–10), so the ports carry them.
    #6's rules apply; X2 and X5 are off by default (they change what is
    heard and go online).
@@ -294,8 +295,8 @@ Each item's proposal and its **Decision** line are in
 
 Each phase ends with a demonstrable result and green tests. Platform order:
 macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9), then
-Windows (Phase 10). Phase 7b (themes, effects, visualizations and
-recommendations, P3) comes after Phase 7 and before the ports, so those
+Windows (Phase 10). Phase 7b (themes, effects, visualizations,
+recommendations and similar artists, P3) comes after Phase 7 and before the ports, so those
 features are settled on macOS first. Xcode is not needed until Phase 8.
 Phase 11 (Bandcamp streaming) is a feature, not a platform, and depends
 on Bandcamp's permission. Its engineering starts after Phase 7. The phases
@@ -552,7 +553,7 @@ The open items and parts:
 
 ### Phase 7b — Personalisation, effects and discovery (macOS)
 Added 2026-10-03 at the owner's request. **Priority: P3 (§4 #8)**: none of
-X1–X5 is needed for a release, and none starts before Phase 7's exit. They
+X1–X6 is needed for a release, and none starts before Phase 7's exit. They
 come before the ports (Phases 8–10), so each is built and settled once on
 macOS and then ported with the rest of the app. Each is an optional feature
 under §4 #6's rules: a switch in `FeatureSettings` that it checks where it
@@ -565,8 +566,9 @@ acts, off by default if it changes what is heard or goes online.
 | X3 | Five more visualizations, all uncommon in music players | core (analysis), UI | M–L |
 | X4 | Recommendations from the library | Rust, UI | M |
 | X5 | Recommendations from outside the library | Rust (metadata), UI | M (after X4) |
+| X6 | Similar artists on artist pages | Rust, UI | S (after X4; X5 for outside ones) |
 
-- [ ] **X1 Themes.** The UI's colours, fonts, density, corner radius and
+- [x] **X1 Themes.** The UI's colours, fonts, density, corner radius and
   the cover-derived accent become design tokens (CSS custom properties on
   `:root`), which every component already reads or is moved to read. The
   user picks a built-in theme (light, dark, high contrast, and a few
@@ -577,6 +579,31 @@ acts, off by default if it changes what is heard or goes online.
   JSON. High contrast and the system's light/dark and larger text sizes
   keep working (F18); a theme that fails WCAG AA contrast for text is
   flagged in the editor.
+  - **Built** 2026-10-03, ahead of Phase 7's exit at the owner's request.
+    `AppSettings.appearance` (`theme.rs`) holds the theme in use, the
+    user's saved themes (by name, at most 50) and whether the system's
+    "Increase contrast" swaps in the high-contrast colours (on by
+    default). A theme is a light and a dark palette of twelve `#rrggbb`
+    colours, a scheme (system, light, dark), a font from a fixed list
+    (system, rounded, serif, mono, Avenir), a text size (12–22 px), a
+    density (compact, regular, roomy), a corner radius (0–16 px) and
+    "accent from the cover". The twelve built-ins (Standard, Light, Dark,
+    High contrast, Paper, Midnight, Forest, Ocean, Rose, Graphite, Sunset,
+    Meadow) are `app/src/lib/themes.json`,
+    which Rust reads for the default and `contrast.test.mjs` checks for
+    AA in both schemes. `lib/theme.ts` turns a theme into custom
+    properties (hover, selection and shadow derived from the colours) and
+    the cover's colour into a readable accent; `state/appearance.svelte.ts`
+    sets them on `:root` in every window, first before the first paint.
+    Radii and control padding read the tokens; list rows scale with text
+    size and density (`appearance.rowHeight`). The editor previews colours
+    and sliders as they move and saves when let go, flags each pair under
+    AA, and shows the palette it edits in a sample. Theme files are
+    `{"format": "ano-mp theme", "version": 1, "theme": …}`, imported as
+    leniently as stored settings (`theme_import`). Switch: `themes`, on by
+    default; off, the standard theme shows and Appearance is hidden.
+    Left to check in the app: the exit's theme round trip between Macs,
+    VoiceOver over the editor, and layouts at 22 px text.
 - [ ] **X2 Effects.** An effects chain in the core, after decoding and
   before volume, next to the equaliser (F15) and crossfeed (O11): reverb
   (JUCE's `dsp::Reverb`, then perhaps convolution with bundled impulse
@@ -632,13 +659,34 @@ acts, off by default if it changes what is heard or goes online.
   and anything the user already owns is filtered out by MBID and folded
   names. Dismissed suggestions are remembered. Recorded fixtures in
   `metadata/fixtures/`, no network in tests.
+- [ ] **X6 Similar artists on artist pages.** A "Similar artists" section
+  on the artist page (`ArtistPage.svelte`), under the biography: first
+  the library's artists most like this one, by X4's artist scoring
+  (shared genres, credits and MusicBrainz relations, co-listening), each
+  opening its own artist page; then, while X5 is on, artists the user
+  doesn't own from X5's sources (ListenBrainz's similar artists for the
+  artist's MBID), as links out through `webLink`. It needs no data of its
+  own: the library half is a query on X4's scores, the outside half is
+  X5's fetch for one artist, run on the metadata worker and cached as X5
+  caches. Each row says why it is there ("shares 3 genres", "played
+  together often", "similar on ListenBrainz"). Unreadable folders' artists
+  are left out (`availability::unreadable`), as are artists with too
+  little in common (a score threshold, tested on X4's fixture library).
+  Its own switch (`similar_artists`, on by default, as it is local and
+  cheap; its outside half follows X5's switch). Hidden while the artist
+  has no matches, rather than showing an empty section. Before building,
+  decide: how many to show (a row of about eight, with "More"), and
+  whether band members and member-of relations show here or stay in the
+  artist's details.
 - **Exit (to check in the app)**: a theme edited, saved, exported and
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade
   and a seek, with no clicks and no dropouts at the smallest buffer
   size; the five visualizations on real music, and their CPU cost;
   library recommendations that make sense on the owner's library;
-  outside recommendations with ListenBrainz, none of them already owned.
+  outside recommendations with ListenBrainz, none of them already owned;
+  similar artists that make sense on the owner's library, with and
+  without X5.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account

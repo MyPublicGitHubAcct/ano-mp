@@ -18,3 +18,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   components it is built on keep their own licences (`THIRD_PARTY_NOTICES`).
 - Settings › About checks GitHub for a newer release and links to its
   download page; automatic checks are a switch there, off by default.
+- Themes: Settings › Appearance picks a built-in theme (standard, light,
+  dark, high contrast, paper, midnight, forest, ocean, rose, graphite,
+  sunset, meadow) or edits one: colours,
+  font, text size, density, corners and an accent from the playing
+  album's cover, with every change shown as it's made and colours that
+  fall short of WCAG AA flagged. Themes are saved by name and export to
+  and import from JSON files.

@@ -150,7 +150,7 @@
     width: min(100cqw, 100cqh);
     aspect-ratio: 1;
     margin-left: auto;
-    border-radius: 6px;
+    border-radius: var(--radius);
     overflow: hidden;
     box-shadow: var(--shadow);
   }

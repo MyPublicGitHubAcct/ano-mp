@@ -27,6 +27,7 @@ export type SettingsSection =
   | "library"
   | "sorting"
   | "display"
+  | "appearance"
   | "playback"
   | "equaliser"
   | "visualizer"

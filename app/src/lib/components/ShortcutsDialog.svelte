@@ -97,7 +97,7 @@
     font-variant-numeric: tabular-nums;
     padding: 0.1rem 0.45rem;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: var(--radius-sm);
     background: var(--surface-2);
   }
 </style>

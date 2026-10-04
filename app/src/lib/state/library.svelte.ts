@@ -4,6 +4,7 @@
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
 import {
+  artUrl,
   library as api,
   on,
   onAll,
@@ -66,6 +67,13 @@ class LibraryStore {
   dbCheck = $state.raw<DbCheck>({ state: "running" });
 
   /** Follows scans (whoever started them) and metadata changes; returns a function that stops. */
+  /** The header-sized cover of a queue item: its album's, or the track's own. */
+  coverUrl(item: { albumId: number | null; trackId: number }): string {
+    return item.albumId !== null
+      ? artUrl({ albumId: item.albumId }, this.version, this.artVersions.get(item.albumId), "header")
+      : artUrl({ trackId: item.trackId }, this.version, 0, "header");
+  }
+
   connect() {
     const listeners = [
       on("library-scan-progress", (progress) => (this.scanProgress = progress)),

@@ -301,7 +301,7 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 0.4rem 0.75rem;
     max-width: 16rem;
   }
@@ -342,13 +342,13 @@
     border: none;
     background: none;
     text-align: left;
-    border-radius: 6px;
+    border-radius: var(--radius);
   }
 
   .track-row {
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius);
     padding-right: 0.25rem;
   }
 

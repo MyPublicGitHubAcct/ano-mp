@@ -5,7 +5,7 @@
   // from it. Frames arrive up to 60 times a second (the settings' frame
   // rate) outside Svelte's reactivity; the draw loop reads the latest, with
   // the spectrum scaled by the settings' sensitivity.
-  import { artUrl, subscribeToAnalysis } from "$lib/api";
+  import { subscribeToAnalysis } from "$lib/api";
   import { library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
@@ -13,7 +13,7 @@
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { visualization } from "$lib/visualizer";
   import { decodeFrame, silentFrame } from "$lib/visualizer/frame";
-  import { DEFAULT_PALETTE, paletteFrom } from "$lib/visualizer/palette";
+  import { DEFAULT_PALETTE, loadCover } from "$lib/visualizer/palette";
   import { FlashGuard, averageLuminance } from "$lib/visualizer/safety";
   import type { Palette, Renderer, Scene } from "$lib/visualizer/types";
   import { errorText, t } from "$lib/i18n";
@@ -64,45 +64,17 @@
 
   // The current cover, loaded with CORS so its colours can be read.
   const item = $derived(player.currentItem);
-  const coverUrl = $derived(
-    item === null
-      ? null
-      : item.albumId !== null
-        ? artUrl({ albumId: item.albumId }, library.version, library.artVersions.get(item.albumId), "header")
-        : artUrl({ trackId: item.trackId }, library.version, 0, "header"),
-  );
+  const coverUrl = $derived(item === null ? null : library.coverUrl(item));
   $effect(() => {
-    const url = coverUrl;
-    if (url === null) {
+    if (coverUrl === null) {
       cover = null;
       coverPalette = null;
       return;
     }
-    let current = true;
-    const load = (cors: boolean) => {
-      const image = new Image();
-      if (cors) image.crossOrigin = "anonymous";
-      image.decoding = "async";
-      image.onload = () => {
-        if (!current) return;
-        cover = image;
-        coverPalette = paletteFrom(image);
-      };
-      image.onerror = () => {
-        if (!current) return;
-        // A copy cached before the art had CORS headers fails with CORS; show it without its colours.
-        if (cors) load(false);
-        else {
-          cover = null;
-          coverPalette = null;
-        }
-      };
-      image.src = url;
-    };
-    load(true);
-    return () => {
-      current = false;
-    };
+    return loadCover(coverUrl, (image, palette) => {
+      cover = image;
+      coverPalette = palette;
+    });
   });
 
   // The draw loop, with a new renderer whenever the visualization changes.

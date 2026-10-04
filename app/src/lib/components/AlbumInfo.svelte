@@ -388,7 +388,7 @@
     padding: 0;
     border: none;
     background: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
   }
 

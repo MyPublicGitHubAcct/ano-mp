@@ -1,61 +1,27 @@
 <script lang="ts">
-  // Global styles: colours as custom properties, light and dark from
-  // prefers-color-scheme, and the base look of controls.
+  // Global styles: the theme's tokens (PLAN.md X1) as custom properties on
+  // :root, set by the appearance store in every window, and the base look
+  // of controls, which read them.
+  import { appearance } from "$lib/state/appearance.svelte";
+
   let { children } = $props();
+
+  $effect(() => appearance.connect());
 </script>
 
 {@render children()}
 
 <style>
+  /* The tokens are `theme.ts`'s: colours (--bg, --surface, --surface-2, --text, --text-muted, --text-faint,
+     --border, --accent, --accent-text, --danger, --heart, --star, --hover, --selected, --shadow), --font,
+     --text-size, --density and --radius-sm, --radius, --radius-lg. */
   :global(:root) {
-    --bg: #f6f6f7;
-    --surface: #ffffff;
-    --surface-2: #e9e9ec;
-    --text: #18181b;
-    --text-muted: #686870;
-    --text-faint: #85858d;
-    --border: #dcdce1;
-    --accent: #3056d3;
-    --accent-text: #ffffff;
-    --hover: rgb(0 0 0 / 0.05);
-    --selected: rgb(48 86 211 / 0.12);
-    --danger: #c62828;
-    --shadow: 0 6px 24px rgb(0 0 0 / 0.14);
-    /* Hearts and stars: at least 3:1 against the surfaces (WCAG 1.4.11). */
-    --heart: #d0265f;
-    --star: #a86800;
-
-    color-scheme: light dark;
-    font-family:
-      system-ui,
-      -apple-system,
-      "Segoe UI",
-      sans-serif;
-    font-size: 15px;
+    font-family: var(--font);
+    font-size: var(--text-size);
     line-height: 1.35;
     color: var(--text);
     background: var(--bg);
     -webkit-font-smoothing: antialiased;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :global(:root) {
-      --bg: #151517;
-      --surface: #1e1e21;
-      --surface-2: #2a2a2e;
-      --text: #ececef;
-      --text-muted: #a0a0a8;
-      --text-faint: #6c6c74;
-      --border: #333338;
-      --accent: #7f9cff;
-      --accent-text: #0d0d10;
-      --hover: rgb(255 255 255 / 0.06);
-      --selected: rgb(127 156 255 / 0.16);
-      --danger: #ef5350;
-      --shadow: 0 6px 24px rgb(0 0 0 / 0.5);
-      --heart: #ff6f9a;
-      --star: #f5b83d;
-    }
   }
 
   :global(*, *::before, *::after) {
@@ -74,9 +40,9 @@
     gap: 0.35rem;
     font: inherit;
     color: inherit;
-    padding: 0.35rem 0.8rem;
+    padding: calc(0.35rem * var(--density)) calc(0.8rem * var(--density));
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--surface);
     cursor: pointer;
   }
@@ -103,10 +69,10 @@
 
   :global(button.icon) {
     justify-content: center;
-    padding: 0.35rem;
+    padding: calc(0.35rem * var(--density));
     border: none;
     background: none;
-    border-radius: 6px;
+    border-radius: var(--radius);
   }
 
   :global(button.icon:hover:not(:disabled)) {
@@ -123,9 +89,9 @@
   :global(input[type="search"], input[type="text"], input[type="number"], select) {
     font: inherit;
     color: inherit;
-    padding: 0.35rem 0.6rem;
+    padding: calc(0.35rem * var(--density)) calc(0.6rem * var(--density));
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--surface);
   }
 

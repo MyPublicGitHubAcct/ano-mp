@@ -8,7 +8,7 @@
 import { Channel, convertFileSrc } from "@tauri-apps/api/core";
 import { commands } from "./generated/commands";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppSettings, CoverBasis, ServiceSettings, SortRule, SourceId } from "./generated/settings";
+import type { AppSettings, CoverBasis, ServiceSettings, SortRule, SourceId, Theme } from "./generated/settings";
 
 import type {
   AlbumPrefs,
@@ -249,6 +249,13 @@ export const settings = {
   save: (settings: AppSettings) => commands.settingsSave({ settings }),
   /** The output devices there are now, and the one playing. */
   outputStatus: () => commands.audioOutputStatus(),
+};
+
+/** Theme files (PLAN.md X1). */
+export const themes = {
+  export: (path: string, theme: Theme) => commands.themeExport({ path, theme }),
+  /** The theme in a file, read leniently; not applied. Fails with `notATheme` for any other file. */
+  import: (path: string) => commands.themeImport({ path }),
 };
 
 // ---- Player and queue ---------------------------------------------------------

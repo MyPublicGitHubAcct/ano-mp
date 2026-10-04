@@ -338,7 +338,7 @@
 
   .note {
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--surface-2);
   }
 

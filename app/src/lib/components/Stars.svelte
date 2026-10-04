@@ -90,6 +90,6 @@
   }
 
   .editable {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 </style>

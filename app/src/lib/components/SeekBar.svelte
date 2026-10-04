@@ -7,6 +7,7 @@
   import { t } from "$lib/i18n";
   import { untrack } from "svelte";
   import { formatTime } from "$lib/format";
+  import { appearance } from "$lib/state/appearance.svelte";
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
 
@@ -44,9 +45,7 @@
     canvas.height = Math.round(height * ratio);
     const context = canvas.getContext("2d");
     if (!context) return;
-    const style = getComputedStyle(canvas);
-    const played = style.getPropertyValue("--accent").trim() || "#3056d3";
-    const rest = style.getPropertyValue("--text-faint").trim() || "#999";
+    const { accent: played, "text-faint": rest } = appearance.current.props;
     const points = waveform.length / 2;
     const columns = canvas.width;
     const middle = canvas.height / 2;

@@ -406,7 +406,7 @@
     left: 1rem;
     z-index: 300;
     padding: 0.5rem 0.75rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--accent);
     color: var(--accent-text);
   }
@@ -436,7 +436,7 @@
 
   .drop-overlay p {
     padding: 1rem 1.5rem;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     border: 2px dashed var(--accent);
     font-weight: 600;

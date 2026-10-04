@@ -34,7 +34,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.5rem 0.5rem 0.9rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     border: 1px solid var(--border);
     box-shadow: var(--shadow);

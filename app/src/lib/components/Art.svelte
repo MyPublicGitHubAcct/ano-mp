@@ -42,7 +42,7 @@
     display: grid;
     place-items: center;
     overflow: hidden;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--surface-2);
     color: var(--text-faint);
   }

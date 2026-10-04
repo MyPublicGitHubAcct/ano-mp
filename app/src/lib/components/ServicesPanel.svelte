@@ -325,7 +325,7 @@
     align-items: center;
     gap: 0.5rem 0.75rem;
     padding: 0.6rem 0.8rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
     border: 1px solid var(--border);
   }
@@ -381,7 +381,7 @@
     margin: 0;
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
   }
 
@@ -465,7 +465,7 @@
     margin: 0.35rem 0 0;
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--surface);
   }
 

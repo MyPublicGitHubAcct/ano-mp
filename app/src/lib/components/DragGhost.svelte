@@ -25,7 +25,7 @@
     gap: 0.4rem;
     max-width: 18rem;
     padding: 0.3rem 0.6rem;
-    border-radius: 6px;
+    border-radius: var(--radius);
     background: var(--surface);
     border: 1px solid var(--border);
     box-shadow: var(--shadow);

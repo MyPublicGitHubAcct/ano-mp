@@ -14,6 +14,7 @@
   import { count, t } from "$lib/i18n";
   import { formatTime } from "$lib/format";
   import { dropIndex, emptySelection, rowsFor, type Selection } from "$lib/selection";
+  import { appearance } from "$lib/state/appearance.svelte";
   import { collection } from "$lib/state/collection.svelte";
   import { registerDropTarget } from "$lib/state/drag.svelte";
   import { library } from "$lib/state/library.svelte";
@@ -28,7 +29,7 @@
   /** In the main area rather than beside it: no hide button. */
   let { main = false }: { main?: boolean } = $props();
 
-  const ROW = 52;
+  const ROW = $derived(appearance.rowHeight(52));
 
   let list = $state<VirtualList<QueueItem>>();
   let selection = $state<Selection>(emptySelection);
