@@ -14,6 +14,7 @@
   import { diagnostics, on, queue, shell } from "$lib/api";
   import { t } from "$lib/i18n";
   import ArtistPage from "$lib/components/ArtistPage.svelte";
+  import ArtistsView from "$lib/components/ArtistsView.svelte";
   import BrowsePane from "$lib/components/BrowsePane.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import DbRepairDialog from "$lib/components/DbRepairDialog.svelte";
@@ -317,6 +318,8 @@
       <HomeView />
     {:else if ui.mainView === "favourites"}
       <FavouritesView />
+    {:else if ui.mainView === "artists"}
+      <ArtistsView />
     {:else if ui.mainView === "history"}
       <HistoryView />
     {:else if ui.mainView === "health"}
@@ -325,7 +328,7 @@
       <BrowsePane />
     {/if}
   </main>
-  {#if ui.queueOpen && (["library", "home", "history", "health", "favourites", "playlist"].includes(ui.mainView) || ui.artistInMain || ui.discographyInMain || searching)}
+  {#if ui.queueOpen && (["library", "home", "history", "health", "favourites", "artists", "playlist"].includes(ui.mainView) || ui.artistInMain || ui.discographyInMain || searching)}
     <aside class="queue"><QueuePanel /></aside>
   {/if}
   <footer class="bar"><NowPlayingBar /></footer>

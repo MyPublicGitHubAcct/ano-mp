@@ -236,7 +236,7 @@ fn bench_node_tracks_and_queue() {
     });
     println!("a library folder's whole tree, in order: {}", ms(tree));
     report_ms("browse.folder_tree", tree);
-    let first = browse_rule(&library.conn, "album-artist", &[], 0, 1, Filter::default())
+    let first = browse_rule(&library.conn, &by_artist, &[], 0, 1, Filter::default())
         .unwrap()
         .groups[0]
         .key
@@ -285,10 +285,11 @@ fn bench_browse_pages() {
     // the browser shows when it opens a view or a node.
     let library = library();
     for rule in ["album-artist", "genre", "year", "folder", "composer"] {
+        let spec = RuleSpec::Id(rule.into());
         let page = time(9, || {
-            browse_rule(&library.conn, rule, &[], 0, 100, Filter::default()).unwrap()
+            browse_rule(&library.conn, &spec, &[], 0, 100, Filter::default()).unwrap()
         });
-        let top = browse_rule(&library.conn, rule, &[], 0, 1, Filter::default()).unwrap();
+        let top = browse_rule(&library.conn, &spec, &[], 0, 1, Filter::default()).unwrap();
         let path: Vec<Option<GroupKey>> = top
             .groups
             .first()
@@ -296,7 +297,7 @@ fn bench_browse_pages() {
             .into_iter()
             .collect();
         let node = time(9, || {
-            browse_rule(&library.conn, rule, &path, 0, 100, Filter::default()).unwrap()
+            browse_rule(&library.conn, &spec, &path, 0, 100, Filter::default()).unwrap()
         });
         println!(
             "browse {rule:>12}: first page {}, its first group's page {}",

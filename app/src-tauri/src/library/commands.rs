@@ -409,13 +409,13 @@ pub async fn library_remove_missing<R: Runtime>(
     run_scan_with(&app, Some(vec![folder_id]), false, true).await
 }
 
-/// One page of the children of the node at `path` under the sort rule
-/// `rule_id`, keeping what `filter` keeps (all by default); see
-/// `library::browse::browse`.
+/// One page of the children of the node at `path` under `rule` (a stored
+/// rule's id, or a rule given in full), keeping what `filter` keeps (all by
+/// default); see `library::browse::browse`.
 #[tauri::command]
 pub async fn library_browse<R: Runtime>(
     app: AppHandle<R>,
-    rule_id: String,
+    rule: browse::RuleSpec,
     path: Vec<Option<GroupKey>>,
     offset: u32,
     limit: u32,
@@ -424,7 +424,7 @@ pub async fn library_browse<R: Runtime>(
     on_library(&app, move |library| {
         browse::browse_rule(
             &library.conn(),
-            &rule_id,
+            &rule,
             &path,
             offset,
             limit,

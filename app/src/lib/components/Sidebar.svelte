@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The views (Home, Favourites, History…), the sort rules as library
+  // The views (Home, Favourites, Artists, History…), the sort rules as library
   // views, the playlists (PLAN.md F1, F2), the library folders with add,
   // rescan and remove, and scan progress; the online sources with what the
   // metadata worker is doing, and the settings.
@@ -54,6 +54,7 @@
         on: f.recentlyAdded || f.onThisDay || f.listeningHistory,
       },
       { id: "favourites" as const, name: t("sidebar.favourites"), icon: "heart" as const, on: true },
+      { id: "artists" as const, name: t("sidebar.artists"), icon: "person" as const, on: true },
       { id: "history" as const, name: t("sidebar.history"), icon: "history" as const, on: f.listeningHistory },
       { id: "health" as const, name: t("sidebar.health"), icon: "health" as const, on: f.healthReport },
     ].filter((view) => view.on),

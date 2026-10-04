@@ -33,7 +33,7 @@
       <button class="crumb" onclick={() => ui.back()}>{t("header.back")}</button>
       <span class="separator" aria-hidden="true">›</span>
       <span class="current">{t("header.notInLibrary", { name: ui.artist?.name ?? "" })}</span>
-    {:else if ui.playlistInMain || ["home", "favourites", "history", "health", "settings"].includes(ui.mainView)}
+    {:else if ui.playlistInMain || ["home", "favourites", "artists", "history", "health", "settings"].includes(ui.mainView)}
       <button class="crumb" onclick={() => ui.back()}>{t("header.back")}</button>
     {:else}
       <button class="crumb" disabled={library.crumbs.length === 0} onclick={() => library.goUp(0)}>

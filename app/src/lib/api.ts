@@ -68,8 +68,9 @@ export const library = {
   removeMissing: (folderId: number) => commands.libraryRemoveMissing({ folderId }),
   /** One folder, or all when `folderId` is null. */
   scan: (folderId: number | null) => commands.libraryScan({ folderId }),
-  browse: (ruleId: string, path: BrowsePath, offset: number, limit: number, filter: BrowseFilter | null = null) =>
-    commands.libraryBrowse({ ruleId, path, offset, limit, filter }),
+  /** `rule` is a stored rule's id, or a rule given in full. */
+  browse: (rule: RuleSpec, path: BrowsePath, offset: number, limit: number, filter: BrowseFilter | null = null) =>
+    commands.libraryBrowse({ rule, path, offset, limit, filter }),
   sortSettings: () => commands.librarySortSettings(),
   /** Adds a rule, or replaces the one with its id. */
   saveSortRule: (rule: SortRule) => commands.librarySaveSortRule({ rule }),

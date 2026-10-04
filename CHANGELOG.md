@@ -16,6 +16,9 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfade, ReplayGain and macOS media controls.
 - ano-mp's own code is licensed under the MIT License (`LICENSE`); the
   components it is built on keep their own licences (`THIRD_PARTY_NOTICES`).
+- Artists, in the sidebar under Favourites: every artist in the library,
+  with a box to narrow the list by name. A click opens the artist's page;
+  their menu plays, shuffles, queues or hearts them.
 - Settings › About checks GitHub for a newer release and links to its
   download page; automatic checks are a switch there, off by default.
 - Themes: Settings › Appearance picks a built-in theme (standard, light,

@@ -21,6 +21,7 @@ export type MainView =
   | "history"
   | "health"
   | "favourites"
+  | "artists"
   | "playlist";
 /** The parts of the settings view. */
 export type SettingsSection =
@@ -69,6 +70,7 @@ const OPENED: MainView[] = [
   "history",
   "health",
   "favourites",
+  "artists",
   "playlist",
 ];
 
@@ -155,8 +157,8 @@ class Ui {
     this.artist = artist;
   }
 
-  /** Shows a view of its own (Home, History, Health, Favourites) in the main area. */
-  showView(view: "home" | "history" | "health" | "favourites") {
+  /** Shows a view of its own (Home, History, Health, Favourites, Artists) in the main area. */
+  showView(view: "home" | "history" | "health" | "favourites" | "artists") {
     this.#open(view);
   }
 

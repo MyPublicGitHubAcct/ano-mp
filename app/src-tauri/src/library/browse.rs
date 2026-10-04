@@ -12,7 +12,7 @@ use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
 use super::marks::{self, MarkKind, FAVOURITE_FILTER};
-use super::rules::{self, AlbumOrder, Level, SortRule, TrackKey};
+use super::rules::{self, AlbumOrder, Level, SortRule, SortSettings, TrackKey};
 use super::sort_key;
 use super::{track_from_row, Error, TrackSummary, TRACKS_FROM, TRACK_COLUMNS};
 
@@ -81,25 +81,20 @@ impl Filter {
     }
 }
 
-/// Browses the stored rule `rule_id` with the stored ignored articles; see
-/// `browse`.
+/// Browses `rule` (a stored rule, or one given in full) with the stored
+/// ignored articles; see `browse`.
 pub fn browse_rule(
     conn: &Connection,
-    rule_id: &str,
+    rule: &RuleSpec,
     path: &[Option<GroupKey>],
     offset: u32,
     limit: u32,
     filter: Filter,
 ) -> Result<BrowsePage, Error> {
     let settings = rules::sort_settings(conn)?;
-    let rule = settings
-        .rules
-        .iter()
-        .find(|rule| rule.id == rule_id)
-        .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\"")))?;
     browse_filtered(
         conn,
-        rule,
+        rule.resolve(&settings)?,
         &settings.ignored_articles,
         path,
         offset,
@@ -220,6 +215,20 @@ pub enum RuleSpec {
     Rule(SortRule),
 }
 
+impl RuleSpec {
+    /// The rule given, or the stored one with its id.
+    fn resolve<'a>(&'a self, settings: &'a SortSettings) -> Result<&'a SortRule, Error> {
+        match self {
+            RuleSpec::Rule(rule) => Ok(rule),
+            RuleSpec::Id(rule_id) => settings
+                .rules
+                .iter()
+                .find(|rule| &rule.id == rule_id)
+                .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\""))),
+        }
+    }
+}
+
 /// `node_track_ids` for `rule` with the stored articles.
 pub fn node_track_ids_rule(
     conn: &Connection,
@@ -229,17 +238,9 @@ pub fn node_track_ids_rule(
     filter: Filter,
 ) -> Result<Vec<i64>, Error> {
     let settings = rules::sort_settings(conn)?;
-    let rule = match rule {
-        RuleSpec::Rule(rule) => rule,
-        RuleSpec::Id(rule_id) => settings
-            .rules
-            .iter()
-            .find(|rule| &rule.id == rule_id)
-            .ok_or_else(|| Error::Invalid(format!("No sort rule with id \"{rule_id}\"")))?,
-    };
     node_track_ids_filtered(
         conn,
-        rule,
+        rule.resolve(&settings)?,
         &settings.ignored_articles,
         path,
         recursive,
@@ -1092,9 +1093,16 @@ mod tests {
 
         // `browse_rule` takes the articles from the settings.
         let first = |conn: &Connection| {
-            browse_rule(conn, "album-artist", &[], 0, 1, Filter::default())
-                .unwrap()
-                .groups[0]
+            browse_rule(
+                conn,
+                &RuleSpec::Id("album-artist".into()),
+                &[],
+                0,
+                1,
+                Filter::default(),
+            )
+            .unwrap()
+            .groups[0]
                 .name
                 .clone()
         };
@@ -1523,6 +1531,20 @@ mod tests {
         assert!(
             node_track_ids_rule(&library.conn, &missing, &[], true, Filter::default()).is_err()
         );
+
+        // Browsing takes either too: the Artists view lists every artist
+        // with a rule of its own.
+        let artists: RuleSpec = serde_json::from_str(
+            r#"{"id": "artists", "name": "Artists", "levels": ["artist"],
+                "trackOrder": ["album", "trackNumber"]}"#,
+        )
+        .unwrap();
+        let page = browse_rule(&library.conn, &artists, &[], 0, 10, Filter::default()).unwrap();
+        let names: Vec<&str> = page.groups.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, ["A", "B"]);
+        assert_eq!(page.groups[0].track_count, 2);
+        let stored = browse_rule(&library.conn, &stored, &[], 0, 10, Filter::default()).unwrap();
+        assert_eq!(stored.total, 2);
     }
 
     #[test]
@@ -1604,8 +1626,15 @@ mod tests {
         mixed.levels.push(Level::Folder);
         assert!(error(&mixed, &[]).contains("folder level"));
 
-        let unknown =
-            browse_rule(&library.conn, "nope", &[], 0, 10, Filter::default()).unwrap_err();
+        let unknown = browse_rule(
+            &library.conn,
+            &RuleSpec::Id("nope".into()),
+            &[],
+            0,
+            10,
+            Filter::default(),
+        )
+        .unwrap_err();
         assert!(unknown.to_string().contains("No sort rule"), "{unknown}");
         // A key that matches nothing is just an empty node.
         let page = browse(
