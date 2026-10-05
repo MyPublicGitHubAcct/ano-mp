@@ -27,7 +27,8 @@ remove a source file, change this page in the same commit.
   standard-library Python (plus `build-ffmpeg.sh`), with their tests in
   `scripts/tests/`, the pre-commit hook in `scripts/hooks/` and standard
   licence texts in `scripts/licenses/`. Chapters 2, 12 and 13.
-- `docs/`: the user guide, this guide, finished work's design notes
+- `docs/`: the user guide, this guide, the dictionary of classes and
+  types (`docs/class-dictionary/`), finished work's design notes
   (`docs/design/`), release checklists and decisions.
 - `.github/`: CI (`ci.yml`, which runs `check-all.py` and nothing else),
   the release, weekly audit and weekly fuzz workflows, and Dependabot.

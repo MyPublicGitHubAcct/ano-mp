@@ -18,6 +18,11 @@ time:
   [repository map](03-repository-map.md) (`check-developer-guide.py`
   fails without it), and a change of responsibility updates the chapter
   that explains it.
+- **The class dictionary.** A new, renamed or removed type (a C++ class
+  or struct, a Rust struct, enum or trait, an exported TypeScript type, a
+  component) changes its entry in `docs/class-dictionary/`, then
+  `scripts/class-dictionary.py` rewrites the index (`--check` fails
+  otherwise).
 
 ## A C API function
 

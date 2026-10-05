@@ -206,10 +206,16 @@ Above its tracks, an album shows:
   picked at random; **Draw again** picks five more (needs **More in this
   genre**);
 - **More like this**: albums in your library most like this one, each
-  saying why ("from 1972", "on Blue Note", "played together 4 times").
-  Click the heading to open it (needs **Recommendations**).
+  saying why ("from 1972", "on Blue Note", "played together 4 times")
+  (needs **Recommendations**).
 
-The heart beside the title makes the album a favourite.
+**Works**, **More in** and **More like this** start closed: click a
+heading to open it, and again to close it. The album page remembers which
+you left open. However much is open above them, the album's tracks keep
+room for a few rows, and the area above scrolls.
+
+Double-click a track, or select it and press Return, to play the album from
+that track. The heart beside the title makes the album a favourite.
 
 ## More Like This
 

@@ -32,6 +32,9 @@ changes. The rules stay here; the guide explains them and links back.
 Read its repository map (`03-repository-map.md`) to find the file behind a
 behaviour, and its recipes (`11-recipes.md`) before adding a command,
 setting, migration, effect or the like.
+`docs/class-dictionary/` (Phase 7c D3) is the reference beside it: every
+named type, one page per layer, alphabetical, with indexes by folder and
+A to Z.
 
 ## Build & test
 
@@ -143,8 +146,9 @@ parameter count, unless in its `NOT_BOUND` list), `check-sources.py`,
 `check-user-guide.py` (the user guide names every sidebar item, Settings
 section, feature switch, menu item and error message), `check-developer-guide.py`
 (the developer guide's repository map names every module of `core/src`,
-`effects/src`, `app/src-tauri/src` and `app/src`, and nothing that's gone)
-and `version.py --check`. Scripts use the standard library only; their tests
+`effects/src`, `app/src-tauri/src` and `app/src`, and nothing that's gone),
+`class-dictionary.py --check` (an entry for every type, and none for a type
+that's gone) and `version.py --check`. Scripts use the standard library only; their tests
 are in `scripts/tests/` (pytest, `scripts/test-python.py`), each repo check
 with one test against the real tree. Actions are pinned by commit SHA (look a
 new one up with `git ls-remote`, never guess it); Dependabot proposes updates
@@ -435,6 +439,16 @@ their unit), Rust and frontend files by their path in the section's folder
 or its `###` folder heading. A change that moves a responsibility, adds a
 thread, event or table, or changes a rule here updates the chapter that
 explains it (a rule's recipe in `11-recipes.md` too). Diagrams are Mermaid.
+
+**Class dictionary** (Phase 7c D3). `docs/class-dictionary/` has an
+entry for every type: the C API's, every C++ class, struct and enum in
+`core/src` and `effects/`, every Rust struct, enum and trait outside
+test-only code, and the frontend's exported types, state modules, Svelte
+components and generated files. A new, renamed or removed type changes its
+entry (alphabetical, on its layer's page) in the same commit, and
+`scripts/class-dictionary.py` (no flag) rewrites the README's index;
+`--check` fails otherwise. A small private type may be a "Helper" with a
+line or nothing; where a type has a doc comment, its entry says the same.
 
 **Themes** (X1). Components take colours, radii (`--radius-sm`,
 `--radius`, `--radius-lg`) and the font from the theme's custom

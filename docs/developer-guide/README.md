@@ -11,7 +11,7 @@ the file behind a behaviour, [How things flow](08-flows.md) follows an
 action across the layers, and [Troubleshooting](10-troubleshooting.md)
 starts from a symptom.
 
-This guide describes the code as it is. Three other documents sit beside
+This guide describes the code as it is. Four other documents sit beside
 it, and it links to them rather than repeating them:
 
 - [`CLAUDE.md`](../../CLAUDE.md): the rules each area keeps (threads,
@@ -21,6 +21,9 @@ it, and it links to them rather than repeating them:
   made, and what is still open.
 - [`docs/design/`](../design/): how each phase was built and its known
   limits, in the order things happened.
+- The [dictionary of classes and types](../class-dictionary/README.md):
+  every named type in the code, alphabetical, each with its file, its
+  thread and a link to the section here that explains it.
 
 The [user guide](../user-guide/README.md) explains the app to the people
 who use it; its names for screens and controls are the ones the code's
@@ -77,5 +80,6 @@ messages (`en.json`) use.
 A change that moves a responsibility updates this guide in the same
 commit, as it updates the code's comments. `scripts/check-docs.py` checks
 every path and link here, and `scripts/check-developer-guide.py` checks
-that the repository map names every module and nothing that has gone.
-Both run in `scripts/check-all.py --quick` and the pre-commit hook.
+that the repository map names every module and nothing that has gone;
+`scripts/class-dictionary.py --check` does the same for the dictionary's
+types. All three run in `scripts/check-all.py --quick` and the pre-commit hook.
