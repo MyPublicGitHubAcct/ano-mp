@@ -1410,6 +1410,51 @@ mod tests {
     }
 
     #[test]
+    fn a_cue_sheets_track_reads_and_plays_as_itself() {
+        // What `open_track` and the queue's opening read (the workbench's
+        // Play reopening a track, X8): by id, so the second of a file's
+        // three tracks comes back as itself, not as the file's first.
+        let library = Library::new([
+            track("Rip/Live.flac")
+                .title("One")
+                .album("Live")
+                .range(0.0, Some(10.0)),
+            track("Rip/Live.flac")
+                .title("Two")
+                .album("Live")
+                .range(10.0, Some(25.0)),
+            track("Rip/Live.flac")
+                .title("Three")
+                .album("Live")
+                .range(25.0, None),
+        ]);
+        let second: i64 = library
+            .conn
+            .query_row(
+                "SELECT id FROM tracks WHERE range_start = 10.0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let features = FeatureSettings::default();
+        let infos = track_infos(&library.conn, &[second], &features).unwrap();
+        assert_eq!(infos.len(), 1);
+        assert_eq!(
+            (infos[0].track_id, infos[0].title.as_str()),
+            (second, "Two")
+        );
+        assert_eq!(
+            infos[0].duration, 15.0,
+            "the track's length, not the file's"
+        );
+        let play = crate::library::playback::track_play(&library.conn, second, &features)
+            .unwrap()
+            .unwrap();
+        assert_eq!((play.start, play.end), (10.0, Some(25.0)));
+        assert!(play.path.ends_with("Rip/Live.flac"));
+    }
+
+    #[test]
     fn a_queue_saved_before_the_rows_restores_shuffled_where_it_was() {
         // Saved as migration 010 left it, then migrated (PLAN.md H16).
         let library = Library::from_conn(crate::library::db::open_in_memory_at(10).unwrap());

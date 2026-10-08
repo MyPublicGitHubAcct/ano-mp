@@ -107,7 +107,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 492 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 72 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 235 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -1244,10 +1244,29 @@ acts, off by default if it changes what is heard or goes online.
     Checked in the app 2026-10-08 (`tauri dev`, the owner): a library
     track taken as it played (the queue unchanged), a loop take of it, and
     Play opening it again once it had left the queue.
-  - Left to check in the app: Use the Playing Track on a library track in
-    a sandboxed bundle (its folder's access), and on a cue sheet's track
-    (the owner has none to hand). Everything else passed on 2026-10-08
-    (above).
+    Also checked 2026-10-08, on a cue sheet's track: a scratch album
+    outside the repo, one 30 s FLAC made from the chirp fixture with a
+    `.cue` over it (three 10 s tracks at -12, -24 and -18 dBFS RMS, so a
+    take shows by its level which track it holds), in `tauri dev` and
+    then in a sandboxed, ad-hoc signed bundle (`docs/bundle-checks.md`,
+    the container's `Data/Library` restored and identical to its copy
+    after). With track 2 current, Use the Playing Track showed its title
+    and its own 0:10, the queue unchanged; a whole-track take held only
+    track 2 (10.005 s, -24.1 dBFS RMS throughout); and Play, once it had
+    left the queue, opened track 2 again, not the file's first. In the
+    bundle, a library track from the owner's music folder too: taken as it
+    played, two loop takes, and opened again after leaving the queue.
+    Nothing logged but MusicBrainz's 503s. Test:
+    `a_cue_sheets_track_reads_and_plays_as_itself` (`queue/mod.rs`: a
+    file's second part reads and plays by id as itself, its length and
+    range its own).
+  - **Seen once, not reproduced:** in `tauri dev`, the first time Play
+    reopened the cue track (after a take, the track removed from the
+    queue while current), it went in after track 3 and then left the queue
+    within about 30 s with nothing done and nothing logged; the saved
+    queue agreed. The same steps twice more kept it. No code path found
+    that removes an item but `queue_remove`; if it comes back, note what
+    the queue view showed and whether anything was selected in it.
 - **Exit (to check in the app)**: a theme edited, saved, exported and
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade

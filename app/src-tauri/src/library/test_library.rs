@@ -21,7 +21,13 @@ pub struct Track {
     year: Option<u32>,
     disc: Option<u32>,
     number: Option<u32>,
+    /// Seconds into the file, the end `None` for the file's end (a cue
+    /// sheet's track); the whole file if unset.
+    range: Option<(f64, Option<f64>)>,
 }
+
+/// How long a test track's file is, in seconds.
+pub const FILE_LENGTH: f64 = 60.0;
 
 pub fn track(path: &str) -> Track {
     Track {
@@ -76,6 +82,13 @@ impl Track {
     pub fn number(self, number: u32) -> Self {
         Track {
             number: Some(number),
+            ..self
+        }
+    }
+    /// Only the part of the file from `start` to `end` seconds.
+    pub fn range(self, start: f64, end: Option<f64>) -> Self {
+        Track {
+            range: Some((start, end)),
             ..self
         }
     }
@@ -156,13 +169,17 @@ impl Library {
                 )
                 .unwrap()
         });
+        let (start, end) = track.range.unwrap_or((0.0, None));
+        let duration = end.unwrap_or(FILE_LENGTH) - start;
         self.conn
             .execute(
                 "INSERT INTO tracks (folder_id, relative_path, file_size, file_mtime_ns, title,
                                      artist_id, album_id, album_artist_id, genre, year,
                                      disc_number, track_number, duration, sample_rate,
-                                     channels, scanned_at, artist_credit)
-                 VALUES (?1, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 60.0, 44100, 2, 0, ?11)",
+                                     channels, scanned_at, artist_credit, range_start,
+                                     range_end)
+                 VALUES (?1, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?12, 44100, 2, 0, ?11,
+                         ?13, ?14)",
                 rusqlite::params![
                     folder_id,
                     track.path,
@@ -174,7 +191,10 @@ impl Library {
                     track.year,
                     track.disc,
                     track.number,
-                    credit
+                    credit,
+                    duration,
+                    start,
+                    end
                 ],
             )
             .unwrap();
