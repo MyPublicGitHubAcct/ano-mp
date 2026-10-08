@@ -842,13 +842,16 @@ impl Queue {
 
     /// Adds tracks after the current item and plays the first of them, e.g.
     /// files opened from the Finder (F5).
-    pub fn play_now(&mut self, p: &mut impl Player, tracks: Vec<TrackInfo>) {
+    /// Plays `tracks` after the current item, starting now with the first,
+    /// whose uid it returns.
+    pub fn play_now(&mut self, p: &mut impl Player, tracks: Vec<TrackInfo>) -> Option<Uid> {
         if tracks.is_empty() {
-            return;
+            return None;
         }
         let first = self.next_uid;
         self.add(p, tracks, true);
         self.jump(p, first);
+        Some(first)
     }
 
     /// Removes items. If the current one goes, the item after it takes its
@@ -1141,6 +1144,37 @@ impl Queue {
         self.stop_after = uid.filter(|&uid| self.index_of(uid).is_some());
         self.changed = true;
         self.sync_next(p);
+    }
+
+    /// Readies a take of item `uid` (the effects workbench, PLAN.md X8):
+    /// playback will stop after it, and it waits paused at `start` for the
+    /// recording to begin. Returns the item playback stopped after before,
+    /// for `end_take`. Fails unless `uid` is the current item and open.
+    pub fn ready_take(
+        &mut self,
+        p: &mut impl Player,
+        uid: Uid,
+        start: f64,
+    ) -> Result<Option<Uid>, String> {
+        self.reconcile(p);
+        if self.current_item().map(|item| item.uid) != Some(uid) || !self.loaded {
+            return Err("The file isn't playing".into());
+        }
+        let previous = self.stop_after;
+        self.set_stop_after(p, Some(uid));
+        self.pause(p);
+        self.seek(p, start);
+        Ok(previous)
+    }
+
+    /// A take of item `uid` ended: puts back `previous` as the item to stop
+    /// after, unless the user chose another meanwhile.
+    pub fn end_take(&mut self, p: &mut impl Player, uid: Uid, previous: Option<Uid>) {
+        let previous = previous.filter(|&previous| previous != uid);
+        let ours = self.stop_after.is_none_or(|stop| stop == uid);
+        if ours && self.stop_after != previous {
+            self.set_stop_after(p, previous);
+        }
     }
 
     /// Starts a sleep timer, or ends it with `None` (restoring the volume
@@ -3015,6 +3049,66 @@ mod tests {
         assert_eq!(ids(&queue), [2, 1, 3, 5, 4]);
         queue.move_items(&mut p, &[12345], 0);
         assert_eq!(ids(&queue), [2, 1, 3, 5, 4]);
+    }
+
+    #[test]
+    fn a_workbench_file_plays_now_and_a_take_stops_after_it() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        let three = uid_of(&queue, 3);
+        queue.set_stop_after(&mut p, Some(three));
+        let outside = TrackInfo {
+            external: true,
+            ..info(-1)
+        };
+        let uid = queue.play_now(&mut p, vec![outside]).expect("queued");
+        assert_eq!(ids(&queue), [1, -1, 2, 3]);
+        assert_eq!(queue.current_item().map(|item| item.uid), Some(uid));
+        assert_eq!(p.state(), PlayerState::Playing);
+        assert_eq!(queue.play_now(&mut p, Vec::new()), None);
+
+        // Only the current, open item can be taken.
+        assert!(queue.ready_take(&mut p, three, 0.0).is_err());
+        p.position = 42.0;
+        let previous = queue.ready_take(&mut p, uid, 1.5).unwrap();
+        assert_eq!(previous, Some(three));
+        assert_eq!(queue.state().stop_after, Some(uid));
+        assert_eq!(p.state(), PlayerState::Paused, "waits for the recording");
+        assert_eq!(p.position, 1.5);
+        assert_eq!(p.next, None, "nothing follows the take");
+        queue.play(&mut p);
+
+        // The file ends: playback stops, 2 waits, and 3's stop comes back.
+        end_track(&mut queue, &mut p);
+        assert_eq!(current_id(&queue), Some(2));
+        assert_ne!(p.state(), PlayerState::Playing);
+        queue.end_take(&mut p, uid, previous);
+        assert_eq!(queue.state().stop_after, Some(three));
+        check(&queue, &p);
+    }
+
+    #[test]
+    fn a_take_ended_early_puts_back_the_stop_unless_the_user_chose_another() {
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2]), 0, true);
+        let one = uid_of(&queue, 1);
+        let two = uid_of(&queue, 2);
+        let previous = queue.ready_take(&mut p, one, 0.0).unwrap();
+        assert_eq!(previous, None);
+        queue.end_take(&mut p, one, previous);
+        assert_eq!(queue.state().stop_after, None);
+        assert_eq!(p.next, Some(2), "1 hands off to 2 again");
+
+        let previous = queue.ready_take(&mut p, one, 0.0).unwrap();
+        queue.set_stop_after(&mut p, Some(two));
+        queue.end_take(&mut p, one, previous);
+        assert_eq!(
+            queue.state().stop_after,
+            Some(two),
+            "the user's choice stays"
+        );
     }
 
     #[test]

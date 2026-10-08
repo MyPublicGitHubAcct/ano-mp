@@ -774,6 +774,13 @@ const APP_ROWS: &[Row] = &[
     ),
     row(
         "settings.features",
+        "app.features.effectsWorkbench",
+        "feature.effectsWorkbench",
+        Shown::Switch,
+        "",
+    ),
+    row(
+        "settings.features",
         "app.features.remoteControl",
         "features.remoteSwitch",
         Shown::Switch,

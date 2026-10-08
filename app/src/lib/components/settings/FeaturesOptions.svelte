@@ -78,6 +78,12 @@
       title: t("feature.recording"),
       about: t("feature.recordingAbout"),
     },
+    {
+      key: "effectsWorkbench",
+      id: "X8",
+      title: t("feature.effectsWorkbench"),
+      about: t("feature.effectsWorkbenchAbout"),
+    },
   ];
 
   const LIBRARY: Switch[] = [

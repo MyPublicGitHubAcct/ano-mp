@@ -141,6 +141,7 @@ flowchart LR
 | `anomp recorder` | encoding a recording | everything that can wait or fail happens here, not on the audio thread |
 | tokio's blocking pool | commands' database work (`on_library`), scans, opening a track's folder | never holds the library connection while waiting for the main thread |
 | `metadata` | the metadata worker: every online request | other threads only queue work for it |
+| `anomp-workbench-take` (short-lived) | ending an effects workbench take: waits for the loop's end, then stops the recording | hops to the main thread for the recording and the queue |
 | `analysis`, `history`, `library watcher`, `library check`, `remote`, `updates` | each one job, named after it | each owns its own database connection where it needs one |
 
 Two consequences shape much of the Rust code:

@@ -8408,13 +8408,14 @@ SOFTWARE.
 8. npm packages
 ==============================================================================
 
-6 npm packages. Each one's source is at https://www.npmjs.com/package/NAME/v/VERSION.
+7 npm packages. Each one's source is at https://www.npmjs.com/package/NAME/v/VERSION.
 
   @sveltejs/kit 2.70.3 (MIT)
   @tauri-apps/api 2.12.0 (MIT)
   @tauri-apps/plugin-dialog 2.7.3 (MIT)
   @tauri-apps/plugin-log 2.10.0 (MIT)
   @tauri-apps/plugin-opener 2.5.5 (MIT)
+  clsx 2.1.1 (MIT)
   svelte 5.57.1 (MIT)
 
 ------------------------------------------------------------------------------
@@ -8532,6 +8533,20 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+------------------------------------------------------------------------------
+Used by: clsx 2.1.1
+------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
 Used by: svelte 5.57.1

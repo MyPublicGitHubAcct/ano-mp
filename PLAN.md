@@ -10,8 +10,9 @@ visualizations, recommendations, recording and similar artists; P3,
 added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
 (effects), X3 (visualizations), X4 (library recommendations), X5
 (recommendations from outside the library), X6 (recording) and X7
-(similar artists) were built early, at the owner's request; X8 (an
-effects workbench, added 2026-10-04) is planned. Phase 7c (user and developer
+(similar artists) were built early, at the owner's request. X8 (an
+effects workbench, added 2026-10-04) is built and passed its exit
+check in the app, in a sandboxed bundle too (2026-10-08). Phase 7c (user and developer
 documentation and a dictionary of classes, added 2026-10-04) is under way: D1's user guide is written, checked and bundled in the app (Help ›
 ano-mp Help), and waits on its screenshots and its exit check; D2's
 developer guide is written and checked (`docs/developer-guide/`), and
@@ -106,8 +107,8 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 485 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
-| 64 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 492 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 72 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 235 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -1107,7 +1108,7 @@ acts, off by default if it changes what is heard or goes online.
     Features), on by default.
   - Left to check in the app: similar artists that make sense on the
     owner's library, with and without X5 (the exit).
-- [ ] **X8 Effects workbench.** Added 2026-10-04 at the owner's
+- [x] **X8 Effects workbench.** Added 2026-10-04 at the owner's
   request: a page where the user picks one music file, plays it through
   the effects (X2), and records the output (X6), without touching the
   library or building a queue first. It reuses what
@@ -1157,6 +1158,96 @@ acts, off by default if it changes what is heard or goes online.
   - **Exit:** a user picks a FLAC outside the library, hears it with
     reverb and chorus, changes a parameter while it plays without a
     click, and records it to an MP3 that plays back as heard.
+  - **Checked in the app** 2026-10-08 (the owner, by ear), with
+    `npm run tauri dev` and then a sandboxed, ad-hoc signed bundle
+    (`docs/bundle-checks.md`, the container restored and compared after):
+    the exit (a FLAC outside the library, chosen with the open dialog,
+    heard with reverb and chorus, parameters and presets changed while it
+    played without a click, and a take recorded to an MP3 that plays back
+    in another app as heard, its length the file's, no gap or click at
+    either end); a loop take (pauses near B, holds only A to B, ends
+    cleanly, no reverb tail from before the seek heard); drops from the
+    Finder (one file plays, several or a folder open the first and say
+    so, a folder isn't added to the library); a take with other tracks
+    queued and a stop-after set (the stop and the queue put back); and,
+    sandboxed, a file granted by the open dialog and one dropped, each
+    played and recorded. Nothing failed in Rust. **Fixed:** the page
+    showed the previous file's A–B loop after another file was chosen or
+    dropped, while the engine had dropped it with the track, so Record
+    promised a loop take and recorded the whole file from its start.
+    `LoopControls.svelte` read the loop only when mounted, and the page
+    mounts it again while a dropped file is still opening (H11), when the
+    engine still reports the last file's loop. It now reads the loop again
+    for each item once it is open and drops an answer that arrives for an
+    earlier one (`loopOwner`, `keepLoop` in `lib/workbench.ts`). Also: the
+    workbench's log lines no longer repeat their module.
+  - **Written** 2026-10-04, ahead of Phase 7's exit at the owner's request.
+    **Decided** (owner): real-time only, no offline render, so no core or
+    C API work; choosing a file plays it as F5 does (after the current
+    item, the rest of the queue kept), not in a queue of its own; and a
+    Record press records **one take**: the file from its start to its
+    end, or once round the A–B loop, stopping by itself.
+  - **Rust** (`workbench.rs`): `workbench_open` plays the file through
+    `queue::open_file` (F5's resolution, split out of `open_files`; a
+    library file plays as its library track) and returns a
+    `WorkbenchFile` (its queue item, title, format, length, rate,
+    channels, bitrate). `workbench_take` refuses while recording is off or
+    running, has the model `ready_take` (playback stops after the item;
+    paused and sought to the start or the loop's start; fails unless the
+    item is current and open), starts X6's recording unchanged, and plays.
+    A take ends on `TrackEnded` (stop-after stopped the engine, so the
+    file holds exactly the file), near the loop's end (timed from the
+    50 ms position reports by an `anomp-workbench-take` thread, allowing
+    for the tempo; a jump back ends it at once), when another item becomes
+    current, or when the recording stops any other way; then
+    `Queue::end_take` puts back the item playback stopped after before,
+    unless the user chose another. `Queue::play_now` now returns the
+    first item's uid. Switch `effects_workbench`, on by default (local and
+    cheap; the effects and recording keep their switches and stay off by
+    default). Coded error `workbenchNotPlaying`.
+  - **UI**: Effects workbench in the sidebar (`WorkbenchView.svelte`,
+    state in `state/workbench.svelte.ts`, choices in `lib/workbench.ts`):
+    Choose a File… (filtered to the extensions the app plays, now shared
+    as `AUDIO_EXTENSIONS`), drops from the Finder while the page shows,
+    the file's details, play/pause and the seek bar while it is current
+    (else Play goes back to it or opens it again), practice mode's A–B
+    loop (`LoopControls.svelte`, split out of the practice panel), Settings'
+    Effects section with its switch, and Recording's switch, Record One
+    Take with the time recorded, and Settings' Recording section. The
+    settings sections' shared styles moved from `SettingsPage.svelte` to
+    `settings/Options.svelte`, which wraps them in both places. With
+    recording off, Record is disabled and says to turn it on.
+  - Tests: the model's take against the fake engine (stop-after, pause
+    and seek, the stop put back or left as the user chose), the take's
+    timing (`workbench.rs`: the loop's end, the tempo, a jump back) and
+    the file's description; `tests/workbench.test.mjs` for Play's and
+    Record's choices, the take's span, and whose loop the page shows
+    (`loopOwner`, `keepLoop`).
+  - **Known limits:** a loop take stops within about a block of the
+    loop's end (timed from position reports, not the audio thread), where
+    a whole-file take is exact. A take may begin with what the reverb
+    and echo still ring from before its seek (none heard in the app,
+    2026-10-08). A seek during a take records
+    what is heard, so the file is no longer one straight copy. No bundle
+    self-test stage, as no offline render was built (the plan asked for
+    one only with it).
+  - **Use the Playing Track** (added 2026-10-08 at the owner's request):
+    a button beside Choose a File… takes the queue's current item, where
+    it is, as the workbench's file, queueing nothing (`workbench_current`,
+    reading the file through `queue::read_track_file` with its folder held
+    open; disabled while nothing plays or the file is already the one
+    playing, `canUseCurrent`). Play's "open it again" now goes by track
+    id for every file (`workbench_reopen`, `queue::open_track`: a library
+    track, a cue sheet's included, as itself; a file outside the library
+    from where it is), so the page keeps no path. Coded error
+    `workbenchNothingPlaying`.
+    Checked in the app 2026-10-08 (`tauri dev`, the owner): a library
+    track taken as it played (the queue unchanged), a loop take of it, and
+    Play opening it again once it had left the queue.
+  - Left to check in the app: Use the Playing Track on a library track in
+    a sandboxed bundle (its folder's access), and on a cue sheet's track
+    (the owner has none to hand). Everything else passed on 2026-10-08
+    (above).
 - **Exit (to check in the app)**: a theme edited, saved, exported and
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade
@@ -1167,7 +1258,7 @@ acts, off by default if it changes what is heard or goes online.
   a recording across a gapless album, a crossfade and a pause, played
   back in another app without gaps or clicks;
   similar artists that make sense on the owner's library, with and
-  without X5; X8's exit.
+  without X5; X8's exit (passed 2026-10-08).
 
 ### Phase 7c — Documentation
 Added 2026-10-04 at the owner's request. The repo documents decisions

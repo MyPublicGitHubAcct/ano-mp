@@ -97,6 +97,9 @@ snowflake on the player bar, to capture the sound playing now; click **Let
 go** (or the snowflake again) to release it. The next track lets go by
 itself.
 
+To hear one file through the effects and save the result, use the
+**Effects workbench** ([chapter 9](09-recording.md#the-effects-workbench)).
+
 **Reset the effects** puts every effect back as it started. With
 **Effects** off, the music plays untouched whatever the effects are set to.
 The settings reference lists each control's range

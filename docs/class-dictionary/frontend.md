@@ -420,6 +420,16 @@ One change to the queue's list, as Rust's `Edit` sends it; `queueEdits.ts`
 applies them by `listVersion` and asks for the whole state when it misses
 one.
 
+### `LoopControls`
+
+Svelte component · [`app/src/lib/components/LoopControls.svelte`](../../app/src/lib/components/LoopControls.svelte)
+
+Practice mode's A–B loop (O12), set from the current position: in the
+practice panel and the effects workbench, whose take goes once round it.
+It reads the loop from the engine again for each item once it is open
+(`loopOwner`, `keepLoop` in `lib/workbench.ts`), as the engine drops a
+loop when another track loads.
+
 ### `LyricsPanel`
 
 Svelte component · [`app/src/lib/components/LyricsPanel.svelte`](../../app/src/lib/components/LyricsPanel.svelte)
@@ -497,6 +507,14 @@ The bar along the bottom: the current track and its heart, transport, seek
 bar, volume, shuffle, repeat, sleep timer, Hold, Record and the queue
 toggle. The mini player shows it alone.
 
+### `Options`
+
+Svelte component · [`app/src/lib/components/settings/Options.svelte`](../../app/src/lib/components/settings/Options.svelte) · [D2: Themes and styling](../developer-guide/07-frontend.md#themes-and-styling)
+
+The styles Settings' sections share (`.field`, `.switch`, `.hint`…),
+around a section wherever it shows: the settings page and the effects
+workbench.
+
 ### `OrderedChoices`
 
 Svelte component · [`app/src/lib/components/settings/OrderedChoices.svelte`](../../app/src/lib/components/settings/OrderedChoices.svelte)
@@ -531,6 +549,13 @@ TS type · [`app/src/lib/i18n/index.ts`](../../app/src/lib/i18n/index.ts)
 
 A message's placeholder values, by name.
 
+### `PlayAction`
+
+TS type · [`app/src/lib/workbench.ts`](../../app/src/lib/workbench.ts)
+
+What the effects workbench's Play does: play or pause the file, go back
+to it, open it again, or nothing.
+
 ### `PlaybackOptions`
 
 Svelte component · [`app/src/lib/components/settings/PlaybackOptions.svelte`](../../app/src/lib/components/settings/PlaybackOptions.svelte)
@@ -557,8 +582,8 @@ outside or Escape closes it.
 
 Svelte component · [`app/src/lib/components/PracticePanel.svelte`](../../app/src/lib/components/PracticePanel.svelte)
 
-Practice mode (O12): an A–B loop from the current position, the tempo
-(50–150%) and the pitch (±12 semitones).
+Practice mode (O12): an A–B loop (`LoopControls`), the tempo (50–150%)
+and the pitch (±12 semitones).
 
 ### `PrefsDialog`
 
@@ -582,12 +607,26 @@ The queue in play order: play, remove, select and drag items (pointer
 events, not HTML drag and drop), and tracks dropped from the library.
 Marks stop-after and the current item.
 
+### `RecordAction`
+
+TS type · [`app/src/lib/workbench.ts`](../../app/src/lib/workbench.ts)
+
+What the effects workbench's Record does: stop the recording running,
+nothing (recording is off, or the file isn't playing), ask for the
+recordings' folder first, or record a take.
+
 ### `RecordingOptions`
 
 Svelte component · [`app/src/lib/components/settings/RecordingOptions.svelte`](../../app/src/lib/components/settings/RecordingOptions.svelte)
 
 Settings › Recording (X6): the folder, the format with its bits or
 bitrate, and cue sheets; a format this build can't write isn't offered.
+
+### `RecordState`
+
+TS type · [`app/src/lib/workbench.ts`](../../app/src/lib/workbench.ts)
+
+Where the queue and the recording stand, for `recordAction`.
 
 ### `Recurrence`
 
@@ -693,8 +732,7 @@ per kind. Keys go to the keychain.
 Svelte component · [`app/src/lib/components/SettingsPage.svelte`](../../app/src/lib/components/SettingsPage.svelte) · [D2: A setting changed in the UI](../developer-guide/08-flows.md#a-setting-changed-in-the-ui)
 
 The settings view (⌘,): its sections down the side, each a component;
-every change saves as it is made. Holds the shared styles the sections
-use.
+every change saves as it is made. The sections share `Options`' styles.
 
 ### `SettingsSection`
 
@@ -880,6 +918,14 @@ State module (`visualizer`) · [`app/src/lib/state/visualizer.svelte.ts`](../../
 The visualizer: which visualization and cover wall, what shows under the
 track's name, and full screen.
 
+### `state/workbench.svelte.ts`
+
+State module (`workbench`) · [`app/src/lib/state/workbench.svelte.ts`](../../app/src/lib/state/workbench.svelte.ts) · [D2: State stores](../developer-guide/07-frontend.md#state-stores)
+
+The effects workbench (X8): the file chosen, dropped or taken from the
+queue as it plays, Play and Record for it, and a take still running, kept
+while the page is closed.
+
 ### `TempoTracker`
 
 TS class · [`app/src/lib/visualizer/music.ts`](../../app/src/lib/visualizer/music.ts) · [D2: The visualizer](../developer-guide/07-frontend.md#the-visualizer)
@@ -972,3 +1018,12 @@ Svelte component · [`app/src/lib/components/WelcomeView.svelte`](../../app/src/
 
 What a new library shows (F8): how to add music, what the online sources
 that are on send, and the first scan's progress.
+
+### `WorkbenchView`
+
+Svelte component · [`app/src/lib/components/WorkbenchView.svelte`](../../app/src/lib/components/WorkbenchView.svelte)
+
+The effects workbench (X8): a file chosen or dropped, or the track
+playing (Use the Playing Track), its transport, seek
+bar and A–B loop, Settings' Effects section, and Record One Take with
+Settings' Recording section.

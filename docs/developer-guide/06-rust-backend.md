@@ -87,8 +87,8 @@ then:
 |---|---|
 | `DeviceChanged` | reopen the chosen device if it came back, reapply crossfeed and the equaliser (headphones may have changed), `audio-device-changed` |
 | `StateChanged` | the shell (Dock and tray), `player-state` |
-| `Position` (every 50 ms while playing) | the history's tracker, the queue's sleep timer (`queue::tick`), `player-position` |
-| `TrackEnded` | `queue::on_track_ended`, which arms the following track from inside the dispatch, then `player-track-ended` |
+| `Position` (every 50 ms while playing) | the history's tracker, the queue's sleep timer (`queue::tick`), the effects workbench's take of a loop (`workbench::position`), `player-position` |
+| `TrackEnded` | `queue::on_track_ended`, which arms the following track from inside the dispatch, then the workbench's take (`workbench::track_ended`), then `player-track-ended` |
 | `LoadFinished` | `queue::on_load_finished` (`queue/opening.rs`) |
 | `RecordingFailed` | `recording::failed` |
 
@@ -110,7 +110,7 @@ flowchart TB
     Model -- "take_state" --> Publish["queue::publish"]
     Publish --> Event["queue-changed"]
     Publish --> Store["store.rs: queue_items rows"]
-    Publish --> Others["media, history, recording, metadata worker, analysis, shell"]
+    Publish --> Others["media, history, recording, workbench, metadata worker, analysis, shell"]
 ```
 
 - **`queue/model.rs`**: `Queue` keeps the list in play order, the
@@ -129,7 +129,7 @@ flowchart TB
   positions, schedules the load timeout and `publish`es. Commands that
   need track rows first fetch them on a blocking thread
   (`track_infos`), then call `run`. `publish` sends `queue-changed` and
-  tells the media controls, history, recording, the metadata worker
+  tells the media controls, history, recording, the effects workbench, the metadata worker
   (look up the album playing first), the analysis worker (analyse the
   track playing first), radio and the shell.
 - **`queue/opening.rs`**: `EnginePlayer::load` doesn't open the file; it
@@ -151,6 +151,29 @@ flowchart TB
 `CLAUDE.md`'s "The saved queue" rule follows from this: a model change
 that doesn't log an edit or a reset is invisible to both the UI and the
 saved rows.
+
+### The effects workbench's takes
+
+The effects workbench (X8, `workbench.rs`) adds nothing to the engine:
+its file is a queue item like a file opened from the Finder
+(`queue::open_file`, which shares `open_files`' resolution and returns
+the item), or the queue's current item as it is (`workbench_current`,
+which reads its file through `queue::read_track_file`, the folder held
+open), and a take is X6's recording around it. A file that has left the
+queue plays again by its track id (`workbench_reopen`,
+`queue::open_track`). `workbench_take` asks
+the model to `ready_take` (stop after the item, pause, seek to the start
+or the A–B loop's start), starts the recording, keeps a `Take` in a
+main-thread `thread_local`, and plays. Four hooks end it: `track_ended`
+(playback stopped after the file, so the recording holds exactly the
+file), `position` (near the loop's end, a short-lived
+`anomp-workbench-take` thread sleeps until it, then stops and pauses),
+`queue_changed` (another item became current) and `recording_finished`
+(the recording stopped any other way). Ending stops the recording and
+calls `Queue::end_take`, which puts back the item playback stopped after
+before, unless the user chose another meanwhile. The hooks run inside
+the queue's or the engine's turn on the main thread, so the end always
+runs on that thread of its own, which then hops back.
 
 ## The library
 

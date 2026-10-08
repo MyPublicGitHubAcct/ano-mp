@@ -34,7 +34,8 @@ Keyboard shortcuts use the Mac's symbols: ⌘ Command, ⌥ Option, ⇧ Shift,
    and the signal path.
 8. [Visualizations](08-visualizations.md): each visualization and its
    settings, and calm mode.
-9. [Recording](09-recording.md): recording what is playing to a file.
+9. [Recording](09-recording.md): recording what is playing to a file,
+   and the effects workbench.
 10. [Other ways to control it](10-other-controls.md): menus, the Dock,
     the mini player, media keys, notifications, Finder and a phone.
 11. [Settings](11-settings.md): every section of Settings and what each

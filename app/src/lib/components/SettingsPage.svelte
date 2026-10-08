@@ -3,7 +3,7 @@
   // what lists and pages show, playback and the output device, the
   // visualizer, the theme, recording, and the online sources. Sections are listed down the side
   // (along the top when narrow); every change is saved as it's made. The
-  // section components use the shared styles below (`.field`, `.switch`,
+  // section components share the styles of `Options` (`.field`, `.switch`,
   // `.hint`…).
   import { t, type MessageKey } from "$lib/i18n";
   import { appSettings } from "$lib/state/settings.svelte";
@@ -21,6 +21,7 @@
   import PlaybackOptions from "./settings/PlaybackOptions.svelte";
   import RecordingOptions from "./settings/RecordingOptions.svelte";
   import SortRules from "./settings/SortRules.svelte";
+  import Options from "./settings/Options.svelte";
   import VisualizerOptions from "./settings/VisualizerOptions.svelte";
 
   const ALL_SECTIONS: { id: SettingsSection; name: MessageKey; about: MessageKey }[] = [
@@ -95,37 +96,39 @@
     </div>
 
     <div class="panel" id="settings-panel" role="tabpanel" aria-labelledby="settings-tab-{section.id}">
-      <h2>{t(section.name)}</h2>
-      <p class="muted about">{t(section.about)}</p>
-      {#key section.id}
-        {#if section.id === "library"}
-          <LibraryFolders />
-        {:else if section.id === "sorting"}
-          <SortRules />
-        {:else if section.id === "display"}
-          <DisplayOptions />
-        {:else if section.id === "appearance"}
-          <AppearanceOptions />
-        {:else if section.id === "playback"}
-          <PlaybackOptions />
-        {:else if section.id === "equaliser"}
-          <EqualiserOptions />
-        {:else if section.id === "effects"}
-          <EffectsOptions />
-        {:else if section.id === "recording"}
-          <RecordingOptions />
-        {:else if section.id === "general"}
-          <GeneralOptions />
-        {:else if section.id === "visualizer"}
-          <VisualizerOptions />
-        {:else if section.id === "features"}
-          <FeaturesOptions />
-        {:else if section.id === "about"}
-          <AboutOptions />
-        {:else}
-          <ServicesPanel />
-        {/if}
-      {/key}
+      <Options>
+        <h2>{t(section.name)}</h2>
+        <p class="muted about">{t(section.about)}</p>
+        {#key section.id}
+          {#if section.id === "library"}
+            <LibraryFolders />
+          {:else if section.id === "sorting"}
+            <SortRules />
+          {:else if section.id === "display"}
+            <DisplayOptions />
+          {:else if section.id === "appearance"}
+            <AppearanceOptions />
+          {:else if section.id === "playback"}
+            <PlaybackOptions />
+          {:else if section.id === "equaliser"}
+            <EqualiserOptions />
+          {:else if section.id === "effects"}
+            <EffectsOptions />
+          {:else if section.id === "recording"}
+            <RecordingOptions />
+          {:else if section.id === "general"}
+            <GeneralOptions />
+          {:else if section.id === "visualizer"}
+            <VisualizerOptions />
+          {:else if section.id === "features"}
+            <FeaturesOptions />
+          {:else if section.id === "about"}
+            <AboutOptions />
+          {:else}
+            <ServicesPanel />
+          {/if}
+        {/key}
+      </Options>
     </div>
   </div>
 </section>
@@ -205,116 +208,6 @@
 
   .about {
     margin: 0 0 1rem;
-  }
-
-  /* Shared by the sections. */
-
-  .panel :global(h3) {
-    font-size: 1rem;
-    margin: 1.5rem 0 0.5rem;
-  }
-
-  .panel :global(h3:first-child) {
-    margin-top: 0.5rem;
-  }
-
-  .panel :global(p) {
-    margin: 0;
-  }
-
-  .panel :global(.hint) {
-    color: var(--text-muted);
-    font-size: 0.8rem;
-  }
-
-  .panel :global(.field) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem 0.75rem;
-    padding: 0.4rem 0;
-  }
-
-  .panel :global(.field > .label) {
-    flex: 0 0 11rem;
-    font-weight: 500;
-  }
-
-  .panel :global(.field > .control) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1 1 16rem;
-    min-width: 0;
-  }
-
-  .panel :global(.field select) {
-    max-width: 100%;
-  }
-
-  .panel :global(.field .hint) {
-    flex-basis: 100%;
-  }
-
-  .panel :global(.stacked) {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .panel :global(.stacked > .label) {
-    flex-basis: auto;
-  }
-
-  .panel :global(.switch) {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    padding: 0.4rem 0;
-    cursor: pointer;
-  }
-
-  .panel :global(.switch > span) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-  }
-
-  .panel :global(.switch .title) {
-    font-weight: 500;
-  }
-
-  .panel :global(input[type="checkbox"]),
-  .panel :global(input[type="radio"]) {
-    margin: 0.2rem 0 0;
-    accent-color: var(--accent);
-    width: 1rem;
-    height: 1rem;
-    flex: none;
-  }
-
-  .panel :global(input[type="range"]) {
-    flex: 1 1 10rem;
-    max-width: 18rem;
-  }
-
-  .panel :global(.value) {
-    min-width: 4.5rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .panel :global(.actions) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-  }
-
-  .panel :global(.card) {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--surface);
   }
 
   @media (max-width: 640px) {

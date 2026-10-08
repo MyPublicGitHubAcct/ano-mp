@@ -116,6 +116,15 @@ A recording is already running; stop it first.
 **Not recording.**
 There's no recording to stop.
 
+**Play the file in the effects workbench before recording it.**
+**Record One Take** records the workbench's file while it's the one
+playing. Click the play button on the page, wait for the file to start,
+then record.
+
+**Nothing is playing: play a track to use it in the effects workbench.**
+**Use the Playing Track** takes the track that's playing. Play one, then
+click it again, or choose a file instead.
+
 ## Settings, features and files you open
 
 **… is turned off in Settings › Features**

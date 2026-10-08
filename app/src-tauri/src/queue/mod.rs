@@ -409,6 +409,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         crate::media::queue_changed(app, &state);
         crate::history::queue_changed(app, &state);
         crate::recording::queue_changed(app, &state);
+        crate::workbench::queue_changed(app, &state);
         // The album playing is looked up ahead of background work, and the
         // track analysed ahead of the library, for its waveform.
         let playing = state.current_item.as_ref().filter(|_| state.loaded);
@@ -848,6 +849,33 @@ pub fn seek<R: Runtime>(app: &AppHandle<R>, seconds: f64) -> Result<(), String> 
     run(app, move |queue, player| queue.seek(player, seconds))
 }
 
+/// Readies a workbench take of item `uid` from `start` (`Queue::ready_take`).
+pub fn ready_take<R: Runtime>(
+    app: &AppHandle<R>,
+    uid: Uid,
+    start: f64,
+) -> Result<Option<Uid>, String> {
+    run(app, move |queue, player| {
+        queue.ready_take(player, uid, start)
+    })?
+}
+
+/// A workbench take of item `uid` ended (`Queue::end_take`), pausing too if
+/// asked.
+pub fn end_take<R: Runtime>(
+    app: &AppHandle<R>,
+    uid: Uid,
+    previous: Option<Uid>,
+    pause: bool,
+) -> Result<(), String> {
+    run(app, move |queue, player| {
+        if pause {
+            queue.pause(player);
+        }
+        queue.end_take(player, uid, previous);
+    })
+}
+
 /// Shuffle on or off, whichever it isn't (the Controls menu).
 pub fn toggle_shuffle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     run(app, |queue, player| {
@@ -1141,8 +1169,85 @@ pub fn queue_set_sleep<R: Runtime>(
 /// item, starting with the first. Files that can't be read are skipped;
 /// fails if none can.
 pub async fn open_files<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) -> Result<(), String> {
+    let tracks = opened_tracks(app, paths).await?;
+    run(app, move |queue, player| queue.play_now(player, tracks)).map(|_| ())
+}
+
+/// Plays one file as `open_files` does, for the effects workbench (PLAN.md
+/// X8); returns its queue item.
+pub async fn open_file<R: Runtime>(
+    app: &AppHandle<R>,
+    path: PathBuf,
+) -> Result<model::Item, String> {
+    let track = opened_tracks(app, vec![path])
+        .await?
+        .pop()
+        .ok_or("Nothing to play")?;
+    play_one(app, track)
+}
+
+/// Plays track `track_id` as `open_file` plays a file, for the effects
+/// workbench's file that has left the queue; returns its queue item. A file
+/// outside the library is opened again from where it is (still open to the
+/// app until it quits, F5).
+pub async fn open_track<R: Runtime>(
+    app: &AppHandle<R>,
+    track_id: i64,
+) -> Result<model::Item, String> {
+    if track_id < 0 {
+        let file = external::file(track_id).ok_or("The file is no longer open to the app")?;
+        return open_file(app, file.path).await;
+    }
     let features = settings::current(app).features;
-    let tracks = tauri::async_runtime::spawn_blocking({
+    let track = on_library(app, move |library| {
+        track_infos(&library.conn(), &[track_id], &features)
+    })
+    .await?
+    .pop()
+    .ok_or("The track is no longer in the library")?;
+    play_one(app, track)
+}
+
+/// Reads the file of track `track_id` (a library track's, or a file opened
+/// from outside the library) with `read`, its folder held open meanwhile.
+/// Not on the main thread: it reads the library and the file.
+pub fn read_track_file<R: Runtime, T>(
+    app: &AppHandle<R>,
+    track_id: i64,
+    read: impl FnOnce(&std::path::Path) -> Result<T, String>,
+) -> Result<T, String> {
+    let features = settings::current(app).features;
+    let library = app
+        .try_state::<LibraryState>()
+        .ok_or("The library is not available")?;
+    let play = opening::track_play(&library, track_id, &features)?;
+    let _folder = if track_id < 0 {
+        None
+    } else {
+        library.open_folder_of(&play.path)?
+    };
+    read(&play.path)
+}
+
+/// Plays `track` after the current item, starting now; returns its item.
+fn play_one<R: Runtime>(app: &AppHandle<R>, track: TrackInfo) -> Result<model::Item, String> {
+    let queued = track.clone();
+    let uid = run(app, move |queue, player| {
+        queue.play_now(player, vec![queued])
+    })?
+    .ok_or("Nothing to play")?;
+    Ok(model::Item { uid, track })
+}
+
+/// The tracks of files opened from outside the queue: library tracks for
+/// those in the library, the others as they are. Files that can't be read
+/// are skipped; fails if none can.
+async fn opened_tracks<R: Runtime>(
+    app: &AppHandle<R>,
+    paths: Vec<PathBuf>,
+) -> Result<Vec<TrackInfo>, String> {
+    let features = settings::current(app).features;
+    tauri::async_runtime::spawn_blocking({
         let app = app.clone();
         move || -> Result<Vec<TrackInfo>, String> {
             let library = app.try_state::<LibraryState>();
@@ -1176,8 +1281,7 @@ pub async fn open_files<R: Runtime>(app: &AppHandle<R>, paths: Vec<PathBuf>) -> 
         }
     })
     .await
-    .map_err(|e| e.to_string())??;
-    run(app, move |queue, player| queue.play_now(player, tracks))
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

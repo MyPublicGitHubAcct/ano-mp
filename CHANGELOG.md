@@ -25,6 +25,14 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   crossfades, leaves out the time paused, and writes a cue sheet beside
   the file naming each track. MP3 is encoded by LAME 4.0, now built into
   the app's FFmpeg.
+- The effects workbench: a sidebar page where you choose one music file
+  (or drop it from the Finder, or use the track playing), hear it through
+  the effects, and record it
+  as one take, from its start to its end or once round an A–B loop. The
+  file plays next in the queue, as a file opened from the Finder does, and
+  isn't added to the library; the effects and recording keep their own
+  switches. On at first; turn it off with Effects workbench in Settings ›
+  Features.
 - Detailed logging, in Settings › About: while it's on, a second log file,
   `ano-mp-detailed.log`, names the files, folders, titles and artists
   ano-mp works with, to trace a problem the normal log can't explain. Keys

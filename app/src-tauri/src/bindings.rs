@@ -560,6 +560,7 @@ fn declare_types(cfg: &Config, settings: &BTreeSet<String>) -> Vec<Declared> {
         crate::effects::EffectsStatus,
         crate::recording::RecordingState,
         crate::recording::RecordingStopped,
+        crate::workbench::WorkbenchFile,
     );
     collect.out
 }

@@ -57,6 +57,12 @@
       { id: "artists" as const, name: t("sidebar.artists"), icon: "person" as const, on: true },
       { id: "history" as const, name: t("sidebar.history"), icon: "history" as const, on: f.listeningHistory },
       { id: "health" as const, name: t("sidebar.health"), icon: "health" as const, on: f.healthReport },
+      {
+        id: "workbench" as const,
+        name: t("sidebar.workbench"),
+        icon: "sliders" as const,
+        on: f.effectsWorkbench,
+      },
     ].filter((view) => view.on),
   );
 

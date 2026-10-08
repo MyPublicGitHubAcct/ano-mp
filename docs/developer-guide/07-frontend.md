@@ -35,8 +35,9 @@ The main page (`+page.svelte`) chooses what fills the middle from
 `ui.view` (`state/ui.svelte.ts`: the library, Home, an artist's page, a
 playlist, Settings…), and adapts to the window: below 900 px the queue
 becomes an overlay, below 640 px the sidebar a drawer. It also handles
-the `menu` events the menu bar sends, files dropped on the window, and
-announcing track changes to screen readers.
+the `menu` events the menu bar sends, files dropped on the window (which
+open in the effects workbench while it shows, X8), and announcing track
+changes to screen readers.
 
 Each window has a capability (`app/src-tauri/capabilities/`) that limits
 the commands it may call; the mini player and Help windows get only the
@@ -141,6 +142,12 @@ asks. The built-in themes are `lib/themes.json` (Rust reads it too);
 `tests/contrast.test.mjs` checks every one meets WCAG AA for the pairs
 `theme.ts` lists in `PAIRS`. List rows take their height from the
 settings' row height.
+
+Settings' sections (`components/settings/`) share one set of styles
+(`.field`, `.switch`, `.hint`…) from `settings/Options.svelte`, which
+wraps them wherever they show. To show a section outside Settings, wrap
+it in `Options`, as the effects workbench (`WorkbenchView.svelte`) does
+with Effects and Recording, so each control stays one implementation.
 
 ## Lists
 

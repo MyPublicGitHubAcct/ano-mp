@@ -226,6 +226,10 @@ pub struct FeatureSettings {
     /// X6: a Record button that writes what is played to a file in a
     /// folder the user picks (`AppSettings.recording`).
     pub recording: bool,
+    /// X8: a page that plays one chosen file through the effects and
+    /// records it as one take; the effects and recording keep their own
+    /// switches.
+    pub effects_workbench: bool,
 }
 
 impl Default for FeatureSettings {
@@ -264,6 +268,7 @@ impl Default for FeatureSettings {
             outside_recommendations: false,
             similar_artists: true,
             recording: false,
+            effects_workbench: true,
         }
     }
 }

@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, RecordingState, RecordingStopped, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck } from "./ipc";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, RecordingState, RecordingStopped, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck, WorkbenchFile } from "./ipc";
 import type { AppSettings, CoverBasis, EffectsSettings, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
@@ -108,6 +108,10 @@ export const commands = {
   recordingSetFolder: (args: { path: string }) => invoke<RecordingState>("recording_set_folder", args),
   recordingStart: () => invoke<RecordingState>("recording_start"),
   recordingStop: () => invoke<RecordingStopped>("recording_stop"),
+  workbenchOpen: (args: { path: string }) => invoke<WorkbenchFile>("workbench_open", args),
+  workbenchCurrent: () => invoke<WorkbenchFile>("workbench_current"),
+  workbenchReopen: (args: { trackId: number }) => invoke<WorkbenchFile>("workbench_reopen", args),
+  workbenchTake: (args: { uid: number }) => invoke<RecordingState>("workbench_take", args),
   analysisStatus: () => invoke<AnalysisProgress>("analysis_status"),
   analysisWaveform: (args: { trackId: number }) => invoke<number[] | null>("analysis_waveform", args),
   analysisTrack: (args: { trackId: number }) => invoke<TrackAnalysis | null>("analysis_track", args),

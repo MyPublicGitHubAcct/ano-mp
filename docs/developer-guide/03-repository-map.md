@@ -160,6 +160,10 @@ scanning, and the bridge between the UI and the core. Commands are the
 - `recording.rs`: recording what plays (X6): its settings, the
   recordings' folder (a writable bookmark of its own), start and stop, and
   the cue sheet that names the recording's tracks.
+- `workbench.rs`: the effects workbench (X8): plays a chosen file through
+  the queue as a file from the Finder plays, or takes the track playing,
+  and records one take of it
+  with `recording.rs`, ending it when the file or the A–B loop ends.
 
 ### Settings, errors and the shape of the UI's data
 
@@ -392,6 +396,8 @@ single-page app per window.
 - `equaliser.ts`: the equaliser's presets and band labels.
 - `featureMenu.ts`: the menu items the optional features add.
 - `trackMenu.ts`: the menu for one track or a selection.
+- `workbench.ts`: the effects workbench's choices (what Play and Record
+  do) and the audio file extensions the open dialogs offer.
 - `folders.ts`: which folders' tracks to show dimmed.
 - `format.ts`: times and dates as the UI writes them.
 - `guide.ts`: the parser for the user guide's Markdown subset.
@@ -433,6 +439,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
   appearance and the cover's accent.
 - `effects.svelte.ts`: the spectral freeze's Hold.
 - `recording.svelte.ts`: whether a recording runs, and its length.
+- `workbench.svelte.ts`: the effects workbench's file, Play and Record,
+  and a take that is running.
 - `visualizer.svelte.ts`: which visualization, full screen, its caption.
 - `drag.svelte.ts`: dragging tracks onto playlists and the queue
   (pointer events, not HTML drag and drop).
@@ -467,6 +475,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `FavouritesView.svelte`: everything hearted.
 - `HistoryView.svelte`: the top 20 and Recently played.
 - `HealthView.svelte`: the library health report.
+- `WorkbenchView.svelte`: the effects workbench: a file, its transport and
+  loop, the effects, and Record One Take.
 - `PlaylistView.svelte`: a playlist, reorderable; a smart playlist's
   matches.
 - `QueuePanel.svelte`: the queue, with selection and drag to reorder.
@@ -478,6 +488,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `Popover.svelte`: a panel opened from the playing bar.
 - `SleepTimerPanel.svelte`: the sleep timer.
 - `PracticePanel.svelte`: the A–B loop, tempo and pitch.
+- `LoopControls.svelte`: the A–B loop's buttons, in the practice panel
+  and the effects workbench.
 - `SignalPathPanel.svelte`: every step from the file to the speakers.
 - `LyricsPanel.svelte`: the current track's lyrics.
 - `Visualizer.svelte`: the canvas and draw loop, fed by the analysis
@@ -485,8 +497,7 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `VisualizerView.svelte`: the visualizer's view, picker and controls.
 - `WelcomeView.svelte`: the first run (no folders yet).
 - `MissingFolders.svelte`: folders that can't be read, and what to do.
-- `SettingsPage.svelte`: Settings' sections (`ALL_SECTIONS`) and their
-  shared styles.
+- `SettingsPage.svelte`: Settings' sections (`ALL_SECTIONS`).
 - `ServicesPanel.svelte`: Settings › Online sources.
 - `Dialog.svelte`: a modal dialog (the native `<dialog>`).
 - `Dialogs.svelte`: whichever dialog `ui.dialog` asks for.
@@ -511,7 +522,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 
 ### `lib/components/settings/`
 
-One component per Settings section, plus a shared control.
+One component per Settings section, plus a shared control and the
+sections' shared styles.
 
 - `LibraryFolders.svelte`: folders, rescans, file watching, export and
   import.
@@ -528,6 +540,8 @@ One component per Settings section, plus a shared control.
   notifications, shortcuts.
 - `AboutOptions.svelte`: versions, logs, diagnostics, notices, updates.
 - `OrderedChoices.svelte`: a reorderable subset of options.
+- `Options.svelte`: the styles the sections share (`.field`, `.switch`,
+  `.hint`…), around them in Settings and the effects workbench.
 
 ### `lib/components/dev/`
 

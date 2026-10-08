@@ -43,11 +43,14 @@
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { features } from "$lib/state/features.svelte";
+  import { AUDIO_EXTENSIONS } from "$lib/workbench";
   import { updates } from "$lib/state/updates.svelte";
   import HomeView from "$lib/components/HomeView.svelte";
   import HistoryView from "$lib/components/HistoryView.svelte";
   import HealthView from "$lib/components/HealthView.svelte";
   import MissingFolders from "$lib/components/MissingFolders.svelte";
+  import WorkbenchView from "$lib/components/WorkbenchView.svelte";
+  import { workbench } from "$lib/state/workbench.svelte";
 
   const SEEK_STEP = 5;
 
@@ -101,6 +104,11 @@
   ui.queueOpen = loadPreference("queueOpen", window.innerWidth > 900);
   $effect(() => savePreference("queueOpen", ui.queueOpen));
 
+  const inWorkbench = $derived(ui.mainView === "workbench" && features.on.effectsWorkbench);
+
+  // A workbench take ends wherever the page is (X8).
+  $effect(() => workbench.recordingChanged(recording.recording, recording.state.fileName));
+
   // A new track, for screen readers (F18).
   let announced: number | null = null;
   $effect(() => {
@@ -118,6 +126,13 @@
   async function dropped(paths: string[]) {
     const sorted = await attempt(() => shell.sortDropped(paths));
     if (!sorted) return;
+    // On the effects workbench (X8), a file is its file.
+    if (inWorkbench) {
+      const [file, ...others] = sorted.files;
+      if (file) await workbench.open(file);
+      if (!file || others.length > 0 || sorted.folders.length > 0) toasts.show(t("workbench.oneFile"), "info");
+      return;
+    }
     if (sorted.files.length > 0) await attempt(() => queue.openFiles(sorted.files));
     for (const folder of sorted.folders) {
       const known = library.folders.some((existing) => existing.path === folder);
@@ -131,24 +146,6 @@
     if (sorted.files.length === 0 && sorted.folders.length === 0) toasts.show(t("drop.nothing"));
   }
 
-  const AUDIO = [
-    "mp3",
-    "flac",
-    "m4a",
-    "m4b",
-    "aac",
-    "ogg",
-    "oga",
-    "opus",
-    "wav",
-    "aif",
-    "aiff",
-    "aifc",
-    "wma",
-    "wv",
-    "ape",
-  ];
-
   /** Plays the current track's album, or the search box, and so on: the menu bar's page items. */
   async function onMenu(id: string) {
     ui.menu = null;
@@ -159,7 +156,10 @@
       case "add-folder":
         return library.addFolder();
       case "open-files": {
-        const paths = await open({ multiple: true, filters: [{ name: t("drop.audioFiles"), extensions: AUDIO }] });
+        const paths = await open({
+          multiple: true,
+          filters: [{ name: t("drop.audioFiles"), extensions: AUDIO_EXTENSIONS }],
+        });
         if (paths && paths.length > 0) await attempt(() => queue.openFiles(paths));
         return;
       }
@@ -327,18 +327,22 @@
       <HistoryView />
     {:else if ui.mainView === "health"}
       <HealthView />
+    {:else if ui.mainView === "workbench"}
+      <WorkbenchView />
     {:else}
       <BrowsePane />
     {/if}
   </main>
-  {#if ui.queueOpen && (["library", "home", "history", "health", "favourites", "artists", "playlist"].includes(ui.mainView) || ui.artistInMain || ui.discographyInMain || searching)}
+  {#if ui.queueOpen && (["library", "home", "history", "health", "favourites", "artists", "playlist", "workbench"].includes(ui.mainView) || ui.artistInMain || ui.discographyInMain || searching)}
     <aside class="queue"><QueuePanel /></aside>
   {/if}
   <footer class="bar"><NowPlayingBar /></footer>
 </div>
 
 {#if dropping}
-  <div class="drop-overlay" aria-hidden="true"><p>{t("drop.hint")}</p></div>
+  <div class="drop-overlay" aria-hidden="true">
+    <p>{inWorkbench ? t("workbench.dropOverlay") : t("drop.hint")}</p>
+  </div>
 {/if}
 
 <div class="visually-hidden" role="status" aria-live="polite">{ui.announcement}</div>

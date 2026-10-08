@@ -1440,3 +1440,20 @@ newer: boolean,
  * When it was checked, in Unix seconds.
  */
 checkedAt: number, };
+
+/**
+ * The file the workbench plays: its queue item and what the page shows.
+ */
+export type WorkbenchFile = { 
+/**
+ * Its queue item.
+ */
+uid: number, 
+/**
+ * A library track's id, or a negative id for a file outside it.
+ */
+trackId: number, title: string, artist: string | null, fileName: string, 
+/**
+ * The file name's extension in capitals ("FLAC").
+ */
+format: string, duration: number, sampleRate: number, channels: number, bitrateKbps: number | null, };

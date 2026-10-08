@@ -212,6 +212,7 @@ four groups.
 | **Practice mode** | A–B loops, speed and pitch, from **Practice** on the player bar. ([chapter 7](07-sound.md#practice-mode)) | Off |
 | **Effects** | Reverb, echo, chorus, a spectral freeze and more. ([chapter 7](07-sound.md#effects)) | Off |
 | **Recording** | The **Record** button. ([chapter 9](09-recording.md)) | Off |
+| **Effects workbench** | A page that plays one file you choose through the effects and records it as one take. The effects and recording keep their own switches. ([chapter 9](09-recording.md#the-effects-workbench)) | On |
 
 **Library**
 

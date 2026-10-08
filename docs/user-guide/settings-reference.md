@@ -178,6 +178,7 @@ section's settings back to the values below.
 | Similar artists | On | On or off |
 | Themes | On | On or off |
 | Recording | Off | On or off |
+| Effects workbench | On | On or off |
 | Control playback from a phone | Off | On or off |
 | Port | 8765 | 1024 to 65535 |
 

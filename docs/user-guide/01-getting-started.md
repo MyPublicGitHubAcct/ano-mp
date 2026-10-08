@@ -89,6 +89,8 @@ The window has four parts.
 - **Home**, **Favourites**, **Artists**, **History** and **Library health**:
   views of your library ([chapter 2](02-finding-music.md)). Some appear only
   while their feature is on.
+- **Effects workbench**: one file played through the effects and recorded
+  ([chapter 9](09-recording.md#the-effects-workbench)).
 - **Now Playing** (if you choose to show it in **Settings › Display**),
   **Visualizer** and **Queue**: the music that's playing.
 - **Library**: your library sorted different ways, such as **Album

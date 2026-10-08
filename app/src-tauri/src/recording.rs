@@ -159,7 +159,7 @@ thread_local! {
     static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
 }
 
-fn require<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub(crate) fn require<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     if settings::current(app).features.recording {
         Ok(())
     } else {
@@ -419,10 +419,16 @@ fn finish<R: Runtime>(app: &AppHandle<R>, error: Option<String>) -> Option<Recor
     let mut state = state;
     state.folder = None; // The UI keeps the folder it has.
     emit_state(app, &state);
+    crate::workbench::recording_finished(app);
     Some(stopped)
 }
 
 // ---- Hooks ------------------------------------------------------------------
+
+/// Whether a recording runs. Main thread.
+pub fn running() -> bool {
+    SESSION.with_borrow(Option::is_some)
+}
 
 /// The engine stopped the recording on an error. Main thread.
 pub fn failed<R: Runtime>(app: &AppHandle<R>, disk_full: bool, message: &str) {

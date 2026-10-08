@@ -309,6 +309,19 @@ export const recording = {
   stop: () => commands.recordingStop(),
 };
 
+// ---- The effects workbench (PLAN.md X8) -------------------------------------------
+
+export const workbench = {
+  /** Plays a file the user chose or dropped, as a file opened from the Finder plays; resolves to what the page shows. */
+  open: (path: string) => commands.workbenchOpen({ path }),
+  /** Takes the queue's current item, as it plays, as the workbench's file; nothing is queued again. */
+  current: () => commands.workbenchCurrent(),
+  /** Plays track `trackId` again after the current item, once the workbench's file has left the queue. */
+  reopen: (trackId: number) => commands.workbenchReopen({ trackId }),
+  /** Records one take of the file (queue item `uid`): start to end, or once round the A–B loop. */
+  take: (uid: number) => commands.workbenchTake({ uid }),
+};
+
 // ---- Recommendations from outside the library (PLAN.md X5) ------------------------
 
 export const outside = {

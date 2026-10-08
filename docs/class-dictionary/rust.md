@@ -2639,6 +2639,14 @@ A file's tags and audio properties (`anomp_tags`), read by `read_tags` or
 `read_tags_with`: fields the file lacks are `None`, several values are
 joined with "; ". The scanner turns it into the library's rows.
 
+### `Take`
+
+Struct · [`app/src-tauri/src/workbench.rs`](../../app/src-tauri/src/workbench.rs) · main thread · [D2: The effects workbench's takes](../developer-guide/06-rust-backend.md#the-effects-workbenchs-takes)
+
+A take being recorded in the effects workbench (X8): its queue item, the
+item playback stopped after before it, and for a take of the A–B loop the
+loop's end and the tempo, from which `due` times the stop.
+
 ### `Target`
 
 Enum · [`app/src-tauri/src/library/art.rs`](../../app/src-tauri/src/library/art.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
@@ -2910,6 +2918,13 @@ Struct, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/s
 
 The windows and what shows outside them: menu-bar controls, the mini
 player on top, and track-change notifications.
+
+### `WorkbenchFile`
+
+Struct, sent to the UI · [`app/src-tauri/src/workbench.rs`](../../app/src-tauri/src/workbench.rs)
+
+The file the effects workbench plays: its queue item and track id, title,
+artist, file name, format, length, sample rate, channels and bitrate.
 
 ### `Worker`
 

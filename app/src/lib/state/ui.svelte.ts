@@ -22,7 +22,8 @@ export type MainView =
   | "health"
   | "favourites"
   | "artists"
-  | "playlist";
+  | "playlist"
+  | "workbench";
 /** The parts of the settings view. */
 export type SettingsSection =
   | "library"
@@ -73,6 +74,7 @@ const OPENED: MainView[] = [
   "favourites",
   "artists",
   "playlist",
+  "workbench",
 ];
 
 class Ui {
@@ -158,8 +160,8 @@ class Ui {
     this.artist = artist;
   }
 
-  /** Shows a view of its own (Home, History, Health, Favourites, Artists) in the main area. */
-  showView(view: "home" | "history" | "health" | "favourites" | "artists") {
+  /** Shows a view of its own (Home, History, Health, Favourites, Artists, the effects workbench) in the main area. */
+  showView(view: "home" | "history" | "health" | "favourites" | "artists" | "workbench") {
     this.#open(view);
   }
 

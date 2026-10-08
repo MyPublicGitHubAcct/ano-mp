@@ -99,6 +99,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             Event::Position { position, duration } => {
                 crate::history::position(&app, position, duration);
                 crate::queue::tick(&app);
+                crate::workbench::position(&app, position);
                 app.emit(
                     PLAYER_POSITION_EVENT,
                     PositionPayload { position, duration },
@@ -108,6 +109,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
                 // The queue arms the next track, from inside the engine's
                 // event dispatch, which the core allows (anomp.h).
                 crate::queue::on_track_ended(&app, advanced);
+                crate::workbench::track_ended(&app);
                 app.emit(PLAYER_TRACK_ENDED_EVENT, TrackEndedPayload { advanced })
             }
             Event::LoadFinished { request, result } => {

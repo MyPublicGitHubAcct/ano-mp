@@ -27,6 +27,7 @@ mod shell;
 mod theme;
 mod updates;
 mod visualizer;
+mod workbench;
 
 use tauri::webview::PageLoadEvent;
 use tauri::Manager;
@@ -241,6 +242,10 @@ pub fn run() {
             recording::recording_set_folder,
             recording::recording_start,
             recording::recording_stop,
+            workbench::workbench_open,
+            workbench::workbench_current,
+            workbench::workbench_reopen,
+            workbench::workbench_take,
             features::analysis_status,
             features::analysis_waveform,
             features::analysis_track,
