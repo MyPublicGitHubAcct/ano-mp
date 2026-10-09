@@ -24,8 +24,8 @@ Finished work's design notes, steps as built and known limits go in
 keeps status, decisions and open items). Move them there word for word when they
 are finished: a whole phase, one of Phase 7's steps or H items
 (`docs/design/phase-7-hardening.md`), or one of Phase 7b's X items or
-Phase 7c's D items (each into its phase's file, as `PLAN.md`'s D4 names
-them). `docs/` also holds the Step 4 checklist, the release decisions'
+Phase 7c's D items (`docs/design/phase-7b-personalisation.md`,
+`docs/design/phase-7c-documentation.md`). `docs/` also holds the Step 4 checklist, the release decisions'
 briefs, the release smoke test and how to run a bundle check safely.
 
 `docs/developer-guide/` (Phase 7c D2) explains how the code is organised
@@ -557,3 +557,6 @@ Constraints that shape the code and must not be broken casually:
   `tauri.conf.json`, `package.json`, `package-lock.json`) are set together by
   `scripts/version.py X.Y.Z` and checked by `version.py --check`. Never edit one by
   hand, and don't add another copy.
+- `PLAN.md` wraps at 76 columns, greedily, counting an item's indent; table rows
+  have no limit. A line holding only a link or one unbreakable code span (with
+  its indent, a short lead-in or attached punctuation) may run past 76.
