@@ -70,7 +70,7 @@ messages (`en.json`) use.
   every one exists.
 - `Name::function` and `Name.method` refer to code; a function's file is
   named the first time it appears in a section.
-- Plan items are cited by their numbers (O1–O19, F1–F21, H1–H22, X1–X7),
+- Plan items are cited by their numbers (O1–O19, F1–F21, H1–H22, X1–X9),
   which `PLAN.md` and the design notes explain.
 - Diagrams are Mermaid, which GitHub renders, so they are reviewed and
   diffed like the code.

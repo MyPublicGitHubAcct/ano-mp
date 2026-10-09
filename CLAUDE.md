@@ -16,14 +16,17 @@ starting anything non-trivial, and update it when a step finishes or a decision
 is made (§2's test counts too: `check-docs.py --counts` compares them).
 Phases 0–6c are built; Phase 7 (hardening, macOS) is under way and follows its
 "Order of work"; the signed release waits on the owner's §8.1 decisions.
+Phase 7b's features (X1–X9) are built; Phase 7c (documentation, D1–D4) is
+under way; Phase 7d's features (N1–N40) are proposals, none accepted yet.
 
 Finished work's design notes, steps as built and known limits go in
 `docs/design/` (`phase-<n>-<name>.md`, linked from the phase in `PLAN.md`, which
 keeps status, decisions and open items). Move them there word for word when they
-are finished: a whole phase, or one of Phase 7's steps or H items
-(`docs/design/phase-7-hardening.md`). `docs/` also holds the Step 4 checklist,
-the release decisions' briefs, the release smoke test and how to run a bundle
-check safely.
+are finished: a whole phase, one of Phase 7's steps or H items
+(`docs/design/phase-7-hardening.md`), or one of Phase 7b's X items or
+Phase 7c's D items (each into its phase's file, as `PLAN.md`'s D4 names
+them). `docs/` also holds the Step 4 checklist, the release decisions'
+briefs, the release smoke test and how to run a bundle check safely.
 
 `docs/developer-guide/` (Phase 7c D2) explains how the code is organised
 and works: the layers and threads, each part, worked sequences across the

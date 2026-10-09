@@ -1,31 +1,24 @@
 # ano-mp — Implementation Plan
 
-Status as of 2026-10-04: Phases 0–6c are built on macOS. Phases 0–3 are
+Status as of 2026-10-09: Phases 0–6c are built on macOS. Phases 0–3 are
 complete; the exit checks of Phases 4, 5, 6, 6b and 6c wait to be done in
 the app (each phase says what). Phase 7 (hardening) is under way: every
 step of its "Order of work" that needs no owner decision is done, and the
 signed release waits on the owner's §8.1 decisions
-(`docs/release-decisions.md`). Phase 7b (themes, effects,
-visualizations, recommendations, recording and similar artists; P3,
-added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
-(effects), X3 (visualizations), X4 (library recommendations), X5
-(recommendations from outside the library), X6 (recording) and X7
-(similar artists) were built early, at the owner's request. X8 (an
-effects workbench, added 2026-10-04) is built and passed its exit
-check in the app, in a sandboxed bundle too (2026-10-08); X9 (search
-that finds features, added 2026-10-08) is built and passed its exit
-check in the app (2026-10-08). Phase 7c (user and developer
-documentation and a dictionary of classes, added 2026-10-04) is under way: D1's user guide is written, checked and bundled in the app (Help ›
-ano-mp Help), and waits on its screenshots and its exit check; D2's
-developer guide is written and checked (`docs/developer-guide/`), and
-waits on its exit check; D3's dictionary of classes is written,
-checked (`docs/class-dictionary/`) and has passed its exit check;
-D4 (documentation upkeep, added 2026-10-08) lists what a review of
-the docs found, and its P1 part, the smoke test's pass over Phase 7b,
-is done (2026-10-09). Phase 7d (added 2026-10-08) proposes forty more
-features (N1–N40) for the owner to choose from; none is accepted yet.
-Finished work's design notes and records are in `docs/design/`, linked
-from each phase.
+(`docs/release-decisions.md`). Phase 7b (P3, added 2026-10-03) is built
+ahead of Phase 7's exit, at the owner's request: X1–X7 (themes, effects,
+visualizations, recommendations from the library and from outside it,
+recording, similar artists), X8 (the effects workbench) and X9 (search
+that finds features), the last two checked in the app (2026-10-08).
+Phase 7c (documentation, added 2026-10-04) is under way: D1's user guide
+is written, checked and bundled (Help › ano-mp Help) and waits on its
+screenshots and exit check; D2's developer guide is written and checked
+and waits on its exit check; D3's dictionary of classes has passed its
+exit check; D4 (documentation upkeep, added 2026-10-08) has its stale
+text fixed and the smoke test's pass over Phase 7b done (2026-10-09).
+Phase 7d (added 2026-10-08) proposes forty more features (N1–N40) for
+the owner to choose from; none is accepted yet. Finished work's design
+notes and records are in `docs/design/`, linked from each phase.
 
 
 ## 1. Architecture
@@ -1756,7 +1749,9 @@ links to them rather than repeating them.
   request, from a review of every document in the repo against the tree
   (the checks all pass: 57 docs, 273 modules in the map, 714 dictionary
   entries, §2's counts). What the checks can't see:
-  - **Stale text** (small, do first):
+  - **Stale text** (small, do first). **Done 2026-10-09:** each finding
+    below fixed, §7 replaced by a link to the repository map; the
+    **Order** line was already fixed. What the review found:
     - this plan's status line says "as of 2026-10-04" but records
       2026-10-08's work; `CLAUDE.md`'s "Project" section says "Phases
       0–6c are built; Phase 7 … is under way" and names neither 7b nor
@@ -1778,7 +1773,8 @@ links to them rather than repeating them.
     0–6c and Phase 7's H items were; D3's record goes to
     docs/design/phase-7c-documentation.md the same way. `CLAUDE.md`'s
     rule on moving finished work names whole phases and Phase 7's steps
-    and H items only: add Phase 7b's X items and Phase 7c's D items.
+    and H items only: add Phase 7b's X items and Phase 7c's D items
+    (done 2026-10-09, with the stale text).
   - **The release smoke test** (`docs/release-smoke-test.md`) checks
     nothing of Phase 7b: add a short pass over themes, an effect on and
     off (bit-identical when off is the tests' job; here, by ear), the
@@ -2390,26 +2386,9 @@ Revisit it against whatever the agreement actually provides.
 
 ## 7. Proposed repo layout
 
-```
-ano-mp/
-  CMakeLists.txt, CMakePresets.json
-  core/            C++ JUCE engine (static lib) + C API
-    include/anomp/ public C header
-    src/
-    tests/         Catch2
-    tests/fixtures/ small audio files for tests
-  effects/         C++ real-time effects (static lib, no dependencies), linked by core
-    include/anomp/effects/ its public header
-    src/
-    tests/         Catch2
-  scripts/         build-ffmpeg.sh and the Python tooling (§9)
-    tests/         pytest for the scripts
-  third_party/     built FFmpeg per platform (git-ignored, CI-cached)
-  app/             Tauri 2 app
-    src/           frontend (TS)
-    src-tauri/     Rust backend, build.rs links core
-  docs/
-```
+The layout proposed here now exists. The developer guide's
+[repository map](docs/developer-guide/03-repository-map.md) describes it
+file by file, and [README.md](README.md#repository-layout) in brief.
 
 ## 8. Release
 
