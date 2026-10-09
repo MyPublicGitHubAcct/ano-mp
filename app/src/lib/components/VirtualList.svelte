@@ -15,7 +15,7 @@
   // active descendant.
   import type { Snippet } from "svelte";
   import { drag, type DragPayload } from "$lib/state/drag.svelte";
-  import { click, emptySelection, moveTo, rowsFor, selectAll, type Selection } from "$lib/selection";
+  import { click, collapse, emptySelection, moveTo, rowsFor, selectAll, type Selection } from "$lib/selection";
 
   let {
     count,
@@ -111,8 +111,14 @@
       const x = (box?.left ?? 0) + 24;
       const y = (box?.top ?? 0) + focus * rowHeight - (viewport?.scrollTop ?? 0) + rowHeight;
       oncontextmenu?.(focus, new MouseEvent("contextmenu", { clientX: x, clientY: y }));
-    } else if (event.key === "Escape" && selection.rows.size > 1) {
-      selection = moveTo(selection, focus, count);
+    } else if (event.key === "Escape") {
+      // Esc that shrinks the selection stops here, or the window's
+      // handler would go back as well.
+      const collapsed = collapse(selection, count);
+      if (!collapsed) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selection = collapsed;
     }
   }
 

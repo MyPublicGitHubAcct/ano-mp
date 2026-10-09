@@ -10,13 +10,24 @@
 
   const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-  /** "CmdOrCtrl+Shift+O" as the platform writes it: "⇧⌘O", or "Ctrl+Shift+O". */
+  /** "CmdOrCtrl+Shift+O" as the platform writes it: "⇧⌘O", or "Ctrl+Shift+O";
+      "CmdOrCtrl+Click" as "⌘-click", or "Ctrl+click". */
   function keys(accelerator: string) {
     const parts = accelerator.split("+");
     const key = parts.pop() ?? "";
-    const names: Record<string, string> = mac
-      ? { Right: "→", Left: "←", Up: "↑", Down: "↓", Period: ".", Comma: ",", Slash: "/", Space: t("shortcuts.space") }
-      : { Right: "→", Left: "←", Up: "↑", Down: "↓", Period: ".", Comma: ",", Slash: "/", Space: t("shortcuts.space") };
+    const names: Record<string, string> = {
+      Right: "→",
+      Left: "←",
+      Up: "↑",
+      Down: "↓",
+      Period: ".",
+      Comma: ",",
+      Slash: "/",
+      Space: t("shortcuts.space"),
+      Escape: t("shortcuts.esc"),
+      Return: mac ? t("shortcuts.return") : t("shortcuts.enter"),
+      Click: t("shortcuts.click"),
+    };
     const shown = names[key] ?? key;
     if (!mac) return [...parts.map((part) => (part === "CmdOrCtrl" ? "Ctrl" : part)), shown].join("+");
     const symbols: Record<string, string> = { Alt: "⌥", Shift: "⇧", CmdOrCtrl: "⌘", Ctrl: "⌃" };
@@ -25,20 +36,52 @@
       parts
         .sort((a, b) => order.indexOf(a) - order.indexOf(b))
         .map((part) => symbols[part] ?? part)
-        .join("") + shown
+        .join("") +
+      (key === "Click" ? "-" : "") +
+      shown
     );
   }
 
-  const PAGE: [MessageKey, string][] = [
-    ["shortcuts.seekBack", "Left"],
-    ["shortcuts.seekForward", "Right"],
-    ["shortcuts.select", "Shift+Up"],
-    ["shortcuts.selectAll", "CmdOrCtrl+A"],
-    ["shortcuts.menu", "Shift+F10"],
-    ["shortcuts.remove", "Delete"],
-    ["shortcuts.back", "Escape"],
-    ["shortcuts.nextVisualization", "V"],
-    ["shortcuts.fullScreenVisualizer", "F"],
+  /** A row of the page's own shortcuts: what it does, its keys (any one
+      of them works), and a note on where. The sections and their rows
+      follow the user guide's Appendix A. */
+  type Row = [MessageKey, string[], MessageKey?];
+  const PAGE: [MessageKey, Row[]][] = [
+    [
+      "shortcuts.lists",
+      [
+        ["shortcuts.seekBack", ["Left"]],
+        ["shortcuts.seekForward", ["Right"]],
+        ["shortcuts.select", ["Shift+Up", "Shift+Down"]],
+        ["shortcuts.selectAll", ["CmdOrCtrl+A"]],
+        ["shortcuts.addToSelection", ["CmdOrCtrl+Click"]],
+        ["shortcuts.selectRange", ["Shift+Click"]],
+        ["shortcuts.keepFocused", ["Escape"]],
+        ["shortcuts.menu", ["Shift+F10"], "shortcuts.orRightClick"],
+        ["shortcuts.open", ["Return"]],
+        ["shortcuts.remove", ["Delete"]],
+        ["shortcuts.cancelDrag", ["Escape"]],
+        ["shortcuts.back", ["Escape"]],
+        ["shortcuts.clearSearch", ["Escape"], "shortcuts.inSearchBox"],
+      ],
+    ],
+    [
+      "shortcuts.visualizer",
+      [
+        ["shortcuts.nextVisualization", ["V"]],
+        ["shortcuts.previousVisualization", ["Shift+V"]],
+        ["shortcuts.fullScreenVisualizer", ["F"]],
+        ["shortcuts.leaveVisualizer", ["Escape"]],
+      ],
+    ],
+    [
+      "shortcuts.settings",
+      [
+        ["shortcuts.nextSection", ["Down", "Right"], "shortcuts.inSections"],
+        ["shortcuts.previousSection", ["Up", "Left"], "shortcuts.inSections"],
+        ["shortcuts.closeSettings", ["Escape"]],
+      ],
+    ],
   ];
 
   let menus = $state<[string, string][]>([]);
@@ -56,14 +99,24 @@
       {/each}
     </tbody>
   </table>
-  <h3>{t("shortcuts.lists")}</h3>
-  <table>
-    <tbody>
-      {#each PAGE as [what, accelerator] (what)}
-        <tr><td>{t(what)}</td><td><kbd>{keys(accelerator)}</kbd></td></tr>
-      {/each}
-    </tbody>
-  </table>
+  {#each PAGE as [heading, rows] (heading)}
+    <h3>{t(heading)}</h3>
+    <table>
+      <tbody>
+        {#each rows as [what, accelerators, note] (what)}
+          <tr>
+            <td>{t(what)}</td>
+            <td>
+              {#each accelerators as accelerator, i (accelerator)}
+                {#if i > 0}<span class="or">{t("shortcuts.or")}</span>{/if}<kbd>{keys(accelerator)}</kbd>
+              {/each}
+              {#if note}<span class="note">{t(note)}</span>{/if}
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {/each}
   {#snippet actions()}
     <button class="primary" onclick={onclose}>{t("dialog.close")}</button>
   {/snippet}
@@ -90,6 +143,15 @@
 
   tr + tr {
     border-top: 1px solid var(--border);
+  }
+
+  .or {
+    margin: 0 0.35rem;
+  }
+
+  .note {
+    margin-left: 0.4rem;
+    color: var(--text-muted);
   }
 
   kbd {

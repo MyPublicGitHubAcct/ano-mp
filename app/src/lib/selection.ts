@@ -51,6 +51,11 @@ export function moveTo(selection: Selection, index: number, count: number, modif
   return { rows: new Set([focus]), anchor: focus, focus };
 }
 
+/** The selection after Esc: the focused row alone. Null when at most one
+    row is selected, so Esc isn't the list's and goes on (back, say). */
+export const collapse = (selection: Selection, count: number): Selection | null =>
+  selection.rows.size > 1 ? moveTo(selection, selection.focus, count) : null;
+
 /** Every row selected. */
 export const selectAll = (count: number): Selection =>
   count === 0 ? emptySelection : { rows: range(0, count - 1), anchor: 0, focus: count - 1 };

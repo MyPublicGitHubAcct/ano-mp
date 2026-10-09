@@ -65,8 +65,16 @@ class Drag {
       stop();
     };
     const cancel = () => stop();
+    // Esc cancels a drag and nothing else: stopped here, in the window's
+    // capture phase, it never reaches the window's own handler (back).
+    // Esc before the drag has begun only forgets the press, and goes on.
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") stop();
+      if (e.key !== "Escape") return;
+      if (this.current) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      stop();
     };
     const stop = () => {
       window.removeEventListener("pointermove", move);

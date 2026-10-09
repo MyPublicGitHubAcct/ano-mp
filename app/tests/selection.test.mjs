@@ -1,7 +1,7 @@
 // The multi-selection model (src/lib/selection.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { click, dropIndex, emptySelection, moveTo, rowsFor, selectAll } from "../src/lib/selection.ts";
+import { click, collapse, dropIndex, emptySelection, moveTo, rowsFor, selectAll } from "../src/lib/selection.ts";
 
 const rows = (selection) => [...selection.rows].sort((a, b) => a - b);
 
@@ -32,6 +32,18 @@ test("the keyboard moves the focus and extends with shift", () => {
   assert.deepEqual(rows(s), [0]);
   assert.equal(moveTo(s, 3, 0), emptySelection);
   assert.deepEqual(rows(selectAll(3)), [0, 1, 2]);
+});
+
+test("Esc keeps the focused row, and leaves one row or none alone", () => {
+  let s = moveTo(emptySelection, 2, 10);
+  s = moveTo(s, 5, 10, { shift: true });
+  const collapsed = collapse(s, 10);
+  assert.deepEqual(rows(collapsed), [5]);
+  assert.equal(collapsed.focus, 5);
+  // Nothing for the list to do: Esc goes on to the window (back).
+  assert.equal(collapse(collapsed, 10), null);
+  assert.equal(collapse(emptySelection, 10), null);
+  assert.deepEqual(rows(collapse(selectAll(4), 4)), [3]);
 });
 
 test("acting on a row outside the selection acts on it alone", () => {

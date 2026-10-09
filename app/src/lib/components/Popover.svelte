@@ -12,8 +12,12 @@
     const target = event.target as HTMLElement;
     if (element && !element.contains(target) && !target.closest("[data-popover-toggle]")) onclose();
   }}
-  onkeydown={(event) => {
-    if (event.key === "Escape") onclose();
+  onkeydowncapture={(event) => {
+    // In the capture phase, so stopping it keeps the main window's handler
+    // (on window too, but bubbling) from going back as well.
+    if (event.key !== "Escape") return;
+    event.stopPropagation();
+    onclose();
   }}
 />
 
