@@ -126,3 +126,184 @@ def test_the_index_links_every_page(guide):
 
 def test_the_real_guide_covers_the_app(guide):
     assert guide.problems_in(lambda path: path.read_text("utf-8")) == []
+
+
+SHORTCUT_MESSAGES = {
+    "shortcuts.menus": "Everywhere",
+    "shortcuts.space": "Space",
+    "shortcuts.esc": "Esc",
+    "shortcuts.return": "Return",
+    "shortcuts.click": "click",
+    "shortcuts.lists": "In lists",
+    "shortcuts.select": "Select more",
+    "shortcuts.menu": "Open the menu",
+    "shortcuts.orRightClick": "(or right-click)",
+}
+
+MENU_RS = """
+const PAGE_ITEMS: [(&str, &str, Option<&str>); 3] = [
+    ("settings", "Settings…", Some("CmdOrCtrl+,")),
+    ("import-playlist", "Import Playlist…", None),
+    (
+        "add-folder",
+        "Add Folder to Library…",
+        Some("CmdOrCtrl+Shift+O"),
+    ),
+];
+    let record = CheckMenuItemBuilder::with_id("record", "Record")
+        .accelerator("Alt+CmdOrCtrl+R")
+        .enabled(crate::settings::current(app).features.recording)
+        .build(app)?;
+    let shuffle = CheckMenuItemBuilder::with_id("shuffle", "Shuffle").build(app)?;
+    let play = MenuItemBuilder::with_id("play", "Play").build(app)?;
+    let controls = SubmenuBuilder::new(app, "Controls");
+
+pub fn shortcuts() -> Vec<(&'static str, &'static str)> {
+    let mut list: Vec<(&str, &str)> = vec![
+        ("Play or pause", "Space"),
+        ("Record", "Alt+CmdOrCtrl+R"),
+    ];
+    list.extend(PAGE_ITEMS.iter().filter_map(|(_, text, accelerator)| None));
+    list
+}
+"""
+
+APPENDIX = """# Appendix A
+
+## Everywhere
+
+| Action | Menu | Keys |
+|---|---|---|
+| Play or pause | Controls › Play | Space |
+| Record | Controls › Record | ⌥⌘R |
+| Settings… | ano-mp › Settings… | ⌘, |
+| Add Folder to Library… | File › Add Folder to Library… | ⇧⌘O |
+
+These menu items have no shortcut: **Import Playlist…** and
+**Shuffle**.
+
+## In lists
+
+| Action | Keys |
+|---|---|
+| Select more | ⇧↑ or ⇧↓ |
+| Open the menu | ⇧F10 (or right-click) |
+"""
+
+DIALOG = """
+    const names: Record<string, string> = {
+      Right: "→",
+      Space: t("shortcuts.space"),
+      Return: mac ? t("shortcuts.return") : t("shortcuts.enter"),
+    };
+  const PAGE: [MessageKey, Row[]][] = [
+    [
+      "shortcuts.lists",
+      [
+        ["shortcuts.select", ["Shift+Up", "Shift+Down"]],
+        ["shortcuts.menu", ["Shift+F10"], "shortcuts.orRightClick"],
+      ],
+    ],
+  ];
+"""
+
+
+def test_keys_are_written_as_the_sheet_writes_them_on_macos(guide):
+    def keys(accelerator):
+        return guide.key_text(accelerator, SHORTCUT_MESSAGES)
+
+    assert keys("CmdOrCtrl+Shift+O") == "⇧⌘O"
+    assert keys("Alt+CmdOrCtrl+Period") == "⌥⌘."
+    assert keys("Shift+Alt+Ctrl+CmdOrCtrl+Right") == "⌃⌥⇧⌘→"
+    assert keys("CmdOrCtrl+Click") == "⌘-click"
+    assert keys("Space") == "Space"
+    assert keys("Escape") == "Esc"
+    assert keys("Shift+V") == "⇧V"
+
+
+def test_menu_accelerators_come_from_page_items_and_builders(guide):
+    assert guide.menu_accelerators(MENU_RS) == [
+        ("Settings…", "CmdOrCtrl+,"),
+        ("Add Folder to Library…", "CmdOrCtrl+Shift+O"),
+        ("Record", "Alt+CmdOrCtrl+R"),
+    ]
+    assert guide.menu_accelerators("fn other() {}") is None
+    assert {"Record", "Shuffle", "Play", "Controls", "Import Playlist…"} <= guide.menu_names(
+        MENU_RS
+    )
+
+
+def test_the_sheets_menu_shortcuts_include_page_items(guide):
+    assert guide.sheet_menu_shortcuts(MENU_RS) == [
+        ("Play or pause", "Space"),
+        ("Record", "Alt+CmdOrCtrl+R"),
+        ("Settings…", "CmdOrCtrl+,"),
+        ("Add Folder to Library…", "CmdOrCtrl+Shift+O"),
+    ]
+
+
+def test_dialog_sections(guide):
+    assert guide.dialog_sections(DIALOG) == [
+        (
+            "shortcuts.lists",
+            [
+                ("shortcuts.select", ["Shift+Up", "Shift+Down"], None),
+                ("shortcuts.menu", ["Shift+F10"], "shortcuts.orRightClick"),
+            ],
+        )
+    ]
+    assert guide.dialog_key_names(DIALOG) == ["Right", "Space", "Return"]
+
+
+def test_matching_shortcuts_have_no_problems(guide):
+    tables, texts = guide.appendix_tables(APPENDIX)
+    assert tables["In lists"] == [
+        ["Select more", "⇧↑ or ⇧↓"],
+        ["Open the menu", "⇧F10 (or right-click)"],
+    ]
+    assert guide.menu_shortcut_problems(MENU_RS, SHORTCUT_MESSAGES, tables, texts) == []
+    assert guide.page_shortcut_problems(DIALOG, SHORTCUT_MESSAGES, tables) == []
+
+
+def test_a_changed_or_removed_menu_shortcut_is_found(guide):
+    def problems(menu_rs):
+        tables, texts = guide.appendix_tables(APPENDIX)
+        return guide.menu_shortcut_problems(menu_rs, SHORTCUT_MESSAGES, tables, texts)
+
+    changed = MENU_RS.replace('"Alt+CmdOrCtrl+R"', '"Shift+CmdOrCtrl+R"')
+    assert problems(changed) == [
+        "the menu item “Record” is ⇧⌘R, but appendix-a-shortcuts.md lists ⌥⌘R",
+        "the shortcuts sheet's “Record” (⇧⌘R) isn't in appendix-a-shortcuts.md",
+        "appendix-a-shortcuts.md lists “Record” as ⌥⌘R, which the menus don't have",
+    ]
+    removed = MENU_RS.replace('Some("CmdOrCtrl+,")', "None")
+    assert problems(removed) == [
+        "appendix-a-shortcuts.md lists “Settings…” as ⌘,, which the menus don't have",
+        "the menu item “Settings…” has no shortcut, and appendix-a-shortcuts.md doesn't say so",
+    ]
+    added = MENU_RS.replace(
+        '"Shuffle").build', '"Shuffle")\n        .accelerator("CmdOrCtrl+S")\n        .build'
+    )
+    assert problems(added) == [
+        "the menu item “Shuffle” is ⌘S, but appendix-a-shortcuts.md lists nothing",
+        "the menu item “Shuffle” (⌘S) isn't in menu.rs's shortcuts()",
+        "appendix-a-shortcuts.md says “Shuffle” has no shortcut, but it has one",
+    ]
+
+
+def test_the_page_keys_must_match_the_sheet_both_ways(guide):
+    tables, _ = guide.appendix_tables(APPENDIX)
+    changed = DIALOG.replace('["Shift+F10"]', '["F10"]').replace(
+        '["shortcuts.select", ["Shift+Up", "Shift+Down"]],\n', ""
+    )
+    assert guide.page_shortcut_problems(changed, SHORTCUT_MESSAGES, tables) == [
+        (
+            "appendix-a-shortcuts.md lists “Open the menu” as ⇧F10 (or right-click), "
+            "the sheet as F10 (or right-click)"
+        ),
+        "appendix-a-shortcuts.md lists “Select more” in “In lists”, which the sheet doesn't",
+    ]
+    unknown = DIALOG.replace('Right: "→",', 'Right: "→",\n      Tab: "⇥",')
+    assert guide.page_shortcut_problems(unknown, SHORTCUT_MESSAGES, tables) == [
+        "ShortcutsDialog.svelte's keys() renames Tab, which check-user-guide.py doesn't know"
+    ]

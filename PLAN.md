@@ -16,8 +16,8 @@ screenshots and exit check; D2's developer guide is written and checked
 and waits on its exit check; D3's dictionary of classes has passed its
 exit check; D4 (documentation upkeep, added 2026-10-08) has its stale text
 fixed, the smoke test's pass over Phase 7b done and Phase 7b's and D3's
-records moved to `docs/design/`, and its checks of links' anchors and of
-Mermaid diagrams added (2026-10-09).
+records moved to `docs/design/`, and its checks of links' anchors, of
+Mermaid diagrams and of the shortcuts appendix added (2026-10-09).
 Phase 7d (added 2026-10-08) proposes forty more features (N1–N40) for
 the owner to choose from; none is accepted yet. Finished work's design
 notes and records are in `docs/design/`, linked from each phase.
@@ -112,7 +112,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 90 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 249 pytest tests (`test-python.py`) | `scripts/tests/` |
+| the scripts' 256 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -1037,12 +1037,38 @@ in `docs/design/`, and D2 links to them rather than repeating them.
       README.md, a bare `#x` the doc's own) against its headings' slugs,
       repeats numbered as GitHub does (`heading_anchors`); all 1,967
       anchored links resolved, so no doc changed;
-    - the keyboard shortcuts appendix (`appendix-a-shortcuts.md`) isn't
-      compared with anything: the menus' accelerators (`shell/`) and
-      the frontend's key handlers can change without it. Add the
-      comparison to `check-user-guide.py`, or generate the appendix from
-      one list that the menus, the shortcuts sheet (F6) and the guide
-      share;
+    - the keyboard shortcuts appendix (`appendix-a-shortcuts.md`) wasn't
+      compared with anything: the menus' accelerators (`shell/`) and the
+      frontend's key handlers could change without it. Add the comparison to
+      `check-user-guide.py`, or generate the appendix from one list that the
+      menus, the shortcuts sheet (F6) and the guide share. **Done
+      2026-10-09:** compared, not generated, since the appendix carries a
+      Menu column, notes, prose, a "no shortcut" list and the Help window's
+      keys that a generator would have to rebuild, and the menu's
+      accelerators live in `install`'s builder chains. `check-user-guide.py`
+      now fails when a menu accelerator (`PAGE_ITEMS`' or a builder's
+      `.accelerator(…)`) or a pair of `menu::shortcuts()` isn't in the
+      appendix's first table with the same keys under the item's name, when
+      that table lists a shortcut or item the menus don't have, when its "no
+      shortcut" list misses a `PAGE_ITEMS` item without one or names one
+      with one, and when its other tables and `ShortcutsDialog.svelte`'s
+      `PAGE` differ, row for row, either way. Keys are written as the
+      sheet's `keys()` writes them on macOS; a key its `names` map renames
+      that the script doesn't know fails too. Seven tests, and the real
+      tree's. It also catches a menu accelerator missing from `shortcuts()`
+      (the sheet). An inventory of the keydown handlers found keys neither
+      listed: ↑ and ↓ alone, Page Up, Page Down, Home and End in lists
+      (`VirtualList`), 0–5 and the arrows on a track's stars (`Stars`), the
+      context menu's keys (arrows, Home, End, Tab, → and ←, type-ahead), Esc
+      closing a dialog or popover, Return and Esc in a playlist's name, Esc
+      in **Filter artists** and Space in the mini player. ↑/↓ and 0–5 are
+      rows of the sheet and the appendix now (three `en.json` messages), the
+      rest the appendix's prose, and chapter 4's ratings name the stars'
+      keys. Known limit: the handlers themselves aren't read, since telling
+      a shortcut from a field's or a control's own keys would mean scraping
+      each component; a key added to a handler without a `PAGE` row still
+      goes unnoticed, and the appendix's prose and chapters 3 and 8's key
+      tables aren't checked;
     - a Mermaid diagram with a syntax error shows as an error box on GitHub,
       and no check parses them. Parse every ```` ```mermaid ```` block in
       `check-all.py` with a pinned `@mermaid-js/mermaid-cli` run through

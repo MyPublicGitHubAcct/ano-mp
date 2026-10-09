@@ -13,7 +13,11 @@ time:
   feature, a menu item, an error message) isn't done until
   `docs/user-guide/` covers it, in the same commit. `check-user-guide.py`
   catches a missing sidebar item, Settings section, feature switch, menu
-  item or error; the settings reference is regenerated (below).
+  item or error, and a shortcut the keyboard shortcuts appendix lists
+  differently from the menus or the shortcuts sheet; the settings
+  reference is regenerated (below). A key a component handles goes in
+  the sheet's `PAGE` (`ShortcutsDialog.svelte`, with its `en.json`
+  messages) and the appendix together.
 - **This guide.** A new source file gets its line in the
   [repository map](03-repository-map.md) (`check-developer-guide.py`
   fails without it), and a change of responsibility updates the chapter
@@ -184,7 +188,10 @@ as `menu` events. Items Rust runs itself (play, the sleep timer…) go in
    entry of the view it shows. `tests/find.test.mjs` fails on an item
    without an entry or a case.
 3. The user guide names it, and a shortcut goes in
-   `appendix-a-shortcuts.md`.
+   `appendix-a-shortcuts.md`'s first table with the same keys (an item
+   without one, in its "no shortcut" list); `check-user-guide.py`
+   compares them. A shortcut on an item Rust runs goes in
+   `menu::shortcuts()` too, for the shortcuts sheet.
 
 ## A migration
 

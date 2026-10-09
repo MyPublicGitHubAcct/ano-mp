@@ -149,7 +149,8 @@ parameter count, unless in its `NOT_BOUND` list), `check-sources.py`,
 `check-mermaid.py` (every Mermaid diagram in the Markdown parses, with the
 `mermaid` and `jsdom` pinned in `app/package.json`),
 `check-user-guide.py` (the user guide names every sidebar item, Settings
-section, feature switch, menu item and error message), `check-developer-guide.py`
+section, feature switch, menu item and error message, and its shortcuts
+appendix matches the menus and the shortcuts sheet), `check-developer-guide.py`
 (the developer guide's repository map names every module of `core/src`,
 `effects/src`, `app/src-tauri/src` and `app/src`, and nothing that's gone),
 `class-dictionary.py --check` (an entry for every type, and none for a type
@@ -420,7 +421,14 @@ backquoted paths out of it. `check-user-guide.py` fails on a sidebar item,
 Settings section, `FeatureSettings` field, `PAGE_ITEMS` menu item or
 `error.*` message the guide lacks (an error goes in
 `appendix-d-errors.md`, placeholders written "…"); a field whose label
-isn't `feature.<field>` goes in its `SWITCH_LABELS`. The settings
+isn't `feature.<field>` goes in its `SWITCH_LABELS`. It also compares
+the shortcuts appendix (`appendix-a-shortcuts.md`) with each menu
+accelerator and `menu::shortcuts()` (same keys, under the item's name),
+its "no shortcut" list with `PAGE_ITEMS`, and its other tables with
+`ShortcutsDialog.svelte`'s `PAGE`, row for row, keys written as the
+sheet's `keys()` writes them on macOS. It doesn't read keydown handlers:
+a key a component handles goes in `PAGE` (and so the appendix), or in
+the appendix's prose if it is a list's or a menu's ordinary keys. The settings
 reference (`settings-reference.md`) is generated from the defaults by
 `guide.rs`, whose test fails while it is stale or a setting has no row:
 add one there. Screenshots are marked with `<!-- Screenshot: … -->`

@@ -52,6 +52,7 @@
       [
         ["shortcuts.seekBack", ["Left"]],
         ["shortcuts.seekForward", ["Right"]],
+        ["shortcuts.move", ["Up", "Down"]],
         ["shortcuts.select", ["Shift+Up", "Shift+Down"]],
         ["shortcuts.selectAll", ["CmdOrCtrl+A"]],
         ["shortcuts.addToSelection", ["CmdOrCtrl+Click"]],
@@ -60,6 +61,7 @@
         ["shortcuts.menu", ["Shift+F10"], "shortcuts.orRightClick"],
         ["shortcuts.open", ["Return"]],
         ["shortcuts.remove", ["Delete"]],
+        ["shortcuts.rate", ["0–5"], "shortcuts.onStars"],
         ["shortcuts.cancelDrag", ["Escape"]],
         ["shortcuts.back", ["Escape"]],
         ["shortcuts.clearSearch", ["Escape"], "shortcuts.inSearchBox"],

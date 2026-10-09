@@ -37,7 +37,8 @@ while typing in the search box.
 | Mini Player | View › Mini Player | ⌥⌘M |
 | Keyboard Shortcuts | Help › Keyboard Shortcuts | ⌘/ |
 
-Space plays and pauses unless you are typing in a text field.
+Space plays and pauses unless you are typing in a text field, in the
+mini player as well as the main window.
 
 These menu items have no shortcut: **Import Playlist…**, **Export
 Playlist…**, **Import Library Data…**, **Export Library Data…**,
@@ -51,6 +52,7 @@ In the Help window, ⌘[ (or Esc) goes back to the page before.
 |---|---|
 | Back 5 seconds | ← |
 | Forward 5 seconds | → |
+| Select the row above or below | ↑ or ↓ |
 | Select the row above or below as well | ⇧↑ or ⇧↓ |
 | Select every row | ⌘A |
 | Add a row to the selection | ⌘-click |
@@ -59,13 +61,25 @@ In the Help window, ⌘[ (or Esc) goes back to the page before.
 | Open the selection's menu | ⇧F10 (or right-click) |
 | Open a group, or play from a track | Return |
 | Remove from the queue or playlist | Delete |
+| Rate from no stars to five | 0–5 (on a track's stars) |
 | Cancel dragging | Esc |
 | Back, or leave full screen | Esc |
 | Clear the search box | Esc (in the box) |
 
 Esc does one thing at a time. With several rows selected, it keeps only
 the row you were on and stays where you are; press it again to go back.
-While you drag tracks, it cancels the drag and nothing else.
+While you drag tracks, it cancels the drag and nothing else. It also
+closes a dialog, a menu or a panel that has popped up, and does nothing
+more. In a playlist's name, Return keeps the new name and Esc puts back
+the old one; in **Filter artists**, Esc clears the filter.
+
+Page Up and Page Down move a page at a time through a list, and Home and
+End go to its first and last rows. On a track's stars (Tab reaches them),
+→ and ↑ add a star, and ← and ↓ take one away.
+
+In a menu, ↑ and ↓ (or Tab) move between its items, Home and End go to
+the first and last, → opens a submenu and ← closes it, and typing a letter
+goes to the next item that starts with it.
 
 ## In the visualizer
 

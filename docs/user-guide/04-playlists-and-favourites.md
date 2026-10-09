@@ -124,5 +124,8 @@ Give a track one to five stars:
 - or add the **Rating** column to track lists in **Settings › Display**
   and click the stars in it.
 
+On a track's stars, 0 to 5 set the rating too, and the arrow keys raise
+or lower it.
+
 Ratings are kept in ano-mp, not written into your files. Smart playlists
 can use them as a condition and an order.
