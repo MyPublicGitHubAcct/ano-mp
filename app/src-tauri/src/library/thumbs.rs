@@ -29,6 +29,8 @@ use super::access;
 use super::art::{self, Art, ArtKey, Origin};
 use super::commands::LibraryState;
 use super::{track_path, Error};
+use crate::metadata::folder_art;
+use crate::metadata::settings::SourceId;
 
 /// JPEG quality of the thumbnails.
 const QUALITY: u8 = 85;
@@ -126,12 +128,18 @@ fn index_key(key: ArtKey) -> String {
 fn stamp(library: &LibraryState, origin: &Origin) -> Option<String> {
     match origin {
         Origin::File {
+            source,
             folder_id,
             relative,
-            ..
         } => {
             let folder = access::open_folder(&library.conn(), *folder_id).ok()?;
             let path = track_path(&folder.path, relative);
+            // A folder picture that has become a symbolic link is looked up
+            // again, which refuses it (`folder_art::read`, PLAN.md H4). A
+            // track's own file may be a link: the scanner follows them.
+            if *source == SourceId::Folder && !folder_art::is_plain_file(&path) {
+                return None;
+            }
             let file = file_stamp(&path)?;
             let dir = file_stamp(path.parent()?)?;
             Some(format!("{file}|{dir}"))
@@ -283,7 +291,7 @@ mod tests {
     use super::*;
     use crate::library::{db, test_library};
     use crate::metadata::images::ImageCache;
-    use crate::metadata::settings::{self, Kind, SourceId};
+    use crate::metadata::settings::{self, Kind};
     use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
 
     fn jpeg(width: u32, height: u32) -> Vec<u8> {
@@ -424,6 +432,24 @@ mod tests {
     fn an_album_without_a_picture_has_no_thumbnail() {
         let (_dir, library, album, album_dir) = album(b"");
         std::fs::remove_file(album_dir.join("cover.jpg")).unwrap();
+        library.art.clear();
+        assert_eq!(lookup(&library, album, Size::List).unwrap(), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_cover_that_becomes_a_symbolic_link_is_not_served_from_the_index() {
+        let (dir, library, album, album_dir) = album(&jpeg(1000, 1000));
+        lookup(&library, album, Size::List).unwrap().unwrap();
+        let row = read_row(&library.conn(), album).unwrap().unwrap();
+        assert!(stamp(&library, &row.origin).is_some());
+
+        let secret = dir.path().join("secret.jpg");
+        std::fs::write(&secret, jpeg(1000, 1000)).unwrap();
+        std::fs::remove_file(album_dir.join("cover.jpg")).unwrap();
+        std::os::unix::fs::symlink(&secret, album_dir.join("cover.jpg")).unwrap();
+        assert_eq!(stamp(&library, &row.origin), None);
+        assert_eq!(from_index(&library, album, Size::List).unwrap(), None);
         library.art.clear();
         assert_eq!(lookup(&library, album, Size::List).unwrap(), None);
     }

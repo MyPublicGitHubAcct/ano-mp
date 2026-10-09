@@ -110,7 +110,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 499 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 90 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 256 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -551,10 +551,9 @@ Waiting on the owner, in the order the owner takes them (set 2026-10-03):
   56–73 ms (H18; 100 ms budget); restore's 290 ms of track details (H16);
   `queue/model.rs` not split (H19), having changed little.
 - Next: the owner's items above, in order; then Parts 0–3 of the signed
-  release as decisions arrive. Engineering left that needs no
-  decision: H19 as modules are touched, M2's
-  `sync-ffmpeg-frameworks.py`, H4 (before Phase 9), H13's P2 tests and
-  H8's edition move.
+  release as decisions arrive. Engineering left that needs no decision: H19
+  as modules are touched, M2's `sync-ffmpeg-frameworks.py`, H13's P2 tests
+  and H8's edition move.
 
 **Hardening items** (from the 2026-09-27 review; priorities as in
 §4.7). CI runs each check through `check-all.py` (M4), so a local run
@@ -565,7 +564,7 @@ matches it.
 | H1 | Content Security Policy | security | S | P1 | Done 2026-10-02 |
 | H2 | Keep developer commands and `/dev` out of release builds | security | S | P1 | Done 2026-10-02 |
 | H3 | Narrow the URL opener and per-window command permissions | security | S | P1 | Done (permissions 2026-09-27, opener 2026-10-02) |
-| H4 | Contain folder pictures on unsandboxed platforms | security | S | P2, before Phase 9 | Open (below) |
+| H4 | Contain folder pictures on unsandboxed platforms | security | S | P2, before Phase 9 | Done 2026-10-09 |
 | H5 | Fuzz the tag reader and decoder | security, robustness | M | P1 targets and CI run, P2 long runs | Done 2026-10-02; the weekly long runs' results to come |
 | H6 | Sanitizer presets for the core | robustness | S | P1 | Done 2026-10-02 |
 | H7 | Supply chain: exact pins, `cargo deny`, update bot, secret scanning | security, maintenance | S | P1 | Done 2026-10-02; GitHub secret scanning is the owner's setting |
@@ -590,12 +589,6 @@ what was found, what is left) is in
 [docs/design/phase-7-hardening.md](docs/design/phase-7-hardening.md).
 The open items and parts:
 
-- **H4 Folder pictures on unsandboxed platforms.**
-  `folder_art::is_relative_path` rejects `..` lexically, but a symlink
-  inside a library folder can still point outside it. The macOS sandbox
-  blocks that, but Linux and Windows have no sandbox. Canonicalise the
-  picture's path and require it under the folder's root, with a test
-  using a symlink.
 - **H8's remainder.** Move to Rust edition 2024 in one separate commit.
 - **H13's P2 part.**
   - P2: Vitest for the rune modules (`state/*.svelte.ts`), which plain

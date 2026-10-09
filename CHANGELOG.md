@@ -109,3 +109,7 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   Like This window) and the albums on an artist's page had left them out.
 - Right-clicking inside a window such as More Like This shows its menu;
   the menu used to open behind the window.
+- Album covers from a picture in the album's folder are read only from
+  that album's own folders, and never through a symbolic link that leads
+  elsewhere, so a cover can't show a picture from outside the library
+  (a protection the macOS sandbox already gave; for Linux and Windows).

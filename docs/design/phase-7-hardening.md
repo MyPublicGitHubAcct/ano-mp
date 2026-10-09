@@ -3,7 +3,7 @@
 Moved from `PLAN.md` on 2026-10-03, unchanged but for the headings.
 Section numbers (§) refer to `PLAN.md`, whose Phase 7 keeps the
 order of work, the hardening table with each item's status,
-the open items (H4, H13's P2 part, H19) and §9.2's open scripts.
+the open items (H13's P2 part, H19) and §9.2's open scripts.
 
 ## Order of work, step by step
 
@@ -447,6 +447,59 @@ this file gets in the way.
       text.
     - Tested in `tests/links.test.mjs`. The six copies of `openLink` in
       the components are now one.
+- **H4 Folder pictures on unsandboxed platforms.**
+  `folder_art::is_relative_path` rejects `..` lexically, but a symlink
+  can still lead a picture's path out of the library folder. The macOS
+  sandbox blocks that, but Linux and Windows have no sandbox. Found
+  2026-10-09:
+  - `art::candidate` (the `anomp-art` handler's preview, `ref=` from
+    the URL) reads any image path under the root, not only one in the
+    album's folders, as `art::choose` requires; a stored choice goes
+    through the same branch of `from_source`;
+  - a symlinked folder in that path is followed, and so is a
+    symlinked picture file named directly (`folder_art::read`);
+    `find` and `images` already skip symlinked files.
+  - "Under the root" is the wrong rule: the scanner follows symlinks
+    out of the root on purpose (`follows_symlinks_without_looping`),
+    so it would hide covers of albums the app already plays.
+  - **Done 2026-10-09.**
+    - The rule as built: a folder picture is read only if its path
+      relative to the library folder is a file directly in one of its
+      album's folders (`folder_art::relative_folders` of each of its
+      tracks, as the picker lists them), compared as text, and it is a regular file, not a symlink (`symlink_metadata`,
+      an `lstat`, which never downloads a cloud placeholder). The
+      folder's path is the one the scanner found the tracks by, links
+      and all, so an album in a linked folder keeps its cover, while a
+      linked folder or picture leading elsewhere, or another album's
+      picture, is refused. This replaced the proposed rule (canonical
+      parent equal to a canonical album folder), which has the same
+      effect: `folders_for` and the picture's path are joined the same
+      way, so equal text means the same folder. Canonical paths would
+      also have broken `Origin::File`'s path relative to the root for
+      an album behind a link, and differ in form on Windows.
+    - `folder_art::contained` holds the text check (`is_relative_path`
+      first), and `folder_art::read` refuses a symlink; `find` and
+      `images` already listed only regular files. Only
+      `from_source`'s reference branch (the preview and a stored
+      choice) needed the check, against every track's folders
+      (`art::album_folders`, which `folder_candidates` shares), not
+      only the three `find` tries, so a picture in a later disc's
+      folder stays readable: `folder_candidates` builds its references
+      from `images` in those folders, and `choose` accepts only those.
+      Refusals are logged at debug.
+    - `thumbs::stamp`: a folder picture that has become a symlink has
+      no stamp, so the next lookup reads it again and refuses it. A
+      track's own file may still be a link (the scanner follows them).
+    - Tests: 6 Rust tests, Unix only where they make links. The text
+      rule; `read`, `find` and `images` never through a link; a linked
+      picture, a linked folder leading out and another album's picture
+      not listed, previewed or chosen, and a stored choice of each
+      falling back to the order; a cover that becomes a link passed
+      over by the lookup and by the thumbnail index; an album scanned
+      through a linked folder keeping its cover, choice and preview; a
+      chosen picture in a later disc's folder found.
+    - Limits: a picture replaced by a link between the check and the
+      read is still followed (only `O_NOFOLLOW` would close that).
 - **H5 Fuzzing.** Users' libraries hold arbitrary files. FFmpeg's
   demuxers and decoders and TagLib are the app's largest attack surface
   (§6).

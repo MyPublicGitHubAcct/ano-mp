@@ -249,6 +249,7 @@ fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
         )
     };
     let mut album = AlbumSources {
+        key,
         files,
         covers,
         folders: Folders {
@@ -273,6 +274,7 @@ fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
 
 /// Where the sources look for an album's (or a track's) picture.
 struct AlbumSources<'a> {
+    key: ArtKey,
     files: Vec<TrackFile>,
     /// Cover Art Archive URLs that may hold its cover, best first.
     covers: Vec<String>,
@@ -320,6 +322,7 @@ fn track_files(conn: &Connection, key: ArtKey) -> Result<Vec<TrackFile>, Error> 
 /// A picture from `source`: the one `reference` names, or the best it has.
 fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSources) -> Option<Art> {
     let AlbumSources {
+        key,
         files,
         covers,
         folders,
@@ -347,38 +350,47 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
                 }),
             })
         }),
-        SourceId::Folder => {
-            let mut tried = HashSet::new();
-            files.iter().find_map(|file| {
-                let root = folders.root(file.folder_id)?.to_path_buf();
-                let candidates = match reference {
-                    Some(reference) if folder_art::is_relative_path(reference) => {
-                        vec![track_path(&root, reference)]
+        // Only a picture in the album's folders (PLAN.md H4).
+        SourceId::Folder => match reference {
+            Some(reference) => {
+                let dirs = match album_folders(&folders.library.conn(), *key) {
+                    Ok(dirs) => dirs,
+                    Err(error) => {
+                        log::warn!("cannot list an album's folders: {error}");
+                        return None;
                     }
-                    Some(_) => Vec::new(),
-                    None => folder_art::folders_for(&root, &file.relative)
+                };
+                let mut ids: Vec<i64> = Vec::new();
+                for (folder_id, _) in &dirs {
+                    if !ids.contains(folder_id) {
+                        ids.push(*folder_id);
+                    }
+                }
+                ids.into_iter().find_map(|folder_id| {
+                    let root = folders.root(folder_id)?.to_path_buf();
+                    let in_folder = dirs
+                        .iter()
+                        .filter(|(id, _)| *id == folder_id)
+                        .map(|(_, dir)| dir.as_str());
+                    let Some(path) = folder_art::contained(&root, reference, in_folder) else {
+                        log::debug!("not reading {reference}: not in the album's folders");
+                        return None;
+                    };
+                    folder_picture(source, folder_id, &root, &path)
+                })
+            }
+            None => {
+                let mut tried = HashSet::new();
+                files.iter().find_map(|file| {
+                    let root = folders.root(file.folder_id)?.to_path_buf();
+                    folder_art::folders_for(&root, &file.relative)
                         .into_iter()
                         .filter(|dir| tried.insert(dir.clone()))
                         .filter_map(|dir| folder_art::find(&dir))
-                        .collect(),
-                };
-                candidates.iter().find_map(|path| {
-                    let (mime_type, data) = folder_art::read(path)?;
-                    let relative = super::scanner::relative_path(&root, path);
-                    Some(Art {
-                        mime_type: mime_type.into(),
-                        data,
-                        source,
-                        chosen: false,
-                        origin: relative.map(|relative| Origin::File {
-                            source,
-                            folder_id: file.folder_id,
-                            relative,
-                        }),
-                    })
+                        .find_map(|path| folder_picture(source, file.folder_id, &root, &path))
                 })
-            })
-        }
+            }
+        },
         // Only pictures already downloaded; the metadata worker fetches them.
         SourceId::CoverArtArchive => {
             let images = &folders.library.images;
@@ -399,6 +411,55 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
         // Not album-art sources.
         SourceId::MusicBrainz | SourceId::Wikipedia | SourceId::Discogs => None,
     }
+}
+
+/// The folder picture at `path` in library folder `folder_id` (at `root`).
+fn folder_picture(source: SourceId, folder_id: i64, root: &Path, path: &Path) -> Option<Art> {
+    let (mime_type, data) = folder_art::read(path)?;
+    let relative = super::scanner::relative_path(root, path);
+    Some(Art {
+        mime_type: mime_type.into(),
+        data,
+        source,
+        chosen: false,
+        origin: relative.map(|relative| Origin::File {
+            source,
+            folder_id,
+            relative,
+        }),
+    })
+}
+
+/// The folders of every track of the album (or of the track), as
+/// `folder_art::relative_folders` gives them, with their library folder:
+/// those of its first track first, each once.
+fn album_folders(conn: &Connection, key: ArtKey) -> Result<Vec<(i64, String)>, Error> {
+    let (sql, id) = match key {
+        ArtKey::Album(id) => (
+            "SELECT folder_id, relative_path FROM tracks WHERE album_id = ?1
+             ORDER BY IFNULL(disc_number, 1), track_number NULLS LAST, relative_path",
+            id,
+        ),
+        ArtKey::Track(id) => (
+            "SELECT folder_id, relative_path FROM tracks WHERE id = ?1",
+            id,
+        ),
+    };
+    let mut statement = conn.prepare_cached(sql)?;
+    let rows = statement.query_map([id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut seen = HashSet::new();
+    let mut dirs = Vec::new();
+    for row in rows {
+        let (folder_id, relative) = row?;
+        for dir in folder_art::relative_folders(&relative) {
+            if seen.insert((folder_id, dir.clone())) {
+                dirs.push((folder_id, dir));
+            }
+        }
+    }
+    Ok(dirs)
 }
 
 /// A picture the user can choose as an album's cover.
@@ -432,6 +493,7 @@ pub fn local_candidates(
         SourceId::Embedded => {
             let files = track_files(&library.conn(), ArtKey::Album(album_id))?;
             let mut album = AlbumSources {
+                key: ArtKey::Album(album_id),
                 files,
                 covers: Vec::new(),
                 folders: Folders {
@@ -461,27 +523,7 @@ pub fn local_candidates(
 /// The images in album `album_id`'s folders, those in its first track's
 /// folders first, at most `FOLDER_IMAGES_LISTED`.
 fn folder_candidates(library: &LibraryState, album_id: i64) -> Result<Vec<CoverCandidate>, Error> {
-    let dirs: Vec<(i64, String)> = {
-        let conn = library.conn();
-        let mut statement = conn.prepare_cached(
-            "SELECT folder_id, relative_path FROM tracks WHERE album_id = ?1
-             ORDER BY IFNULL(disc_number, 1), track_number NULLS LAST, relative_path",
-        )?;
-        let rows = statement.query_map([album_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut seen = HashSet::new();
-        let mut dirs = Vec::new();
-        for row in rows {
-            let (folder_id, relative) = row?;
-            for dir in folder_art::relative_folders(&relative) {
-                if seen.insert((folder_id, dir.clone())) {
-                    dirs.push((folder_id, dir));
-                }
-            }
-        }
-        dirs
-    };
+    let dirs = album_folders(&library.conn(), ArtKey::Album(album_id))?;
     let mut folders = Folders {
         library,
         open: HashMap::new(),
@@ -633,8 +675,8 @@ impl Target {
 }
 
 /// The candidate picture `reference` of `source` for album `album_id`, as
-/// `from_source` finds it: never online, and a folder picture only by a
-/// path inside the library folder.
+/// `from_source` finds it: never online, and a folder picture only from the
+/// album's folders (`folder_art::contained`).
 fn candidate(
     library: &LibraryState,
     album_id: i64,
@@ -643,6 +685,7 @@ fn candidate(
 ) -> Result<Option<Art>, Error> {
     let files = track_files(&library.conn(), ArtKey::Album(album_id))?;
     let mut album = AlbumSources {
+        key: ArtKey::Album(album_id),
         files,
         covers: Vec::new(),
         folders: Folders {
@@ -1082,6 +1125,203 @@ mod tests {
         choose(&library, album_id, None).unwrap();
         assert!(!shown(&library).1);
         assert_eq!(chosen_art(&library.conn(), album_id).unwrap(), None);
+    }
+
+    /// The folder source first, then the embedded picture.
+    fn folder_first(library: &LibraryState) {
+        let conn = library.conn();
+        let mut settings = settings::service_settings(&conn).unwrap();
+        settings
+            .order
+            .insert(Kind::AlbumArt, vec![SourceId::Folder, SourceId::Embedded]);
+        settings::save_service_settings(&conn, settings).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reads_folder_pictures_only_from_the_albums_folders() {
+        use std::os::unix::fs::symlink;
+
+        let (dir, library, album_id) = album_with_two_pictures();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::fs::write(elsewhere.path().join("secret.png"), b"secret").unwrap();
+        // A picture and a folder in the album leading out of the library,
+        // and another album's picture under the root.
+        symlink(
+            elsewhere.path().join("secret.png"),
+            root.join("Artist/Album/linked.png"),
+        )
+        .unwrap();
+        symlink(elsewhere.path(), root.join("Artist/Album/Scans")).unwrap();
+        std::fs::create_dir_all(root.join("Other/Album")).unwrap();
+        std::fs::write(root.join("Other/Album/cover.png"), b"other").unwrap();
+        let refused = [
+            "Artist/Album/linked.png",
+            "Artist/Album/Scans/secret.png",
+            "Other/Album/cover.png",
+        ];
+
+        // Not offered, not previewed, not chosen.
+        let listed: Vec<Option<String>> = local_candidates(&library, album_id, SourceId::Folder)
+            .unwrap()
+            .into_iter()
+            .map(|candidate| candidate.reference)
+            .collect();
+        assert_eq!(listed, [Some("Artist/Album/cover.jpg".to_owned())]);
+        for reference in refused {
+            let response = respond(
+                Some(&library),
+                &format!("/album-{album_id}/folder"),
+                Some(&format!("ref={}", reference.replace('/', "%2F"))),
+            );
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{reference}");
+            assert!(
+                choose(
+                    &library,
+                    album_id,
+                    Some((SourceId::Folder, Some(reference)))
+                )
+                .is_err(),
+                "{reference}"
+            );
+        }
+
+        // A choice stored before the picture became a link falls back to
+        // the order.
+        folder_first(&library);
+        for reference in refused {
+            library
+                .conn()
+                .execute(
+                    "INSERT OR REPLACE INTO album_art (album_id, source, reference)
+                     VALUES (?1, 'folder', ?2)",
+                    params![album_id, reference],
+                )
+                .unwrap();
+            library.art.clear();
+            let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
+            assert_eq!(
+                (art.chosen, &art.data[..]),
+                (false, &b"jpeg bytes"[..]),
+                "{reference}"
+            );
+        }
+
+        // A cover that becomes a link is passed over.
+        library.conn().execute("DELETE FROM album_art", []).unwrap();
+        std::fs::remove_file(root.join("Artist/Album/cover.jpg")).unwrap();
+        symlink(
+            elsewhere.path().join("secret.png"),
+            root.join("Artist/Album/cover.jpg"),
+        )
+        .unwrap();
+        assert_eq!(
+            mime(&library, ArtKey::Album(album_id)).as_deref(),
+            Some("image/png"),
+            "the embedded picture"
+        );
+        assert_eq!(
+            lookup(&library, ArtKey::Album(album_id))
+                .unwrap()
+                .unwrap()
+                .source,
+            SourceId::Embedded
+        );
+    }
+
+    /// A chosen picture is looked for in the folders of every track, as
+    /// the picker lists them, not only of the first few tried.
+    #[test]
+    fn finds_a_chosen_picture_in_a_later_discs_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join("Album/CD2")).unwrap();
+        std::fs::write(root.join("Album/CD2/back.png"), b"png bytes").unwrap();
+        let test = test_library::Library::from_conn(db::open_in_memory().unwrap());
+        let folder_id = test.add_folder(root.to_str().unwrap());
+        for (disc, name) in [(1, "01"), (1, "02"), (1, "03"), (1, "04"), (2, "01")] {
+            test.add(
+                folder_id,
+                test_library::track(&format!("Album/CD{disc}/{name}.flac"))
+                    .artist("Artist")
+                    .album("Album")
+                    .disc(disc),
+            );
+        }
+        let album_id: i64 = test
+            .conn
+            .query_row("SELECT id FROM albums", [], |row| row.get(0))
+            .unwrap();
+        let library = LibraryState::for_tests(test.conn);
+        choose(
+            &library,
+            album_id,
+            Some((SourceId::Folder, Some("Album/CD2/back.png"))),
+        )
+        .unwrap();
+        let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
+        assert_eq!((art.chosen, &art.data[..]), (true, &b"png bytes"[..]));
+    }
+
+    /// The scanner follows links out of the library folder
+    /// (`follows_symlinks_without_looping`), so an album found through one
+    /// keeps its folder's cover.
+    #[cfg(unix)]
+    #[test]
+    fn an_album_in_a_linked_folder_keeps_its_cover() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap().join("Music");
+        let elsewhere = root.with_file_name("Elsewhere");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("01.flac"), b"not read").unwrap();
+        std::fs::write(elsewhere.join("cover.jpg"), b"jpeg bytes").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, root.join("Linked")).unwrap();
+
+        let test = test_library::Library::from_conn(db::open_in_memory().unwrap());
+        let folder_id = test.add_folder(root.to_str().unwrap());
+        test.add(
+            folder_id,
+            test_library::track("Linked/01.flac")
+                .artist("Artist")
+                .album("Album"),
+        );
+        let album_id: i64 = test
+            .conn
+            .query_row("SELECT id FROM albums", [], |row| row.get(0))
+            .unwrap();
+        let library = LibraryState::for_tests(test.conn);
+        folder_first(&library);
+
+        let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
+        assert_eq!(
+            (art.source, &art.data[..]),
+            (SourceId::Folder, &b"jpeg bytes"[..])
+        );
+        assert!(matches!(
+            &art.origin,
+            Some(Origin::File { relative, .. }) if relative == "Linked/cover.jpg"
+        ));
+        choose(
+            &library,
+            album_id,
+            Some((SourceId::Folder, Some("Linked/cover.jpg"))),
+        )
+        .unwrap();
+        library.art.clear();
+        assert!(
+            lookup(&library, ArtKey::Album(album_id))
+                .unwrap()
+                .unwrap()
+                .chosen
+        );
+        let response = respond(
+            Some(&library),
+            &format!("/album-{album_id}/folder"),
+            Some("ref=Linked%2Fcover.jpg"),
+        );
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]

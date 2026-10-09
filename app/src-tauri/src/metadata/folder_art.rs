@@ -1,6 +1,13 @@
 //! The "folder" art source: an image file next to an album's tracks, such as
 //! `cover.jpg` or `folder.png`, as ripping and tagging tools save them.
 //! Reading it needs the library folder open (`library::access`).
+//!
+//! A picture is read only from one of its album's folders, and never
+//! through a symbolic link (PLAN.md H4): the macOS sandbox would stop a
+//! link leading out of the library, but Linux and Windows have none. The
+//! folders are those `folders_for` gives for the album's tracks, reached by
+//! the same path the scanner found the tracks by, so an album in a linked
+//! folder (the scanner follows links) keeps its cover.
 
 use std::path::{Path, PathBuf};
 
@@ -115,6 +122,34 @@ pub fn is_relative_path(reference: &str) -> bool {
         })
 }
 
+/// The picture `reference` names, a path relative to the library folder
+/// `root`, if it may be read as album art: a relative path
+/// (`is_relative_path`) to a file directly in one of `folders`, the
+/// album's folders as `relative_folders` gives them, compared as text.
+/// `read` then refuses it if it is a symbolic link.
+pub fn contained<'a>(
+    root: &Path,
+    reference: &str,
+    folders: impl IntoIterator<Item = &'a str>,
+) -> Option<PathBuf> {
+    if !is_relative_path(reference) {
+        return None;
+    }
+    let dir = reference.rsplit_once('/').map_or("", |(dir, _)| dir);
+    if !folders.into_iter().any(|folder| folder == dir) {
+        return None;
+    }
+    let mut path = root.to_path_buf();
+    path.extend(reference.split('/'));
+    Some(path)
+}
+
+/// Whether `path` is a regular file and not a symbolic link (`lstat`, which
+/// never downloads a cloud placeholder).
+pub fn is_plain_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+}
+
 /// "CD1", "cd 2", "Disc 03", "Disk-1": a word for disc, then a number.
 fn is_disc_folder(name: &str) -> bool {
     let lower = name.to_lowercase();
@@ -129,11 +164,19 @@ fn is_disc_folder(name: &str) -> bool {
 }
 
 /// The image at `path` and its MIME type, if it's a readable image file of a
-/// sensible size.
+/// sensible size and not a symbolic link.
 pub fn read(path: &Path) -> Option<(&'static str, Vec<u8>)> {
     let mime = mime_type(path)?;
-    let size = std::fs::metadata(path).ok()?.len();
-    if size == 0 || size > MAX_SIZE {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() {
+        log::debug!(
+            "not reading a picture that is a symbolic link: {}",
+            path.display()
+        );
+        return None;
+    }
+    let size = metadata.len();
+    if !metadata.file_type().is_file() || size == 0 || size > MAX_SIZE {
         return None;
     }
     Some((mime, std::fs::read(path).ok()?))
@@ -255,5 +298,55 @@ mod tests {
         std::fs::write(dir.path().join("empty.jpg"), b"").unwrap();
         assert_eq!(read(&dir.path().join("empty.jpg")), None);
         assert_eq!(read(&dir.path().join("missing.jpg")), None);
+    }
+
+    #[test]
+    fn contains_pictures_to_the_albums_folders() {
+        let root = Path::new("/Music");
+        let folders = relative_folders("Artist/Album/CD 2/01.flac");
+        let contained = |reference| contained(root, reference, folders.iter().map(String::as_str));
+        assert_eq!(
+            contained("Artist/Album/CD 2/back.png"),
+            Some(root.join("Artist/Album/CD 2/back.png"))
+        );
+        assert_eq!(
+            contained("Artist/Album/cover.jpg"),
+            Some(root.join("Artist/Album/cover.jpg"))
+        );
+        assert_eq!(
+            super::contained(root, "cover.jpg", [""]),
+            Some(root.join("cover.jpg"))
+        );
+        for outside in [
+            "Artist/Album/CD 1/back.png",
+            "Artist/Album/Scans/back.png",
+            "Artist/cover.jpg",
+            "Other/Album/cover.jpg",
+            "cover.jpg",
+            "Artist/Album/CD 2/../cover.jpg",
+            "/Artist/Album/cover.jpg",
+        ] {
+            assert_eq!(contained(outside), None, "{outside}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn never_reads_through_a_symbolic_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        touch(elsewhere.path(), "secret.png");
+        std::os::unix::fs::symlink(
+            elsewhere.path().join("secret.png"),
+            dir.path().join("cover.png"),
+        )
+        .unwrap();
+        assert!(!is_plain_file(&dir.path().join("cover.png")));
+        assert_eq!(read(&dir.path().join("cover.png")), None);
+        assert_eq!(find(dir.path()), None);
+        assert!(images(dir.path()).is_empty());
+        touch(dir.path(), "folder.png");
+        assert!(is_plain_file(&dir.path().join("folder.png")));
+        assert_eq!(find(dir.path()), Some(dir.path().join("folder.png")));
     }
 }

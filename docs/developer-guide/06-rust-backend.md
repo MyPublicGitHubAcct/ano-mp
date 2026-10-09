@@ -239,7 +239,12 @@ covers from `anomp-art://localhost/album-<id>` (or `track-<id>`), which
 just an `<img>`. `art::lookup` finds the picture (the user's choice, else
 embedded, folder or downloaded art in the configured order); `thumbs`
 serves a scaled copy for lists and headers from the image cache,
-indexed in `art_thumbs`.
+indexed in `art_thumbs`. A folder picture is read only from one of its
+album's folders, by the path the scanner found the tracks by (it follows
+symbolic links, so an album in a linked folder keeps its cover), and
+never through a symbolic link itself: `folder_art::contained` checks a
+picture's path as text and `folder_art::read` refuses a link. Linux and
+Windows have no sandbox to stop a link leading out of the library.
 
 **Background analysis** (`library/analysis.rs`): a thread that runs the
 core's `FileAnalyser` over tracks a few at a time while the loudness
