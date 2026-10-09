@@ -71,7 +71,9 @@ messages (`en.json`) use.
 - `Name::function` and `Name.method` refer to code; a function's file is
   named the first time it appears in a section.
 - Plan items are cited by their numbers (O1–O19, F1–F21, H1–H22, X1–X9),
-  which `PLAN.md` and the design notes explain.
+  which `PLAN.md` and the design notes explain; the
+  [index of plan items](../plan-items.md) gives each one's name, status
+  and record.
 - Diagrams are Mermaid, which GitHub renders, so they are reviewed and
   diffed like the code; `scripts/check-mermaid.py` parses each one.
 
@@ -82,4 +84,7 @@ commit, as it updates the code's comments. `scripts/check-docs.py` checks
 every path and link here (a link's `#anchor` too), and `scripts/check-developer-guide.py` checks
 that the repository map names every module and nothing that has gone;
 `scripts/class-dictionary.py --check` does the same for the dictionary's
-types, and `scripts/check-mermaid.py` parses every diagram. All four run in `scripts/check-all.py --quick` and the pre-commit hook.
+types, `scripts/check-mermaid.py` parses every diagram, and
+`scripts/plan-items.py --check` checks the index of plan items is
+current. All five run in `scripts/check-all.py --quick` and the
+pre-commit hook.

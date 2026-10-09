@@ -6,7 +6,7 @@ where a step looks arbitrary, the rule there says why. After any of
 them, run the formatters for the languages you touched and
 `scripts/check-all.py` (at least `--quick`) before committing.
 
-Two steps belong to almost every recipe, so they are not repeated each
+These steps belong to almost every recipe, so they are not repeated each
 time:
 
 - **The user guide.** Anything the user can see (a view, a setting, a
@@ -27,6 +27,10 @@ time:
   component) changes its entry in `docs/class-dictionary/`, then
   `scripts/class-dictionary.py` rewrites the index (`--check` fails
   otherwise).
+- **The plan.** A change that adds, renames or finishes a numbered item
+  of `PLAN.md` (or moves its record to `docs/design/`) reruns
+  `scripts/plan-items.py`, which rewrites the
+  [index of plan items](../plan-items.md) (`--check` fails otherwise).
 
 ## A C API function
 
