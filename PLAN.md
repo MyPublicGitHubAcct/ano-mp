@@ -14,9 +14,10 @@ Phase 7c (documentation, added 2026-10-04) is under way: D1's user guide
 is written, checked and bundled (Help › ano-mp Help) and waits on its
 screenshots and exit check; D2's developer guide is written and checked
 and waits on its exit check; D3's dictionary of classes has passed its
-exit check; D4 (documentation upkeep, added 2026-10-08) has its stale
-text fixed, the smoke test's pass over Phase 7b done and Phase 7b's
-and D3's records moved to `docs/design/` (2026-10-09).
+exit check; D4 (documentation upkeep, added 2026-10-08) has its stale text
+fixed, the smoke test's pass over Phase 7b done and Phase 7b's and D3's
+records moved to `docs/design/`, and its checks of links' anchors and of
+Mermaid diagrams added (2026-10-09).
 Phase 7d (added 2026-10-08) proposes forty more features (N1–N40) for
 the owner to choose from; none is accepted yet. Finished work's design
 notes and records are in `docs/design/`, linked from each phase.
@@ -111,7 +112,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 90 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 244 pytest tests (`test-python.py`) | `scripts/tests/` |
+| the scripts' 249 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -1051,8 +1052,14 @@ in `docs/design/`, and D2 links to them rather than repeating them.
       11.4.1, and the sequence messages' generics (`Vec<TrackInfo>`,
       `Promise<Folder>`) are drawn as plain text, so no doc changed.
       mermaid-cli's headless Chromium couldn't start in the sandbox, so none
-      was rendered; `mermaid.parse` under jsdom needs no browser and may be
-      enough for the check, which is still to do.
+      was rendered. **Done 2026-10-09:** `scripts/check-mermaid.py`, in
+      `check-all.py`'s quick checks, finds every ```` ```mermaid ```` block
+      in the repo's Markdown (indented ones too) and parses each with
+      `mermaid.parse` under jsdom (Mermaid 11.17.2 and jsdom 30.1.0, dev
+      dependencies pinned in `app/package.json`); parsing needs no browser,
+      so mermaid-cli wasn't needed. Mermaid sanitises labels with DOMPurify,
+      which needs jsdom's window. All 16 diagrams parse; a diagram that
+      parses but draws badly still isn't caught.
   - **New pages:**
     - *an index of plan items*: the O, F, H, X and D numbers are cited
       everywhere (`CLAUDE.md`, the developer guide, the dictionary,

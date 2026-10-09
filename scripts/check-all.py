@@ -4,8 +4,8 @@
 First doctor.py, which checks the tools are installed (--quick: those the
 quick checks need). Then the quick checks: each formatter in --check mode, the repo checks
 (check-c-api.py, check-sources.py, check-migrations.py, version.py
---check, check-docs.py, check-user-guide.py, check-developer-guide.py,
-class-dictionary.py --check), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
+--check, check-docs.py, check-mermaid.py, check-user-guide.py,
+check-developer-guide.py, class-dictionary.py --check), the scripts' tests and gitleaks over the history. Then, unless --quick, the builds and
 test suites: the core (CMake debug preset, clang-tidy through lint-cpp.py
 and ctest, then ctest again under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
@@ -19,7 +19,7 @@ Every step runs even after one fails, and a summary at the end lists the
 failures. Exits non-zero if any step failed.
 
 Needs `npm ci` (or `npm install`) run in app/, also for --quick
-(Prettier), and gitleaks. The full run also needs FFmpeg built
+(Prettier, Mermaid), and gitleaks. The full run also needs FFmpeg built
 (scripts/build-ffmpeg.sh), Homebrew's llvm@22 for the fuzzers, and cargo-deny (`cargo install cargo-deny
 --locked`, at the version in .github/workflows/ci.yml).
 
@@ -64,6 +64,7 @@ STEPS = [
     Step("DB migrations", script("check-migrations.py")),
     Step("version number", script("version.py", "--check")),
     Step("docs' paths and links", script("check-docs.py")),
+    Step("docs' diagrams", script("check-mermaid.py")),
     Step("user guide coverage", script("check-user-guide.py")),
     Step("developer guide's map", script("check-developer-guide.py")),
     Step("class dictionary", script("class-dictionary.py", "--check")),

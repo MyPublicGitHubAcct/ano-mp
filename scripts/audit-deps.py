@@ -41,6 +41,11 @@ NPM_IGNORED = {
     # runs in a SvelteKit server; adapter-static prerenders the app, and the
     # webview never runs it. Fixed in Kit 3, a major update (§9.1's npm row).
     "GHSA-pxg6-pf52-xh8x": "SvelteKit 2's server-side cookie parsing, never run",
+    # katex 0.16.x through mermaid (low), a dev dependency for
+    # check-mermaid.py. It only parses the diagrams in our own Markdown,
+    # under jsdom, at check time; katex is never bundled. Fixed by a mermaid
+    # release that accepts katex 0.18.2+.
+    "GHSA-238p-pmpm-9mq7": "katex under mermaid parses only our own diagrams, at check time",
 }
 
 

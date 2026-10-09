@@ -73,7 +73,7 @@ messages (`en.json`) use.
 - Plan items are cited by their numbers (O1–O19, F1–F21, H1–H22, X1–X9),
   which `PLAN.md` and the design notes explain.
 - Diagrams are Mermaid, which GitHub renders, so they are reviewed and
-  diffed like the code.
+  diffed like the code; `scripts/check-mermaid.py` parses each one.
 
 ## Keeping it accurate
 
@@ -82,4 +82,4 @@ commit, as it updates the code's comments. `scripts/check-docs.py` checks
 every path and link here (a link's `#anchor` too), and `scripts/check-developer-guide.py` checks
 that the repository map names every module and nothing that has gone;
 `scripts/class-dictionary.py --check` does the same for the dictionary's
-types. All three run in `scripts/check-all.py --quick` and the pre-commit hook.
+types, and `scripts/check-mermaid.py` parses every diagram. All four run in `scripts/check-all.py --quick` and the pre-commit hook.
