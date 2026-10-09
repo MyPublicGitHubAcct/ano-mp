@@ -110,7 +110,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
-| 89 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 90 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 244 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -1042,11 +1042,17 @@ in `docs/design/`, and D2 links to them rather than repeating them.
       comparison to `check-user-guide.py`, or generate the appendix from
       one list that the menus, the shortcuts sheet (F6) and the guide
       share;
-    - a Mermaid diagram with a syntax error shows as an error box on
-      GitHub, and no check parses them. Parse every ```` ```mermaid ````
-      block in `check-all.py` with a pinned `@mermaid-js/mermaid-cli`
-      run through npm, as Prettier is (a dev dependency in
-      `app/package.json`).
+    - a Mermaid diagram with a syntax error shows as an error box on GitHub,
+      and no check parses them. Parse every ```` ```mermaid ```` block in
+      `check-all.py` with a pinned `@mermaid-js/mermaid-cli` run through
+      npm, as Prettier is (a dev dependency in `app/package.json`).
+      **Checked by hand 2026-10-09:** all 16 diagrams (11 flowcharts, 5
+      sequence diagrams, all in the developer guide) parse with Mermaid
+      11.4.1, and the sequence messages' generics (`Vec<TrackInfo>`,
+      `Promise<Folder>`) are drawn as plain text, so no doc changed.
+      mermaid-cli's headless Chromium couldn't start in the sandbox, so none
+      was rendered; `mermaid.parse` under jsdom needs no browser and may be
+      enough for the check, which is still to do.
   - **New pages:**
     - *an index of plan items*: the O, F, H, X and D numbers are cited
       everywhere (`CLAUDE.md`, the developer guide, the dictionary,

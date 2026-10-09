@@ -1,7 +1,9 @@
 # Appendix A. Keyboard shortcuts
 
 The same list is in ano-mp: **Help › Keyboard Shortcuts** (⌘/), or
-**Keyboard shortcuts…** in **Settings › General**.
+**Keyboard shortcuts…** in **Settings › General**. It names each menu
+item without its menu, and leaves out the Help window's own keys, which
+work only in that window.
 
 ## Everywhere
 
@@ -53,11 +55,17 @@ In the Help window, ⌘[ (or Esc) goes back to the page before.
 | Select every row | ⌘A |
 | Add a row to the selection | ⌘-click |
 | Select a range of rows | ⇧-click |
+| Keep only the focused row (with several selected) | Esc |
 | Open the selection's menu | ⇧F10 (or right-click) |
 | Open a group, or play from a track | Return |
 | Remove from the queue or playlist | Delete |
+| Cancel dragging | Esc |
 | Back, or leave full screen | Esc |
 | Clear the search box | Esc (in the box) |
+
+Esc does one thing at a time. With several rows selected, it keeps only
+the row you were on and stays where you are; press it again to go back.
+While you drag tracks, it cancels the drag and nothing else.
 
 ## In the visualizer
 
@@ -72,5 +80,6 @@ In the Help window, ⌘[ (or Esc) goes back to the page before.
 
 | Action | Keys |
 |---|---|
-| Next or previous section | ↓ or ↑ (in the list of sections) |
+| Next section | ↓ or → (in the list of sections) |
+| Previous section | ↑ or ← (in the list of sections) |
 | Close Settings | Esc |
