@@ -17,8 +17,10 @@ Before starting:
 - A folder of test music: an MP3 album, a FLAC album, an AAC (`.m4a`)
   album, and a gapless album (a live album or a continuous mix) in any of
   them. A copy, not your only one.
-- Two artists in the test music who share a genre in their tags, so
-  More Like This and Similar artists have something to find.
+- Two artists in the test music whose albums share a genre in their
+  tags and came out within two years of each other (on the same label
+  is better still), so More Like This and Similar artists have something
+  to find: a shared genre alone is only just enough.
 - Media keys: a keyboard with them, or AirPods/headphones with a button.
 - An empty folder for recordings (section 5), for example a new folder
   in Documents.
@@ -86,7 +88,8 @@ Features first.
 - [ ] **Themes.** In Settings › Appearance, under **Themes**, pick
   **Midnight**, then **Paper**, then click **Use the standard theme**.
   Pass: each time the whole window follows at once (sidebar, lists,
-  player bar and Settings), and no text is hard to read.
+  player bar and Settings), and no text is hard to read. The menu bar
+  and macOS's own dialogs keep the system's look.
 - [ ] **An effect.** Turn on **Effects** in Settings › Features (off at
   first). Play a track; in Settings › Effects turn on **Reverb** and
   move its **Mix**, then turn it off again. Pass: the reverb is clearly
@@ -117,14 +120,17 @@ Features first.
 - [ ] **New visualizations.** Open the visualizer and choose
   **Tonnetz**, then **Cymatics**, in its picker. Pass: each draws and
   moves with the music.
-- [ ] **More Like This.** Right-click one of the two artists' albums and
-  choose **More Like This**. Pass: a list of albums from the library
+- [ ] **More Like This.** In **Album artist** under **Library** in the
+  sidebar, right-click one of the two artists' albums and choose **More
+  Like This**. Pass: a list of albums from the library
   opens, each with its reason (the shared genre, an era, a label).
 - [ ] **Recommendations from outside the library.** Turn it on in
   Settings › Features (off at first; Online sources stay on, as in
   section 4). Open the page of the artist whose album you matched in
   section 4 (its **About** says when and where they were born or formed,
-  from MusicBrainz), and click the heart beside their name. Open **Home**. Pass: **Beyond your library**
+  from MusicBrainz), click the heart beside their name, and play two or
+  three of their tracks to past halfway (suggestions come from the
+  artists you heart and play). Open **Home**. Pass: **Beyond your library**
   lists artists not in the library, each saying why; clicking one shows
   links (**MusicBrainz**, **ListenBrainz**) that open in the browser;
   **Not Interested** removes one.

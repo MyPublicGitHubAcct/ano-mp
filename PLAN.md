@@ -879,6 +879,13 @@ acts, off by default if it changes what is heard or goes online.
     (no cache to keep in step).
   - Left to check in the app: recommendations that make sense on the
     owner's library (the exit), and whether the weights want tuning.
+  - [ ] **To do** (found 2026-10-09, writing the smoke test's pass over
+    Phase 7b): "More Like This" is on an album's menu in the library's
+    views and in search results only (`albumFeatureItems`). Add it to
+    album cards' menu (`AlbumCards.svelte`: Home, Favourites, album
+    pages' rows, the More Like This dialog) and the artist page's
+    albums (`ArtistPage.svelte`'s `albumMenu`), as the user guide says;
+    then the smoke test may right-click any album.
 - [x] **X5 Recommendations from outside the library.** Artists and
   releases the user doesn't own, seeded from their library and history:
   candidates are ListenBrainz's similar-artist and recommendation data
