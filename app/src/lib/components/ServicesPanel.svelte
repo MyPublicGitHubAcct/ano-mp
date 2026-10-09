@@ -160,6 +160,7 @@
       <h3 id="general-heading">{t("services.general")}</h3>
       <label class="switch">
         <input
+          id="setting-onlineServices"
           type="checkbox"
           checked={settings.online}
           disabled={saving}
@@ -172,6 +173,7 @@
       </label>
       <label class="switch">
         <input
+          id="setting-autoMatch"
           type="checkbox"
           checked={settings.autoMatch}
           disabled={saving}
@@ -186,7 +188,7 @@
 
     <section aria-labelledby="sources-heading">
       <h3 id="sources-heading">{t("services.sources")}</h3>
-      <ul class="sources">
+      <ul class="sources" id="setting-sourceList">
         {#each data.sources as info (info.id)}
           {@const source = sourceSettings(info.id)}
           {@const state = status(info)}
@@ -260,7 +262,7 @@
     <section aria-labelledby="order-heading">
       <h3 id="order-heading">{t("services.order")}</h3>
       <p class="muted small">{t("services.orderHint")}</p>
-      <div class="orders">
+      <div class="orders" id="setting-sourceOrder">
         {#each KINDS as { kind, name, about } (kind)}
           <div class="order">
             <h4>{name}</h4>

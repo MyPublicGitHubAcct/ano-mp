@@ -377,9 +377,11 @@ single-page app per window.
 - `+layout.ts`: reads the settings and the theme before any page
   renders, and starts logging the page's errors.
 - `+layout.svelte`: global styles: the theme's custom properties and the
-  base look of controls, and reduced motion.
+  base look of controls, a found feature's highlight (`.found`), and
+  reduced motion.
 - `+page.svelte`: the main window: sidebar, browser, queue and playing
-  bar; menu events, dropped files, the welcome view.
+  bar; menu events (run by `pageActions.ts`), dropped files, the welcome
+  view.
 - `mini/+page.svelte`: the mini player window: the playing bar alone.
 - `help/+page.svelte`: the Help window: the user guide's pages, parsed
   by `guide.ts`, drawn with ordinary elements.
@@ -395,6 +397,12 @@ single-page app per window.
 - `effects.ts`: the effects' presets, slider scales and value display.
 - `equaliser.ts`: the equaliser's presets and band labels.
 - `featureMenu.ts`: the menu items the optional features add.
+- `find.ts`: finding a feature from the search box (X9): the index of
+  views, Settings sections and settings, menu items and switches, its
+  matching and ranking, and where each result opens. Pure, for `npm test`.
+- `landOn.ts`: scrolls to a found control, highlights it and focuses it.
+- `pageActions.ts`: the menu bar's page items (`PAGE_ITEMS`), run for the
+  menu and for a found feature, and `openFound`.
 - `trackMenu.ts`: the menu for one track or a selection.
 - `workbench.ts`: the effects workbench's choices (what Play and Record
   do) and the audio file extensions the open dialogs offer.
@@ -444,8 +452,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `visualizer.svelte.ts`: which visualization, full screen, its caption.
 - `drag.svelte.ts`: dragging tracks onto playlists and the queue
   (pointer events, not HTML drag and drop).
-- `ui.svelte.ts`: the main view, the settings section, menus and
-  dialogs.
+- `ui.svelte.ts`: the main view, the settings section (and the control
+  a found feature lands on), menus and dialogs.
 - `toasts.svelte.ts`: short messages; `attempt` turns a failed command
   into one.
 - `updates.svelte.ts`: newer releases.
@@ -460,7 +468,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `VirtualList.svelte`: renders only the rows in view and asks for the
   pages it needs; selection and keyboard.
 - `TrackText.svelte`: a track row's text and columns.
-- `SearchResults.svelte`: search results, 150 ms after typing stops.
+- `SearchResults.svelte`: search results, 150 ms after typing stops,
+  with the features `find.ts` finds above them.
 - `HomeView.svelte`: Home's sections, each while its feature is on.
 - `ArtistsView.svelte`: every artist, filterable.
 - `ArtistPage.svelte`: an artist's page: facts, biography, albums.
@@ -497,7 +506,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `VisualizerView.svelte`: the visualizer's view, picker and controls.
 - `WelcomeView.svelte`: the first run (no folders yet).
 - `MissingFolders.svelte`: folders that can't be read, and what to do.
-- `SettingsPage.svelte`: Settings' sections (`ALL_SECTIONS`).
+- `SettingsPage.svelte`: Settings' sections (`ALL_SECTIONS`); lands on
+  a found feature's control.
 - `ServicesPanel.svelte`: Settings › Online sources.
 - `Dialog.svelte`: a modal dialog (the native `<dialog>`).
 - `Dialogs.svelte`: whichever dialog `ui.dialog` asks for.

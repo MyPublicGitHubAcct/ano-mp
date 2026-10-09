@@ -151,6 +151,27 @@ Click an artist to open their page, an album to open it, or a track to play
 its album from that track. ⌘-click and ⇧-click select several tracks for
 the menu. Clear the box, or press Esc, to leave the results.
 
+### Finding a setting or a feature
+
+The search box finds ano-mp's own features as well as your music: the
+sidebar's views, each section of Settings and each setting in it, the
+menu bar's items, every switch in **Settings › Features**, and the **Sleep
+timer**. They show above the music under **Features**, from two letters
+on, each with where it lives (**Crossfade** says "Settings › Playback");
+**More features** shows the rest. A word matches the start of any word in
+a name, whatever its case or accents, so "cross" finds **Crossfade** and
+"eq" finds **Equaliser**. Some have other words too: "dark mode" finds
+**Appearance**, and "scrobble" finds **Send listens to ListenBrainz**.
+
+Click one to go there. A view opens; a setting opens its section of
+Settings, scrolled to the setting, which is highlighted for a moment and
+takes the keyboard focus, so VoiceOver reads it. A switch says whether it
+is **On** or **Off**. Anything that shows only while a feature is on (such
+as **Appearance**, while **Themes** is off) says **Off** and opens at that
+feature's switch instead. Finding a feature never turns it on.
+
+<!-- Screenshot: the search results for "cross", with Features above the music. -->
+
 ## Artist pages
 
 Open an artist from **Artists**, from the artist's name inside a view, from

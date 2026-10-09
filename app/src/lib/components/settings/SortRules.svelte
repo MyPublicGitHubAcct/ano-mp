@@ -174,7 +174,7 @@
 {#if data && draft}
   <div class="editor">
     <div class="rules">
-      <ul class="card" aria-label={t("sort.views")}>
+      <ul class="card" id="setting-libraryViews" aria-label={t("sort.views")}>
         {#each data.rules as rule (rule.id)}
           <li>
             <button class:selected={!isNew && rule.id === selectedId} onclick={() => select(rule)}>
@@ -261,6 +261,7 @@
   <form class="field articles" onsubmit={saveArticles}>
     <span class="control">
       <input
+        id="setting-skippedWords"
         type="text"
         bind:value={articles}
         placeholder={t("sort.skippedPlaceholder")}

@@ -262,6 +262,13 @@ Svelte component · [`app/src/lib/components/FavouritesView.svelte`](../../app/s
 Everything hearted (F3), newest first: artists, albums and tracks,
 playable and draggable like any list.
 
+### `FeatureKey`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+A field of `FeatureSettings`: an optional feature's switch or option,
+which an index entry is, or needs on to be shown.
+
 ### `FeaturesOptions`
 
 Svelte component · [`app/src/lib/components/settings/FeaturesOptions.svelte`](../../app/src/lib/components/settings/FeaturesOptions.svelte) · [D2: Settings and features](../developer-guide/06-rust-backend.md#settings-and-features)
@@ -286,6 +293,23 @@ Svelte component · [`app/src/lib/components/FindDetailsDialog.svelte`](../../ap
 first, to pick, reject all, or go back to automatic, per source; shows
 Discogs' credit with its results.
 
+### `FindEntry`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+An entry of the search box's index of features (X9): its id (and so its
+synonyms' key, `find.synonyms.<id>`), its label's key, the keys of where
+it lives, its `Place`, the features it needs, and the switch, Settings
+section or menu item it is, which the coverage test reads.
+
+### `FindView`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+The views a found feature opens: Home, Favourites, Artists, History,
+Library health, the effects workbench, Now Playing, the visualizer, the
+queue, the library and Settings.
+
 ### `FlashGuard`
 
 TS class · [`app/src/lib/visualizer/safety.ts`](../../app/src/lib/visualizer/safety.ts) · [D2: The visualizer](../developer-guide/07-frontend.md#the-visualizer)
@@ -300,6 +324,14 @@ Svelte component · [`app/src/lib/components/Fold.svelte`](../../app/src/lib/com
 
 A section that folds away under its heading, closed until opened;
 remembers the viewer's choice under a key.
+
+### `Found`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+One result of `find`: the entry, where it opens (`target`: its place,
+or the switch of the feature it needs while that is off), and whether it
+is on or off, or neither.
 
 ### `Frame`
 
@@ -420,6 +452,14 @@ One change to the queue's list, as Rust's `Edit` sends it; `queueEdits.ts`
 applies them by `listVersion` and asks for the whole state when it misses
 one.
 
+### `Lookup`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+A message's text by key, or null when the catalogue has none; how
+`find` reads labels and synonyms without importing the catalogue, so it
+stays pure.
+
 ### `LoopControls`
 
 Svelte component · [`app/src/lib/components/LoopControls.svelte`](../../app/src/lib/components/LoopControls.svelte)
@@ -536,6 +576,13 @@ TS type · [`app/src/lib/guide.ts`](../../app/src/lib/guide.ts) · [D2: Windows 
 
 A parsed user guide page: its file name, title and blocks.
 
+### `PageAction`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+The id of a menu bar item the page runs (`shell/menu.rs`'s
+`PAGE_ITEMS`), as `pageActions.ts`'s `runPageAction` takes it.
+
 ### `Palette`
 
 TS type · [`app/src/lib/visualizer/types.ts`](../../app/src/lib/visualizer/types.ts) · [D2: The visualizer](../developer-guide/07-frontend.md#the-visualizer)
@@ -548,6 +595,14 @@ and a dark shade for backgrounds.
 TS type · [`app/src/lib/i18n/index.ts`](../../app/src/lib/i18n/index.ts)
 
 A message's placeholder values, by name.
+
+### `Place`
+
+TS type · [`app/src/lib/find.ts`](../../app/src/lib/find.ts) · [D2: Finding a feature](../developer-guide/07-frontend.md#finding-a-feature)
+
+Where a found feature opens: a view, a Settings section and the id of a
+control in it, a menu item's action, the sidebar's playlists, or the
+player bar's sleep timer.
 
 ### `PlayAction`
 
@@ -664,8 +719,8 @@ Route · [`app/src/routes/+page.svelte`](../../app/src/routes/+page.svelte) · [
 
 The main window: sidebar, the main view, the queue and the now-playing
 bar, adapting to narrow windows; the welcome view for a library without
-folders. Handles the menu bar's `menu` events and files dropped on the
-window.
+folders. Handles the menu bar's `menu` events (run by `pageActions.ts`)
+and files dropped on the window.
 
 ### `routes/dev/+page.svelte`
 
@@ -702,7 +757,8 @@ the palette and settings.
 Svelte component · [`app/src/lib/components/SearchResults.svelte`](../../app/src/lib/components/SearchResults.svelte) · [D2: A search keystroke](../developer-guide/08-flows.md#a-search-keystroke)
 
 Search results, fetched 150 ms after typing stops, in artists, albums and
-tracks, with field filters (`artist:`, `year:`…) and multi-select.
+tracks, with field filters (`artist:`, `year:`…) and multi-select. Above
+them, the features `find.ts` finds (X9), each opened by `openFound`.
 
 ### `SeekBar`
 
@@ -733,6 +789,8 @@ Svelte component · [`app/src/lib/components/SettingsPage.svelte`](../../app/src
 
 The settings view (⌘,): its sections down the side, each a component;
 every change saves as it is made. The sections share `Options`' styles.
+Lands on a found feature's control (`ui.settingsControl`) once its section
+draws it.
 
 ### `SettingsSection`
 
@@ -901,8 +959,10 @@ Short messages at the bottom of the window: command errors (through
 
 State module (`ui`) · [`app/src/lib/state/ui.svelte.ts`](../../app/src/lib/state/ui.svelte.ts) · [D2: State stores](../developer-guide/07-frontend.md#state-stores)
 
-Layout and transient UI state: the main view, the settings section, the
-dialog, the context menu, panels, and preferences remembered per viewer.
+Layout and transient UI state: the main view, the settings section (and
+the control a found feature lands on), the dialog, the context menu,
+panels, the reveals of the sidebar's playlists and the sleep timer, and
+preferences remembered per viewer.
 
 ### `state/updates.svelte.ts`
 

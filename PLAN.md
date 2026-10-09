@@ -12,7 +12,9 @@ added 2026-10-03) follows Phase 7, before the ports; X1 (themes), X2
 (recommendations from outside the library), X6 (recording) and X7
 (similar artists) were built early, at the owner's request. X8 (an
 effects workbench, added 2026-10-04) is built and passed its exit
-check in the app, in a sandboxed bundle too (2026-10-08). Phase 7c (user and developer
+check in the app, in a sandboxed bundle too (2026-10-08); X9 (search
+that finds features, added 2026-10-08) is built and passed its exit
+check in the app (2026-10-08). Phase 7c (user and developer
 documentation and a dictionary of classes, added 2026-10-04) is under way: D1's user guide is written, checked and bundled in the app (Help ›
 ano-mp Help), and waits on its screenshots and its exit check; D2's
 developer guide is written and checked (`docs/developer-guide/`), and
@@ -108,7 +110,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
-| 72 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 88 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 235 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -243,12 +245,13 @@ sets priorities rather than open questions.
    and where it differs from the proposal. What remains is checking them
    in the app (Phase 6c's exit).
 8. **Personalisation, effects and discovery: added 2026-10-03 at P3.**
-   X1–X8 (Phase 7b): themes, real-time effects, ten uncommon
+   X1–X9 (Phase 7b): themes, real-time effects, ten uncommon
    visualizations (X3, five more added 2026-10-04), recommendations from inside and outside the
    library, recording what is playing to a file (X6, added
    2026-10-04), similar artists on artist pages, and an effects
    workbench that plays one file through the effects and records it
-   (X8, added 2026-10-04). Low priority: after Phase 7's exit and the first release, but
+   (X8, added 2026-10-04), and search that finds the app's features
+   (X9, added 2026-10-08). Low priority: after Phase 7's exit and the first release, but
    before the cross-platform work (Phases 8–10), so the ports carry them.
    #6's rules apply; X2, X5 and X6 are off by default (they change what is
    heard, go online and write large files).
@@ -582,7 +585,7 @@ The open items and parts:
 
 ### Phase 7b — Personalisation, effects and discovery (macOS)
 Added 2026-10-03 at the owner's request. **Priority: P3 (§4 #8)**: none of
-X1–X8 is needed for a release, and none starts before Phase 7's exit. They
+X1–X9 is needed for a release, and none starts before Phase 7's exit. They
 come before the ports (Phases 8–10), so each is built and settled once on
 macOS and then ported with the rest of the app. Each is an optional feature
 under §4 #6's rules: a switch in `FeatureSettings` that it checks where it
@@ -598,6 +601,7 @@ acts, off by default if it changes what is heard or goes online.
 | X6 | Record what is playing to a file (WAV, AIFF, FLAC, ALAC, AAC, MP3) | core, C API, Rust, settings, UI | M |
 | X7 | Similar artists on artist pages | Rust, UI | S (after X4; X5 for outside ones) |
 | X8 | Effects workbench: pick a file, play it through the effects, record the result | UI, Rust (core and C API only for offline rendering) | M |
+| X9 | Find a feature: search finds settings, views and switches and opens them | UI | S–M |
 
 - [x] **X1 Themes.** The UI's colours, fonts, density, corner radius and
   the cover-derived accent become design tokens (CSS custom properties on
@@ -1267,6 +1271,105 @@ acts, off by default if it changes what is heard or goes online.
     queue agreed. The same steps twice more kept it. No code path found
     that removes an item but `queue_remove`; if it comes back, note what
     the queue view showed and whether anything was selected in it.
+- [x] **X9 Find a feature.** Added 2026-10-08 at the owner's request:
+  the search box finds the app's features as well as its music, so a
+  user who knows what they want ("crossfade", "equaliser", "record",
+  "sleep timer") but not where it lives gets there in one step. Frontend
+  only: no core, C API, Rust or database work.
+  - **Decided** (owner, 2026-10-08): results show as a **Features group**
+    in the search results, not a ⌘K palette (no new view, found by anyone
+    who already searches; a palette can come later on the same index);
+    **each setting** inside a section gets an entry, not only sections and
+    switches, each checked by a test that its control's id is in its
+    section's component; and **no switch**: it is local, cheap and changes
+    nothing heard, and a `FeatureSettings` field is Rust, which would
+    break "frontend only".
+  - **Built** 2026-10-08 (frontend only, as planned). The index is
+    `lib/find.ts`, pure so `npm test` runs it: 137 entries, one for each
+    sidebar item, each Settings section and each setting in it (the eight
+    effects included), each `PAGE_ITEMS` menu item, each `FeatureSettings`
+    field, and the player bar's sleep timer (in the Controls menu, whose
+    items Rust runs, so in none of `check-user-guide.py`'s lists; added
+    since the entry names it). Each has its label's `en.json` key, the
+    keys of where it lives, its `Place` and the features it `needs`;
+    synonyms are `find.synonyms.<id>` (62 so far: "EQ", "dark mode",
+    "scrobble", "tags"…). `find` folds case and accents (NFD, marks
+    stripped), needs two letters, matches each query word to the start of
+    a word, and ranks a label above a synonym above the place (where it
+    lives with the label, so "playback crossfade" works), each from the
+    text's first word before a later one, then in the index's order
+    (sidebar, sections with their settings, menu, switches). `target`
+    chooses where a result opens: its place, or, while every feature it
+    needs is off, that feature's switch in Settings › Features; it never
+    changes a setting (§4 #6). Results that would open in the same place
+    show once (with Recording off, its section and its five settings are
+    one "Off" result).
+  - **Opening** (`lib/pageActions.ts`'s `openFound`): a view through
+    `showView`, then the focus to the main area; a menu item through
+    `runPageAction`, the menu's dispatch moved out of `+page.svelte` so
+    both call it; a setting through `ui.showSettings(section, control)`,
+    after which `SettingsPage.svelte` waits up to about a second for the
+    section to draw the element (Sorting and Online sources load first;
+    else it lands on the section's tab) and `lib/landOn.ts` scrolls to it,
+    gives its row `.found` for two seconds (`--selected` and an `--accent`
+    ring, fading out except under Reduce Motion, in `+layout.svelte`) and
+    focuses its control: the checked choice of a group, or the row itself
+    when the control is disabled. Playlists and the sleep timer go through
+    counters in `ui` that `Sidebar.svelte` (opening the fold) and
+    `NowPlayingBar.svelte` (opening the panel) watch. Controls got stable
+    ids: `setting-<name>` (or the ids Appearance had), `feature-<field>`,
+    `effect-<id>`, and the sections' `settings-tab-<id>`.
+  - **UI**: a Features group above Artists in `SearchResults.svelte`,
+    first five with More features, each row its label, where it lives
+    ("Settings › Playback") and On or Off for a switch, or Off for
+    something hidden (whose tooltip says it opens at the switch that turns
+    it on). New `en.json` keys under `find.`: the group's text, where
+    things live (Sidebar, File, Edit, View, Controls, Help, Player bar),
+    and the menu items' labels that had no key (`find.menu.*`; Get Info,
+    the playlist items, Mini player and Keyboard shortcuts reuse theirs).
+    `search.hint` mentions the features.
+  - **Tests** (`tests/find.test.mjs`, 16): folding and word starts, two
+    letters, the three tiers and first-word ranking on a small index, the
+    exit's queries ("cross" → Playback's Crossfade, "eq" → the Equaliser
+    section, "record" and "theme" off → their switches, on → their
+    sections), synonyms, on and off, each kind of place, hidden features
+    opening at their switch with the settings object unchanged, no two
+    results in one place, no /dev entry; and coverage read from the
+    sources: every sidebar item (with the sidebar's own `on` as its
+    `needs`), every `ALL_SECTIONS` section (the hidden ones as
+    `SettingsPage.svelte` hides them), every `FeatureSettings` field with
+    `check-user-guide.py`'s label (`SWITCH_LABELS`), every `PAGE_ITEMS` id
+    with an entry and a case in `runPageAction`, every label, place and
+    synonym key in `en.json`, and every control id in its section's
+    component.
+  - **Known limits:** nothing lists the settings inside a section, so a
+    new setting without an entry fails no test (the recipe in
+    `docs/developer-guide/11-recipes.md` says to add one). The library's
+    own search isn't music-free at two letters, as the plan supposed: its
+    word index matches word starts from one letter (only its
+    match-anywhere trigrams wait for three, F12), so a two-letter query
+    can show music under the features; unchanged. Not indexed: the
+    Controls menu's other items (play, shuffle, repeat, Stop After, Record:
+    their switches and the player bar cover them), the library views and
+    playlists by name (the user's own), and the user guide's pages.
+    Recording's Bitrate and Samples share one id, as only one shows for a
+    format. A disabled control (the equaliser's, while it is off) leaves
+    the focus on its row, so VoiceOver reads the row's text. Results are
+    reached with Tab from the search box; Return doesn't open the first.
+  - **Checked in the app** 2026-10-08 (`tauri dev`, the owner): "cross"
+    first finds Playback's Crossfade and lands on it, highlighted and
+    focused, with VoiceOver reading its label; "eq" first finds the
+    Equaliser section, VoiceOver reading its tab; "record" with Recording
+    off shows Off and opens at its switch without turning it on, and with
+    it on opens Settings › Recording; "theme" opens Appearance's Themes
+    with Themes on, and shows Off and opens at its switch with them off; a
+    switch's On and Off ("lyrics"), a menu item ("get info"), "playlists"
+    opening the sidebar's fold, "sleep" opening the sleep timer, and the
+    highlight without its fade under Reduce Motion.
+  - **Exit:** in the app, "cross", "eq", "record" and "theme" each put
+    the right place first; opening one lands on its control with
+    VoiceOver reading it; a feature that is off shows as off and opens
+    at its switch.
 - **Exit (to check in the app)**: a theme edited, saved, exported and
   imported on another Mac, with VoiceOver and high contrast still usable;
   each effect by ear, including during a gapless hand-off, a crossfade
@@ -1277,7 +1380,7 @@ acts, off by default if it changes what is heard or goes online.
   a recording across a gapless album, a crossfade and a pause, played
   back in another app without gaps or clicks;
   similar artists that make sense on the owner's library, with and
-  without X5; X8's exit (passed 2026-10-08).
+  without X5; X8's exit (passed 2026-10-08); X9's exit (passed 2026-10-08).
 
 ### Phase 7c — Documentation
 Added 2026-10-04 at the owner's request. The repo documents decisions

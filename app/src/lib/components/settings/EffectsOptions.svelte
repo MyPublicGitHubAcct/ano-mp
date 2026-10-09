@@ -106,6 +106,7 @@
     <span class="label">{t("effects.preset")}</span>
     <span class="control">
       <select
+        id="setting-effectsPreset"
         value=""
         disabled={appSettings.saving || catalog.length === 0}
         onchange={(event) => {

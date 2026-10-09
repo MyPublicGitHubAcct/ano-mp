@@ -108,6 +108,16 @@
     color: var(--text-muted);
   }
 
+  /* A found feature's row (PLAN.md X9, lib/landOn.ts), fading back when it lets go. */
+  :global(.found) {
+    background: var(--selected);
+    box-shadow: 0 0 0 2px var(--accent);
+    border-radius: var(--radius);
+    transition:
+      background-color 0.6s ease,
+      box-shadow 0.6s ease;
+  }
+
   /* Motion only for those who haven't asked for less (PLAN.md F18). */
   @media (prefers-reduced-motion: reduce) {
     :global(*, *::before, *::after) {
@@ -115,6 +125,10 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+
+    :global(.found) {
+      transition: none;
     }
   }
 </style>

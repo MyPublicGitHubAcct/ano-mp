@@ -13,6 +13,7 @@
   import { effects } from "$lib/state/effects.svelte";
   import { recording } from "$lib/state/recording.svelte";
   import { formatTime } from "$lib/format";
+  import { landOn } from "$lib/landOn";
   import { attempt } from "$lib/state/toasts.svelte";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
@@ -74,6 +75,20 @@
   });
 
   const togglePanel = (which: "signal" | "practice" | "sleep") => (panel = panel === which ? null : which);
+
+  // The sleep timer found from the search box (PLAN.md X9): opened, and its button landed on.
+  let sleepButton = $state<HTMLButtonElement | null>(null);
+  let sleepRevealed = ui.sleepTimerReveal;
+  $effect(() => {
+    const reveal = ui.sleepTimerReveal;
+    if (mini || reveal === sleepRevealed) return;
+    sleepRevealed = reveal;
+    panel = "sleep";
+    const frame = requestAnimationFrame(() => {
+      if (sleepButton) landOn(sleepButton);
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 
   /** Says the track is opening once that has taken a while (most open
       within milliseconds, and a flash at every change would distract). */
@@ -262,6 +277,7 @@
         title={sleeping ? t("bar.sleepOn") : t("bar.sleep")}
         aria-label={t("bar.sleep")}
         aria-expanded={panel === "sleep"}
+        bind:this={sleepButton}
         onclick={() => togglePanel("sleep")}><Icon name="moon" /></button
       >
     {/if}

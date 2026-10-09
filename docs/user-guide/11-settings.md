@@ -3,7 +3,9 @@
 Open Settings with **ano-mp › Settings…** (⌘,), or **Settings** at the
 bottom of the sidebar. The sections are listed down the side (along the top
 on a narrow window); ↑ and ↓ move between them, and Esc closes Settings.
-Every change is saved as you make it.
+Every change is saved as you make it. To go straight to one setting, type
+its name in the **Search** box: it opens here, at the setting (see
+[Finding a setting or a feature](02-finding-music.md#finding-a-setting-or-a-feature)).
 
 This chapter goes through each section in order: what each option changes.
 The [settings reference](settings-reference.md) lists every setting with

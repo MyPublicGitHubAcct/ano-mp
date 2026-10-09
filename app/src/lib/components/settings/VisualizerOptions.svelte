@@ -33,6 +33,7 @@
   <span class="label">{t("vizOptions.visualization")}</span>
   <span class="control">
     <select
+      id="setting-visualization"
       value={chosen.id}
       disabled={appSettings.saving}
       onchange={(event) => {
@@ -52,6 +53,7 @@
   <span class="label">{t("vizOptions.cycle")}</span>
   <span class="control">
     <select
+      id="setting-visualizerCycle"
       value={String(settings.cycleSeconds)}
       disabled={appSettings.saving}
       onchange={(event) => {
@@ -69,7 +71,7 @@
 
 <div class="field">
   <span class="label">{t("vizOptions.coverWall")}</span>
-  <span class="control" role="radiogroup" aria-label={t("vizOptions.coverWallShows")}>
+  <span class="control" id="setting-coverWall" role="radiogroup" aria-label={t("vizOptions.coverWallShows")}>
     {#each [["year", t("vizOptions.sameYear")], ["artist", t("vizOptions.sameArtist")]] as const as [basis, name] (basis)}
       <label class="switch">
         <input
@@ -90,6 +92,7 @@
   <span class="label">{t("vizOptions.frameRate")}</span>
   <span class="control">
     <select
+      id="setting-frameRate"
       value={String(settings.frameRate)}
       disabled={appSettings.saving}
       onchange={(event) => {
@@ -109,6 +112,7 @@
   <span class="label">{t("vizOptions.sensitivity")}</span>
   <span class="control">
     <input
+      id="setting-sensitivity"
       type="range"
       min="0.25"
       max="4"
@@ -127,6 +131,7 @@
 
 <label class="switch">
   <input
+    id="setting-coverColours"
     type="checkbox"
     checked={settings.colorsFromCover}
     disabled={appSettings.saving}
@@ -143,6 +148,7 @@
 
 <label class="switch">
   <input
+    id="setting-calm"
     type="checkbox"
     checked={settings.calm}
     disabled={appSettings.saving}

@@ -8,6 +8,10 @@
   //
   // ⌘-click (Ctrl elsewhere) and Shift-click select several tracks, which
   // the menu then acts on, and tracks drag onto playlists (F4).
+  //
+  // Above them, from two letters, the app's own features (PLAN.md X9,
+  // `lib/find.ts`): views, settings, menu items and switches, each saying
+  // where it lives and whether it is off; one opens at its control.
   import { untrack } from "svelte";
   import {
     library as api,
@@ -19,13 +23,16 @@
     type Track,
   } from "$lib/api";
   import { albumFeatureItems, artistFeatureItems } from "$lib/featureMenu";
+  import { find } from "$lib/find";
   import { fileName } from "$lib/format";
-  import { count, t } from "$lib/i18n";
+  import { count, has, t } from "$lib/i18n";
+  import { openFound } from "$lib/pageActions";
   import { click, emptySelection, rowsFor, type Selection } from "$lib/selection";
   import { collection } from "$lib/state/collection.svelte";
   import { drag } from "$lib/state/drag.svelte";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { player } from "$lib/state/player.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
   import { dragLabel, playlistItems, trackMenu } from "$lib/trackMenu";
@@ -35,6 +42,13 @@
 
   const FIRST = { artists: 6, albums: 12, tracks: 50 };
   const MORE = 50;
+  const FIRST_FEATURES = 5;
+
+  const lookup = (key: string) => (has(key) ? t(key) : null);
+  const features = $derived(find(library.query, lookup, appSettings.current.features));
+  /** The query whose features are all shown ("More features"). */
+  let allFeaturesFor = $state<string | null>(null);
+  const shownFeatures = $derived(allFeaturesFor === library.query ? features : features.slice(0, FIRST_FEATURES));
 
   let results = $state.raw<SearchResults | null>(null);
   let selection = $state<Selection>(emptySelection);
@@ -185,9 +199,37 @@
 </script>
 
 <section class="results" aria-live="polite">
+  {#if features.length > 0}
+    <h3>{t("find.title")} <span class="muted">{features.length}</span></h3>
+    <ul class="features" aria-label={t("find.title")}>
+      {#each shownFeatures as result (result.entry.id)}
+        <li>
+          <button
+            class="feature"
+            title={result.state === "off" && !result.entry.feature ? t("find.offHint") : undefined}
+            onclick={() => openFound(result.target)}
+          >
+            <span class="text">
+              <span class="name">{t(result.entry.label)}</span>
+              <span class="muted small">{result.entry.where.map((key) => t(key)).join(" › ")}</span>
+            </span>
+            {#if result.state !== null}
+              <span class="state" class:on={result.state === "on"}>
+                {t(result.state === "on" ? "find.on" : "find.off")}
+              </span>
+            {/if}
+          </button>
+        </li>
+      {/each}
+    </ul>
+    {#if shownFeatures.length < features.length}
+      <button class="link" onclick={() => (allFeaturesFor = library.query)}>{t("find.more")}</button>
+    {/if}
+  {/if}
+
   {#if results === null}
     <p class="muted status">{t("search.searching")}</p>
-  {:else if results.artistTotal + results.albumTotal + results.trackTotal === 0}
+  {:else if results.artistTotal + results.albumTotal + results.trackTotal + features.length === 0}
     <p class="muted status">{t("search.none", { query: library.query.trim() })}</p>
     <p class="muted hint">{t("search.hint")}</p>
   {:else}
@@ -344,6 +386,44 @@
     background: none;
     text-align: left;
     border-radius: var(--radius);
+  }
+
+  .feature {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 40rem;
+    padding: 0.3rem 0.5rem;
+    border: none;
+    background: none;
+    text-align: left;
+    border-radius: var(--radius);
+  }
+
+  .feature:hover {
+    background: var(--hover);
+  }
+
+  .feature .text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .state {
+    margin-left: auto;
+    flex: none;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+
+  .state.on {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .track-row {

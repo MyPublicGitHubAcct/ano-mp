@@ -14,6 +14,7 @@
 <h3>{t("general.menuBar")}</h3>
 <label class="switch">
   <input
+    id="setting-menuBarControls"
     type="checkbox"
     checked={window.menuBarControls}
     onchange={(event) => {
@@ -30,6 +31,7 @@
 <h3>{t("general.miniPlayer")}</h3>
 <label class="switch">
   <input
+    id="setting-miniPlayerOnTop"
     type="checkbox"
     checked={window.miniPlayerOnTop}
     onchange={(event) => {
@@ -49,6 +51,7 @@
 <h3>{t("general.notifications")}</h3>
 <label class="switch">
   <input
+    id="setting-trackNotifications"
     type="checkbox"
     checked={window.trackNotifications}
     onchange={(event) => {

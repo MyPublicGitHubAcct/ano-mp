@@ -103,7 +103,14 @@ tests in `core/tests/CMakeLists.txt`; there is no globbing, and
 4. **The control** in its Settings section
    (`lib/components/settings/*.svelte`), saved through
    `appSettings.save(next => …)`, labelled from `en.json`.
-5. **The user guide**: its section in `11-settings.md`.
+5. **Its entry in the search box's index** (`lib/find.ts`, X9):
+   `setting(section, name, label)` after its section's other settings,
+   and `id="setting-<name>"` on the control, so a search lands on it.
+   `tests/find.test.mjs` fails when an entry's id isn't in its section's
+   component, but nothing lists a section's settings, so it can't tell
+   that a setting has no entry. Synonyms, if any, go in
+   `find.synonyms.setting.<name>`.
+6. **The user guide**: its section in `11-settings.md`.
 
 ## A feature switch
 
@@ -120,11 +127,64 @@ An optional feature (O1–O19's kind) is a setting with rules of its own:
 3. Its label is `feature.<field>` in `en.json` (or list another key in
    `check-user-guide.py`'s `SWITCH_LABELS`), shown in
    `FeaturesOptions.svelte`.
-4. Its `guide.rs` row, the bindings regenerated, and the user guide
+4. **Its entry in the search box's index**: `toggle(field)` in
+   `lib/find.ts` (with the label key, if it isn't `feature.<field>`),
+   and `id="feature-<field>"` on its control; a switch in one of
+   `FeaturesOptions.svelte`'s lists gets the id from the list. Anything
+   the feature adds (a view, a Settings section) lists it in its entry's
+   `needs`, so while it is off a search opens at its switch.
+   `tests/find.test.mjs` fails on a field without an entry.
+5. Its `guide.rs` row, the bindings regenerated, and the user guide
    names it (`check-user-guide.py` checks every `FeatureSettings` field).
 5. If it goes online, it goes through `http::Client`, and the privacy
    chapter of the user guide says what it sends. If it listens on the
    network, it needs the security review in `PLAN.md` §8.1.
+
+## A Settings section
+
+1. Its id in `ui.svelte.ts`'s `SettingsSection`, an entry in
+   `SettingsPage.svelte`'s `ALL_SECTIONS` (`settings.<id>` and
+   `settings.<id>About` in `en.json`), and its component
+   (`lib/components/settings/`) in the page's `{#if section.id === …}`
+   chain. If a feature hides it, add it to the `SECTIONS` filter.
+2. **Its entries in the search box's index** (`lib/find.ts`): its name
+   in `SECTION_NAMES`, `section(id)`, and a `setting(…)` for each
+   setting in it (see [A setting](#a-setting)); a section a feature
+   hides goes in `SECTION_NEEDS`. `tests/find.test.mjs` checks both
+   against `SettingsPage.svelte`.
+3. Its settings' `guide.rs` rows, and a heading in the user guide's
+   `11-settings.md` (`check-user-guide.py` checks).
+
+## A sidebar item
+
+1. In `Sidebar.svelte`: a view in `views` (with the `on` its features
+   need) or an item of its own, named with `t("sidebar.<name>")` so
+   `check-user-guide.py` finds it. A new view is also a `MainView` in
+   `ui.svelte.ts` (and in `OPENED`, if Esc goes back from it) and a
+   branch in `+page.svelte`.
+2. **Its entry in the search box's index**: `view(id, label, place)` in
+   `lib/find.ts`, with the features it needs in `needs`; a new view is
+   also a `FindView` and a case in `pageActions.ts`'s `showView`.
+   `tests/find.test.mjs` fails on an item without an entry, or with
+   `needs` that differ from the sidebar's `on`.
+3. The user guide names it (chapter 2 has the sidebar's views).
+
+## A menu item
+
+Items the page runs are `shell/menu.rs`'s `PAGE_ITEMS` (id, label,
+shortcut), placed in their submenu in `install`, and arrive in the page
+as `menu` events. Items Rust runs itself (play, the sleep timer…) go in
+`handle` instead and need none of steps 2–3.
+
+1. Its `PAGE_ITEMS` entry and its place in a submenu.
+2. Its case in `lib/pageActions.ts`'s `runPageAction`, its id in
+   `lib/find.ts`'s `PageAction`, and **its entry in the search box's
+   index**: `action(id, label, menu)`, labelled by an `en.json` key that
+   says the same (`find.menu.<name>` if none does), or `menu: id` on the
+   entry of the view it shows. `tests/find.test.mjs` fails on an item
+   without an entry or a case.
+3. The user guide names it, and a shortcut goes in
+   `appendix-a-shortcuts.md`.
 
 ## A migration
 

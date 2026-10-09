@@ -4,8 +4,11 @@
   // visualizer, the theme, recording, and the online sources. Sections are listed down the side
   // (along the top when narrow); every change is saved as it's made. The
   // section components share the styles of `Options` (`.field`, `.switch`,
-  // `.hint`…).
+  // `.hint`…). A found feature (PLAN.md X9) opens a section at a control,
+  // by the element id `ui.settingsControl` names (`lib/find.ts`).
+  import { sectionTab } from "$lib/find";
   import { t, type MessageKey } from "$lib/i18n";
+  import { landWhenDrawn } from "$lib/landOn";
   import { appSettings } from "$lib/state/settings.svelte";
   import { ui, type SettingsSection } from "$lib/state/ui.svelte";
   import Icon from "./Icon.svelte";
@@ -50,6 +53,13 @@
   );
 
   const section = $derived(SECTIONS.find((candidate) => candidate.id === ui.settingsSection) ?? SECTIONS[0]);
+
+  // A found feature (PLAN.md X9) lands on its control once the section has drawn it, else on the section's tab.
+  $effect(() => {
+    const control = ui.settingsControl;
+    if (control === null) return;
+    return landWhenDrawn(control, sectionTab(section.id), () => (ui.settingsControl = null));
+  });
 
   function onkeydown(event: KeyboardEvent) {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "ArrowLeft" && event.key !== "ArrowRight")

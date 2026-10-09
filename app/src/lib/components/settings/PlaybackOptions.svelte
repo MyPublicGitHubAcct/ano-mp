@@ -56,6 +56,7 @@
   <span class="label">{t("playback.device")}</span>
   <span class="control">
     <select
+      id="setting-outputDevice"
       value={output.device ?? ""}
       disabled={appSettings.saving || status === null}
       onchange={(event) => {
@@ -81,6 +82,7 @@
   <span class="label">{t("playback.bufferSize")}</span>
   <span class="control">
     <select
+      id="setting-bufferSize"
       value={output.bufferSize === null ? "" : String(output.bufferSize)}
       disabled={appSettings.saving || current === null}
       onchange={(event) => {
@@ -117,7 +119,7 @@
 </p>
 
 <h3>{t("playback.replayGain")}</h3>
-<div class="modes" role="radiogroup" aria-label={t("playback.replayGain")}>
+<div class="modes" id="setting-replayGain" role="radiogroup" aria-label={t("playback.replayGain")}>
   {#each MODES as mode (mode.id)}
     <label class="switch">
       <input
@@ -142,6 +144,7 @@
     <span class="label">{t("eq.preamp")}</span>
     <span class="control">
       <input
+        id="setting-replayGainPreamp"
         type="range"
         min="-15"
         max="15"
@@ -160,6 +163,7 @@
     <span class="label">{t("playback.untagged")}</span>
     <span class="control">
       <input
+        id="setting-untagged"
         type="range"
         min="-15"
         max="15"
@@ -176,6 +180,7 @@
   </label>
   <label class="switch">
     <input
+      id="setting-preventClipping"
       type="checkbox"
       checked={playback.preventClipping}
       onchange={(event) => {
@@ -195,6 +200,7 @@
   <span class="label">{t("playback.crossfade")}</span>
   <span class="control">
     <input
+      id="setting-crossfade"
       type="range"
       min="0"
       max="12"

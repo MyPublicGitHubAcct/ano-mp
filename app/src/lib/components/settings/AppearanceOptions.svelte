@@ -151,7 +151,7 @@
 </script>
 
 <h3>{t("appearance.themes")}</h3>
-<div class="themes" role="radiogroup" aria-label={t("appearance.themes")}>
+<div class="themes" id="setting-theme" role="radiogroup" aria-label={t("appearance.themes")}>
   {#each BUILT_IN as theme (theme.preset)}
     {@render card(theme, true)}
   {/each}
@@ -329,6 +329,7 @@
 
 <label class="switch">
   <input
+    id="setting-accentFromCover"
     type="checkbox"
     checked={shown.accentFromCover}
     disabled={appSettings.saving}
@@ -344,6 +345,7 @@
 </label>
 <label class="switch">
   <input
+    id="setting-systemContrast"
     type="checkbox"
     checked={settings.followSystemContrast}
     disabled={appSettings.saving}

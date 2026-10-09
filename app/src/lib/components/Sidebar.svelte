@@ -10,10 +10,12 @@
   //
   // The Library and Playlists sections fold away under their headings,
   // closed until opened; each viewer's choice is remembered.
+  import { untrack } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { queue, type Folder, type Playlist } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
   import { count, t } from "$lib/i18n";
+  import { landOn } from "$lib/landOn";
   import { collection } from "$lib/state/collection.svelte";
   import { registerDropTarget } from "$lib/state/drag.svelte";
   import { folderName, library } from "$lib/state/library.svelte";
@@ -43,6 +45,22 @@
     playlistsOpen = !playlistsOpen;
     savePreference("fold.sidebar.playlists", playlistsOpen);
   }
+
+  // Playlists found from the search box (PLAN.md X9): opened, and landed on.
+  let playlistsHeading = $state<HTMLButtonElement | null>(null);
+  let playlistsRevealed = ui.playlistsReveal;
+  $effect(() => {
+    const reveal = ui.playlistsReveal;
+    if (reveal === playlistsRevealed) return;
+    playlistsRevealed = reveal;
+    untrack(() => {
+      if (!playlistsOpen) togglePlaylists();
+    });
+    const frame = requestAnimationFrame(() => {
+      if (playlistsHeading) landOn(playlistsHeading);
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 
   const f = $derived(features.on);
   const views = $derived(
@@ -254,6 +272,7 @@
         class:open={playlistsOpen}
         aria-expanded={playlistsOpen}
         aria-controls="sidebar-playlists"
+        bind:this={playlistsHeading}
         onclick={togglePlaylists}
       >
         <Icon name="chevron" size="0.9rem" />

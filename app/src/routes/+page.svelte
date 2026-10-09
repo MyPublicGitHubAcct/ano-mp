@@ -7,9 +7,9 @@
   // folders shows the welcome view (PLAN.md F8).
   //
   // The menu bar's items that are the page's to do arrive as `menu` events
-  // (F6); files and folders dropped from the Finder play or join the library
+  // (F6), run by `lib/pageActions.ts`; files and folders dropped from the Finder play or join the library
   // (F4, F5); track changes are announced to screen readers (F18).
-  import { ask, open } from "@tauri-apps/plugin-dialog";
+  import { ask } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { diagnostics, on, queue, shell } from "$lib/api";
   import { t } from "$lib/i18n";
@@ -43,7 +43,7 @@
   import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
   import { visualizer } from "$lib/state/visualizer.svelte";
   import { features } from "$lib/state/features.svelte";
-  import { AUDIO_EXTENSIONS } from "$lib/workbench";
+  import { runPageAction } from "$lib/pageActions";
   import { updates } from "$lib/state/updates.svelte";
   import HomeView from "$lib/components/HomeView.svelte";
   import HistoryView from "$lib/components/HistoryView.svelte";
@@ -75,7 +75,7 @@
     const stopCollection = collection.connect();
     const stopUpdates = updates.connect();
     const stopRecording = recording.connect();
-    const menu = on("menu", (id) => onMenu(id));
+    const menu = on("menu", (id) => void runPageAction(id));
     const drops = getCurrentWebview().onDragDropEvent((event) => {
       const payload = event.payload;
       if (payload.type === "enter" || payload.type === "over") dropping = true;
@@ -144,96 +144,6 @@
       if (add) await library.addFolderAt(folder);
     }
     if (sorted.files.length === 0 && sorted.folders.length === 0) toasts.show(t("drop.nothing"));
-  }
-
-  /** Plays the current track's album, or the search box, and so on: the menu bar's page items. */
-  async function onMenu(id: string) {
-    ui.menu = null;
-    switch (id) {
-      case "settings":
-        library.query = "";
-        return ui.showSettings();
-      case "add-folder":
-        return library.addFolder();
-      case "open-files": {
-        const paths = await open({
-          multiple: true,
-          filters: [{ name: t("drop.audioFiles"), extensions: AUDIO_EXTENSIONS }],
-        });
-        if (paths && paths.length > 0) await attempt(() => queue.openFiles(paths));
-        return;
-      }
-      case "new-playlist":
-        return collection.newPlaylist();
-      case "new-smart-playlist":
-        ui.dialog = { kind: "smartPlaylist", playlist: null };
-        return;
-      case "import-playlist":
-        return collection.importPlaylist();
-      case "export-playlist": {
-        const playlist = ui.playlistInMain ? collection.byId(ui.playlistId) : null;
-        if (playlist) return collection.exportPlaylist(playlist);
-        return toasts.show(t("menuAction.openPlaylistFirst"), "info");
-      }
-      case "export-data":
-        return collection.exportData();
-      case "import-data": {
-        const settings = await ask(t("menuAction.importSettings"), {
-          title: t("menuAction.importTitle"),
-          okLabel: t("menuAction.importWithSettings"),
-          cancelLabel: t("menuAction.importWithout"),
-        });
-        return collection.importData(settings);
-      }
-      case "find":
-        ui.searchInput?.focus();
-        ui.searchInput?.select();
-        return;
-      case "get-info": {
-        const track = ui.selectedTracks?.()[0];
-        const trackId = track?.id ?? (player.currentItem?.external ? undefined : player.currentItem?.trackId);
-        if (trackId !== undefined) ui.dialog = { kind: "trackInfo", trackId };
-        return;
-      }
-      case "go-to-current":
-        return goToCurrent();
-      case "show-home":
-        library.query = "";
-        return ui.showView("home");
-      case "show-library":
-        library.query = "";
-        return ui.showLibrary();
-      case "show-favourites":
-        library.query = "";
-        return ui.showView("favourites");
-      case "show-now-playing":
-        library.query = "";
-        return ui.showNowPlaying();
-      case "show-queue":
-        library.query = "";
-        return ui.showQueue();
-      case "show-visualizer":
-        library.query = "";
-        return ui.showVisualizer();
-      case "toggle-queue":
-        ui.queueOpen = !ui.queueOpen;
-        return;
-      case "shortcuts":
-        ui.dialog = { kind: "shortcuts" };
-        return;
-    }
-  }
-
-  /** Shows the current track: its album in the browser, and the track in it. */
-  function goToCurrent() {
-    const item = player.currentItem;
-    if (!item) return;
-    library.query = "";
-    if (item.albumId !== null && item.album !== null) {
-      const shown = library.showAlbum({ id: item.albumId, title: item.album, albumArtist: null, albumArtistId: null });
-      if (shown) return;
-    }
-    ui.showNowPlaying();
   }
 
   const typing = (target: EventTarget | null) =>

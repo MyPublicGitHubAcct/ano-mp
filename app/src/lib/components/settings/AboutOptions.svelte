@@ -72,7 +72,7 @@
 {/if}
 <p class="muted">{t("about.noticesHint")}</p>
 <div class="actions">
-  <button onclick={() => (ui.dialog = { kind: "notices" })}>{t("about.notices")}</button>
+  <button id="setting-notices" onclick={() => (ui.dialog = { kind: "notices" })}>{t("about.notices")}</button>
 </div>
 {#if discogsNotice}
   <p class="muted small">{discogsNotice}</p>
@@ -93,7 +93,7 @@
   </p>
 {/if}
 <div class="actions">
-  <button disabled={updates.checking} onclick={() => updates.check()}>
+  <button id="setting-checkUpdates" disabled={updates.checking} onclick={() => updates.check()}>
     {updates.checking ? t("updates.checking") : t("updates.check")}
   </button>
   {#if updates.last?.newer && updates.last.url}
@@ -103,6 +103,7 @@
 </div>
 <label class="switch">
   <input
+    id="feature-updateCheck"
     type="checkbox"
     checked={appSettings.current.features.updateCheck}
     disabled={appSettings.saving}
@@ -120,11 +121,12 @@
 <h3>{t("about.help")}</h3>
 <p class="muted">{t("about.helpHint")}</p>
 <div class="actions">
-  <button onclick={() => attempt(() => diagnostics.showLogs())}>{t("about.showLogs")}</button>
-  <button onclick={copy}>{t("about.copyDiagnostics")}</button>
+  <button id="setting-showLogs" onclick={() => attempt(() => diagnostics.showLogs())}>{t("about.showLogs")}</button>
+  <button id="setting-copyDiagnostics" onclick={copy}>{t("about.copyDiagnostics")}</button>
 </div>
 <label class="switch">
   <input
+    id="setting-detailedLogging"
     type="checkbox"
     checked={detailed === true}
     disabled={detailed === null || changingDetailed}

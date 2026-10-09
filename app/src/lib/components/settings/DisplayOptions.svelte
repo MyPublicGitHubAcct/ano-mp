@@ -52,7 +52,7 @@
 </script>
 
 <h3>{t("display.trackLists")}</h3>
-<div class="field stacked">
+<div class="field stacked" id="setting-trackColumns">
   <OrderedChoices
     options={TRACK_COLUMNS.filter((column) => columnAvailable(column.id, appSettings.current.features))}
     value={display.trackColumns}
@@ -69,7 +69,7 @@
 </div>
 
 <h3>{t("display.albumPages")}</h3>
-<div class="field stacked">
+<div class="field stacked" id="setting-albumFacts">
   <span class="label">{t("display.releaseFacts")}</span>
   <OrderedChoices
     options={ALBUM_FACTS}
@@ -84,6 +84,7 @@
 </div>
 <label class="switch">
   <input
+    id="setting-descriptions"
     type="checkbox"
     checked={display.showDescriptions}
     disabled={appSettings.saving}
@@ -101,6 +102,7 @@
 <h3>{t("display.sidebar")}</h3>
 <label class="switch">
   <input
+    id="setting-sidebarNowPlaying"
     type="checkbox"
     checked={display.sidebarNowPlaying}
     disabled={appSettings.saving}

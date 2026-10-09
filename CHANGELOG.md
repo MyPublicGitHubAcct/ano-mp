@@ -38,6 +38,12 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   ano-mp works with, to trace a problem the normal log can't explain. Keys
   and tokens are never written, and the normal log is unchanged. The file
   is deleted when you turn the switch off or open ano-mp again.
+- Finding a feature: the search box finds ano-mp's settings, views, menu
+  items and feature switches as well as your music, from two letters
+  ("cross" finds Crossfade, "eq" the Equaliser), under Features above the
+  music. Each says where it lives and whether it is off; clicking one opens
+  it, in Settings scrolled to the setting, highlighted and focused. A
+  feature that is off opens at its switch and is never turned on by it.
 - A user guide, in the app under Help › ano-mp Help (bundled, so it works
   offline) and in `docs/user-guide/`: fourteen chapters from adding your
   music to troubleshooting, covering every view, setting, feature and

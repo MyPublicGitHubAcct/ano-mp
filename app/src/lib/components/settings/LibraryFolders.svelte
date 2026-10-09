@@ -113,6 +113,7 @@
 <h3>{t("folders.keepUp")}</h3>
 <label class="switch">
   <input
+    id="setting-rescanAtLaunch"
     type="checkbox"
     checked={settings.rescanAtLaunch}
     onchange={(event) => {
@@ -127,6 +128,7 @@
 </label>
 <label class="switch">
   <input
+    id="setting-watchFolders"
     type="checkbox"
     checked={settings.watchFolders}
     onchange={(event) => {

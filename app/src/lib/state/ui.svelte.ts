@@ -94,6 +94,12 @@ class Ui {
   dialog = $state.raw<Dialog | null>(null);
   /** The part of the settings view showing. */
   settingsSection = $state<SettingsSection>("library");
+  /** The id of the control the settings view is to scroll to, highlight and focus (a found feature, PLAN.md X9), until it has. */
+  settingsControl = $state<string | null>(null);
+  /** Asks the sidebar to open its playlists and focus them (a found feature); counts up each time. */
+  playlistsReveal = $state(0);
+  /** Asks the player bar to open its sleep timer (a found feature); counts up each time. */
+  sleepTimerReveal = $state(0);
   /** The views the now-playing, visualizer, artist, discography and settings views were opened from, for `back`. */
   #history: { view: MainView; artist: ArtistRef | null; playlistId: number | null }[] = [];
 
@@ -176,10 +182,22 @@ class Ui {
     return this.mainView === "playlist" && this.playlistId !== null;
   }
 
-  /** Shows the settings in the main area, at `section` (else where they were left). */
-  showSettings(section?: SettingsSection) {
+  /** Shows the settings in the main area, at `section` (else where they were left), and lands on the element `control` if given. */
+  showSettings(section?: SettingsSection, control?: string) {
     if (section) this.settingsSection = section;
+    this.settingsControl = control ?? null;
     this.#open("settings");
+  }
+
+  /** Opens the sidebar's playlists and moves the focus there. */
+  revealPlaylists() {
+    this.playlistsReveal++;
+    this.sidebarOpen = true;
+  }
+
+  /** Opens the player bar's sleep timer and moves the focus to its button. */
+  revealSleepTimer() {
+    this.sleepTimerReveal++;
   }
 
   /** Back to the view the now-playing, visualizer, artist, discography or settings view was opened from. */

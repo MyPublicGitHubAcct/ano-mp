@@ -52,6 +52,7 @@
 
 <label class="switch">
   <input
+    id="setting-equaliserOn"
     type="checkbox"
     checked={eq.enabled}
     onchange={(event) => {
@@ -67,6 +68,7 @@
 
 <label class="switch">
   <input
+    id="setting-equaliserFollow"
     type="checkbox"
     checked={eq.followOutput}
     onchange={(event) => {
@@ -91,7 +93,11 @@
   <label class="field">
     <span class="label">{t("eq.presetLabel")}</span>
     <span class="control">
-      <select value={profile.preset} onchange={(event) => choosePreset(event.currentTarget.value)}>
+      <select
+        id="setting-equaliserPreset"
+        value={profile.preset}
+        onchange={(event) => choosePreset(event.currentTarget.value)}
+      >
         {#each Object.keys(PRESETS) as id (id)}
           <option value={id}>{t(PRESET_NAMES[id])}</option>
         {/each}
@@ -104,6 +110,7 @@
     <span class="label">{t("eq.preamp")}</span>
     <span class="control">
       <input
+        id="setting-equaliserPreamp"
         type="range"
         min={-MAX_GAIN}
         max={MAX_GAIN}
@@ -119,7 +126,7 @@
     <span class="hint">{t("eq.preampHint")}</span>
   </label>
 
-  <div class="bands" role="group" aria-label={t("eq.bands")}>
+  <div class="bands" id="setting-equaliserBands" role="group" aria-label={t("eq.bands")}>
     {#each BANDS as hz, index (hz)}
       <label class="band">
         <span class="gain">{profile.gains[index] > 0 ? "+" : ""}{profile.gains[index]}</span>

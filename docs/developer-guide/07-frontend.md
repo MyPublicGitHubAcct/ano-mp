@@ -35,13 +35,56 @@ The main page (`+page.svelte`) chooses what fills the middle from
 `ui.view` (`state/ui.svelte.ts`: the library, Home, an artist's page, a
 playlist, Settings…), and adapts to the window: below 900 px the queue
 becomes an overlay, below 640 px the sidebar a drawer. It also handles
-the `menu` events the menu bar sends, files dropped on the window (which
+the `menu` events the menu bar sends (run by `lib/pageActions.ts`, which
+runs a found feature's menu items too), files dropped on the window (which
 open in the effects workbench while it shows, X8), and announcing track
 changes to screen readers.
 
 Each window has a capability (`app/src-tauri/capabilities/`) that limits
 the commands it may call; the mini player and Help windows get only the
 few they use.
+
+## Finding a feature
+
+The search box finds the app's own features as well as music (X9).
+`lib/find.ts` is the index: one entry per sidebar item, Settings section
+and setting in it, `PAGE_ITEMS` menu item and `FeatureSettings` field
+(and the sleep timer), each with an `en.json` key for its label, the keys
+of where it lives, and its synonyms in `find.synonyms.<id>`. `find`
+matches a query of two letters or more from the start of any word, with
+case and accents folded, and ranks a label match above a synonym and a
+synonym above the place, each from its first word before later ones,
+then in the index's order. `SearchResults.svelte` shows the results as a
+Features group above the artists, albums and tracks.
+
+Opening a result is two steps, so the first can be tested:
+
+1. `target(entry, features)` chooses where it goes: the entry's `Place`
+   (a view, a Settings section and the id of a control in it, a menu
+   item's action, the sidebar's playlists or the sleep timer), or, while
+   every feature in its `needs` is off, that feature's switch in Settings
+   › Features. It never changes a setting. Results that would open in the
+   same place are shown once.
+2. `openFound(place)` (`lib/pageActions.ts`) goes there: `showView` for a
+   view (then the focus moves to the main area), `runPageAction` for a
+   menu item, and `ui.showSettings(section, control)` for a setting.
+   `SettingsPage.svelte` then waits for the section to draw that element
+   (up to about a second, as some sections load first; else the section's
+   tab) and `lib/landOn.ts` scrolls to it, adds `.found` to its row for
+   two seconds (`+layout.svelte`; no fade under Reduce Motion) and focuses
+   its control, or the row when the control is disabled, so VoiceOver
+   reads its label. The sidebar's playlists and the player bar's sleep
+   timer are reached through counters in `ui` (`playlistsReveal`,
+   `sleepTimerReveal`) that `Sidebar.svelte` and `NowPlayingBar.svelte`
+   watch.
+
+Controls are found by element id: `setting-<name>` (or an id the
+component already had), `feature-<field>` for a switch, `effect-<id>`,
+and `settings-tab-<section>` for a section. `tests/find.test.mjs` fails
+when a sidebar item, Settings section, `FeatureSettings` field or
+`PAGE_ITEMS` item has no entry (the lists `check-user-guide.py` reads),
+when an entry's control isn't in its section's component, and when an
+entry is hidden differently from how the sidebar or Settings hide it.
 
 ## State stores
 

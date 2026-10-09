@@ -87,7 +87,10 @@ Plain JavaScript (`.mjs`) run by `node --test`, importing the pure
 TypeScript modules as Node runs them (svelte-check leaves `.mjs` alone,
 which would otherwise need Node's types): `queueEdits`, `selection`,
 `folders`, `links`, `similar` (every recommendation reason has a
-message), `i18n` (the catalogue is well formed and every Rust error code
+message), `find` (finding a feature: the matching, the ranking, where a
+result opens, and an entry for every sidebar item, Settings section,
+feature switch and page menu item, with its control in its section),
+`workbench`, `i18n` (the catalogue is well formed and every Rust error code
 has a message), `theme` and `contrast` (every built-in theme meets WCAG
 AA), `effects`, `equaliser`, `guide` (the user guide parses and its links
 resolve), `visualizer` (decoding the backend's frames, the key

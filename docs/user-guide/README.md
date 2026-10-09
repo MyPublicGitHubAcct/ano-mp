@@ -20,7 +20,8 @@ Keyboard shortcuts use the Mac's symbols: ⌘ Command, ⌥ Option, ⇧ Shift,
 1. [Getting started](01-getting-started.md): what ano-mp plays, the first
    run, adding your music, and a tour of the window.
 2. [Finding music](02-finding-music.md): the sidebar's views, browsing,
-   sorting, searching, and artist and album pages.
+   sorting, searching (settings and features too), and artist and album
+   pages.
 3. [Playing music](03-playing-music.md): the player bar, the queue,
    shuffle and repeat, radio, crossfades, the sleep timer and volume
    levelling.

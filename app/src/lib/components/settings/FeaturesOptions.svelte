@@ -266,6 +266,7 @@
   {#each list as item (item.key)}
     <label class="switch">
       <input
+        id="feature-{item.key}"
         type="checkbox"
         checked={Boolean(f[item.key])}
         disabled={appSettings.saving}
@@ -281,6 +282,7 @@
     {:else if item.key === "segueShuffle"}
       <label class="switch sub">
         <input
+          id="feature-skipSilence"
           type="checkbox"
           checked={f.skipSilence}
           disabled={appSettings.saving}
@@ -295,6 +297,7 @@
         <span class="label">{t("features.skipAfter")}</span>
         <span class="control">
           <input
+            id="feature-skipSilenceAfter"
             type="range"
             min="1"
             max="60"
@@ -337,6 +340,7 @@
       <div class="sub">
         <label class="switch">
           <input
+            id="feature-listenbrainz"
             type="checkbox"
             checked={f.listenbrainz}
             disabled={!f.listeningHistory || appSettings.saving}
@@ -395,6 +399,7 @@
     <span class="label">{t("features.crossfeed")} <span class="badge">O11</span></span>
     <span class="control">
       <select
+        id="feature-crossfeed"
         value={f.crossfeed}
         disabled={appSettings.saving}
         onchange={(event) => {
@@ -409,6 +414,7 @@
   </label>
   <label class="switch sub">
     <input
+      id="feature-crossfeedHeadphonesOnly"
       type="checkbox"
       checked={f.crossfeedHeadphonesOnly}
       disabled={f.crossfeed === "off" || appSettings.saving}
@@ -433,6 +439,7 @@
 <h3>{t("features.remote")} <span class="badge">O14</span></h3>
 <label class="switch">
   <input
+    id="feature-remoteControl"
     type="checkbox"
     checked={f.remoteControl}
     disabled={appSettings.saving}
@@ -448,7 +455,15 @@
     <label class="field">
       <span class="label">{t("features.port")}</span>
       <span class="control">
-        <input type="number" min="1024" max="65535" bind:value={port} onchange={savePort} style="width: 7rem" />
+        <input
+          id="feature-remotePort"
+          type="number"
+          min="1024"
+          max="65535"
+          bind:value={port}
+          onchange={savePort}
+          style="width: 7rem"
+        />
       </span>
     </label>
     {#if remote}

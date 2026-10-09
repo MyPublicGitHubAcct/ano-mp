@@ -201,6 +201,11 @@ The same `run_scan` serves the launch rescan and file watching
 `scripts/bench.py --only rust` times this on 50,000 tracks; run it after
 changing the search SQL.
 
+The app's features are found without the backend: from two letters,
+`SearchResults.svelte` runs `lib/find.ts`'s `find` over its index as the
+query changes, with no wait, and shows the Features group above the
+music ([chapter 7](07-frontend.md#finding-a-feature)).
+
 ## An album's details arriving from MusicBrainz
 
 The album playing has never been looked up.

@@ -36,7 +36,7 @@
   );
 </script>
 
-<div class="field">
+<div class="field" id="setting-recordingFolder">
   <span class="label">{t("recording.folder")}</span>
   <span class="control folder">
     <span class="path" title={recording.state.folder ?? ""}>{recording.state.folder ?? t("recording.noFolder")}</span>
@@ -49,6 +49,7 @@
   <span class="label">{t("recording.format")}</span>
   <span class="control">
     <select
+      id="setting-recordingFormat"
       value={settings.format}
       disabled={appSettings.saving || recording.recording}
       onchange={(event) => {
@@ -68,6 +69,7 @@
     <span class="label">{t("recording.bitrate")}</span>
     <span class="control">
       <select
+        id="setting-recordingQuality"
         value={settings.bitrateKbps}
         disabled={appSettings.saving || recording.recording}
         onchange={(event) => {
@@ -86,6 +88,7 @@
     <span class="label">{t("recording.bits")}</span>
     <span class="control">
       <select
+        id="setting-recordingQuality"
         value={bits}
         disabled={appSettings.saving || recording.recording}
         onchange={(event) => {
@@ -111,6 +114,7 @@
 
 <label class="switch">
   <input
+    id="setting-recordingCueSheet"
     type="checkbox"
     checked={settings.cueSheet}
     disabled={appSettings.saving}

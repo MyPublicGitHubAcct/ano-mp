@@ -81,7 +81,7 @@ modules declared under it) is left out.
 
 ### Frontend
 
-- `app/src/lib/`: [`ArtSize`](frontend.md#artsize), [`Block`](frontend.md#block), [`BrowsePath`](frontend.md#browsepath), [`Conditions`](frontend.md#conditions), [`ContrastIssue`](frontend.md#contrastissue), [`EffectId`](frontend.md#effectid), [`Inline`](frontend.md#inline), [`LinkTarget`](frontend.md#linktarget), [`ListEdit`](frontend.md#listedit), [`MenuTrack`](frontend.md#menutrack), [`Modifiers`](frontend.md#modifiers), [`Page`](frontend.md#page), [`PlayAction`](frontend.md#playaction), [`PresetEffect`](frontend.md#preseteffect), [`RecordAction`](frontend.md#recordaction), [`RecordState`](frontend.md#recordstate), [`Rgb`](frontend.md#rgb), [`Selection`](frontend.md#selection), [`Typed`](frontend.md#typed)
+- `app/src/lib/`: [`ArtSize`](frontend.md#artsize), [`Block`](frontend.md#block), [`BrowsePath`](frontend.md#browsepath), [`Conditions`](frontend.md#conditions), [`ContrastIssue`](frontend.md#contrastissue), [`EffectId`](frontend.md#effectid), [`FeatureKey`](frontend.md#featurekey), [`FindEntry`](frontend.md#findentry), [`FindView`](frontend.md#findview), [`Found`](frontend.md#found), [`Inline`](frontend.md#inline), [`LinkTarget`](frontend.md#linktarget), [`ListEdit`](frontend.md#listedit), [`Lookup`](frontend.md#lookup), [`MenuTrack`](frontend.md#menutrack), [`Modifiers`](frontend.md#modifiers), [`Page`](frontend.md#page), [`PageAction`](frontend.md#pageaction), [`Place`](frontend.md#place), [`PlayAction`](frontend.md#playaction), [`PresetEffect`](frontend.md#preseteffect), [`RecordAction`](frontend.md#recordaction), [`RecordState`](frontend.md#recordstate), [`Rgb`](frontend.md#rgb), [`Selection`](frontend.md#selection), [`Typed`](frontend.md#typed)
 - `app/src/lib/components/`: [`AlbumCards`](frontend.md#albumcards), [`AlbumInfo`](frontend.md#albuminfo), [`AlbumWorks`](frontend.md#albumworks), [`Art`](frontend.md#art), [`ArtistPage`](frontend.md#artistpage), [`ArtistSimilar`](frontend.md#artistsimilar), [`ArtistsView`](frontend.md#artistsview), [`BrowsePane`](frontend.md#browsepane), [`ChooseCoverDialog`](frontend.md#choosecoverdialog), [`ContextMenu`](frontend.md#contextmenu), [`DbRepairDialog`](frontend.md#dbrepairdialog), [`Dialog`](frontend.md#dialog), [`Dialogs`](frontend.md#dialogs), [`DiscographyPage`](frontend.md#discographypage), [`DragGhost`](frontend.md#dragghost), [`FavouritesView`](frontend.md#favouritesview), [`FindArtistDialog`](frontend.md#findartistdialog), [`FindDetailsDialog`](frontend.md#finddetailsdialog), [`Fold`](frontend.md#fold), [`Header`](frontend.md#header), [`HealthView`](frontend.md#healthview), [`Heart`](frontend.md#heart), [`HistoryView`](frontend.md#historyview), [`HomeView`](frontend.md#homeview), [`Icon`](frontend.md#icon), [`LoopControls`](frontend.md#loopcontrols), [`LyricsPanel`](frontend.md#lyricspanel), [`MissingFolders`](frontend.md#missingfolders), [`MoreInGenre`](frontend.md#moreingenre), [`NoticesDialog`](frontend.md#noticesdialog), [`NowPlaying`](frontend.md#nowplaying), [`NowPlayingBar`](frontend.md#nowplayingbar), [`OutsideArtists`](frontend.md#outsideartists), [`PlaylistView`](frontend.md#playlistview), [`Popover`](frontend.md#popover), [`PracticePanel`](frontend.md#practicepanel), [`PrefsDialog`](frontend.md#prefsdialog), [`QueuePanel`](frontend.md#queuepanel), [`SearchResults`](frontend.md#searchresults), [`SeekBar`](frontend.md#seekbar), [`ServicesPanel`](frontend.md#servicespanel), [`SettingsPage`](frontend.md#settingspage), [`ShortcutsDialog`](frontend.md#shortcutsdialog), [`Sidebar`](frontend.md#sidebar), [`SignalPathPanel`](frontend.md#signalpathpanel), [`SimilarAlbums`](frontend.md#similaralbums), [`SimilarDialog`](frontend.md#similardialog), [`SleepTimerPanel`](frontend.md#sleeptimerpanel), [`SmartPlaylistDialog`](frontend.md#smartplaylistdialog), [`Stars`](frontend.md#stars), [`Toasts`](frontend.md#toasts), [`TrackInfoDialog`](frontend.md#trackinfodialog), [`TrackText`](frontend.md#tracktext), [`VirtualList`](frontend.md#virtuallist), [`Visualizer`](frontend.md#visualizer), [`VisualizerView`](frontend.md#visualizerview), [`WelcomeView`](frontend.md#welcomeview), [`WorkbenchView`](frontend.md#workbenchview)
 - `app/src/lib/components/dev/`: [`DevPage`](frontend.md#devpage)
 - `app/src/lib/components/settings/`: [`AboutOptions`](frontend.md#aboutoptions), [`AppearanceOptions`](frontend.md#appearanceoptions), [`DisplayOptions`](frontend.md#displayoptions), [`EffectsOptions`](frontend.md#effectsoptions), [`EqualiserOptions`](frontend.md#equaliseroptions), [`FeaturesOptions`](frontend.md#featuresoptions), [`GeneralOptions`](frontend.md#generaloptions), [`LibraryFolders`](frontend.md#libraryfolders), [`Options`](frontend.md#options), [`OrderedChoices`](frontend.md#orderedchoices), [`PlaybackOptions`](frontend.md#playbackoptions), [`RecordingOptions`](frontend.md#recordingoptions), [`SortRules`](frontend.md#sortrules), [`VisualizerOptions`](frontend.md#visualizeroptions)
@@ -318,6 +318,7 @@ modules declared under it) is left out.
 - [`Favourites`](rust.md#favourites): Rust backend, `app/src-tauri/src/library/marks.rs`
 - [`Favourites`](rust.md#favourites-1): Rust backend, `app/src-tauri/src/library/transfer.rs`
 - [`FavouritesView`](frontend.md#favouritesview): Frontend, `app/src/lib/components/FavouritesView.svelte`
+- [`FeatureKey`](frontend.md#featurekey): Frontend, `app/src/lib/find.ts`
 - [`FeatureSettings`](rust.md#featuresettings): Rust backend, `app/src-tauri/src/settings.rs`
 - [`FeaturesOptions`](frontend.md#featuresoptions): Frontend, `app/src/lib/components/settings/FeaturesOptions.svelte`
 - [`Fetched`](rust.md#fetched): Rust backend, `app/src-tauri/src/metadata/coverartarchive.rs`
@@ -343,6 +344,8 @@ modules declared under it) is left out.
 - [`Filter`](rust.md#filter): Rust backend, `app/src-tauri/src/library/browse.rs`
 - [`FindArtistDialog`](frontend.md#findartistdialog): Frontend, `app/src/lib/components/FindArtistDialog.svelte`
 - [`FindDetailsDialog`](frontend.md#finddetailsdialog): Frontend, `app/src/lib/components/FindDetailsDialog.svelte`
+- [`FindEntry`](frontend.md#findentry): Frontend, `app/src/lib/find.ts`
+- [`FindView`](frontend.md#findview): Frontend, `app/src/lib/find.ts`
 - [`Finished`](rust.md#finished): Rust backend, `app/src-tauri/src/quitting.rs`
 - [`Flanger`](effects.md#flanger): Effects (C++), `effects/src/Modulation.h`
 - [`Flanger::Param`](effects.md#flangerparam): Effects (C++), `effects/src/Modulation.h`
@@ -359,6 +362,7 @@ modules declared under it) is left out.
 - [`Font`](rust.md#font): Rust backend, `app/src-tauri/src/theme.rs`
 - [`FormatRegistry`](core.md#formatregistry): Core (C++), `core/src/FormatRegistry.h`
 - [`Forwarder`](core.md#forwarder): Core (C++), `core/src/Log.cpp`
+- [`Found`](frontend.md#found): Frontend, `app/src/lib/find.ts`
 - [`Found`](rust.md#found): Rust backend, `app/src-tauri/src/library/scanner.rs`
 - [`Frame`](frontend.md#frame): Frontend, `app/src/lib/visualizer/frame.ts`
 
@@ -437,6 +441,7 @@ modules declared under it) is left out.
 - [`LoadResult`](rust.md#loadresult): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`LoFi`](effects.md#lofi): Effects (C++), `effects/src/Echo.h`
 - [`LoFi::Param`](effects.md#lofiparam): Effects (C++), `effects/src/Echo.h`
+- [`Lookup`](frontend.md#lookup): Frontend, `app/src/lib/find.ts`
 - [`LoopControls`](frontend.md#loopcontrols): Frontend, `app/src/lib/components/LoopControls.svelte`
 - [`LyricLine`](rust.md#lyricline): Rust backend, `app/src-tauri/src/library/lyrics.rs`
 - [`Lyrics`](rust.md#lyrics): Rust backend, `app/src-tauri/src/library/lyrics.rs`
@@ -506,6 +511,7 @@ modules declared under it) is left out.
 
 - [`Page`](frontend.md#page): Frontend, `app/src/lib/guide.ts`
 - [`Page`](rust.md#page): Rust backend, `app/src-tauri/src/metadata/wikipedia.rs`
+- [`PageAction`](frontend.md#pageaction): Frontend, `app/src/lib/find.ts`
 - [`PairError`](rust.md#pairerror): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`Pairing`](rust.md#pairing): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`Palette`](frontend.md#palette): Frontend, `app/src/lib/visualizer/types.ts`
@@ -520,6 +526,7 @@ modules declared under it) is left out.
 - [`Pick`](rust.md#pick): Rust backend, `app/src-tauri/src/queue/radio.rs`
 - [`Picture`](rust.md#picture): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`PictureView`](rust.md#pictureview): Rust backend, `app/src-tauri/src/library/info.rs`
+- [`Place`](frontend.md#place): Frontend, `app/src/lib/find.ts`
 - [`Placeholders`](rust.md#placeholders): Rust backend, `app/src-tauri/src/library/scanner.rs`
 - [`PlayAction`](frontend.md#playaction): Frontend, `app/src/lib/workbench.ts`
 - [`PlaybackOptions`](frontend.md#playbackoptions): Frontend, `app/src/lib/components/settings/PlaybackOptions.svelte`
