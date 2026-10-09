@@ -111,7 +111,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 89 frontend tests (`npm test`, pure modules) | `app/tests/` |
-| the scripts' 235 pytest tests (`test-python.py`) | `scripts/tests/` |
+| the scripts' 244 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
 
@@ -1031,7 +1031,11 @@ in `docs/design/`, and D2 links to them rather than repeating them.
       (`tests/guide.test.mjs`) and the dictionary's links into the
       developer guide (`class-dictionary.py`) are checked today. Resolve
       every relative link's anchor against the target's headings, as
-      GitHub slugs them, with a test;
+      GitHub slugs them, with a test. **Done 2026-10-09:** `check-docs.py`
+      checks each `#anchor` into a Markdown file (a folder's means its
+      README.md, a bare `#x` the doc's own) against its headings' slugs,
+      repeats numbered as GitHub does (`heading_anchors`); all 1,967
+      anchored links resolved, so no doc changed;
     - the keyboard shortcuts appendix (`appendix-a-shortcuts.md`) isn't
       compared with anything: the menus' accelerators (`shell/`) and
       the frontend's key handlers can change without it. Add the

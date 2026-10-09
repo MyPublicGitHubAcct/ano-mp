@@ -114,6 +114,53 @@ def test_relative_links_resolve_from_the_doc(docs, tree):
     assert problems(docs, tree, "[up](../scripts/bench.py) [root](../)", doc="docs/index.md") == []
 
 
+@pytest.mark.parametrize(
+    "heading, anchor",
+    [
+        ("Folders that can't be found", "folders-that-cant-be-found"),
+        ("Match the device’s sample rate", "match-the-devices-sample-rate"),
+        ("2. Finding music", "2-finding-music"),
+        ("`anomp_analysis_callback`", "anomp_analysis_callback"),
+        ("`ANOMP_EFFECT_*`", "anomp_effect_"),
+        ("X1 Themes: the look", "x1-themes-the-look"),
+        ("See [the map](03-repository-map.md)", "see-the-map"),
+    ],
+)
+def test_slugs_are_githubs(docs, heading, anchor):
+    assert docs.slug(heading) == anchor
+
+
+def test_heading_anchors_number_repeats_and_skip_fences(docs):
+    text = "# Plan\n## Exit\n```sh\n# a comment\n```\n### Exit\n## Closed ##\n#hashtag\n"
+    assert docs.heading_anchors(text) == {"plan", "exit", "exit-1", "closed"}
+
+
+def test_link_anchors_must_be_headings(docs, tree):
+    anchors = {
+        "docs/design/phase-1-engine.md": {"exit", "seek-margins"},
+        "PLAN.md": {"phase-7"},
+        "docs/README.md": {"index"},
+        "docs/index.md": {"phase-7"},
+    }
+    _, known = tree
+    known = known | {"docs/README.md"}
+    text = (
+        "[ok](design/phase-1-engine.md#exit) [gone](design/phase-1-engine.md#exits) "
+        "[encoded](design/phase-1-engine.md#seek%2Dmargins) [here](#phase-7) [not](#phase-8) "
+        "[folder](../docs/#index) [code](../scripts/bench.py#L3)"
+    )
+    found = docs.check_text("docs/index.md", text, known, docs.tails(known), anchors.get)
+    assert found == [
+        (
+            "docs/index.md:1: links to design/phase-1-engine.md#exits, "
+            "but docs/design/phase-1-engine.md has no heading #exits"
+        ),
+        "docs/index.md:1: links to #phase-8, but docs/index.md has no heading #phase-8",
+    ]
+    # Without the headings (the other tests), anchors aren't checked.
+    assert docs.check_text("docs/index.md", text, known, docs.tails(known)) == []
+
+
 def test_stated_counts_come_from_section_2(docs):
     plan = (
         "# Plan\n## 2. Current state\n"

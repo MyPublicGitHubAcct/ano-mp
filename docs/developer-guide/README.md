@@ -79,7 +79,7 @@ messages (`en.json`) use.
 
 A change that moves a responsibility updates this guide in the same
 commit, as it updates the code's comments. `scripts/check-docs.py` checks
-every path and link here, and `scripts/check-developer-guide.py` checks
+every path and link here (a link's `#anchor` too), and `scripts/check-developer-guide.py` checks
 that the repository map names every module and nothing that has gone;
 `scripts/class-dictionary.py --check` does the same for the dictionary's
 types. All three run in `scripts/check-all.py --quick` and the pre-commit hook.

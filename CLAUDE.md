@@ -145,7 +145,7 @@ run `check-all.py` locally before pushing, and CI by hand on a branch whose
 result matters (Dependabot's). The repo checks are read-only scripts:
 `check-c-api.py` (each `anomp.h` function bound in `anomp.rs` with the same
 parameter count, unless in its `NOT_BOUND` list), `check-sources.py`,
-`check-migrations.py`, `check-docs.py` (every path and link in the docs exists),
+`check-migrations.py`, `check-docs.py` (every path, link and link's heading in the docs exists),
 `check-user-guide.py` (the user guide names every sidebar item, Settings
 section, feature switch, menu item and error message), `check-developer-guide.py`
 (the developer guide's repository map names every module of `core/src`,

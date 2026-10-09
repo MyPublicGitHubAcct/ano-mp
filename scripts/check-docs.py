@@ -4,7 +4,10 @@
 
 Reads PLAN.md, CLAUDE.md, README.md and every Markdown file under docs/.
 Two kinds of reference must name something in the repo:
-- a relative link, `[text](target)`: resolved from the file's folder;
+- a relative link, `[text](target)`: resolved from the file's folder; an
+  `#anchor` into a Markdown file (or a folder, meaning its README.md) must
+  be one of its headings' anchors as GitHub makes them, so a renamed
+  heading can't break links silently;
 - a backquoted path, `` `like/this.rs` ``: inline code that contains a
   '/' or ends with a source or config file's extension. The docs often
   shorten paths (`library/access.rs` for app/src-tauri/src/library/
@@ -33,11 +36,14 @@ Usage: scripts/check-docs.py [--counts]
 """
 
 import argparse
+import collections
+import functools
 import pathlib
 import posixpath
 import re
 import subprocess
 import sys
+import urllib.parse
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = ["PLAN.md", "CLAUDE.md", "README.md"]
@@ -117,6 +123,7 @@ HOST = re.compile(r"^[\w-]+(\.[\w-]+)*\.(com|org|net|io|dev|app|fm)(/|$)")
 PLACEHOLDER = re.compile(r"[<>{}*$…|\\]|\.\.\.")
 INLINE_CODE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 LINK = re.compile(r"(?<!!)\[[^\]\n]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+HEADING = re.compile(r"^#{1,6}\s+(.*?)(?:\s+#+)?\s*$")
 
 
 def strip_fences(text):
@@ -129,6 +136,28 @@ def strip_fences(text):
         else:
             lines.append("" if inside else line)
     return lines
+
+
+def slug(heading):
+    """GitHub's anchor for a heading's text (as `class-dictionary.py` and
+    the help window's `guide.ts` make it): a link's text kept, lower case,
+    punctuation dropped, spaces as hyphens."""
+    text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", heading).strip().lower()
+    text = re.sub(r"[^\w\- ]", "", text)
+    return text.replace(" ", "-")
+
+
+def heading_anchors(text):
+    """Every heading's anchor in a Markdown text, a repeated one numbered
+    as GitHub numbers it (`-1`, `-2`, …)."""
+    found, seen = set(), collections.Counter()
+    for line in strip_fences(text):
+        match = HEADING.match(line)
+        if match:
+            base = slug(match.group(1))
+            found.add(base if seen[base] == 0 else f"{base}-{seen[base]}")
+            seen[base] += 1
+    return found
 
 
 def candidate_path(code):
@@ -193,25 +222,34 @@ def path_exists(path, doc_dir, known, known_tails):
     return path in known_tails or in_repo(posixpath.join(doc_dir, path), known)
 
 
-def link_problem(target, doc, known):
-    """A problem with a relative link's target, or None."""
-    if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
+def link_problem(target, doc, known, anchors_of=None):
+    """A problem with a relative link's target, or None. `anchors_of(path)`
+    gives a repo Markdown file's heading anchors; without it, anchors
+    aren't checked."""
+    if re.match(r"^[a-z][a-z0-9+.-]*:", target):
         return None
-    path = target.split("#")[0]
-    if not path:
-        return None
-    if not in_repo(posixpath.join(posixpath.dirname(doc), path), known):
+    path, _, anchor = target.partition("#")
+    full = posixpath.normpath(posixpath.join(posixpath.dirname(doc), path)) if path else doc
+    if path and not in_repo(full, known):
         return f"links to {target}, which doesn't exist"
+    if not anchor or anchors_of is None:
+        return None
+    if not full.endswith(".md"):
+        full = posixpath.join(full, "README.md")
+        if full not in known:
+            return None
+    if urllib.parse.unquote(anchor) not in anchors_of(full):
+        return f"links to {target}, but {full} has no heading #{anchor}"
     return None
 
 
-def check_text(doc, text, known, known_tails):
+def check_text(doc, text, known, known_tails, anchors_of=None):
     """Problems in one doc, each `doc:line: message`."""
     problems = []
     doc_dir = posixpath.dirname(doc)
     for number, line in enumerate(strip_fences(text), start=1):
         for match in LINK.finditer(line):
-            problem = link_problem(match.group(1), doc, known)
+            problem = link_problem(match.group(1), doc, known, anchors_of)
             if problem:
                 problems.append(f"{doc}:{number}: {problem}")
         for match in INLINE_CODE.finditer(line):
@@ -230,10 +268,15 @@ def docs(root):
 def check(root=REPO_ROOT, known=None):
     known = tracked_paths(root) if known is None else known
     known_tails = tails(known)
+
+    @functools.cache
+    def anchors_of(path):
+        return heading_anchors((root / path).read_text(encoding="utf-8"))
+
     problems = []
     for doc in docs(root):
         text = (root / doc).read_text(encoding="utf-8")
-        problems += check_text(doc, text, known, known_tails)
+        problems += check_text(doc, text, known, known_tails, anchors_of)
     return problems
 
 
