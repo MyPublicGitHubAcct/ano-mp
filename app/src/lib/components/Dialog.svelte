@@ -14,11 +14,14 @@
   }: { title: string; onclose: () => void; children: Snippet; actions?: Snippet } = $props();
 
   let dialog: HTMLDialogElement;
+  /** Unmounted: the `close` event closing it fires must not close the dialog that replaced it. */
+  let gone = false;
   const id = `dialog-${Math.random().toString(36).slice(2)}`;
 
   $effect(() => {
     dialog.showModal();
     return () => {
+      gone = true;
       if (dialog.open) dialog.close();
     };
   });
@@ -36,7 +39,7 @@
   }
 </script>
 
-<dialog bind:this={dialog} aria-labelledby={id} {onclose} {onclick}>
+<dialog bind:this={dialog} aria-labelledby={id} onclose={() => !gone && onclose()} {onclick}>
   <header>
     <h2 {id}>{title}</h2>
     <button class="icon" aria-label={t("dialog.close")} onclick={() => dialog.close()}><Icon name="close" /></button>

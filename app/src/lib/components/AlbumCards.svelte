@@ -5,6 +5,7 @@
   // `onopen` hears an album or artist opened (a dialog closes then).
   import { t } from "$lib/i18n";
   import { queue, type AlbumCard, type FolderState } from "$lib/api";
+  import { albumFeatureItems } from "$lib/featureMenu";
   import { FOLDER_SHORT } from "$lib/folders";
   import { adHocRule, library } from "$lib/state/library.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
@@ -52,6 +53,7 @@
           onopen?.();
         },
       },
+      ...albumFeatureItems({ id: album.id, title: album.title }),
     ]);
   }
 </script>

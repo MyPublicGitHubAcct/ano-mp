@@ -7,6 +7,9 @@
   // between items; Right, Enter or Space opens a submenu; Left or Escape
   // closes one; a letter jumps to the next item starting with it; Escape at
   // the top closes the menu, and the focus goes back where it was.
+  //
+  // Over a modal dialog the page is inert and below the dialog, so the
+  // menu moves into the dialog while one is open (and back after).
   import { tick } from "svelte";
   import { ui, type MenuItem } from "$lib/state/ui.svelte";
 
@@ -14,6 +17,8 @@
   let open = $state<number[]>([]);
   let panels = $state<HTMLDivElement[]>([]);
   let positions = $state<{ left: number; top: number }[]>([]);
+  let home: HTMLDivElement;
+  let layer: HTMLDivElement;
 
   const levels = $derived.by(() => {
     const menu = ui.menu;
@@ -35,6 +40,8 @@
       open = [];
       return;
     }
+    const dialog = [...document.querySelectorAll("dialog[open]")].at(-1);
+    (dialog ?? home).append(layer);
     void tick().then(() => {
       place(0, menu.x, menu.y);
       focusFirst(0);
@@ -148,50 +155,58 @@
   onresize={() => ui.menu && close()}
 />
 
-{#each levels as items, level (level)}
-  <div
-    class="menu"
-    role="menu"
-    tabindex="-1"
-    bind:this={panels[level]}
-    style:left="{positions[level]?.left ?? -9999}px"
-    style:top="{positions[level]?.top ?? -9999}px"
-    onkeydown={(event) => onkeydown(event, level)}
-  >
-    {#each items as item, index (index)}
-      {#if "separator" in item}
-        <div class="separator" role="separator"></div>
-      {:else if item.items}
-        <button
-          role="menuitem"
-          aria-haspopup="menu"
-          aria-expanded={open[level] === index}
-          class:open={open[level] === index}
-          disabled={item.disabled || item.items.length === 0}
-          onclick={(event) => activate(level, index, item, event.currentTarget)}
-          onpointerenter={(event) => openSubmenu(level, index, event.currentTarget, false)}
-        >
-          <span class="label">{item.label}</span><span class="chevron" aria-hidden="true">›</span>
-        </button>
-      {:else}
-        <button
-          role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
-          aria-checked={item.checked === undefined ? undefined : item.checked}
-          disabled={item.disabled}
-          onclick={(event) => activate(level, index, item, event.currentTarget)}
-          onpointerenter={() => {
-            if (open.length > level) open = open.slice(0, level);
-          }}
-        >
-          <span class="check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
-          <span class="label">{item.label}</span>
-        </button>
-      {/if}
+<div class="layer" bind:this={home}>
+  <div class="layer" bind:this={layer}>
+    {#each levels as items, level (level)}
+      <div
+        class="menu"
+        role="menu"
+        tabindex="-1"
+        bind:this={panels[level]}
+        style:left="{positions[level]?.left ?? -9999}px"
+        style:top="{positions[level]?.top ?? -9999}px"
+        onkeydown={(event) => onkeydown(event, level)}
+      >
+        {#each items as item, index (index)}
+          {#if "separator" in item}
+            <div class="separator" role="separator"></div>
+          {:else if item.items}
+            <button
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={open[level] === index}
+              class:open={open[level] === index}
+              disabled={item.disabled || item.items.length === 0}
+              onclick={(event) => activate(level, index, item, event.currentTarget)}
+              onpointerenter={(event) => openSubmenu(level, index, event.currentTarget, false)}
+            >
+              <span class="label">{item.label}</span><span class="chevron" aria-hidden="true">›</span>
+            </button>
+          {:else}
+            <button
+              role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+              aria-checked={item.checked === undefined ? undefined : item.checked}
+              disabled={item.disabled}
+              onclick={(event) => activate(level, index, item, event.currentTarget)}
+              onpointerenter={() => {
+                if (open.length > level) open = open.slice(0, level);
+              }}
+            >
+              <span class="check" aria-hidden="true">{item.checked ? "✓" : ""}</span>
+              <span class="label">{item.label}</span>
+            </button>
+          {/if}
+        {/each}
+      </div>
     {/each}
   </div>
-{/each}
+</div>
 
 <style>
+  .layer {
+    display: contents;
+  }
+
   .menu {
     position: fixed;
     z-index: 100;

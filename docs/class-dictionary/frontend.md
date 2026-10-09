@@ -148,6 +148,8 @@ Svelte component · [`app/src/lib/components/ContextMenu.svelte`](../../app/src/
 
 The menu `ui.openMenu` opens (right-click, a ⋯ button or the keyboard),
 with submenus, checks and separators, and full keyboard navigation (F18).
+While a modal dialog is open it moves into the dialog, since the page
+below is inert.
 
 ### `ContrastIssue`
 

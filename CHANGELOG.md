@@ -102,3 +102,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   under their headings: closed at first, then as you left them.
 - The sidebar's Now Playing item is hidden unless you turn it on in
   Settings › Display › Sidebar; the now-playing bar opens the same page.
+
+### Fixed
+- More Like This and Playback Preferences… are on every album's menu:
+  album cards (Home, Favourites, an album's "More like this", the More
+  Like This window) and the albums on an artist's page had left them out.
+- Right-clicking inside a window such as More Like This shows its menu;
+  the menu used to open behind the window.

@@ -110,7 +110,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
 | 493 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
-| 88 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 89 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 235 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -651,13 +651,17 @@ limits: [docs/design/phase-7b-personalisation.md](docs/design/phase-7b-personali
 - [x] **X4 Recommendations from the library.** Built 2026-10-04; to check
   in the app (the phase's exit). Record:
   [phase-7b-personalisation.md](docs/design/phase-7b-personalisation.md#x4-recommendations-from-the-library).
-  - [ ] **To do** (found 2026-10-09, writing the smoke test's pass over
+  - [x] **To do** (found 2026-10-09, writing the smoke test's pass over
     Phase 7b): "More Like This" is on an album's menu in the library's
     views and in search results only (`albumFeatureItems`). Add it to
     album cards' menu (`AlbumCards.svelte`: Home, Favourites, album
     pages' rows, the More Like This dialog) and the artist page's
     albums (`ArtistPage.svelte`'s `albumMenu`), as the user guide says;
-    then the smoke test may right-click any album.
+    then the smoke test may right-click any album. Done 2026-10-09: both
+    menus add `albumFeatureItems`; a menu opened in a dialog moves into it,
+    or the modal left it inert (`ContextMenu.svelte`); and a dialog opened
+    from another's menu no longer closes as the old one goes
+    (`Dialog.svelte`).
 - [x] **X5 Recommendations from outside the library.** Built 2026-10-04;
   to check in the app (the phase's exit). Record:
   [phase-7b-personalisation.md](docs/design/phase-7b-personalisation.md#x5-recommendations-from-outside-the-library).

@@ -1,7 +1,7 @@
 // Recommendations' reasons (src/lib/similar.ts, PLAN.md X4 and X5): each
 // kind has a message in en.json, with the parameters it names.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { outsideReasonMessage, outsideReasonsText, reasonMessage, reasonsText } from "../src/lib/similar.ts";
@@ -67,4 +67,26 @@ test("every outside reason has a message, and fills each of its placeholders", (
     assert.doesNotMatch(t(key, params), /\{\w+\}/, key);
   }
   assert.equal(outsideReasonsText(OUTSIDE_REASONS.slice(0, 2), t), "like Radiohead on ListenBrainz · Radiohead member");
+});
+
+test("every album menu has the features' items, More Like This among them", () => {
+  // Svelte can't be compiled here, so this reads the sources: a component
+  // whose menu offers an album ("Open Album" or "Find details…") adds
+  // `albumFeatureItems` to it.
+  const dir = join(root, "src/lib/components");
+  const menus = readdirSync(dir)
+    .filter((name) => name.endsWith(".svelte"))
+    .filter((name) => {
+      const source = readFileSync(join(dir, name), "utf8");
+      return source.includes("ui.openMenu") && /t\("menu\.(openAlbum|findDetails)"\)/.test(source);
+    });
+  assert.deepEqual(menus.sort(), [
+    "AlbumCards.svelte",
+    "ArtistPage.svelte",
+    "BrowsePane.svelte",
+    "SearchResults.svelte",
+  ]);
+  for (const name of menus) {
+    assert.match(readFileSync(join(dir, name), "utf8"), /\.\.\.albumFeatureItems\(/, name);
+  }
 });

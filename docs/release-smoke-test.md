@@ -120,10 +120,11 @@ Features first.
 - [ ] **New visualizations.** Open the visualizer and choose
   **Tonnetz**, then **Cymatics**, in its picker. Pass: each draws and
   moves with the music.
-- [ ] **More Like This.** In **Album artist** under **Library** in the
-  sidebar, right-click one of the two artists' albums and choose **More
-  Like This**. Pass: a list of albums from the library
-  opens, each with its reason (the shared genre, an era, a label).
+- [ ] **More Like This.** Right-click one of the two artists' albums
+  anywhere (on **Home**, in **Album artist** under **Library**, or on
+  the artist's page) and choose **More Like This**. Pass: a list of
+  albums from the library opens, each with its reason (the shared genre,
+  an era, a label).
 - [ ] **Recommendations from outside the library.** Turn it on in
   Settings › Features (off at first; Online sources stay on, as in
   section 4). Open the page of the artist whose album you matched in

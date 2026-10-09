@@ -13,6 +13,7 @@
   import { openLink } from "$lib/openLink";
   import { untrack } from "svelte";
   import { library as api, marks, metadata, queue, type ArtistAlbum, type ArtistPage } from "$lib/api";
+  import { albumFeatureItems } from "$lib/featureMenu";
   import { lifeSpan } from "$lib/format";
   import { count, errorText, t } from "$lib/i18n";
   import { collection } from "$lib/state/collection.svelte";
@@ -161,6 +162,7 @@
     items.push(
       { label: t("menu.findDetails"), action: () => (ui.dialog = { kind: "findDetails", album: ref }) },
       { label: t("menu.chooseCover"), action: () => (ui.dialog = { kind: "chooseCover", album: ref }) },
+      ...albumFeatureItems(ref),
     );
     ui.openMenu(event, items);
   }
