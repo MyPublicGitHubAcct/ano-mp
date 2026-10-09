@@ -1069,7 +1069,8 @@ this file gets in the way.
       the `bench` preset's JUCE build, and shared runners are too noisy
       for the margin. It is §8.7 step 4, and §9.1's row after scanner,
       browse, search or DB changes.
-    - The owner checks are § 6 of `docs/release-smoke-test.md`. The app
+    - The owner checks are § 7 (Performance) of
+      `docs/release-smoke-test.md` (§ 6 until 2026-10-09). The app
       logs `first paint after N ms` once (`diagnostics_first_paint`, two
       frames after the main page mounts; a count only).
     - Found and agreed, not fixed: the core resamples 44.1 kHz files to

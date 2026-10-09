@@ -17,10 +17,14 @@ Before starting:
 - A folder of test music: an MP3 album, a FLAC album, an AAC (`.m4a`)
   album, and a gapless album (a live album or a continuous mix) in any of
   them. A copy, not your only one.
+- Two artists in the test music who share a genre in their tags, so
+  More Like This and Similar artists have something to find.
 - Media keys: a keyboard with them, or AirPods/headphones with a button.
-- For the update (section 5): the previous release installed and run
+- An empty folder for recordings (section 5), for example a new folder
+  in Documents.
+- For the update (section 6): the previous release installed and run
   once, with this test music in its library. The first release has none:
-  skip section 5 for it.
+  skip section 6 for it.
 
 ## 1. Download and first launch
 
@@ -73,7 +77,69 @@ Before starting:
 - [ ] **The log.** Settings › Show logs. Pass: the log opens in the
   Finder and has no file paths, titles or keys at info level.
 
-## 5. Update from the previous version
+## 5. Themes, effects, recording and recommendations
+
+What the first release adds beyond playing (`PLAN.md` Phase 7b). Some of
+it starts off: each check says when to turn a switch on in Settings ›
+Features first.
+
+- [ ] **Themes.** In Settings › Appearance, under **Themes**, pick
+  **Midnight**, then **Paper**, then click **Use the standard theme**.
+  Pass: each time the whole window follows at once (sidebar, lists,
+  player bar and Settings), and no text is hard to read.
+- [ ] **An effect.** Turn on **Effects** in Settings › Features (off at
+  first). Play a track; in Settings › Effects turn on **Reverb** and
+  move its **Mix**, then turn it off again. Pass: the reverb is clearly
+  heard and glides in and out, with no click or jump in level; with it
+  off, the track sounds as it did before, by ear (that it is
+  bit-identical is the tests' job). Leave **Effects** on for the
+  workbench.
+- [ ] **Recording in each format.** Turn on **Recording** in Settings ›
+  Features (off at first), and in Settings › Recording click **Choose
+  Folder…** and choose the empty folder. For each **Format** in turn
+  (**WAV**, **AIFF**, **FLAC**, **Apple Lossless (.m4a)**, **AAC
+  (.m4a)**, **MP3**), play some music, click **Record** on the player
+  bar, and click it again after about ten seconds. Pass: each time,
+  "Recording saved" names the file; the folder holds the six, each named
+  by date and time ("ano-mp 2026-10-04 21.15.03.wav", never a title)
+  with its `.cue` beside it, and each plays in another app (QuickTime
+  Player) as it sounded.
+- [ ] **Recording after a relaunch.** Quit, reopen and record one more
+  clip. Pass: it is saved in the same folder, with no request to choose
+  the folder again.
+- [ ] **The effects workbench.** Click **Effects workbench** in the
+  sidebar, click **Choose a File…** and choose a short track from the
+  test music. On the page, turn on **Echo** and click **Record One
+  Take**. Pass: the track plays from its start with the echo, the
+  recording stops by itself at its end, the page names the saved file,
+  and that file plays back with the echo. Then turn **Effects** off in
+  Settings › Features.
+- [ ] **New visualizations.** Open the visualizer and choose
+  **Tonnetz**, then **Cymatics**, in its picker. Pass: each draws and
+  moves with the music.
+- [ ] **More Like This.** Right-click one of the two artists' albums and
+  choose **More Like This**. Pass: a list of albums from the library
+  opens, each with its reason (the shared genre, an era, a label).
+- [ ] **Recommendations from outside the library.** Turn it on in
+  Settings › Features (off at first; Online sources stay on, as in
+  section 4). Open the page of the artist whose album you matched in
+  section 4 (its **About** says when and where they were born or formed,
+  from MusicBrainz), and click the heart beside their name. Open **Home**. Pass: **Beyond your library**
+  lists artists not in the library, each saying why; clicking one shows
+  links (**MusicBrainz**, **ListenBrainz**) that open in the browser;
+  **Not Interested** removes one.
+- [ ] **Similar artists.** On that artist's page, and on the page of one
+  of the two artists who share a genre. Pass: **Similar artists**, under
+  the biography, lists the other library artist, which opens their page;
+  with outside recommendations on, **Not in your library** lists
+  artists you don't have.
+- [ ] **Find a feature.** Type "cross" in the search box. Pass: under
+  **Features**, above the music, **Crossfade** says "Settings ›
+  Playback", and clicking it opens Settings at that setting,
+  highlighted. A switch that is off (search "remote") says **Off** and
+  opens at its switch, without turning it on.
+
+## 6. Update from the previous version
 
 After the release is published (the check ignores drafts). There is no
 installer: the app links to the release, and the DMG replaces the app
@@ -93,7 +159,7 @@ installer: the app links to the release, and the DMG replaces the app
 - [ ] **Updates off.** With automatic checks off, relaunch. Pass:
   nothing is checked (no "latest release" line in the log).
 
-## 6. Performance (PLAN.md H18)
+## 7. Performance (PLAN.md H18)
 
 On the Mac you use day to day, with your own library (note its track
 count from Settings › Library; the budgets are for 50,000 tracks), the
@@ -111,7 +177,7 @@ release build, and nothing else busy. Note each number in the results.
   Monitor › CPU over another 30 s. Pass: at most 5% in all. Then open
   the visualizer (any style) and read them again: at most 25%.
 
-## 7. Clean up
+## 8. Clean up
 
 - [ ] Quit the app. Pass: no crash report on quitting.
 - [ ] Note the macOS version and Mac model in the results, and anything

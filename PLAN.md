@@ -19,7 +19,11 @@ documentation and a dictionary of classes, added 2026-10-04) is under way: D1's 
 ano-mp Help), and waits on its screenshots and its exit check; D2's
 developer guide is written and checked (`docs/developer-guide/`), and
 waits on its exit check; D3's dictionary of classes is written,
-checked (`docs/class-dictionary/`) and has passed its exit check.
+checked (`docs/class-dictionary/`) and has passed its exit check;
+D4 (documentation upkeep, added 2026-10-08) lists what a review of
+the docs found, and its P1 part, the smoke test's pass over Phase 7b,
+is done (2026-10-09). Phase 7d (added 2026-10-08) proposes forty more
+features (N1–N40) for the owner to choose from; none is accepted yet.
 Finished work's design notes and records are in `docs/design/`, linked
 from each phase.
 
@@ -255,6 +259,15 @@ sets priorities rather than open questions.
    before the cross-platform work (Phases 8–10), so the ports carry them.
    #6's rules apply; X2, X5 and X6 are off by default (they change what is
    heard, go online and write large files).
+9. **More features: proposed 2026-10-08, none accepted yet.** N1–N40
+   (Phase 7d) came from a review of the feature set for what users would
+   enjoy: common features the app still lacks (folder view, internet
+   radio, podcasts, AirPlay, custom shortcuts, importing from the Music
+   app) and uncommon ones (tempo and key analysis, ABX comparison, a
+   music quiz, karaoke, a year in review). The owner picks which to
+   build; each picked item gets a priority on #7's scale. #6's rules
+   apply, and N10 (library corrections) is the answer to tag editing
+   that keeps them.
 
 Release-only decisions (distribution channels, packaging, signing) are in §8.1.
 
@@ -329,7 +342,9 @@ Windows (Phase 10). Phase 7b (themes, effects, visualizations,
 recommendations, recording and similar artists, P3) comes after Phase 7 and before the ports, so those
 features are settled on macOS first. Phase 7c (documentation) runs
 alongside: its user guide (D1) is needed for the first release, and the
-developer guide and dictionary of classes follow. Xcode is not needed until Phase 8.
+developer guide and dictionary of classes follow. Phase 7d proposes more
+features (N1–N40) for the owner to choose from; those chosen follow
+Phase 7b's placement. Xcode is not needed until Phase 8.
 Phase 11 (Bandcamp streaming) is a feature, not a platform, and depends
 on Bandcamp's permission. Its engineering starts after Phase 7. The phases
 cover making the app work on each platform; packaging, signing and
@@ -1399,6 +1414,7 @@ a question finds the answer in a minute or two), then on polish.
 | D1 | User guide: using the app | anyone who plays music with it | P1 (part of the first release) |
 | D2 | Developer guide: how the code is built and works | developers, testers, technically minded users | P2 (P1 for the parts §8.1's reviewers need) |
 | D3 | Dictionary of classes and types | developers, alongside D2 | P2 |
+| D4 | Documentation upkeep: stale text, unchecked links, gaps | everyone who reads the repo | P2 (P1 for the smoke test's coverage) |
 
 They live in the repo as Markdown, beside the code they describe, so a
 change and its documentation land in one commit and `check-docs.py`
@@ -1729,19 +1745,426 @@ links to them rather than repeating them.
   - **Exit:** every type in the tree has an entry and the check passes;
     a sample of twenty entries, picked at random, read correctly
     against the code.
+- [ ] **D4 Documentation upkeep.** Added 2026-10-08 at the owner's
+  request, from a review of every document in the repo against the tree
+  (the checks all pass: 57 docs, 273 modules in the map, 714 dictionary
+  entries, §2's counts). What the checks can't see:
+  - **Stale text** (small, do first):
+    - this plan's status line says "as of 2026-10-04" but records
+      2026-10-08's work; `CLAUDE.md`'s "Project" section says "Phases
+      0–6c are built; Phase 7 … is under way" and names neither 7b nor
+      7c;
+    - the developer guide's README cites "X1–X7" (X8 and X9 are built),
+      and this phase's **Order** says "X7 when it lands";
+    - `README.md`'s status paragraph lists none of Phase 7b's features
+      (themes, effects, the workbench, recording, recommendations,
+      similar artists, finding a feature), and its repository layout's
+      `docs/` line leaves out the class dictionary;
+    - §7 "Proposed repo layout" describes a layout that now exists, and
+      repeats `README.md`'s and the developer guide's repository map:
+      replace it with a link to `03-repository-map.md`.
+  - **Phase 7b's records to `docs/design/`.** X1–X9 are built, but their
+    designs, steps as built and known limits are still here (about 800
+    lines, over a third of this plan). Move them word for word into
+    docs/design/phase-7b-personalisation.md (one section per X item),
+    leaving the table, each item's status line and a link, as Phases
+    0–6c and Phase 7's H items were; D3's record goes to
+    docs/design/phase-7c-documentation.md the same way. `CLAUDE.md`'s
+    rule on moving finished work names whole phases and Phase 7's steps
+    and H items only: add Phase 7b's X items and Phase 7c's D items.
+  - **The release smoke test** (`docs/release-smoke-test.md`) checks
+    nothing of Phase 7b: add a short pass over themes, an effect on and
+    off (bit-identical when off is the tests' job; here, by ear), the
+    workbench, a recording in each container, a recommendation, similar
+    artists and a feature found from the search box. P1, since the
+    features ship in the first release. **Done 2026-10-09:** its
+    section 5 checks a theme, an effect by ear, recording in all six
+    formats and after a relaunch, the workbench, two new
+    visualizations, More Like This, outside recommendations, similar
+    artists and finding a feature.
+  - **Checks that miss things:**
+    - `check-docs.py` drops a link's `#anchor` (`link_problem`), so a
+      renamed heading breaks links silently. Only the user guide's
+      (`tests/guide.test.mjs`) and the dictionary's links into the
+      developer guide (`class-dictionary.py`) are checked today. Resolve
+      every relative link's anchor against the target's headings, as
+      GitHub slugs them, with a test;
+    - the keyboard shortcuts appendix (`appendix-a-shortcuts.md`) isn't
+      compared with anything: the menus' accelerators (`shell/`) and
+      the frontend's key handlers can change without it. Add the
+      comparison to `check-user-guide.py`, or generate the appendix from
+      one list that the menus, the shortcuts sheet (F6) and the guide
+      share;
+    - a Mermaid diagram with a syntax error shows as an error box on
+      GitHub, and no check parses them. Parse every ```` ```mermaid ````
+      block in `check-all.py` with a pinned `@mermaid-js/mermaid-cli`
+      run through npm, as Prettier is (a dev dependency in
+      `app/package.json`).
+  - **New pages:**
+    - *an index of plan items*: the O, F, H, X and D numbers are cited
+      everywhere (`CLAUDE.md`, the developer guide, the dictionary,
+      commit messages), but defined only across this plan and the design
+      notes. A generated docs/plan-items.md (number, name, status,
+      where it is documented), with `--check` in `check-all.py`'s quick
+      checks, lets a reader look one up in seconds;
+    - *a docs/README.md* saying what each document under `docs/` is
+      for, who reads it and whether it is current or a record (the
+      Step 4 checklist becomes a record once Step 4 is done);
+    - *a porting chapter in the developer guide* ahead of Phases 8–10:
+      what is macOS-only today (the `_apple` platform files and their
+      `_none` fallbacks, the sandbox and folder access, media controls,
+      `tauri.conf.json`'s macOS settings, `build-ffmpeg.sh`'s platform
+      folders, the macOS-only CI), each seam's interface, and a recipe
+      for adding a platform's implementation.
+  - **`README.md`'s troubleshooting** repeats the user guide's chapter
+    14 and the developer guide's chapter 10 in part: keep the build
+    failures, link to those two for the rest.
+  - **Owner decisions** (§8.1, before the repo is public): whether
+    `README.md` keeps its opening line about testing Claude Code; a
+    SECURITY.md (how to report a vulnerability, with a contact the
+    owner chooses; the LAN remote and the parsers make it worth having)
+    and a CONTRIBUTING.md (pointing to the developer guide,
+    `check-all.py` and the pre-commit hook), or neither while the
+    project takes no outside contributions.
+  - **Exit:** every item above done or decided against; the new checks
+    in `check-all.py` with their tests, each against the real tree.
 - **Order:** D2's overview and repository map first (they shape the rest
   and help anyone reviewing §8.1's decisions), then D1 (needed for the
   release), then the rest of D2 and D3 together, since writing the
   dictionary exposes what D2 misses. Screenshots are taken last, against
   the release build's UI. Phase 7b's features are documented as each is
-  built (X7 when it lands).
+  built. D4's stale text and smoke-test pass come before the release;
+  the rest of D4 before Phase 8 starts.
 - **Decide first:** ~~whether the user guide is bundled or hosted~~
   (bundled, the owner's decision of 2026-10-04);
   the screenshot library (a demo library of free-licensed music, so
   covers and names can be published); and whether D1 is translated
   when the UI is (F19), or English only at first.
-- **Exit (to check)**: D1–D3's exits, `check-all.py` green with the new
+- **Exit (to check)**: D1–D4's exits, `check-all.py` green with the new
   checks, and the owner reading D1 end to end on the release build.
+
+### Phase 7d — More features users will enjoy (proposals)
+Added 2026-10-08 at the owner's request: a review of the feature set
+(O1–O19, F1–F21, X1–X9 and Phase 11) for what is still missing. It
+proposes forty features, some that users expect of any player ("common")
+and some that few players have but users will enjoy ("uncommon"). **None
+is accepted yet**: the owner picks which to build, and each picked item
+gets a priority on §4 #7's scale and, once built, a **Decision** line, as
+O1–O19 did. Until then they are P3, after Phase 7's exit; the ones the
+owner wants on every platform come before the ports (Phases 8–10), as
+Phase 7b's did.
+
+§4 #6's rules apply to every item: a switch in `FeatureSettings`, checked
+where it acts, off by default if it costs a lot, changes what is heard,
+goes online or listens on the network; the user's files are never
+written (N10 and N38 say how they keep to this); anything online goes
+through `http::Client` and needs a row in Phase 4's sources table first;
+anything that decodes library files in the background checks for cloud
+placeholders and opens folders through `library::access` first; platform
+code goes behind a small core interface.
+
+| # | Feature | Kind | Touches | Size |
+|---|---|---|---|---|
+| | **Playing and the queue** | | | |
+| N1 | Spoken-word mode: speed per book, skip 15/30 s, smart rewind, "Continue listening" | common | core (speed range), Rust, UI | M |
+| N2 | Better shuffle: shuffle albums, spread artists, weight by rating and time since played | common | Rust (queue) | S–M |
+| N3 | Named queues the user switches between | uncommon | Rust (queue, store), migration, UI | M |
+| N4 | Soft pause: fade out on pause, stop and skip, fade in on resume | common | core, settings | S |
+| N5 | Balance, mono and swapped channels | common | core, settings, UI | S |
+| N6 | Loudness compensation that follows the volume, and a night mode | uncommon | effects, settings, UI | M |
+| N7 | Alarm: start music at a time, fading in; with the sleep timer, a bedtime pair | uncommon | Rust, UI | S–M |
+| N8 | Beat-matched transitions between unrelated tracks (Auto DJ) | uncommon | core, Rust | L (after N13) |
+| N9 | Preview on a second output (headphones) while the main one plays | uncommon | core, C API, Rust, UI | M–L |
+| | **Library and browsing** | | | |
+| N10 | Library corrections: fix titles, artists, genres and years without touching files | common | Rust, migration, UI | M |
+| N11 | Genre clean-up: merged spellings and a genre tree | uncommon | Rust, UI | M |
+| N12 | Folder view: browse the library as its folders | common | Rust (browse), UI | S |
+| N13 | Tempo, key and energy from the audio: columns, filters, smart-playlist rules | uncommon | core (analysis), Rust, migration, UI | L |
+| N14 | Personal labels and notes on tracks, albums and artists | uncommon | Rust, migration, UI | S–M |
+| N15 | Prefer the best copy of a duplicated recording | uncommon | Rust, UI | S–M (after O4) |
+| N16 | Discography with what the library lacks, and new releases by the user's artists | uncommon | Rust (metadata), UI | M |
+| N17 | Credits: producers, composers and players, each linked to their tracks | uncommon | core (tags), Rust, migration, UI | M |
+| N18 | Play a random album, optionally within a genre, decade or the unplayed | common | Rust (queue), UI | S |
+| | **Discovery and fun** | | | |
+| N19 | Listening statistics and a year in review, computed locally | common | Rust, UI | M (after O8) |
+| N20 | Album of the day, played through | uncommon | Rust, UI | S |
+| N21 | Music quiz: name the track from a short clip of the library | uncommon | Rust, UI | S–M |
+| N22 | Blind comparison (ABX) of two versions of a recording | uncommon | core, Rust, UI | M |
+| N23 | Karaoke mode: large synced lyrics, vocal reduction, key shift | uncommon | effects, UI | M (after O13) |
+| N24 | Share a now-playing card as an image | uncommon | UI, Rust | S |
+| N25 | Ambient display: a dim, slow full-screen Now Playing when idle | uncommon | UI | S |
+| N26 | Desktop lyrics: a small floating window with the current line | uncommon | Rust (window), UI | S–M |
+| | **Control and integration** | | | |
+| N27 | Custom shortcuts, and global hotkeys that work from other apps | common | Rust, UI | S–M |
+| N28 | Automation: a URL scheme, then AppleScript and Shortcuts actions | common | Rust, bundle config | M |
+| N29 | AirPlay speakers from the player bar | common | core (platform), UI | M |
+| N30 | Spoken announcements of the next track | uncommon | Rust or UI (speech), core (ducking) | S–M |
+| | **Online (off by default)** | | | |
+| N31 | Internet radio, with a station directory | common | core (stream input), Rust, migration, UI | L |
+| N32 | Podcasts | common | Rust, migration, UI | L (after N31's input, with N1) |
+| N33 | Online synced lyrics (LRCLIB) when a track has none | common | Rust (metadata), UI | S–M |
+| N34 | Last.fm scrobbling | common | Rust (metadata), UI | S–M |
+| | **The user's data** | | | |
+| N35 | Import ratings, play counts and playlists from the Music app | common | Rust, UI | M |
+| N36 | Import listening history from ListenBrainz or Last.fm exports | uncommon | Rust, UI | S |
+| N37 | Automatic backups of the user's data | uncommon | Rust, UI | S |
+| N38 | Copy a playlist to a device or folder, converting it, and keep it in sync | common | core (offline encode), Rust, UI | M–L |
+| | **Sound quality** | | | |
+| N39 | Exclusive (hog) mode, and "bit-perfect" in the signal path | uncommon | core (platform), settings, UI | M |
+| N40 | Headphone correction: a parametric equaliser that imports AutoEq profiles | uncommon | effects, Rust, UI | M |
+
+#### Playing and the queue
+
+- [ ] **N1 Spoken-word mode.** Audiobooks, lectures and long mixes play
+  differently from albums. An album or folder marked as spoken word (or
+  detected from its genre, or from chapters, O5) gets: a speed of its own,
+  remembered per book, from 0.75× to 2.5× at the same pitch (practice
+  mode's stretcher, O12, beyond its 150%); skip back 15 s and forward 30 s
+  on the player bar, the menu and the media keys' skip buttons; a smart
+  rewind of a few seconds after a pause of more than a minute; "Mark as
+  finished"; and "Continue listening" on Home, from F17's positions. Crossfade,
+  segue shuffle and radio leave it out.
+- [ ] **N2 Better shuffle.** Three choices beside today's shuffle:
+  *shuffle albums* (whole albums in order, the albums in random order);
+  *spread artists* (no artist twice within the next few tracks where the
+  queue allows); and *weighted* (higher-rated and long-unplayed tracks
+  come up more often, skipped ones less, using F3's ratings and O8's
+  history). Segue groups (O3), works (O6) and "Never shuffle it" (O7) keep
+  working. Tested in `queue/model.rs` against the fake engine, with fixed
+  seeds.
+- [ ] **N3 Named queues.** Several queues ("Work", "Running", "Dinner"),
+  each with its own tracks, position, shuffle and repeat, switched from
+  the queue panel; switching pauses one and resumes the other where it
+  was. The saved queue (H16) gains a queue id; a migration moves today's
+  rows into a default queue.
+- [ ] **N4 Soft pause.** Pause, stop and a manual skip fade out over a
+  set time (0.1–2 s, default 0.3 s), and resume fades in, so music never
+  stops with a click or a jolt. A gain ramp in the engine after the
+  effects; gapless hand-offs and crossfades are unchanged.
+- [ ] **N5 Balance, mono and swapped channels.** For listeners who hear
+  better in one ear, a single speaker, or speakers wired the wrong way
+  round: a balance slider, a mono switch (summed at -3 dB) and a channel
+  swap, after the equaliser and crossfeed. Settings › Playback; the signal
+  path (O10) lists them. Accessibility as much as sound.
+- [ ] **N6 Loudness compensation and night mode.** At low volumes ears
+  lose bass and treble. Loudness compensation lifts them by an
+  equal-loudness contour (ISO 226) that follows the volume slider, so
+  quiet listening keeps its shape; it replaces the equaliser's fixed
+  "Loudness" preset for those who want it. Night mode is a gentle
+  compressor and limiter that keeps quiet passages audible and loud ones
+  from waking anyone. Both are effects in `effects/` (bit-identical when
+  off), off by default.
+- [ ] **N7 Alarm.** Start a playlist, an album or library radio at a set
+  time on chosen days, fading in from silence over a few minutes to a
+  set volume; with the sleep timer (F13), a "bedtime and wake-up" pair.
+  It works while the app is open and the Mac awake; **decide first**
+  whether to keep the Mac awake for it (a power assertion while an alarm
+  is due) or to say plainly that a sleeping Mac won't ring.
+- [ ] **N8 Beat-matched transitions.** Between tracks that aren't from
+  one album, an "Auto DJ" transition: the outgoing track's tempo glides to
+  the incoming one's (the time-stretcher, O12), and the crossfade starts
+  on a downbeat, using N13's tempo and beat grid; harmonic mixing prefers
+  next tracks in a compatible key for radio. Off by default (it changes
+  what is heard). Offline render tests in the style of
+  `PlayerEngineTests.cpp`.
+- [ ] **N9 Preview on a second output.** Audition a track on headphones
+  (or any second device) while the main output keeps playing: DJs, party
+  hosts and anyone choosing what plays next. A second, simple player on a
+  second device, its own small transport in the track's menu. **Decide
+  first**: two JUCE devices at once on macOS, and what the ports can do.
+
+#### Library and browsing
+
+- [ ] **N10 Library corrections.** Users want to fix a wrong title, artist,
+  genre or year, but the app never writes their files (§4 #6). A
+  corrections table overrides tag fields per track or album (title,
+  artist, album artist, album, genre, year, track and disc number),
+  applied wherever tags are read, shown with a mark and "Use the tag's
+  value" to undo; a selection edits many at once. Corrections survive
+  rescans and moves (F10), travel with export (F20), and export as a CSV
+  a tag editor can apply. **Decide first**: whether writing tags into
+  files is ever wanted (TagLib can), which would change §4 #6 and is the
+  owner's decision.
+- [ ] **N11 Genre clean-up.** Genre tags are messy ("Hip-Hop", "Hip Hop",
+  "hiphop"; "Rock; Alternative"). Spellings are merged by a normalised key
+  with an alias list the user can edit, and a genre tree (parent genres,
+  from an offline copy of MusicBrainz's genre list) lets the user browse
+  "Rock" and see its sub-genres' albums. Smart playlists and O18 use the
+  merged genres. Nothing is written to files; the tree ships with the app.
+- [ ] **N12 Folder view.** A sidebar item that browses the library as
+  its folders on disk, for people who organise music by folder: play a
+  folder, add it to the queue, show it in the Finder. Unreadable folders
+  dim as elsewhere (H22).
+- [ ] **N13 Tempo, key and energy.** The analysis worker (O1's reader,
+  the cloud-placeholder rule) also computes tempo (BPM), musical key (with
+  Camelot notation for DJs), energy and a "danceability" figure. They
+  become columns, browse filters and smart-playlist rules ("120–130 BPM,
+  high energy" for running), and radio can follow a tempo or key.
+  Tags (BPM, INITIALKEY) are read first where present. Off by default
+  (hours of CPU, like O1); X3's beat detector is a starting point.
+- [ ] **N14 Personal labels and notes.** The user's own labels ("road
+  trip", "rainy Sunday", "for Dad") on tracks, albums and artists, from
+  the menu or by dragging onto a label in the sidebar; browsable, and a
+  smart-playlist rule. A free-text note per album or artist (where it
+  was bought, which pressing, a memory). Both kept in the library DB and
+  exported with F20.
+- [ ] **N15 Prefer the best copy.** The health report (O4) finds
+  duplicates; this acts on them. For each recording held more than once,
+  one copy is preferred (lossless over lossy, then the higher rate, then
+  the one without errors, or the user's pick), and the others are hidden
+  from lists, shuffle and radio, still reachable from Get Info. Plays,
+  ratings and favourites merge onto the preferred copy.
+- [ ] **N16 Discography and new releases.** An artist page lists the
+  artist's official albums from MusicBrainz, marking those in the library
+  and those it lacks (with links out only). "New from your artists" on
+  Home checks, weekly, for releases by artists the user plays most.
+  MusicBrainz is already a source; the weekly check is its own switch,
+  off by default.
+- [ ] **N17 Credits.** Producer, engineer, composer, lyricist, conductor
+  and performers, from tags (COMPOSER, CONDUCTOR, the ID3 involved-people
+  frames) and MusicBrainz's relationships, on album pages and in Get
+  Info. Each name opens the library's tracks it is credited on. Fits
+  classical works (O6) and jazz line-ups.
+- [ ] **N18 Play a random album.** A menu item, shortcut and Home button
+  that plays a random whole album, optionally within a genre, a decade,
+  the unplayed or the long-unplayed. "Another one" replaces it.
+
+#### Discovery and fun
+
+- [ ] **N19 Listening statistics and a year in review.** From O8's local
+  history: hours listened, top artists, albums, tracks and genres by
+  week, month and year, a "listening clock" (hour of day by weekday),
+  streaks, first listens and most-repeated days. In December, a year in
+  review page with the year's highlights, saved as an image if the user
+  asks (N24). Nothing goes online.
+- [ ] **N20 Album of the day.** One album a day from the library on
+  Home, chosen with a bias to the unplayed and long-unplayed, with
+  "Listen through": the whole album in order, no shuffle, no crossfade.
+  A gentle way into a large library.
+- [ ] **N21 Music quiz.** "Name that tune" from the user's own library:
+  a few seconds from a random point of a track, four titles (or artists,
+  or years) to choose from, score and streaks, harder rounds with shorter
+  clips. Picks favour played tracks so the answers are guessable. Later,
+  players on phones through the LAN remote (O14; a change to `remote/`
+  needs §8.1's security review).
+- [ ] **N22 Blind comparison (ABX).** Compare two versions of a
+  recording (two masterings, a lossless file and its MP3, a remaster and
+  the original): both level-matched by O1's loudness, switched seamlessly
+  at the same position, with a blind ABX test and its score. For the
+  curious and the audiophile; pairs come from N15's duplicates or any two
+  tracks the user picks.
+- [ ] **N23 Karaoke mode.** Synced lyrics (O13) full screen in large
+  type, the current line highlighted, with a vocal-reduction effect
+  (centre-channel cancellation that keeps the bass) and a key shift
+  (practice mode's pitch, O12). Vocal reduction is a new effect in
+  `effects/`, off by default; true stem separation is out of scope.
+- [ ] **N24 Share a now-playing card.** An image of the cover, title,
+  artist and, optionally, a lyric line or the waveform (O2), in the
+  theme's colours, copied to the clipboard or saved where the user
+  chooses. Nothing goes online; drawn on a canvas.
+- [ ] **N25 Ambient display.** After a few idle minutes in full screen
+  (or from the View menu), Now Playing becomes a calm display: a slow
+  gradient from the cover's colours, a large clock, title and lyrics,
+  slowly drifting so nothing burns in. Honours reduced motion (F18).
+- [ ] **N26 Desktop lyrics.** A small floating, click-through window
+  that shows the current synced line over other apps, as many players in
+  East Asia do; moved and sized by the user, hidden when the track has no
+  synced lyrics. Its window gets only the commands it needs (H3).
+
+#### Control and integration
+
+- [ ] **N27 Custom shortcuts and global hotkeys.** Rebind any command in
+  a Settings section, with conflicts flagged, and optional system-wide
+  hotkeys (play/pause, next, love, volume) that work while another app is
+  in front, through Tauri's global-shortcut plugin. The shortcuts sheet
+  (F6) and the user guide's appendix A show the user's bindings.
+- [ ] **N28 Automation.** A URL scheme (play, pause, next, play a
+  playlist or album by name, search) so launchers, Stream Decks and
+  scripts can drive the app; then AppleScript's standard media verbs and
+  Shortcuts actions. **Decide first**: what a link from a web page may do
+  (control playback only, never read or change library data), reviewed
+  like the LAN remote.
+- [ ] **N29 AirPlay speakers.** Choose AirPlay speakers and TVs from the
+  player bar with macOS's route picker, beside the output device list,
+  and compensate AirPlay's delay so lyrics and the visualizer stay in
+  time. Platform code in the core, behind the device interface; the ports
+  get their own (Phase 9 has none).
+- [ ] **N30 Spoken announcements.** Say the next track's title and artist
+  as it starts, in the system voice, the music ducked under it: for blind
+  users, for workouts, and for a radio-DJ feel with library radio (O9).
+  Choices: every track, only after a pause, or only in radio. Off by
+  default.
+
+#### Online (off by default)
+
+Each needs a row in Phase 4's sources table (terms, rate limits, what is
+stored) before it is built, and a line in the privacy policy (§8.1).
+
+- [ ] **N31 Internet radio.** Play internet radio streams (Icecast,
+  SHOUTcast, HLS) with a station directory (radio-browser.info, open
+  data), favourite stations, the playing song's title from the stream's
+  metadata, and recording (X6). FFmpeg is built without networking (§4
+  #3), so Rust fetches the stream through `http::Client` and feeds the
+  core through a stream input: the same seam Phase 11 needs, so this
+  follows it.
+- [ ] **N32 Podcasts.** Subscribe by RSS feed or OPML import, download
+  episodes into the app's own container (never the user's folders), play
+  them with N1's spoken-word controls, and delete played ones after a
+  set time. After N31's stream input, for streaming episodes unplayed.
+- [ ] **N33 Online synced lyrics.** When a track has no lyrics in its
+  tags or an `.lrc` file, fetch synced lyrics from LRCLIB (open, no key),
+  cache them, and show their source. O13 left online lyrics out pending
+  a sources-table decision; this is that decision.
+- [ ] **N34 Last.fm scrobbling.** Many users keep their history on
+  Last.fm. Phase 4 excluded Last.fm as a metadata source (non-commercial
+  terms); scrobbling the user's own plays to their own account is a
+  separate terms question. **Owner decision**, with O8's ListenBrainz
+  code as the model (a token in the keychain, a retry queue).
+
+#### The user's data
+
+- [ ] **N35 Import from the Music app.** Ratings, play counts, last
+  played, loved tracks and playlists from the Music app's exported
+  library file, matched to the library by path, then by tags and length.
+  A preview shows what will match before anything changes. Closes the
+  FAQ's "Ratings and play counts from the Music app aren't read".
+- [ ] **N36 Import listening history.** Load a ListenBrainz or Last.fm
+  export into O8's history, matched to the library's tracks, so
+  statistics (N19), Top 20 (O19) and recommendations (X4) start full.
+- [ ] **N37 Automatic backups.** F20's export on a schedule (weekly by
+  default), keeping the last few, in the app's container or a folder the
+  user chooses (a writable bookmark of its own, like recording's folder);
+  restore from a list in Settings › Library.
+- [ ] **N38 Copy to a device.** Send a playlist, smart playlist or
+  selection to a folder (a USB stick for the car, a phone, an old player),
+  converting to MP3 or AAC at a chosen quality, with tags and covers, and
+  keep it in step later (copy the new, remove the gone). It writes new
+  files only, in a folder the user picks, never the library's. Uses X6's
+  encoders, fed by an offline decode off the main thread (the offline
+  render X8 decided against; **decide first** whether it is built here).
+
+#### Sound quality
+
+- [ ] **N39 Exclusive mode.** macOS's hog mode keeps other apps' sounds
+  out of the output and, with O10's sample-rate matching, lets the
+  device play each file's samples unchanged; the signal path shows
+  "bit-perfect" when nothing (volume, levelling, effects, resampling)
+  touches them. **Decide first**: whether JUCE's CoreAudio device can
+  take hog mode, and how it behaves when another app wants the device.
+- [ ] **N40 Headphone correction.** A parametric equaliser (up to ten
+  filters of any type, frequency, gain and Q) beside F15's ten bands,
+  importing AutoEq profiles and Equalizer APO text files, one profile per
+  headphone, switched with F15's headphone detection. A new effect in
+  `effects/`, bit-identical when off.
+
+- **Suggested order** (for the owner's choice): the small common ones
+  first (N4, N5, N12, N18, N27), then the most asked-for (N10, N2, N35,
+  N19, N1, N29), then the uncommon ones the owner likes best. The online
+  items wait on their sources-table rows; N31 and N32 follow Phase 11's
+  stream input.
+- **Exit (per item)**: built under §4 #6's rules, covered by the user
+  guide, the developer guide and the class dictionary in the same commit,
+  and checked in the app as each item's exit says.
 
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer account
