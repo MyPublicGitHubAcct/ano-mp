@@ -315,7 +315,7 @@ app/           Tauri app: Svelte frontend (src/) and Rust backend (src-tauri/)
 scripts/       build-ffmpeg.sh, the checks, format, release and test tooling
 cmake/         CMake helpers (pinned downloads, FFmpeg, TagLib, Signalsmith)
 third_party/   locally built FFmpeg (git-ignored)
-docs/          the user guide (user-guide/), the developer guide (developer-guide/), the class dictionary (class-dictionary/), the index of plan items (plan-items.md), checklists, release decisions, and finished phases' design (design/)
+docs/          the user and developer guides, the class dictionary, the plan items' index, release documents and design records (docs/README.md)
 PLAN.md        roadmap, status, decisions, risks and release plan
 CLAUDE.md      conventions and rules for AI-assisted development
 ```
