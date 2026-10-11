@@ -9,6 +9,7 @@
   import { tick } from "svelte";
   import { guidePages, INDEX, type Block, type Inline, type LinkTarget } from "$lib/guide";
   import { t } from "$lib/i18n";
+  import { HELP_BACK, isHelpBack, keys } from "$lib/keys";
   import { openWebLink } from "$lib/openLink";
   import { appSettings } from "$lib/state/settings.svelte";
 
@@ -55,7 +56,7 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    if ((event.metaKey && event.key === "[") || (event.key === "Escape" && history.length > 0)) {
+    if (isHelpBack(event) || (event.key === "Escape" && history.length > 0)) {
       event.preventDefault();
       back();
     }
@@ -133,7 +134,9 @@
   </nav>
   <main>
     <header>
-      <button onclick={back} disabled={history.length === 0} title={t("help.backHint")}>{t("help.back")}</button>
+      <button onclick={back} disabled={history.length === 0} title={t("help.backHint", { keys: keys(HELP_BACK) })}
+        >{t("help.back")}</button
+      >
     </header>
     <article bind:this={article} tabindex="-1">
       {#key page.name}{@render blocks(page.blocks)}{/key}

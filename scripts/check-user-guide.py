@@ -20,7 +20,7 @@ covers the app as it is.
   pairs, and no other; its "no shortcut" list names each PAGE_ITEMS item
   without one, and only menu items without one; and its other tables are
   ShortcutsDialog.svelte's PAGE sections, row for row. Keys are written as
-  the sheet's `keys()` writes them on macOS ("Alt+CmdOrCtrl+R" as "⌥⌘R").
+  `keys()` (keys.ts) writes them on macOS ("Alt+CmdOrCtrl+R" as "⌥⌘R").
   The keys components handle in their own keydown handlers aren't read:
   the sheet's PAGE list stands for them.
 
@@ -55,6 +55,8 @@ SETTINGS_RS = APP / "src-tauri" / "src" / "settings.rs"
 RULES_RS = APP / "src-tauri" / "src" / "library" / "rules.rs"
 MENU_RS = APP / "src-tauri" / "src" / "shell" / "menu.rs"
 SHORTCUTS_DIALOG = APP / "src" / "lib" / "components" / "ShortcutsDialog.svelte"
+# `keys()`, which writes the sheet's keys (and messages' `{keys}`).
+KEYS_TS = APP / "src" / "lib" / "keys.ts"
 
 # FeatureSettings fields whose label isn't `feature.<field>`.
 SWITCH_LABELS = {
@@ -68,7 +70,7 @@ SWITCH_LABELS = {
     "updateCheck": "updates.automatic",
 }
 
-# How ShortcutsDialog's `keys()` writes a key on macOS: a symbol, or a
+# How `keys()` (keys.ts) writes a key on macOS: a symbol, or a
 # message from en.json. A key in neither is written as it is ("V", "F10").
 KEY_SYMBOLS = {
     "Right": "→",
@@ -315,9 +317,9 @@ def page_shortcut_problems(svelte, messages, tables):
     sections = dialog_sections(svelte)
     names = dialog_key_names(svelte)
     if sections is None or names is None:
-        return ["ShortcutsDialog.svelte: PAGE or keys()'s names not found"]
+        return ["ShortcutsDialog.svelte's PAGE or keys.ts's names not found"]
     problems = [
-        f"ShortcutsDialog.svelte's keys() renames {name}, which check-user-guide.py doesn't know"
+        f"keys.ts's keys() renames {name}, which check-user-guide.py doesn't know"
         for name in names
         if name not in KEY_SYMBOLS and name not in KEY_MESSAGES
     ]
@@ -454,7 +456,7 @@ def problems_in(read):
     else:
         tables, texts = appendix_tables(pages[SHORTCUTS_APPENDIX])
         problems += menu_shortcut_problems(read(MENU_RS), messages, tables, texts)
-        problems += page_shortcut_problems(read(SHORTCUTS_DIALOG), messages, tables)
+        problems += page_shortcut_problems(read(SHORTCUTS_DIALOG) + read(KEYS_TS), messages, tables)
 
     if ERRORS_APPENDIX not in pages:
         problems.append(f"docs/user-guide/{ERRORS_APPENDIX} is missing")

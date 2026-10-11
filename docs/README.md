@@ -48,6 +48,15 @@ their diagrams.
   when the repository map misses a module of the core, the effects, the
   Rust backend or the frontend, or names one that has gone; the rest is
   kept in step by hand, in the commit that changes what it explains.
+- [**Porting**](developer-guide/14-porting.md)
+  (`developer-guide/14-porting.md`, Phase 7c D4): the developer guide's
+  chapter for whoever starts Phase 8, 9 or 10 (iOS and iPadOS, Linux,
+  Windows): what is portable already, every macOS-only seam with its
+  interface, fallback and what each OS needs, what the fallbacks lose,
+  the build, bundle and CI steps per OS, and the recipe for adding a
+  platform's implementation. *Current*: kept in step by hand with the
+  platform files, `cfg`s and scripts it lists, like the rest of the
+  guide; its paths and links are checked.
 - [**Dictionary of classes and types**](class-dictionary/README.md)
   (`class-dictionary/`, Phase 7c D3): every named type, one page per
   layer (the C API, the core, the effects, the Rust backend, the

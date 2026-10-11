@@ -235,6 +235,8 @@ CoreAudio or Media Player.
 `MediaControls` and `DockMenu` keep the platform-neutral part (the state
 published, which commands are allowed) in the base class, and the OS part
 in a `Backend`, so the tests check the logic with no OS behind it.
+[Chapter 14](14-porting.md#the-cores-seams) gives each seam's fallback,
+what the other platforms need, and the recipe for adding one.
 
 ## Logging: `Log`
 

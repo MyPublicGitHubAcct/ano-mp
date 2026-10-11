@@ -460,20 +460,14 @@ fn percent_decode(text: &str) -> String {
 /// file split into parts.
 fn resolve(conn: &Connection, base: &Path, entry: &str) -> Result<Option<i64>, Error> {
     let normalised = entry.replace('\\', "/");
-    let is_windows_absolute = normalised.len() > 2 && normalised.as_bytes()[1] == b':';
-    if !is_windows_absolute {
-        let path = if normalised.starts_with('/') {
-            PathBuf::from(&normalised)
-        } else {
-            base.join(&normalised)
-        };
+    if let Some(path) = entry_path(base, &normalised, cfg!(windows)) {
         let path = lexical_clean(&path);
         let folders: Vec<(i64, String)> = conn
             .prepare_cached("SELECT id, path FROM folders")?
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
         for (folder_id, folder) in folders {
-            let Ok(rest) = path.strip_prefix(&folder) else {
+            let Some(rest) = super::paths::within(&path, Path::new(&folder)) else {
                 continue;
             };
             let relative: Option<Vec<&str>> = rest
@@ -521,6 +515,23 @@ fn resolve(conn: &Connection, base: &Path, entry: &str) -> Result<Option<i64>, E
 }
 
 /// `path` with "." and ".." resolved without touching the disk.
+/// Where an entry (with '/' separators) points on this computer: an
+/// absolute path, or one relative to the playlist's folder `base`. A
+/// drive's or a share's path (`C:/…`, `//nas/…`) is one only on `windows`;
+/// elsewhere it was written on another computer, and has no path here.
+fn entry_path(base: &Path, normalised: &str, windows: bool) -> Option<PathBuf> {
+    let bytes = normalised.as_bytes();
+    let drive = bytes.len() > 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if drive || normalised.starts_with("//") {
+        return windows.then(|| PathBuf::from(normalised));
+    }
+    Some(if normalised.starts_with('/') {
+        PathBuf::from(normalised)
+    } else {
+        base.join(normalised)
+    })
+}
+
 fn lexical_clean(path: &Path) -> PathBuf {
     let mut clean = PathBuf::new();
     for component in path.components() {
@@ -621,6 +632,27 @@ mod tests {
     use super::*;
     use crate::library::smart::{Condition, SmartOrder};
     use crate::library::test_library::{titles, track, Library};
+
+    #[test]
+    fn drive_and_share_entries_are_paths_on_windows_only() {
+        let base = Path::new("/Lists");
+        assert_eq!(
+            entry_path(base, "Band/01.flac", false),
+            Some(PathBuf::from("/Lists/Band/01.flac"))
+        );
+        assert_eq!(
+            entry_path(base, "/Music/01.flac", false),
+            Some(PathBuf::from("/Music/01.flac"))
+        );
+        for foreign in ["C:/Music/01.flac", "//nas/Music/01.flac"] {
+            assert_eq!(entry_path(base, foreign, false), None, "{foreign}");
+            assert_eq!(
+                entry_path(base, foreign, true),
+                Some(PathBuf::from(foreign)),
+                "{foreign}"
+            );
+        }
+    }
 
     fn library() -> Library {
         Library::new([

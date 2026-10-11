@@ -40,7 +40,10 @@ layers, the data, troubleshooting, and step-by-step recipes for common
 changes. The rules stay here; the guide explains them and links back.
 Read its repository map (`03-repository-map.md`) to find the file behind a
 behaviour, and its recipes (`11-recipes.md`) before adding a command,
-setting, migration, effect or the like.
+setting, migration, effect or the like. Its porting chapter
+(`14-porting.md`) lists what is macOS-only and each platform seam: read it
+before platform work, and update it when a seam, a platform `cfg` or a
+per-OS script step changes.
 `docs/class-dictionary/` (Phase 7c D3) is the reference beside it: every
 named type, one page per layer, alphabetical, with indexes by folder and
 A to Z.
@@ -417,7 +420,12 @@ forms), never a literal in a component. Rust errors the UI shows are made with
 message in `en.json` (`tests/i18n.test.mjs` checks); the UI shows a command's
 error through `errorText`, never `String(error)`. A coded error with a `reason`
 param may have `error.<code>.<reason>` messages, which `errorText` prefers;
-`errorCode` reads a code to branch on.
+`errorCode` reads a code to branch on. A plain message is macOS's text: one
+that names macOS (the Finder, the keychain, iCloud, "this Mac") gets
+`<key>@windows` and `<key>@linux` forms (and `@ios` where iOS differs),
+which `t` prefers on that platform (`lib/platform.ts`; `i18n.test.mjs`
+checks), and a shortcut in a message is a `{keys}` parameter written by
+`lib/keys.ts`'s `keys()`, never a ⌘ in the text.
 
 **User guide** (Phase 7c D1). `docs/user-guide/` explains the app to
 someone who only uses it; a new view, setting, feature, menu item or

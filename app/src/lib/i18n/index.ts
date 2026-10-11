@@ -5,11 +5,16 @@
 // an object of Intl.PluralRules categories ("one", "other"…) whose `{count}`
 // picks the form. Numbers in parameters are formatted for the locale.
 //
+// Text that differs by OS (the Finder, the keychain, "this Mac") has a form
+// per platform, `<key>@windows`, `<key>@linux` or `<key>@ios`, which `t`
+// prefers on that platform (`platform.ts`); the plain message is macOS's.
+//
 // Errors from the backend may come coded (`{code, params, message}` as
 // JSON, see `errorText`): their text is the catalogue's "error.<code>",
 // else the English message they carry.
 
 import en from "./en.json";
+import { platform } from "../platform";
 
 type Catalogue = typeof en;
 export type MessageKey = keyof Catalogue;
@@ -36,7 +41,8 @@ function fill(template: string, params: Params) {
 
 /** The text of message `key`, with `params` filled in. */
 export function t(key: MessageKey, params: Params = {}): string {
-  const message = (messages[key] ?? en[key]) as string | Plural | undefined;
+  const variant = `${key}@${platform}` as MessageKey;
+  const message = (messages[variant] ?? en[variant] ?? messages[key] ?? en[key]) as string | Plural | undefined;
   if (message === undefined) return key;
   if (typeof message === "string") return fill(message, params);
   const count = typeof params.count === "number" ? params.count : 0;

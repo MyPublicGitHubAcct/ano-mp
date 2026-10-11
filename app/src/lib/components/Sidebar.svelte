@@ -15,6 +15,7 @@
   import { queue, type Folder, type Playlist } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
   import { count, t } from "$lib/i18n";
+  import { keys } from "$lib/keys";
   import { landOn } from "$lib/landOn";
   import { collection } from "$lib/state/collection.svelte";
   import { registerDropTarget } from "$lib/state/drag.svelte";
@@ -397,7 +398,7 @@
     <button
       class="item"
       class:active={ui.settingsInMain && ui.settingsSection !== "sources" && library.query === ""}
-      title={t("sidebar.settingsShortcut")}
+      title={t("sidebar.settingsShortcut", { keys: keys("CmdOrCtrl+,") })}
       onclick={() => show(() => ui.showSettings(ui.settingsSection === "sources" ? "library" : undefined))}
     >
       <span class="with-icon"><Icon name="gear" size="1.1rem" /> {t("sidebar.settings")}</span>

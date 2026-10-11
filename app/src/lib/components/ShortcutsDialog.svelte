@@ -1,46 +1,13 @@
 <script lang="ts">
   // The keyboard shortcuts (PLAN.md F6): the menus' (which work wherever
-  // the focus is), and the page's own, with ⌘ written as the platform has it.
+  // the focus is), and the page's own, with ⌘ written as the platform has it (`keys.ts`).
   import { onMount } from "svelte";
   import { shell } from "$lib/api";
   import { t, type MessageKey } from "$lib/i18n";
+  import { keys } from "$lib/keys";
   import Dialog from "./Dialog.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
-
-  const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-  /** "CmdOrCtrl+Shift+O" as the platform writes it: "⇧⌘O", or "Ctrl+Shift+O";
-      "CmdOrCtrl+Click" as "⌘-click", or "Ctrl+click". */
-  function keys(accelerator: string) {
-    const parts = accelerator.split("+");
-    const key = parts.pop() ?? "";
-    const names: Record<string, string> = {
-      Right: "→",
-      Left: "←",
-      Up: "↑",
-      Down: "↓",
-      Period: ".",
-      Comma: ",",
-      Slash: "/",
-      Space: t("shortcuts.space"),
-      Escape: t("shortcuts.esc"),
-      Return: mac ? t("shortcuts.return") : t("shortcuts.enter"),
-      Click: t("shortcuts.click"),
-    };
-    const shown = names[key] ?? key;
-    if (!mac) return [...parts.map((part) => (part === "CmdOrCtrl" ? "Ctrl" : part)), shown].join("+");
-    const symbols: Record<string, string> = { Alt: "⌥", Shift: "⇧", CmdOrCtrl: "⌘", Ctrl: "⌃" };
-    const order = ["Ctrl", "Alt", "Shift", "CmdOrCtrl"];
-    return (
-      parts
-        .sort((a, b) => order.indexOf(a) - order.indexOf(b))
-        .map((part) => symbols[part] ?? part)
-        .join("") +
-      (key === "Click" ? "-" : "") +
-      shown
-    );
-  }
 
   /** A row of the page's own shortcuts: what it does, its keys (any one
       of them works), and a note on where. The sections and their rows

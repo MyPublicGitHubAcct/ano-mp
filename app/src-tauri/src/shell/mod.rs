@@ -7,23 +7,36 @@
 //! On macOS, closing the main window hides it, and music keeps playing, as
 //! in other music players; the Dock icon, the menus or the mini player
 //! bring it back.
+//!
+//! Menus, the tray, extra windows and `notify-rust`'s notifications exist
+//! on desktop only (Tauri's `menu` and `tray` are `cfg(desktop)`), so those
+//! parts are compiled only there; this module's functions exist on every
+//! platform, and do what applies (PLAN.md Phase 8).
 
+#[cfg(desktop)]
 mod dock;
+#[cfg(desktop)]
 pub mod help;
+#[cfg(desktop)]
 pub mod menu;
+#[cfg(desktop)]
 pub mod mini;
+#[cfg(desktop)]
 mod notifications;
+#[cfg(desktop)]
 mod tray;
 
 use std::path::PathBuf;
+#[cfg(desktop)]
 use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime, Url, Wry};
 
 use crate::queue::model::QueueState;
-use crate::settings::{self, WindowSettings};
+use crate::settings::WindowSettings;
 
+#[cfg(desktop)]
 /// What the Dock menu and the tray show: the current track and what the
 /// transport can do.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -35,8 +48,10 @@ pub struct NowSummary {
     pub has_previous: bool,
 }
 
+#[cfg(desktop)]
 static NOW: Mutex<Option<NowSummary>> = Mutex::new(None);
 
+#[cfg(desktop)]
 pub fn now() -> NowSummary {
     NOW.lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -44,6 +59,7 @@ pub fn now() -> NowSummary {
         .unwrap_or_default()
 }
 
+#[cfg(desktop)]
 fn update_now(change: impl FnOnce(&mut NowSummary)) -> bool {
     let mut now = NOW.lock().unwrap_or_else(|e| e.into_inner());
     let before = now.clone().unwrap_or_default();
@@ -56,18 +72,25 @@ fn update_now(change: impl FnOnce(&mut NowSummary)) -> bool {
 /// Sets up the menus, the Dock menu and the tray. Call in `setup`, on the
 /// main thread, after the queue.
 pub fn init(app: &AppHandle<Wry>) -> Result<(), String> {
-    menu::install(app).map_err(|e| e.to_string())?;
-    dock::init(app);
-    tray::configure(app, &settings::current(app).window);
+    #[cfg(desktop)]
+    {
+        menu::install(app).map_err(|e| e.to_string())?;
+        dock::init(app);
+        tray::configure(app, &crate::settings::current(app).window);
+    }
+    #[cfg(not(desktop))]
+    let _ = app;
     Ok(())
 }
 
 /// Closes the Dock menu. Main thread.
 pub fn shutdown() {
+    #[cfg(desktop)]
     dock::shutdown();
 }
 
 /// The queue changed. Main thread.
+#[cfg(desktop)]
 pub fn queue_changed<R: Runtime>(app: &AppHandle<R>, state: &QueueState) {
     menu::queue_changed(app, state);
     let item = state.current_item.as_ref();
@@ -84,26 +107,45 @@ pub fn queue_changed<R: Runtime>(app: &AppHandle<R>, state: &QueueState) {
     notifications::queue_changed(app, state);
 }
 
+/// The queue changed. Main thread.
+#[cfg(not(desktop))]
+pub fn queue_changed<R: Runtime>(_app: &AppHandle<R>, _state: &QueueState) {}
+
 /// A recording started or stopped (PLAN.md X6), or the feature was
 /// switched. Main thread.
 pub fn recording_changed<R: Runtime>(app: &AppHandle<R>, recording: bool) {
-    let enabled = crate::settings::current(app).features.recording;
-    menu::recording_changed(app, recording, enabled);
+    #[cfg(desktop)]
+    {
+        let enabled = crate::settings::current(app).features.recording;
+        menu::recording_changed(app, recording, enabled);
+    }
+    #[cfg(not(desktop))]
+    let _ = (app, recording);
 }
 
 /// The player started or stopped playing. Main thread.
 pub fn playing_changed<R: Runtime>(app: &AppHandle<R>, playing: bool) {
-    menu::playing_changed(app, playing);
-    if update_now(|now| now.playing = playing) {
-        dock::update();
-        tray::update(app);
+    #[cfg(desktop)]
+    {
+        menu::playing_changed(app, playing);
+        if update_now(|now| now.playing = playing) {
+            dock::update();
+            tray::update(app);
+        }
     }
+    #[cfg(not(desktop))]
+    let _ = (app, playing);
 }
 
 /// The window settings changed.
 pub fn window_settings_changed<R: Runtime>(app: &AppHandle<R>, window: &WindowSettings) {
-    tray::configure(app, window);
-    mini::set_on_top(app, window.mini_player_on_top);
+    #[cfg(desktop)]
+    {
+        tray::configure(app, window);
+        mini::set_on_top(app, window.mini_player_on_top);
+    }
+    #[cfg(not(desktop))]
+    let _ = (app, window);
 }
 
 /// Shows the main window, in front.
@@ -112,6 +154,7 @@ pub fn show_main<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or("The main window is gone")?;
     window.show().map_err(|e| e.to_string())?;
+    #[cfg(desktop)]
     let _ = window.unminimize();
     window.set_focus().map_err(|e| e.to_string())
 }
@@ -181,7 +224,18 @@ pub fn shell_sort_dropped(paths: Vec<PathBuf>) -> DroppedPaths {
 /// "CmdOrCtrl" for ⌘ on macOS and Ctrl elsewhere.
 #[tauri::command]
 pub fn shell_shortcuts() -> Vec<(&'static str, &'static str)> {
+    shortcuts()
+}
+
+#[cfg(desktop)]
+fn shortcuts() -> Vec<(&'static str, &'static str)> {
     menu::shortcuts()
+}
+
+/// No menus, so no shortcuts.
+#[cfg(not(desktop))]
+fn shortcuts() -> Vec<(&'static str, &'static str)> {
+    Vec::new()
 }
 
 #[tauri::command]
@@ -191,7 +245,18 @@ pub fn shell_show_main<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn shell_toggle_mini_player<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
-    mini::toggle(&app)
+    toggle_mini_player(&app)
+}
+
+#[cfg(desktop)]
+fn toggle_mini_player<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    mini::toggle(app)
+}
+
+/// Only desktops have a second window.
+#[cfg(not(desktop))]
+fn toggle_mini_player<R: Runtime>(_app: &AppHandle<R>) -> Result<(), String> {
+    Err("There is no mini player on this platform".into())
 }
 
 #[cfg(test)]
@@ -210,6 +275,7 @@ mod tests {
         assert_eq!(sorted.files, [song]);
     }
 
+    #[cfg(desktop)]
     #[test]
     fn keeps_what_the_dock_and_tray_show() {
         assert!(update_now(|now| now.title = Some("Song".into())));

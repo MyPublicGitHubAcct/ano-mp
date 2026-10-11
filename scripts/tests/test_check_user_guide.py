@@ -305,5 +305,5 @@ def test_the_page_keys_must_match_the_sheet_both_ways(guide):
     ]
     unknown = DIALOG.replace('Right: "→",', 'Right: "→",\n      Tab: "⇥",')
     assert guide.page_shortcut_problems(unknown, SHORTCUT_MESSAGES, tables) == [
-        "ShortcutsDialog.svelte's keys() renames Tab, which check-user-guide.py doesn't know"
+        "keys.ts's keys() renames Tab, which check-user-guide.py doesn't know"
     ]

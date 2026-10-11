@@ -33,8 +33,10 @@ pub const PLAYER_STATE_EVENT: &str = "player-state";
 pub const PLAYER_POSITION_EVENT: &str = "player-position";
 /// Frontend event with a `TrackEndedPayload`.
 pub const PLAYER_TRACK_ENDED_EVENT: &str = "player-track-ended";
+// For the menus (shell/, desktop only).
 /// Frontend event with the volume (0 to 1), when something other than the
 /// page changed it (the menu, the remote).
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub const PLAYER_VOLUME_EVENT: &str = "player-volume";
 
 #[derive(Clone, Serialize)]
@@ -331,6 +333,7 @@ pub fn player_set_volume<R: Runtime>(app: AppHandle<R>, volume: f64) -> Result<(
 
 /// Changes the volume by `step` (e.g. 0.05 up, -0.05 down), for the menu's
 /// volume items; returns the new volume.
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub fn change_volume<R: Runtime>(app: &AppHandle<R>, step: f64) -> Result<f64, String> {
     let volume = with_engine(app, move |engine| {
         let volume = (engine.volume() + step).clamp(0.0, 1.0);

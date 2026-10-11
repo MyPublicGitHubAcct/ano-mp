@@ -17,11 +17,13 @@ passed its exit check; D4 (documentation upkeep, added 2026-10-08) has its
 stale text fixed, the smoke test's pass over Phase 7b done and Phase 7b's
 and D3's records moved to `docs/design/`, its checks of links' anchors, of
 Mermaid diagrams and of the shortcuts appendix added, the index of plan
-items (`docs/plan-items.md`) generated and checked (2026-10-09), and a guide
-to the documents (`docs/README.md`) written (2026-10-10). Phase 7d
-(added 2026-10-08) proposes forty more features (N1–N40) for the owner to
-choose from; none is accepted yet. Finished work's design notes and records
-are in `docs/design/`, linked from each phase.
+items (`docs/plan-items.md`) generated and checked (2026-10-09), a guide to
+the documents (`docs/README.md`) written, and a porting chapter added to the
+developer guide ahead of Phases 8–10, with the Windows, Linux and iOS
+problems its inventory found fixed (2026-10-10). Phase 7d (added 2026-10-08)
+proposes forty more features (N1–N40) for the owner to choose from; none is
+accepted yet. Finished work's design notes and records are in
+`docs/design/`, linked from each phase.
 
 
 ## 1. Architecture
@@ -113,8 +115,8 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 499 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
-| 90 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 504 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 93 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 268 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -1134,6 +1136,49 @@ in `docs/design/`, and D2 links to them rather than repeating them.
       `tauri.conf.json`'s macOS settings, `build-ffmpeg.sh`'s platform
       folders, the macOS-only CI), each seam's interface, and a recipe
       for adding a platform's implementation.
+      **Done 2026-10-10:**
+      [docs/developer-guide/14-porting.md](docs/developer-guide/14-porting.md),
+      linked from the guide's README, its overview, chapter 4's platform
+      code, the recipes chapter (which points to its recipe) and
+      `docs/README.md`. Inventoried from the tree: the core's six seams
+      (each header, `_apple` file and fallback, chosen by
+      `core/CMakeLists.txt`'s `if(APPLE)`; `FolderAccess`'s fallback is
+      `FolderAccess_unsandboxed.cpp`, not a `_none` file), every platform
+      `cfg` in the Rust crate, the keychain, `shell/`, `tauri.conf.json`,
+      the entitlements and capabilities, the build and release scripts, CI
+      and the frontend's keys. A table per layer gives what iOS, Linux and
+      Windows each need, with what the fallbacks lose as a user would notice
+      it and the recipe (also in the recipes chapter, by link). One Mermaid
+      diagram, 17 in all. Found: `audit.yml` already runs on Linux, so three
+      of the four workflows are macOS-only; iOS needs an audio-session seam
+      the core lacks; Windows keeps OneDrive placeholders `FileStatus` would
+      have to see. Portability bugs outside the seams, none affecting macOS,
+      all fixed the same day at the owner's request without changing what
+      macOS does: Windows paths escaped the log's path scrubbing
+      (`logging::path_at` now knows drive, share and verbatim paths, H9);
+      `add_folder` stored `canonicalize`'s verbatim `\\?\` path on Windows
+      and `open_folder_of` compared paths exactly (now `library/paths.rs`:
+      `canonical` and `within`, which ignores case on Windows, used by
+      `add_folder`, `relocate_folder`, the overlap check, `open_folder_of`,
+      `external::library_track` and `playlists::resolve`); an M3U8 entry
+      with a drive letter was found on Windows only by its tail
+      (`playlists::entry_path`); the Help window's Back key was ⌘[ only (now
+      Alt+← off macOS and iOS, `lib/keys.ts`); `access::in_trash` missed a
+      Linux volume's `.Trash-<uid>` and Windows' `$Recycle.Bin`; `shell/`
+      used Tauri's desktop-only menu and tray unconditionally (now
+      `#[cfg(desktop)]`, with `notify-rust` a desktop-only dependency and
+      the items only menus call allowed to be unused elsewhere; both
+      branches pass Clippy, by flipping the cfg on macOS); messages named
+      the Mac, the Finder, iCloud, the keychain or ⌘ (now `<key>@windows`,
+      `@linux` and `@ios` forms that `t` prefers by `lib/platform.ts`,
+      shortcuts as a `{keys}` parameter, and `i18n.test.mjs` requiring the
+      forms); and the core's asynchronous C API tests were skipped off macOS
+      (now pumping JUCE's own queue there). Tests: 5 Rust, 3 frontend. The
+      Linux, Windows and iOS branches that only those systems compile (the
+      core tests' pump, the iOS build) wait for Phases 8–10. No hard-coded
+      `/` was found: paths are joined by component. The repository map
+      gained `library/paths.rs`, `lib/platform.ts` and `lib/keys.ts`, and
+      the dictionary `Platform`.
   - **`README.md`'s troubleshooting** repeats the user guide's chapter
     14 and the developer guide's chapter 10 in part: keep the build
     failures, link to those two for the rest.
@@ -1505,6 +1550,14 @@ stored) before it is built, and a line in the privacy policy (§8.1).
 - Lock screen and Control Center via the Phase 3 Now Playing code.
 - Add an iOS simulator build to CI. Release steps (TestFlight, App Store)
   are in §8.4.
+- Found by D4's porting inventory and fixed 2026-10-10 (the developer
+  guide's [porting chapter](docs/developer-guide/14-porting.md) has the
+  rest): `shell/`'s menus, tray, extra windows and notifications are
+  `#[cfg(desktop)]`, since Tauri's `menu` and `tray` exist on desktop only,
+  and `notify-rust` is a desktop-only dependency; messages that name the Mac
+  have `@ios` forms where iOS differs. To do here: build that branch for iOS
+  (it passes Clippy only with the cfg flipped on macOS), give notifications
+  an iOS route, and add the audio session above as a new core seam.
 - **Exit:** the app plays a library on a physical iPhone and iPad, including
   in the background.
 
@@ -1528,6 +1581,13 @@ stored) before it is built, and a line in the privacy policy (§8.1).
   runs.
 - WebKitGTK rendering check: the visualizer (Phase 5) may need a canvas
   fallback if WebGL is slow or disabled.
+- Found by D4's porting inventory and fixed 2026-10-10 (see the [porting
+  chapter](docs/developer-guide/14-porting.md)): `access::in_trash` knows a
+  volume's `.Trash-<uid>`; the Help window's Back key is Alt+←; messages
+  that name the Mac, the Finder, iCloud or the keychain have `@linux` forms;
+  `CApiTests.cpp`'s asynchronous tests pump JUCE's own queue. To do here:
+  compile and run that pump (it hasn't been built on Linux), and check
+  JUCE's event loop is pumped in the app (§6).
 - **Exit:** a release build plays a library on Ubuntu and Fedora, with media
   keys working. Packaging is in §8.5.
 
@@ -1549,6 +1609,17 @@ stored) before it is built, and a line in the privacy policy (§8.1).
   case-insensitive de-duplication in the library DB.
 - Metadata keys (`metadata/keys.rs`, 4.8): the Windows Credential Manager
   (a `keyring-core` store).
+- Found by D4's porting inventory and fixed 2026-10-10 (see the [porting
+  chapter](docs/developer-guide/14-porting.md)): folders' paths are stored
+  without the verbatim `\\?\` prefix and files matched to them ignoring case
+  (`library/paths.rs`); the log scrubs drive, share and verbatim paths (H9);
+  an M3U8 entry with a drive letter or a share is a path here
+  (`playlists::entry_path`); `access::in_trash` knows `$Recycle.Bin`; the
+  Help window's Back key is Alt+←; messages that name the Mac have
+  `@windows` forms. Still to do: OneDrive's placeholders need a `FileStatus`
+  implementation (H12), background scans a lower priority
+  (`watch::lower_priority`), and `CApiTests.cpp`'s pump of JUCE's queue a
+  first build here.
 - **Exit:** a release build plays a library on Windows 11, with media
   keys working. Installer and signing are in §8.6.
 

@@ -414,14 +414,26 @@ fn url_head(url: &str) -> String {
 
 /// Where an absolute path starting at `i` ends, if one does: at the end, a
 /// line break, a quote or bracket, `": "` or `" ("`. Spaces inside it are
-/// allowed ("/Users/me/My Music/a b.flac").
+/// allowed ("/Users/me/My Music/a b.flac"). Windows' forms count too: a
+/// drive's (`C:\Users\…`, `C:/…`) and a share's or a verbatim path's
+/// (`\\server\share\…`, `\\?\C:\…`).
 fn path_at(chars: &[char], i: usize) -> Option<usize> {
-    let home = chars[i] == '~' && chars.get(i + 1) == Some(&'/');
-    if chars[i] != '/' && !home {
+    let at = |offset: usize| chars.get(i + offset).copied();
+    let is_separator = |c: Option<char>| matches!(c, Some('/' | '\\'));
+    let skip = if chars[i] == '/' {
+        1
+    } else if chars[i] == '~' && at(1) == Some('/') {
+        2
+    } else if chars[i].is_ascii_alphabetic() && at(1) == Some(':') && is_separator(at(2)) {
+        3
+    } else if chars[i] == '\\' && at(1) == Some('\\') {
+        2
+    } else {
         return None;
-    }
-    let first = chars.get(i + if home { 2 } else { 1 })?;
-    if !(first.is_alphanumeric() || matches!(first, '.' | '_' | '-')) {
+    };
+    let first = at(skip)?;
+    let verbatim = chars[i] == '\\' && first == '?';
+    if !(first.is_alphanumeric() || matches!(first, '.' | '_' | '-') || verbatim) {
         return None;
     }
     let mut end = i + 1;
@@ -572,6 +584,17 @@ mod tests {
             "Folder not available (missing): <path> (The file couldn’t be opened)"
         );
         assert_eq!(scrub("moved to \"~/Music/Old\""), "moved to \"<path>\"");
+        // Windows' paths: a drive's, a share's and a verbatim one.
+        assert_eq!(
+            scrub("Cannot open C:\\Users\\me\\My Music\\01 Joga.flac: Access is denied"),
+            "Cannot open <path>: Access is denied"
+        );
+        assert_eq!(scrub("folder at \"D:/Music\""), "folder at \"<path>\"");
+        assert_eq!(
+            scrub("Folder not available (missing): \\\\nas\\Music\\Rock (os error 53)"),
+            "Folder not available (missing): <path> (os error 53)"
+        );
+        assert_eq!(scrub("resolved \\\\?\\C:\\Music"), "resolved <path>");
         assert_eq!(
             scrub("GET https://musicbrainz.org/ws/2/release?query=artist:Björk failed: 503"),
             "GET https://musicbrainz.org/… failed: 503"
@@ -586,6 +609,8 @@ mod tests {
             "folder 3: 12/40 tracks, 48 kHz, 1/2 done"
         );
         assert_eq!(scrub("a / b"), "a / b");
+        assert_eq!(scrub("at 3:\\ and a:b"), "at 3:\\ and a:b");
+        assert_eq!(scrub("a \\ b"), "a \\ b");
     }
 
     #[test]

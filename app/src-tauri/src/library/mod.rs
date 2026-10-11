@@ -22,6 +22,7 @@ pub mod health;
 pub mod info;
 pub mod lyrics;
 pub mod marks;
+pub mod paths;
 pub mod playback;
 pub mod playlists;
 pub mod prefs;
@@ -128,7 +129,7 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
             path.display()
         )));
     }
-    let path = std::fs::canonicalize(path)
+    let path = paths::canonical(path)
         .map_err(|error| Error::Invalid(format!("Cannot open {}: {error}", path.display())))?;
     if !path.is_dir() {
         return Err(Error::Invalid(format!("Not a folder: {}", path.display())));
@@ -165,7 +166,7 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
 /// after it moved (F8): its tracks, stored relative to it, follow, keeping
 /// their ids. Refuses a path inside, or holding, another library folder.
 pub fn relocate_folder(conn: &Connection, folder_id: i64, path: &Path) -> Result<Folder, Error> {
-    let path = std::fs::canonicalize(path)
+    let path = paths::canonical(path)
         .map_err(|error| Error::Invalid(format!("Cannot open {}: {error}", path.display())))?;
     if !path.is_dir() {
         return Err(Error::Invalid(format!("Not a folder: {}", path.display())));
@@ -193,16 +194,20 @@ pub fn relocate_folder(conn: &Connection, folder_id: i64, path: &Path) -> Result
 fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<(), Error> {
     for existing in folders(conn)? {
         let other = Path::new(&existing.path);
-        if Some(existing.id) != except && (path.starts_with(other) || other.starts_with(path)) {
-            return Err(Error::Invalid(if path == other {
-                format!("{} is already in the library", path.display())
-            } else {
-                format!(
-                    "{} overlaps the library folder {}",
-                    path.display(),
-                    existing.path
-                )
-            }));
+        let inside = paths::within(path, other);
+        if Some(existing.id) != except && (inside.is_some() || paths::within(other, path).is_some())
+        {
+            return Err(Error::Invalid(
+                if inside.is_some_and(|rest| rest.as_os_str().is_empty()) {
+                    format!("{} is already in the library", path.display())
+                } else {
+                    format!(
+                        "{} overlaps the library folder {}",
+                        path.display(),
+                        existing.path
+                    )
+                },
+            ));
         }
     }
     Ok(())

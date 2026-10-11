@@ -172,6 +172,16 @@ there is one). `tests/i18n.test.mjs` checks every error code Rust sends
 has a message. The user guide names controls as `en.json` words them, so
 a renamed label is a change to the guide too.
 
+A plain message is macOS's text. One that names something only macOS has
+(the Finder, the keychain, iCloud, "this Mac") also has a form per
+platform, `<key>@windows`, `<key>@linux` and, where iOS differs,
+`<key>@ios`, which `t` prefers on that platform (`lib/platform.ts` tells
+which, from the webview); `tests/i18n.test.mjs` fails on such a message
+without its Windows and Linux forms, or a form whose placeholders differ.
+A shortcut in a message is a `{keys}` parameter, written by
+`lib/keys.ts`'s `keys()` as the platform writes it (⌘, or Ctrl), never a
+⌘ in the text.
+
 ## Themes and styling
 
 Components take every colour, radius and font from CSS custom

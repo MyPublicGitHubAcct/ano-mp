@@ -61,6 +61,9 @@ messages (`en.json`) use.
     fuzzing.
 13. [Building and releasing](13-building-and-releasing.md): the release
     scripts and what each checks.
+14. [Porting](14-porting.md): what is macOS-only today, each platform
+    seam's interface and fallback, what iOS, Linux and Windows will
+    need, and how to add a platform's implementation of a seam.
 
 ## Conventions in this guide
 

@@ -257,22 +257,27 @@ fn unresolved(stored: &str, error: &str) -> FolderState {
     }
 }
 
-/// Whether `path` is in a Trash: the user's (`~/.Trash`), a volume's
-/// (`/Volumes/X/.Trashes/<uid>`), or a freedesktop one (`…/Trash/files`).
+/// Whether `path` is in a Trash: macOS's, the user's (`~/.Trash`) or a
+/// volume's (`/Volumes/X/.Trashes/<uid>`); a freedesktop one, the user's
+/// (`…/Trash/files`) or a volume's (`/media/x/.Trash-<uid>/files`); or a
+/// Windows drive's Recycle Bin (`C:\$Recycle.Bin\<sid>`).
 pub fn in_trash(path: &Path) -> bool {
-    let names: Vec<&std::ffi::OsStr> = path
+    let names: Vec<String> = path
         .components()
         .filter_map(|component| match component {
-            Component::Normal(name) => Some(name),
+            Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
             _ => None,
         })
         .collect();
-    names
-        .iter()
-        .any(|name| *name == ".Trash" || *name == ".Trashes")
-        || names
-            .windows(2)
-            .any(|pair| pair[0] == "Trash" && pair[1] == "files")
+    let volume_trash = |name: &str| {
+        name.strip_prefix(".Trash-")
+            .is_some_and(|uid| !uid.is_empty() && uid.bytes().all(|b| b.is_ascii_digit()))
+    };
+    names.iter().any(|name| {
+        name == ".Trash" || name == ".Trashes" || name.eq_ignore_ascii_case("$Recycle.Bin")
+    }) || names
+        .windows(2)
+        .any(|pair| (pair[0] == "Trash" || volume_trash(&pair[0])) && pair[1] == "files")
 }
 
 /// Opens the library folder that holds the file at `path`, or returns `None`
@@ -284,7 +289,7 @@ pub fn open_folder_of(conn: &Connection, path: &Path) -> Result<Option<OpenFolde
     })?;
     for folder in folders {
         let (id, folder_path) = folder?;
-        if path.starts_with(&folder_path) {
+        if super::paths::within(path, Path::new(&folder_path)).is_some() {
             return open_folder(conn, id).map(Some);
         }
     }
@@ -613,6 +618,9 @@ mod tests {
         )));
         assert!(!in_trash(Path::new("/Users/me/Music/Trash")));
         assert!(!in_trash(Path::new("/Users/me/Music/.Trashy")));
+        assert!(in_trash(Path::new("/media/me/USB/.Trash-1000/files/Music")));
+        assert!(!in_trash(Path::new("/media/me/USB/.Trash-me/files/Music")));
+        assert!(in_trash(Path::new("/c/$RECYCLE.BIN/S-1-5-21/Music")));
     }
 
     #[test]

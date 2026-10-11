@@ -270,11 +270,14 @@ type RawLogCallback = extern "C" fn(level: c_int, message: *const c_char, user_d
 
 type RawVolumeCallback = extern "C" fn(mounted: c_int, path: *const c_char, user_data: *mut c_void);
 
+// The Dock menu's: shell/, its only user, is compiled on desktop only.
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[repr(C)]
 struct RawDockMenu {
     _private: [u8; 0],
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[repr(C)]
 struct RawMenuItem {
     id: c_int,
@@ -283,6 +286,7 @@ struct RawMenuItem {
     checked: c_int,
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 type RawMenuCallback = extern "C" fn(id: c_int, user_data: *mut c_void);
 
 #[repr(C)]
@@ -556,12 +560,16 @@ extern "C" {
         callback: Option<RawAnalysisCallback>,
         user_data: *mut c_void,
     ) -> c_int;
+    #[cfg_attr(not(desktop), allow(dead_code))]
     fn anomp_dock_menu_supported() -> c_int;
+    #[cfg_attr(not(desktop), allow(dead_code))]
     fn anomp_dock_menu_create(
         callback: Option<RawMenuCallback>,
         user_data: *mut c_void,
     ) -> *mut RawDockMenu;
+    #[cfg_attr(not(desktop), allow(dead_code))]
     fn anomp_dock_menu_destroy(menu: *mut RawDockMenu);
+    #[cfg_attr(not(desktop), allow(dead_code))]
     fn anomp_dock_menu_set_items(menu: *mut RawDockMenu, items: *const RawMenuItem, count: c_int);
     #[cfg(test)]
     fn anomp_dock_menu_perform(menu: *mut RawDockMenu, id: c_int) -> c_int;
@@ -2407,6 +2415,7 @@ impl Drop for MediaControls {
     }
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 type MenuHandler = Box<dyn Fn(i32)>;
 
 /// Sends the core's log messages (JUCE's Logger and failed assertions
@@ -2533,6 +2542,7 @@ extern "C" fn on_volume(mounted: c_int, path: *const c_char, user_data: *mut c_v
 }
 
 /// An item of the Dock menu.
+#[cfg_attr(not(desktop), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MenuItem {
     pub id: i32,
@@ -2545,12 +2555,14 @@ pub struct MenuItem {
 /// The Dock icon's menu (macOS; nothing elsewhere). Main thread only, like
 /// `MediaControls`: choices reach the handler on the main thread, from the
 /// OS, never inside a call on this object. One exists at a time.
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub struct DockMenu {
     raw: NonNull<RawDockMenu>,
     handler: *mut MenuHandler,
     _not_send: PhantomData<*mut ()>,
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 impl DockMenu {
     /// Whether this platform shows a Dock menu.
     pub fn supported() -> bool {
@@ -2621,6 +2633,7 @@ impl Drop for DockMenu {
     }
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 extern "C" fn on_menu_choice(id: c_int, user_data: *mut c_void) {
     // SAFETY: `user_data` is the handler registered by `DockMenu::new`, alive
     // until the menu is destroyed.

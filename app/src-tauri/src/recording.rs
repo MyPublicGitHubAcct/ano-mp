@@ -498,7 +498,9 @@ pub fn shutdown<R: Runtime>(app: &AppHandle<R>) {
     finish(app, None);
 }
 
+// For the menu (shell/, desktop only).
 /// Starts or stops recording, for the menu. Main thread.
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub fn toggle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let recording = SESSION.with_borrow(Option::is_some);
     let app = app.clone();

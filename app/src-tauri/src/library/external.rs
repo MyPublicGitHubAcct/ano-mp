@@ -89,7 +89,7 @@ pub fn library_track(conn: &Connection, path: &Path) -> Result<Option<i64>, Erro
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_, _>>()?;
     for (folder_id, folder) in folders {
-        let Ok(rest) = path.strip_prefix(&folder) else {
+        let Some(rest) = super::paths::within(path, Path::new(&folder)) else {
             continue;
         };
         let names: Option<Vec<&str>> = rest

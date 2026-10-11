@@ -876,7 +876,9 @@ pub fn end_take<R: Runtime>(
     })
 }
 
+// For the Controls menu (shell/, desktop only).
 /// Shuffle on or off, whichever it isn't (the Controls menu).
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub fn toggle_shuffle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     run(app, |queue, player| {
         let on = queue.state_shuffle();
@@ -884,12 +886,14 @@ pub fn toggle_shuffle<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     })
 }
 
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub fn set_repeat<R: Runtime>(app: &AppHandle<R>, repeat: Repeat) -> Result<(), String> {
     run(app, move |queue, player| queue.set_repeat(player, repeat))
 }
 
 /// Stops after the current item, or not if it already would (the Controls
 /// menu).
+#[cfg_attr(not(desktop), allow(dead_code))]
 pub fn toggle_stop_after_current<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     run(app, |queue, player| {
         let current = queue.current_item().map(|item| item.uid);

@@ -5,8 +5,15 @@
 
 #include <juce_core/juce_core.h>
 
-#if JUCE_MAC
+#if JUCE_MAC || JUCE_IOS
 #include <CoreFoundation/CoreFoundation.h>
+#else
+namespace juce::detail
+{
+// JUCE's own message queue on Linux and Windows (juce_Messaging_linux.cpp,
+// juce_Messaging_windows.cpp), which MessageManager::runDispatchLoop pumps.
+bool dispatchNextMessageOnSystemQueue (bool returnIfNoPendingMessages);
+} // namespace juce::detail
 #endif
 
 #include <functional>
@@ -22,14 +29,21 @@ namespace
 std::string fixturePath (const char* name) { return std::string (ANOMP_TEST_FIXTURES_DIR) + "/" + name; }
 
 /** Runs the main run loop, where the engine delivers its events, until
-    `done` returns true; false after a timeout. */
+    `done` returns true; false after a timeout. On Apple platforms JUCE's
+    messages ride the CFRunLoop (as they ride Tauri's in the app); elsewhere
+    JUCE keeps a queue of its own, pumped here. */
 bool runEventsUntil (const std::function<bool()>& done)
 {
-#if JUCE_MAC
     const auto deadline = juce::Time::getMillisecondCounterHiRes() + 10000.0;
     while (! done() && juce::Time::getMillisecondCounterHiRes() < deadline)
+    {
+#if JUCE_MAC || JUCE_IOS
         CFRunLoopRunInMode (kCFRunLoopDefaultMode, 0.01, true);
+#else
+        if (! juce::detail::dispatchNextMessageOnSystemQueue (true))
+            juce::Thread::sleep (1);
 #endif
+    }
     return done();
 }
 } // namespace
@@ -513,9 +527,6 @@ TEST_CASE ("C API engine shuts JUCE down after its timer", "[c-api][engine][log]
 
 TEST_CASE ("C API loads asynchronously, reporting each request once", "[c-api][engine][async]")
 {
-#if ! JUCE_MAC
-    SKIP ("The test runs the macOS main run loop");
-#endif
     char error[256] = "unchanged";
     CHECK (anomp_engine_load_track_async (nullptr, "/a.flac", nullptr, error, sizeof (error)) == 0);
     CHECK (std::string_view (error) == "Null engine");

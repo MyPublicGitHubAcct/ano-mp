@@ -606,6 +606,14 @@ Where a found feature opens: a view, a Settings section and the id of a
 control in it, a menu item's action, the sidebar's playlists, or the
 player bar's sleep timer.
 
+### `Platform`
+
+TS type · [`app/src/lib/platform.ts`](../../app/src/lib/platform.ts) · [D2: Text](../developer-guide/07-frontend.md#text)
+
+The OS the app runs on (`macos`, `ios`, `windows` or `linux`), from
+`navigator.platform`. `t` prefers a message's `<key>@<platform>` form,
+and `keys.ts` writes shortcuts with ⌘ on macOS and iOS.
+
 ### `PlayAction`
 
 TS type · [`app/src/lib/workbench.ts`](../../app/src/lib/workbench.ts)

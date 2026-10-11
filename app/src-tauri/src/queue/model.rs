@@ -635,10 +635,13 @@ impl Queue {
         self.loaded
     }
 
+    // Read by the Controls menu (shell/, desktop only).
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub fn state_shuffle(&self) -> bool {
         self.original.is_some()
     }
 
+    #[cfg_attr(not(desktop), allow(dead_code))]
     pub fn stop_after(&self) -> Option<Uid> {
         self.stop_after
     }

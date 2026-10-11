@@ -45,11 +45,6 @@ tauri-plugin-log = "=2.10.0"
 tauri-plugin-dialog = "=2.7.3"
 # Opens web links (a biography's Wikipedia article) in the browser.
 tauri-plugin-opener = "=2.5.5"
-# Track-change notifications, opt-in (PLAN.md F21). What
-# tauri-plugin-notification uses on desktop, used directly because the
-# plugin leaves out a notification's image there, and the cover is the
-# point.
-notify-rust = "4"
 # Bundled so every platform (including iOS) gets the same SQLite.
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 walkdir = "2.5"
@@ -79,6 +74,14 @@ libc = "0.2"
 # writes JPEG, the same on every platform. Default features off: only those
 # three formats (the owner's choice over ImageIO in the core).
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+
+# Track-change notifications, opt-in (PLAN.md F21). What
+# tauri-plugin-notification uses on desktop, used directly because the
+# plugin leaves out a notification's image there, and the cover is the
+# point. Desktop only (shell/notifications.rs is `cfg(desktop)`): iOS gets
+# its notifications in Phase 8.
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+notify-rust = "4"
 
 # Keys for metadata sources (a Discogs token) go in the OS keychain
 # (metadata/keys.rs). macOS only for now: iOS needs the protected store

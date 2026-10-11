@@ -4,6 +4,7 @@
   // shortcuts.
   import { shell } from "$lib/api";
   import { t } from "$lib/i18n";
+  import { keys } from "$lib/keys";
   import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
@@ -41,7 +42,7 @@
   />
   <span>
     <span class="title">{t("general.onTop")}</span>
-    <span class="hint">{t("general.onTopHint")}</span>
+    <span class="hint">{t("general.onTopHint", { keys: keys("Alt+CmdOrCtrl+M") })}</span>
   </span>
 </label>
 <div class="actions">

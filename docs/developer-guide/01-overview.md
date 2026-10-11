@@ -220,3 +220,5 @@ function by function.
 - To find a file: [Repository map](03-repository-map.md).
 - To understand a part: chapters 4 to 7.
 - To fix something: [Troubleshooting](10-troubleshooting.md).
+- To port it to iOS, Linux or Windows: [Porting](14-porting.md), which
+  lists what is macOS-only today.

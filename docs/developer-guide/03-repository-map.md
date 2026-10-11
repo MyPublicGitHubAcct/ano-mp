@@ -258,6 +258,9 @@ kept about them. Open connections only through `db`.
 - `playlists.rs`: playlists, M3U8 import and export.
 - `smart.rs`: smart playlists' rules and their queries.
 - `marks.rs`: hearts and ratings.
+- `paths.rs`: folders' paths as the OS spells them (`canonical`: no
+  Windows verbatim `\\?\` prefix), and whether a file is in a folder
+  (`within`, ignoring case on Windows).
 - `prefs.rs`: per-track and per-album playback preferences (O7).
 - `analysis.rs`: the background loudness analysis and what the
   same pass finds; never reads a cloud placeholder.
@@ -410,6 +413,11 @@ single-page app per window.
   do) and the audio file extensions the open dialogs offer.
 - `folders.ts`: which folders' tracks to show dimmed.
 - `format.ts`: times and dates as the UI writes them.
+- `platform.ts`: which OS the app runs on, from the webview, for the
+  messages' per-platform forms and the shortcuts' keys.
+- `keys.ts`: shortcuts as the platform writes them (`keys()`: ⌘ or
+  Ctrl), for the shortcuts sheet and messages' `{keys}`, and the Help
+  window's Back key.
 - `guide.ts`: the parser for the user guide's Markdown subset.
 - `links.ts`: `webLink`: only https links (http upgraded) may be opened.
 - `openLink.ts`: opens web links in the browser, never the webview.

@@ -294,6 +294,13 @@ catalogue, `ANOMP_EFFECT_*`, `EffectsSettings` and its `get`, the
    shown with `errorText`.
 4. If the user guide names the control, it names it exactly as this
    string does; change both together.
+5. **Platforms.** The plain message is macOS's. If it names something
+   only macOS has (the Finder, the keychain, iCloud, "this Mac"), add
+   `<key>@windows` and `<key>@linux` forms after it (and `<key>@ios`
+   where iOS differs), with the same placeholders; `t` picks the one for
+   the platform, and `tests/i18n.test.mjs` fails without them. A shortcut
+   goes in a `{keys}` parameter, filled with `keys("CmdOrCtrl+…")` from
+   `lib/keys.ts`, never as ⌘ in the text.
 
 ## A decoded format
 
@@ -308,6 +315,18 @@ catalogue, `ANOMP_EFFECT_*`, `EffectsSettings` and its `get`, the
    (only with its FFmpeg demuxer).
 5. Its extension in `tauri.conf.json`'s `fileAssociations` if the Finder
    should offer ano-mp for it, and the user guide's formats appendix.
+
+## A platform's implementation of a seam
+
+The core's platform services (`FolderAccess`, `FileStatus`,
+`MediaControls`, `DockMenu`, `OutputRoute`, `VolumeWatcher`) are each a
+header, an `_apple` file and a fallback, chosen in
+`core/CMakeLists.txt`. The full recipe is in
+[chapter 14](14-porting.md#recipe-add-a-platforms-implementation-of-a-seam):
+the file beside the others, a branch per OS in `core/CMakeLists.txt`
+(and the same libraries in `build.rs`'s link line), the tests that pin
+support to Apple, any `cfg` in Rust, and the map's, the dictionary's
+and chapter 4's entries.
 
 ## A recording format
 
