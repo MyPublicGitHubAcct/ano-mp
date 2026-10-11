@@ -85,7 +85,7 @@ pub fn art(track_id: i64) -> Option<Arc<Art>> {
 /// split into parts), if it is in a library folder and scanned.
 pub fn library_track(conn: &Connection, path: &Path) -> Result<Option<i64>, Error> {
     let folders: Vec<(i64, String)> = conn
-        .prepare_cached("SELECT id, path FROM folders")?
+        .prepare_cached("SELECT id, path FROM folders WHERE kind = 'local'")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<_, _>>()?;
     for (folder_id, folder) in folders {

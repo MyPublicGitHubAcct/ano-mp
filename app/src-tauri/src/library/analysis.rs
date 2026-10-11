@@ -263,6 +263,7 @@ pub const HISTOGRAM_STEP: f64 = 0.5;
 const NEEDS_ANALYSIS: &str = "FROM tracks t
      LEFT JOIN track_analysis a ON a.track_id = t.id
      WHERE t.file_mtime_ns >= 0 AND t.dataless = 0
+       AND t.folder_id IN (SELECT id FROM folders WHERE kind = 'local')
        AND (a.track_id IS NULL OR a.file_size != t.file_size OR a.file_mtime_ns != t.file_mtime_ns
             OR a.error LIKE '{\"code\":\"folderUnavailable\"%')";
 

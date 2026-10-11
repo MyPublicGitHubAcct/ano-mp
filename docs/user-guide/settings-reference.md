@@ -145,6 +145,15 @@ section's settings back to the values below.
 | Artist biographies | Wikipedia | any order |
 | Album descriptions | Wikipedia | any order |
 
+## Servers
+
+| Setting | Starts as | Can be |
+|---|---|---|
+| Tell the server what plays | On | On or off |
+| Away from home | Original files | the original files, or 64 to 320 kbps |
+| Space for downloaded music | 1024 MB | 256 to 65536 MB |
+| Use Plex’s relay | Off | On or off |
+
 ## Features
 
 | Setting | Starts as | Can be |
@@ -179,6 +188,8 @@ section's settings back to the values below.
 | Themes | On | On or off |
 | Recording | Off | On or off |
 | Effects workbench | On | On or off |
+| Jellyfin servers | Off | On or off |
+| Plex servers | Off | On or off |
 | Control playback from a phone | Off | On or off |
 | Port | 8765 | 1024 to 65535 |
 

@@ -346,6 +346,103 @@ Each window gets only the commands it needs. `build.rs` writes the main
 window's permission set from `generate_handler!`; the mini player's and
 Help's are listed by hand in `app/src-tauri/permissions/`.
 
+## Music servers
+
+`servers/` (Phases 7e, 7f) plays the music on the user's Jellyfin and
+Plex servers next to the local library. A Jellyfin server, as one user
+sees it, is a library folder of kind `jellyfin` (`folders.kind`,
+migration 014), and each music library of a Plex server one of kind
+`plex` (migration 015's `section`): its `path` is a key naming no file
+(`jellyfin:<server id>/<user id>`, `plex:<machine id>/<account
+id>/<section>`), its tracks are rows of `tracks` whose `relative_path` is
+the server's item id (Plex's rating key), and `server_sources` holds its
+address and user. Each kind has its own feature switch (`kind_on`).
+`api::ServerApi` is the one interface the commands, the fetch and the
+reports use, so they don't branch on the kind beyond choosing it. Everything that walks or
+opens folders on disk (the scanner, the watcher, the volume checks,
+recovery, the analysis worker, lyrics, folder art, M3U export) asks for
+`kind = 'local'` or goes through `access::open_folder`, which refuses
+any other kind; browse, search, smart playlists and the queue see server
+tracks as any others.
+
+```mermaid
+flowchart LR
+    UI["Settings › Servers"] -->|servers_sign_in, plex_add| Cmd["servers/commands.rs"]
+    Cmd -->|api.rs: jellyfin.rs or plex.rs, http::Client| Server[(Jellyfin or Plex)]
+    Cmd -->|plextv.rs| PlexTv[(plex.tv)]
+    Cmd -->|sync.rs| Scanner["scanner::write_unfiled_track"]
+    Scanner --> DB[(tracks, server_tracks)]
+    Queue["queue/opening.rs"] -->|fetch_to_play| Fetch["fetch.rs"]
+    Fetch -->|download| Cache[(audio cache)]
+    Queue -->|load_track_async| Engine["engine (core)"]
+    Engine -->|opens| Cache
+```
+
+- **Signing in** (`commands.rs`): the address is parsed and checked
+  (`address.rs`: https anywhere, http only when every address the host
+  resolves to is local, as the LAN remote decides), the server's public
+  info read, then a password or Quick Connect gives a token, stored in
+  the keychain (`metadata::keys`, `Account::Server`, which also registers
+  it with logging's redaction). The password is never stored. The
+  `DeviceId` is a random id kept in the `servers.deviceId` settings row.
+- **Signing in to Plex** (`plex_commands.rs`): a pin from plex.tv
+  (`plextv.rs`) that the user approves in the browser gives the
+  account's token (keychain entry `plex-account:<id>`). plex.tv's
+  resources list the servers, each with its own token (kept under
+  `plex:<machine id>/<account id>`, shared by that server's sources) and
+  its connections, stored as JSON in `server_sources.connections`. Each
+  music library picked becomes a source. Every Plex request sends the
+  `X-Plex-*` headers (`plex::client_headers`) through `http::Client`'s
+  header list; the token never goes in a URL.
+- **Connections** (`plex::connect`): the address that answered last,
+  then local connections, then remote ones, then Plex's relay only while
+  `ServerSettings::plex_relay` is on; a connection counts when
+  `/identity` gives the server's machine id. Each sync asks plex.tv for
+  the connections again (`refresh_plex`); `commands::reach` reconnects
+  when the address stops answering, and `fetch_to_play` retries a
+  download once at a new address.
+- **Sync** (`sync.rs`): a page of 500 tracks at a time (changes since
+  `sync_cursor` less six hours, or everything the first time), each
+  written through the scanner's own `write_unfiled_track` so artists,
+  albums, genres, credits and MusicBrainz ids behave as for files; an
+  ids-only pass finds removals, and `scanner::holds` keeps them when
+  most would go (H22). Playlists are refilled read-only
+  (`server_playlists`; `playlists::require_editable` refuses edits). Album
+  pictures go into the image cache, and `server_tracks.art_url` makes
+  them the embedded picture of server tracks (`library/art.rs`). A Plex
+  picture's key names no address (`plex://<machine id><thumb>`) and is
+  fetched through `/photo/:/transcode` at the address in use
+  (`ServerApi::art`). A Plex track's file is its part's path
+  (`server_tracks.media_path`).
+- **Playing** (`fetch.rs`): `playback::track_play` marks a server track
+  (`TrackPlay::remote`) and `LibraryState::track_play` points its path at
+  the audio cache. `queue/opening.rs` calls `fetch_to_play` on its
+  blocking thread: a cached copy is used as it is; otherwise the queue is
+  told the track is downloading (`DOWNLOAD_TIMEOUT`) and it is streamed
+  through `http::Client::download` into `cache.rs`, then the engine opens
+  the file like any other. A request the queue gives up on stops the
+  download (`GIVEN_UP`). Arming the next track downloads it ahead. A
+  Plex server away from its network that refuses a track (403) gives
+  `plexPassNeeded`, never worked around.
+- **State**: a server that doesn't answer is `FolderState::Unreachable`,
+  one that refuses the token `SignedOut`, and all of them `Off` while the
+  feature is off; `availability::refresh` asks servers that haven't
+  answered in a minute. The queue keeps cached server tracks playable
+  while their server is away (`LibraryState::is_cached`).
+- **Reports** (`playing.rs`): a follower beside the history's tracker
+  sends "playing" and "stopped" to a thread of its own, while
+  `ServerSettings::report_plays` is on. Nothing comes back from the
+  server: favourites, ratings and history stay local.
+- **Offline** (`offline.rs`): pinned albums and playlists
+  (`offline_albums`, `offline_playlists`); their files are never evicted
+  and a background thread downloads what is missing.
+
+Tests never touch the network: the APIs are tested against hand-made
+responses in `metadata/fixtures/jellyfin/` and `metadata/fixtures/plex/`
+through the fake `Transport` (which records each request's headers),
+the sync against `sync::testing::FakeLibrary`, and a download serves the
+FLAC fixture. The self-test plays a cached server track in the sandbox.
+
 ## The LAN remote
 
 `remote/` serves a small page to a phone's browser on the local network

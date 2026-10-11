@@ -93,6 +93,7 @@ export const SECTION_NAMES: Record<SettingsSection, MessageKey> = {
   recording: "settings.recording",
   visualizer: "settings.visualizer",
   sources: "settings.sources",
+  servers: "settings.servers",
   features: "settings.features",
   about: "settings.about",
 };
@@ -101,6 +102,7 @@ export const SECTION_NAMES: Record<SettingsSection, MessageKey> = {
 const SECTION_NEEDS: Partial<Record<SettingsSection, FeatureKey[]>> = {
   appearance: ["themes"],
   recording: ["recording"],
+  servers: ["jellyfin", "plex"],
 };
 
 /** A Settings section's tab: where a section opens. */
@@ -190,6 +192,12 @@ export const INDEX: FindEntry[] = [
   view("library", "library.title", { kind: "view", view: "library" }, { menu: "show-library" }),
   view("playlists", "sidebar.playlists", { kind: "playlists" }),
   view("folders", "sidebar.folders", { kind: "settings", section: "library", control: sectionTab("library") }),
+  view(
+    "servers",
+    "sidebar.servers",
+    { kind: "settings", section: "servers", control: sectionTab("servers") },
+    { needs: ["jellyfin", "plex"] },
+  ),
   view("sources", "sidebar.sources", { kind: "settings", section: "sources", control: sectionTab("sources") }),
   view("settings", "sidebar.settings", { kind: "view", view: "settings" }, { menu: "settings" }),
   // Also in the Controls menu, whose items Rust runs (not PAGE_ITEMS).
@@ -268,6 +276,14 @@ export const INDEX: FindEntry[] = [
   setting("sources", "sourceList", "services.sources"),
   setting("sources", "sourceOrder", "services.order"),
 
+  section("servers"),
+  setting("servers", "addServer", "servers.add"),
+  setting("servers", "plexSignIn", "servers.plexSignIn"),
+  setting("servers", "reportPlays", "servers.reportPlays"),
+  setting("servers", "awayKbps", "servers.awayKbps"),
+  setting("servers", "cacheMb", "servers.cacheSize"),
+  setting("servers", "plexRelay", "servers.plexRelay"),
+
   section("features"),
 
   section("about"),
@@ -310,6 +326,9 @@ export const INDEX: FindEntry[] = [
   toggle("classical"),
   toggle("playbackPreferences"),
   toggle("lyrics"),
+  toggle("jellyfin"),
+  // Not offered for now: found only while still on (FeaturesOptions' NOT_OFFERED).
+  toggle("plex", undefined, { needs: ["plex"] }),
   toggle("listeningHistory"),
   toggle("listenbrainz", "features.listenBrainz"),
   toggle("recentlyPlayed"),

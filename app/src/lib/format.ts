@@ -67,3 +67,11 @@ export function lifeSpan(artist: MusicBrainzArtist) {
   else if (artist.ended && !person) parts.push(t("life.disbanded"));
   return parts.join(" · ");
 }
+
+/** A size in bytes as megabytes, or gigabytes from 1 GB up: "350 MB", "1.5 GB". */
+export function formatSize(bytes: number) {
+  const mb = bytes / 2 ** 20;
+  return mb >= 1024
+    ? `${(mb / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB`
+    : `${Math.round(mb)} MB`;
+}

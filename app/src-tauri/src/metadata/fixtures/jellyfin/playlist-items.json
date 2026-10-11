@@ -1,0 +1,22 @@
+{
+  "Items": [
+    {
+      "Name": "Chirp Two",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "d3a5c2e4f6a7b8c9d0e1f2a3b4c5d6e7",
+      "PlaylistItemId": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+      "Type": "Audio",
+      "MediaType": "Audio"
+    },
+    {
+      "Name": "Chirp One",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "b1f3a0e2c4d5e6f708192a3b4c5d6e7f",
+      "PlaylistItemId": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e",
+      "Type": "Audio",
+      "MediaType": "Audio"
+    }
+  ],
+  "TotalRecordCount": 2,
+  "StartIndex": 0
+}

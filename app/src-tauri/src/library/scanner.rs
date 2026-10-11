@@ -79,7 +79,7 @@ const HOLD_MIN_TRACKS: usize = 20;
 /// Whether a scan that would remove `gone` of a folder's `known` tracks
 /// keeps them and asks first: all of them, or more than half of a folder
 /// of at least `HOLD_MIN_TRACKS`.
-fn holds(known: usize, gone: usize) -> bool {
+pub(crate) fn holds(known: usize, gone: usize) -> bool {
     gone > 0 && (gone == known || (known >= HOLD_MIN_TRACKS && gone * 2 > known))
 }
 
@@ -1061,6 +1061,30 @@ fn write_file(
     Ok(())
 }
 
+/// Upserts a track that isn't a file on disk (a music server's, PLAN.md
+/// Phase 7e) from `tags` as one whole part, exactly as the scan writes a
+/// file's, at `relative` (the server's item id) with the file's `size`;
+/// returns its id.
+pub(crate) fn write_unfiled_track(
+    tx: &Transaction,
+    folder_id: i64,
+    relative: &str,
+    size: i64,
+    tags: &Tags,
+    now: i64,
+) -> rusqlite::Result<i64> {
+    let file = Pending {
+        relative: relative.to_owned(),
+        path: PathBuf::new(),
+        size,
+        mtime_ns: 0,
+        known: Vec::new(),
+        cue: None,
+        dataless: false,
+    };
+    write_track(tx, folder_id, &file, tags, &Part::whole(), now)
+}
+
 /// Upserts one part of a file with its credited artists and the rating its
 /// tags give; returns its id.
 fn write_track(
@@ -1371,7 +1395,7 @@ fn regroup_compilations(tx: &Transaction, folder_id: i64) -> rusqlite::Result<()
 /// them before they went (`kept_albums`, `kept_artists`, filled by
 /// `library::remove_orphans`), unless they have picks of their own now, and
 /// forgets picks kept for over a year.
-pub(super) fn restore_kept(tx: &Transaction) -> rusqlite::Result<()> {
+pub(crate) fn restore_kept(tx: &Transaction) -> rusqlite::Result<()> {
     type KeptAlbum = (i64, String, Option<String>, Option<String>, String);
     let albums: Vec<KeptAlbum> = tx
         .prepare_cached("SELECT id, title, artist, musicbrainz_release_id, picks FROM kept_albums")?

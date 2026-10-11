@@ -12,6 +12,8 @@
 //! every file, and plays the two shortest tracks through a gapless hand-off
 //! on the default output device at volume 0, then records a second of the
 //! shortest into a folder reached through a writable bookmark (PLAN.md X6).
+//! A music server's track (Phase 7e) is decoded from the audio cache, where
+//! a download would have put it, with no server and no network.
 //! Each stage prints one line,
 //! `self-test: <stage>: ok|skipped|FAILED: <detail>`; a stage that needs a
 //! failed one is skipped. The scratch folder is removed at the end.
@@ -29,7 +31,8 @@ use crate::anomp::{self, Engine};
 use crate::library::art::{self, ArtKey};
 use crate::library::commands::LibraryState;
 use crate::library::scanner::{self, ScanOptions};
-use crate::library::{self, access, db, playback};
+use crate::library::{self, access, db, playback, FolderKind};
+use crate::servers::{self, ServerInfo, SignedIn};
 use crate::settings::{FeatureSettings, PlaybackSettings};
 
 pub const ARG: &str = "--self-test";
@@ -158,7 +161,14 @@ pub fn run(dir: &Path, options: Options, report: &mut dyn FnMut(&str, &Outcome))
         }
         Err(error) => {
             stage("scan", Outcome::Failed(error));
-            for name in ["bookmark", "covers", "decoding", "playback", "recording"] {
+            for name in [
+                "bookmark",
+                "covers",
+                "decoding",
+                "server track",
+                "playback",
+                "recording",
+            ] {
                 stage(name, Outcome::Skipped("the scan failed".into()));
             }
             return false;
@@ -166,9 +176,10 @@ pub fn run(dir: &Path, options: Options, report: &mut dyn FnMut(&str, &Outcome))
     };
     stage("scan", outcome);
     stage("bookmark", outcome_of(bookmark(&conn, folder_id, &music)));
-    let library = LibraryState::for_tests(conn);
+    let library = LibraryState::for_tests_with_audio(conn, dir.join("audio"));
     stage("covers", outcome_of(covers(&library)));
     let decoded = stage("decoding", outcome_of(decoding(&library)));
+    stage("server track", outcome_of(server_track(&library)));
     let outcome = if !options.audio {
         Outcome::Skipped("not asked for".into())
     } else if !decoded {
@@ -315,6 +326,69 @@ fn decoding(library: &LibraryState) -> Result<String, String> {
     Ok(format!("{} files", ids.len()))
 }
 
+/// A Jellyfin track whose file is in the audio cache, as a download leaves
+/// it, decodes from there: the cache is inside the container, and the
+/// track needs neither its server nor a bookmark.
+fn server_track(library: &LibraryState) -> Result<String, String> {
+    const NAME: &str = "flac-44k.flac";
+    let (_, bytes) = FIXTURES
+        .iter()
+        .find(|(name, _)| *name == NAME)
+        .ok_or("no FLAC fixture")?;
+    let track_id = {
+        let mut conn = library.conn();
+        let folder_id = servers::add_source(
+            &mut conn,
+            FolderKind::Jellyfin,
+            "http://127.0.0.1:8096",
+            &ServerInfo {
+                id: "self-test".into(),
+                name: "Self-test".into(),
+                version: Some("10.10.0".into()),
+            },
+            &SignedIn {
+                token: String::new(),
+                user_id: "self-test".into(),
+                user_name: "self-test".into(),
+                server_id: None,
+            },
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+        let tags = anomp::Tags {
+            title: Some("Self-test".into()),
+            duration: 1.0,
+            sample_rate: 44100,
+            channels: 1,
+            ..anomp::Tags::default()
+        };
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let id = scanner::write_unfiled_track(&tx, folder_id, "item", bytes.len() as i64, &tags, 0)
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO server_tracks (track_id, container) VALUES (?1, 'flac')",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        id
+    };
+    let play = track_play(library, track_id)?;
+    let remote = play.remote.as_ref().ok_or("not a server's track")?;
+    let name = library.audio.choose(remote).name;
+    library
+        .audio
+        .cache
+        .store::<String>(&name, &Default::default(), |file| {
+            std::io::Write::write_all(file, bytes).map_err(|e| e.to_string())
+        })?;
+    if play.path != library.audio.cache.path(&name) {
+        return Err("it doesn't play from the audio cache".into());
+    }
+    anomp::analyse_file(&play.path, play.start, play.end.unwrap_or(0.0), |_| true)?;
+    Ok(format!("{} bytes from the audio cache", bytes.len()))
+}
+
 /// The two shortest tracks play through a gapless hand-off, silently.
 fn playback(library: &LibraryState, options: Options) -> Outcome {
     let mut engine = match Engine::new() {
@@ -409,9 +483,13 @@ fn recording(library: &LibraryState, dir: &Path) -> Result<String, String> {
 
 fn track_ids(library: &LibraryState, order: &str) -> Result<Vec<i64>, String> {
     let conn = library.conn();
-    // `order` is one of this module's fixed clauses, never a value.
+    // `order` is one of this module's fixed clauses, never a value. The
+    // fixtures' tracks only: the server's track has its own stage.
     let mut statement = conn
-        .prepare(&format!("SELECT id FROM tracks {order}"))
+        .prepare(&format!(
+            "SELECT id FROM tracks
+             WHERE folder_id IN (SELECT id FROM folders WHERE kind = 'local') {order}"
+        ))
         .map_err(|e| e.to_string())?;
     let ids = statement
         .query_map([], |row| row.get(0))
@@ -456,6 +534,7 @@ mod tests {
                 "bookmark",
                 "covers",
                 "decoding",
+                "server track",
                 "playback",
                 "recording"
             ]

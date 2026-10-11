@@ -343,6 +343,15 @@ inLibrary: number,
 total: number, listed: number, };
 
 /**
+ * A server that answered.
+ */
+export type DiscoveredServer = { 
+/**
+ * As `address::parse` gives it.
+ */
+address: string, id: string, name: string, };
+
+/**
  * Paths dropped on the window, sorted: folders (to offer as library
  * folders) and files (to play).
  */
@@ -440,7 +449,17 @@ export type FilePicture = {
  */
 kind: string, mimeType: string, description: string, };
 
-export type Folder = { id: number, path: string, trackCount: number, 
+export type Folder = { id: number, 
+/**
+ * Where a local folder is; a key naming no file for a server's
+ * (`servers::folder_key`).
+ */
+path: string, kind: FolderKind, 
+/**
+ * A server's name, as it calls itself, and for a Plex source the music
+ * library's ("Den · Music"); `None` for a local folder.
+ */
+name: string | null, trackCount: number, 
 /**
  * Its tracks whose files were cloud placeholders when last seen, so
  * their tags weren't read (PLAN.md H12).
@@ -462,9 +481,15 @@ available: boolean | null,
 status: FolderStatus | null, };
 
 /**
+ * What a library folder is (PLAN.md Phase 7e): a folder on disk, or a
+ * music server's library as one user sees it (`servers`).
+ */
+export type FolderKind = "local" | "jellyfin" | "plex";
+
+/**
  * Whether a library folder can be read now, and if not, why (PLAN.md H22).
  */
-export type FolderState = "available" | "missing" | "empty" | "mostlyGone" | "inTrash" | "noPermission";
+export type FolderState = "available" | "missing" | "empty" | "mostlyGone" | "inTrash" | "noPermission" | "unreachable" | "signedOut" | "off";
 
 /**
  * A folder's state, with the system's words for it when there are any.
@@ -501,7 +526,7 @@ analysed: number, tracks: number, };
 
 export type HealthTrack = { trackId: number, 
 /**
- * Absolute.
+ * Absolute; empty for a music server's track.
  */
 path: string, title: string, artist: string | null, album: string | null, 
 /**
@@ -669,6 +694,19 @@ related: Array<RelatedArtist>, };
 export type MusicBrainzIds = { recording: string | null, release: string | null, releaseGroup: string | null, releaseTrack: string | null, artists: Array<string>, albumArtists: Array<string>, work: string | null, };
 
 /**
+ * What is kept offline, and how much of it is downloaded.
+ */
+export type OfflineStatus = { albums: Array<number>, playlists: Array<number>, 
+/**
+ * Server tracks kept offline, and how many of them are downloaded.
+ */
+tracks: number, downloaded: number, 
+/**
+ * The audio cache's files and bytes, and its budget in bytes.
+ */
+cacheFiles: number, cacheBytes: number, cacheBudget: number, };
+
+/**
  * An artist the library doesn't have.
  */
 export type OutsideArtist = { 
@@ -726,7 +764,12 @@ rules: SmartRules | null, trackCount: number,
 /**
  * Seconds.
  */
-duration: number, createdAt: number, updatedAt: number, };
+duration: number, createdAt: number, updatedAt: number, 
+/**
+ * The server it comes from (its name), for a music server's playlist,
+ * which only a sync changes (PLAN.md Phase 7e).
+ */
+server: string | null, };
 
 /**
  * A track in a playlist, and which entry it is (a track can be listed
@@ -738,7 +781,8 @@ export type PlaylistEntry = {
  */
 itemId: number | null, id: number, 
 /**
- * Absolute path of the file.
+ * Absolute path of the file; empty for a music server's track, which
+ * has none (PLAN.md Phase 7e).
  */
 path: string, title: string | null, artist: string | null, artistId: number | null, album: string | null, albumId: number | null, albumArtist: string | null, genre: string | null, year: number | null, discNumber: number | null, trackNumber: number | null, duration: number, bitrateKbps: number | null, 
 /**
@@ -786,6 +830,39 @@ export type PlaylistImport = { playlist: Playlist, added: number,
 missing: Array<string>, };
 
 export type PlaylistPage = { playlist: Playlist, entries: Array<PlaylistEntry>, };
+
+/**
+ * A Plex account signed in to.
+ */
+export type PlexAccount = { id: string, name: string, };
+
+/**
+ * A music library on a Plex server.
+ */
+export type PlexLibrary = { key: string, name: string, 
+/**
+ * Whether it is a source already.
+ */
+added: boolean, };
+
+/**
+ * A Plex sign-in under way: the pin to ask about, the code the browser
+ * page shows, and that page, which the UI opens.
+ */
+export type PlexPin = { id: number, code: string, url: string, };
+
+/**
+ * A server a Plex account reaches, with its music libraries.
+ */
+export type PlexServer = { id: string, name: string, version: string | null, 
+/**
+ * Whether the account owns it, rather than has it shared.
+ */
+owned: boolean, libraries: Array<PlexLibrary>, 
+/**
+ * Why its libraries couldn't be listed (it doesn't answer, say).
+ */
+error: string | null, };
 
 export type Practice = { 
 /**
@@ -886,6 +963,12 @@ stopAfter: number | null,
  * The sleep timer running, if any.
  */
 sleep: SleepTimer | null, };
+
+/**
+ * A Quick Connect sign-in started: the code for the user to approve in
+ * another Jellyfin app, and the secret to finish with.
+ */
+export type QuickConnectStart = { code: string, secret: string, };
 
 /**
  * One row of recently played: a run of plays from one album collapsed
@@ -1147,6 +1230,45 @@ export type SearchResults = { artists: Array<ArtistHit>, artistTotal: number, al
 export type Seed = { mbid: string, name: string, };
 
 /**
+ * A server the user named, before signing in.
+ */
+export type ServerCheck = { 
+/**
+ * The address as it will be used.
+ */
+address: string, name: string, version: string | null, 
+/**
+ * Whether it allows signing in with Quick Connect.
+ */
+quickConnect: boolean, };
+
+/**
+ * A server source as the Settings panel and the sidebar show it.
+ */
+export type ServerSummary = { status: FolderStatus, syncing: boolean, folderId: number, kind: FolderKind, address: string, serverId: string, serverName: string, version: string | null, userId: string, userName: string, 
+/**
+ * The server's music library this source is, by its key on the
+ * server; empty for a source that is all the user's music (Jellyfin).
+ */
+section: string, 
+/**
+ * The music library's name (Plex).
+ */
+sectionName: string | null, 
+/**
+ * When the last sync that finished started (Unix seconds).
+ */
+syncCursor: number | null, 
+/**
+ * When the last sync finished (Unix seconds), as `folders.last_scan_at`.
+ */
+syncedAt: number | null, trackCount: number, 
+/**
+ * Whether `address` is Plex's relay, which is slow and capped.
+ */
+viaRelay: boolean, };
+
+/**
  * Every step between the file and the speakers (`anomp_signal_path`).
  */
 export type SignalPath = { loaded: boolean, 
@@ -1255,6 +1377,32 @@ limit: number | null,
 seed: number, };
 
 /**
+ * A server source: where the server is and who signed in.
+ */
+export type Source = { folderId: number, kind: FolderKind, address: string, serverId: string, serverName: string, version: string | null, userId: string, userName: string, 
+/**
+ * The server's music library this source is, by its key on the
+ * server; empty for a source that is all the user's music (Jellyfin).
+ */
+section: string, 
+/**
+ * The music library's name (Plex).
+ */
+sectionName: string | null, 
+/**
+ * When the last sync that finished started (Unix seconds).
+ */
+syncCursor: number | null, 
+/**
+ * When the last sync finished (Unix seconds), as `folders.last_scan_at`.
+ */
+syncedAt: number | null, trackCount: number, 
+/**
+ * Whether `address` is Plex's relay, which is slow and capped.
+ */
+viaRelay: boolean, };
+
+/**
  * What one source offers in a dialog.
  */
 export type SourceCandidates<T> = { source: SourceId, sourceName: string, candidates: Array<T>, 
@@ -1332,7 +1480,8 @@ years: [number, number] | null, };
  */
 export type Track = { id: number, 
 /**
- * Absolute path of the file.
+ * Absolute path of the file; empty for a music server's track, which
+ * has none (PLAN.md Phase 7e).
  */
 path: string, title: string | null, artist: string | null, artistId: number | null, album: string | null, albumId: number | null, albumArtist: string | null, genre: string | null, year: number | null, discNumber: number | null, trackNumber: number | null, duration: number, bitrateKbps: number | null, 
 /**

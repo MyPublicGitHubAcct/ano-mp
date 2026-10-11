@@ -220,10 +220,11 @@ test("every Settings section has an entry, hidden as Settings hides it", () => {
       `no entry for the section ${id}`,
     );
   }
+  // A section shown while any of several features is on lists each: `… || features.a || features.b`.
   const hidden = Object.fromEntries(
-    [...page.matchAll(/candidate\.id !== "(\w+)" \|\| appSettings\.current\.features\.(\w+)/g)].map((m) => [
+    [...page.matchAll(/candidate\.id !== "(\w+)" ((?:\|\| appSettings\.current\.features\.\w+\s*)+)/g)].map((m) => [
       m[1],
-      [m[2]],
+      [...m[2].matchAll(/features\.(\w+)/g)].map((feature) => feature[1]),
     ]),
   );
   assert.ok(Object.keys(hidden).length >= 2, "found the hidden sections");

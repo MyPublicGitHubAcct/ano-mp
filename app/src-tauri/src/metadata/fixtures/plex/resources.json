@@ -1,0 +1,99 @@
+[
+  {
+    "name": "Den",
+    "product": "Plex Media Server",
+    "productVersion": "1.41.9.9961-46083195d",
+    "platform": "Linux",
+    "platformVersion": "6.8",
+    "device": "Docker Container",
+    "clientIdentifier": "9d3f1c7a5b2e4f6081a3c5e7f9b1d3e5a7c9e1f3",
+    "createdAt": "2026-01-02T10:00:00Z",
+    "lastSeenAt": "2026-10-11T08:55:00Z",
+    "provides": "server",
+    "ownerId": null,
+    "sourceTitle": null,
+    "publicAddress": "203.0.113.9",
+    "accessToken": "srvTok3n8Kq2Lm5Np7Rs",
+    "owned": true,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": true,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": false,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "192.168.1.20",
+        "port": 32400,
+        "uri": "https://192-168-1-20.a1b2c3.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.9",
+        "port": 32400,
+        "uri": "https://203-0-113-9.a1b2c3.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.4",
+        "port": 8443,
+        "uri": "https://198-51-100-4.a1b2c3.plex.direct:8443",
+        "local": false,
+        "relay": true,
+        "IPv6": false
+      }
+    ]
+  },
+  {
+    "name": "Living Room TV",
+    "product": "Plex for Android (TV)",
+    "productVersion": "10.20.0",
+    "clientIdentifier": "tv0000000000",
+    "provides": "player,pubsub-player",
+    "accessToken": "tvTok",
+    "owned": true,
+    "httpsRequired": false,
+    "connections": []
+  },
+  {
+    "name": "Friend's Server",
+    "product": "Plex Media Server",
+    "productVersion": "1.40.5.8897",
+    "clientIdentifier": "f00df00df00df00df00df00df00df00df00df00d",
+    "provides": "server",
+    "sourceTitle": "friend",
+    "accessToken": "sharedTok9Zx",
+    "owned": false,
+    "httpsRequired": true,
+    "publicAddressMatches": false,
+    "connections": [
+      {
+        "protocol": "http",
+        "address": "10.0.0.5",
+        "port": 32400,
+        "uri": "http://10.0.0.5:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "198.51.100.77",
+        "port": 32400,
+        "uri": "https://198-51-100-77.f00d.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      }
+    ]
+  }
+]

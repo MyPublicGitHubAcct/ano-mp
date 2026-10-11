@@ -46,6 +46,9 @@ pub struct AppSettings {
     pub effects: crate::effects::EffectsSettings,
     /// X6: what recordings are written as, while `features.recording` is on.
     pub recording: crate::recording::RecordingSettings,
+    /// Phases 7e and 7f: how music servers' tracks are fetched and
+    /// reported, while `features.jellyfin` or `features.plex` is on.
+    pub servers: ServerSettings,
     pub library: LibrarySettings,
     pub window: WindowSettings,
     pub appearance: crate::theme::AppearanceSettings,
@@ -68,6 +71,59 @@ impl Default for LibrarySettings {
             rescan_at_launch: true,
             watch_folders: true,
         }
+    }
+}
+
+/// Music servers (PLAN.md Phases 7e and 7f): what is told to them and
+/// fetched from them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ServerSettings {
+    /// Tells the server what plays, so its play counts and other clients
+    /// stay current.
+    pub report_plays: bool,
+    /// The most kbit/s to fetch from a server that isn't on the local
+    /// network, 64 to 320, transcoded to MP3 by the server; 0 fetches the
+    /// original files.
+    pub away_kbps: u32,
+    /// The audio cache's size, in MB (256 to 65536).
+    pub cache_mb: u32,
+    /// Reaches a Plex server through Plex's relay when none of its own
+    /// addresses answers; the relay is slow and capped.
+    pub plex_relay: bool,
+}
+
+impl Default for ServerSettings {
+    fn default() -> Self {
+        ServerSettings {
+            report_plays: true,
+            away_kbps: 0,
+            cache_mb: crate::servers::cache::DEFAULT_BUDGET_MB,
+            plex_relay: false,
+        }
+    }
+}
+
+impl ServerSettings {
+    /// The bit rate for servers away from home, if one is set.
+    pub fn away(&self) -> Option<u32> {
+        (self.away_kbps > 0).then_some(self.away_kbps)
+    }
+
+    /// The audio cache's budget in bytes.
+    pub fn cache_bytes(&self) -> u64 {
+        u64::from(self.cache_mb) << 20
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.away_kbps != 0 && !(64..=320).contains(&self.away_kbps) {
+            return Err("The bit rate away from home must be 64 to 320 kbit/s".into());
+        }
+        if !(256..=65536).contains(&self.cache_mb) {
+            return Err("The audio cache must be 256 MB to 64 GB".into());
+        }
+        Ok(())
     }
 }
 
@@ -230,6 +286,12 @@ pub struct FeatureSettings {
     /// records it as one take; the effects and recording keep their own
     /// switches.
     pub effects_workbench: bool,
+    /// Phase 7e: the music on the user's Jellyfin servers, next to the
+    /// local library (`servers`). Goes online, so off by default.
+    pub jellyfin: bool,
+    /// Phase 7f: the music on the user's Plex servers, signed in through
+    /// plex.tv (`servers`). Goes online, so off by default.
+    pub plex: bool,
 }
 
 impl Default for FeatureSettings {
@@ -269,6 +331,8 @@ impl Default for FeatureSettings {
             similar_artists: true,
             recording: false,
             effects_workbench: true,
+            jellyfin: false,
+            plex: false,
         }
     }
 }
@@ -566,6 +630,7 @@ impl AppSettings {
         }
         self.effects.validate().map_err(Error::Invalid)?;
         self.recording.validate().map_err(Error::Invalid)?;
+        self.servers.validate().map_err(Error::Invalid)?;
         self.appearance.validate().map_err(Error::Invalid)?;
         Ok(())
     }
@@ -755,6 +820,12 @@ pub async fn settings_save<R: Runtime>(
     }
     if settings.window != before.window {
         crate::shell::window_settings_changed(&app, &settings.window);
+    }
+    if settings.servers != before.servers
+        || settings.features.jellyfin != before.features.jellyfin
+        || settings.features.plex != before.features.plex
+    {
+        crate::servers::commands::configure(&app, &settings, &before);
     }
     if settings.visualizer.frame_rate != before.visualizer.frame_rate {
         crate::visualizer::restart(&app);
@@ -1027,6 +1098,7 @@ mod bindings {
         declare::<crate::effects::EffectSettings>(&cfg, out);
         declare::<crate::recording::RecordingSettings>(&cfg, out);
         declare::<crate::anomp::RecordingKind>(&cfg, out);
+        declare::<ServerSettings>(&cfg, out);
         declare::<LibrarySettings>(&cfg, out);
         declare::<WindowSettings>(&cfg, out);
         declare::<crate::theme::AppearanceSettings>(&cfg, out);

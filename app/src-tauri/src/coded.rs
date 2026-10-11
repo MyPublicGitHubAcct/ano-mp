@@ -61,7 +61,6 @@ pub fn folder_unavailable(path: &str, reason: &str, detail: Option<&str>) -> Str
 }
 
 /// Whether `error` is the error code `code`.
-#[cfg(test)]
 pub fn is(error: &impl std::fmt::Display, code: &str) -> bool {
     serde_json::from_str::<Value>(&error.to_string()).is_ok_and(|value| value["code"] == code)
 }

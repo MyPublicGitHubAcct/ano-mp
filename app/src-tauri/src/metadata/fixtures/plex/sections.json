@@ -1,0 +1,43 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "allowSync": false,
+    "title1": "Plex Library",
+    "Directory": [
+      {
+        "allowSync": true,
+        "art": "/:/resources/artist-fanart.jpg",
+        "composite": "/library/sections/1/composite/1712000000",
+        "key": "1",
+        "type": "artist",
+        "title": "Music",
+        "agent": "tv.plex.agents.music",
+        "scanner": "Plex Music",
+        "language": "en-US",
+        "uuid": "1f2e3d4c-0000-4000-8000-000000000001",
+        "updatedAt": 1712000000,
+        "createdAt": 1700000000
+      },
+      {
+        "allowSync": true,
+        "key": "2",
+        "type": "movie",
+        "title": "Films",
+        "agent": "tv.plex.agents.movie",
+        "uuid": "1f2e3d4c-0000-4000-8000-000000000002",
+        "updatedAt": 1712000000,
+        "createdAt": 1700000000
+      },
+      {
+        "allowSync": true,
+        "key": "4",
+        "type": "artist",
+        "title": "Live Recordings",
+        "agent": "tv.plex.agents.music",
+        "uuid": "1f2e3d4c-0000-4000-8000-000000000004",
+        "updatedAt": 1712000000,
+        "createdAt": 1700000000
+      }
+    ]
+  }
+}

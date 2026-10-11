@@ -12,6 +12,9 @@ export const FOLDER_SHORT: Record<FolderState, MessageKey> = {
   mostlyGone: "folderShort.mostlyGone",
   inTrash: "folderShort.inTrash",
   noPermission: "folderShort.noPermission",
+  unreachable: "folderShort.unreachable",
+  signedOut: "folderShort.signedOut",
+  off: "folderShort.off",
 };
 
 /**

@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension};
 
-use super::{track_path, Error};
+use super::{track_path, Error, FolderKind};
 use crate::anomp::{ReplayGain, TrackOptions, MAX_TRACK_GAIN};
+use crate::servers::fetch::RemoteFile;
 use crate::settings::{FeatureSettings, PlaybackSettings};
 
 /// ReplayGain's reference loudness (ReplayGain 2.0), in LUFS.
@@ -36,6 +37,9 @@ pub struct TrackPlay {
     pub skip: Option<(f64, f64)>,
     /// Hz, from the tags.
     pub sample_rate: u32,
+    /// A music server's track (PLAN.md Phase 7e), which plays from the
+    /// audio cache: `LibraryState::track_play` sets `path` to its file there.
+    pub remote: Option<RemoteFile>,
 }
 
 impl TrackPlay {
@@ -67,9 +71,11 @@ pub fn track_play(
                     t.replaygain_album_peak,
                     a.loudness, a.true_peak, a.duration, a.trailing_silence, a.gap_start,
                     a.gap_length, aa.loudness, aa.peak,
-                    tp.skip, tp.gain_offset, tp.trim_start, tp.trim_end, ap.gain_offset
+                    tp.skip, tp.gain_offset, tp.trim_start, tp.trim_end, ap.gain_offset,
+                    f.kind, t.folder_id, t.file_size, st.container, st.media_path
              FROM tracks t
              JOIN folders f ON f.id = t.folder_id
+             LEFT JOIN server_tracks st ON st.track_id = t.id
              LEFT JOIN track_analysis a ON a.track_id = t.id AND a.error IS NULL
                  AND a.file_size = t.file_size AND a.file_mtime_ns = t.file_mtime_ns
              LEFT JOIN album_analysis aa ON aa.album_id = t.album_id
@@ -103,6 +109,11 @@ pub fn track_play(
                     trim_end: row.get(21)?,
                     track_offset: row.get(19)?,
                     album_offset: row.get(22)?,
+                    kind: FolderKind::from_str(&row.get::<_, String>(23)?),
+                    folder_id: row.get(24)?,
+                    file_size: row.get(25)?,
+                    container: row.get(26)?,
+                    media_path: row.get(27)?,
                 })
             },
         )
@@ -130,6 +141,12 @@ struct Row {
     trim_end: Option<f64>,
     track_offset: Option<f64>,
     album_offset: Option<f64>,
+    /// `None` for a kind this version doesn't know.
+    kind: Option<FolderKind>,
+    folder_id: i64,
+    file_size: i64,
+    container: Option<String>,
+    media_path: Option<String>,
 }
 
 impl Row {
@@ -189,6 +206,19 @@ impl Row {
         } else {
             self.end
         };
+        let remote = self
+            .kind
+            .filter(|kind| *kind != FolderKind::Local)
+            .map(|kind| RemoteFile {
+                folder_id: self.folder_id,
+                kind,
+                source_key: self.folder.clone(),
+                item_id: self.relative.clone(),
+                size: self.file_size,
+                container: self.container.clone(),
+                media_path: self.media_path.clone(),
+                duration: self.duration,
+            });
         TrackPlay {
             path: track_path(Path::new(&self.folder), &self.relative),
             start,
@@ -197,6 +227,7 @@ impl Row {
             gain_offset_db,
             skip,
             sample_rate: self.sample_rate,
+            remote,
         }
     }
 }

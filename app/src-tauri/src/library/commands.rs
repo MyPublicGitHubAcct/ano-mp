@@ -25,6 +25,8 @@ use super::scanner::{self, ScanFailure, ScanOptions, ScanReport};
 use super::search::{self, SearchKind, SearchResults};
 use super::{db, Error, Folder};
 use crate::metadata::images::ImageCache;
+use crate::servers::cache::AudioCache;
+use crate::servers::fetch::ServerAudio;
 use crate::settings::FeatureSettings;
 
 /// Frontend event with a `ScanProgress` payload.
@@ -53,6 +55,8 @@ pub struct LibraryState {
     /// Pictures downloaded from online sources; the metadata worker stores
     /// them.
     pub images: Arc<ImageCache>,
+    /// Music servers' tracks, downloaded to play (PLAN.md Phase 7e).
+    pub audio: Arc<ServerAudio>,
 }
 
 impl LibraryState {
@@ -78,19 +82,44 @@ impl LibraryState {
     }
 
     /// How to play track `track_id` under `features` (`library::playback`).
+    /// A server's track plays from the audio cache: its path is where the
+    /// file is, or will be once downloaded (`servers::fetch`).
     pub fn track_play(
         &self,
         track_id: i64,
         features: &FeatureSettings,
     ) -> Result<TrackPlay, String> {
-        playback::track_play(&self.conn(), track_id, features)
+        let mut play = playback::track_play(&self.conn(), track_id, features)
             .map_err(|e| e.to_string())?
-            .ok_or_else(|| crate::coded::gone(crate::coded::Gone::Track))
+            .ok_or_else(|| crate::coded::gone(crate::coded::Gone::Track))?;
+        if let Some(remote) = &play.remote {
+            play.path = self.audio.cache.path(&self.audio.choose(remote).name);
+        }
+        Ok(play)
+    }
+
+    /// Whether track `track_id` is a server's whose file is in the audio
+    /// cache, so it plays without the server.
+    pub fn is_cached(&self, track_id: i64) -> bool {
+        let file = crate::servers::fetch::remote_file(&self.conn(), track_id);
+        matches!(file, Ok(Some(file)) if self.audio.cache.contains(&self.audio.choose(&file).name))
     }
 }
 
 #[cfg(any(test, feature = "self-test"))]
 impl LibraryState {
+    /// A library over `conn` whose audio cache is in `audio`, for the
+    /// bundle's self-test (and tests) of music servers' tracks.
+    pub fn for_tests_with_audio(conn: Connection, audio: PathBuf) -> LibraryState {
+        LibraryState {
+            audio: Arc::new(ServerAudio::new(AudioCache::new(
+                audio,
+                u64::from(crate::servers::cache::DEFAULT_BUDGET_MB) << 20,
+            ))),
+            ..LibraryState::for_tests(conn)
+        }
+    }
+
     /// A library over `conn`, for tests and the bundle's self-test; scans
     /// aren't possible.
     pub fn for_tests(conn: Connection) -> LibraryState {
@@ -104,6 +133,10 @@ impl LibraryState {
             images: Arc::new(ImageCache::new(
                 std::env::temp_dir().join("ano-mp-tests-no-images"),
             )),
+            audio: Arc::new(ServerAudio::new(AudioCache::new(
+                std::env::temp_dir().join("ano-mp-tests-no-audio"),
+                0,
+            ))),
         }
     }
 }
@@ -160,6 +193,11 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         scanning: AtomicBool::new(false),
         art: ArtCache::default(),
         images: Arc::new(ImageCache::new(cache_dir.join("images"))),
+        // The budget is the settings', applied once they are read.
+        audio: Arc::new(ServerAudio::new(AudioCache::new(
+            cache_dir.join("audio"),
+            u64::from(crate::servers::cache::DEFAULT_BUDGET_MB) << 20,
+        ))),
     });
     Ok(())
 }
@@ -406,6 +444,27 @@ pub async fn library_remove_missing<R: Runtime>(
     folder_id: i64,
 ) -> Result<Vec<ScanReport>, String> {
     log::warn!("removing the missing tracks of folder {folder_id}, as asked");
+    let server = on_library(&app, move |library| {
+        Ok(crate::servers::source(&library.conn(), folder_id)?.is_some())
+    })
+    .await?;
+    if server {
+        // A music server's (PLAN.md Phase 7e): a full sync that removes them.
+        let app = app.clone();
+        return tauri::async_runtime::spawn_blocking(move || {
+            crate::servers::commands::sync_now(
+                &app,
+                folder_id,
+                crate::servers::sync::SyncOptions {
+                    full: true,
+                    remove_missing: true,
+                },
+            )
+            .map(|report| vec![report])
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     run_scan_with(&app, Some(vec![folder_id]), false, true).await
 }
 
@@ -662,7 +721,7 @@ fn scan_folders(
     progress: impl FnMut(scanner::ScanProgress),
 ) -> Result<Vec<ScanReport>, Error> {
     let mut conn = db::open(db_path)?;
-    let folders: Vec<Folder> = super::folders(&conn)?
+    let folders: Vec<Folder> = super::local_folders(&conn)?
         .into_iter()
         .filter(|folder| {
             folder_ids

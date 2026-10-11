@@ -10,7 +10,12 @@ effects: EffectsSettings,
 /**
  * X6: what recordings are written as, while `features.recording` is on.
  */
-recording: RecordingSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
+recording: RecordingSettings, 
+/**
+ * Phases 7e and 7f: how music servers' tracks are fetched and
+ * reported, while `features.jellyfin` or `features.plex` is on.
+ */
+servers: ServerSettings, library: LibrarySettings, window: WindowSettings, appearance: AppearanceSettings, };
 
 /**
  * The settings, and the defaults a section can be reset to.
@@ -272,7 +277,17 @@ recording: boolean,
  * records it as one take; the effects and recording keep their own
  * switches.
  */
-effectsWorkbench: boolean, };
+effectsWorkbench: boolean, 
+/**
+ * Phase 7e: the music on the user's Jellyfin servers, next to the
+ * local library (`servers`). Goes online, so off by default.
+ */
+jellyfin: boolean, 
+/**
+ * Phase 7f: the music on the user's Plex servers, signed in through
+ * plex.tv (`servers`). Goes online, so off by default.
+ */
+plex: boolean, };
 
 export type CrossfeedLevel = "off" | "light" | "medium" | "strong";
 
@@ -340,6 +355,32 @@ cueSheet: boolean, };
  * What a recording is written as (PLAN.md X6), in `anomp.h`'s order.
  */
 export type RecordingKind = "wav" | "aiff" | "flac" | "alac" | "aac" | "mp3";
+
+/**
+ * Music servers (PLAN.md Phases 7e and 7f): what is told to them and
+ * fetched from them.
+ */
+export type ServerSettings = { 
+/**
+ * Tells the server what plays, so its play counts and other clients
+ * stay current.
+ */
+reportPlays: boolean, 
+/**
+ * The most kbit/s to fetch from a server that isn't on the local
+ * network, 64 to 320, transcoded to MP3 by the server; 0 fetches the
+ * original files.
+ */
+awayKbps: number, 
+/**
+ * The audio cache's size, in MB (256 to 65536).
+ */
+cacheMb: number, 
+/**
+ * Reaches a Plex server through Plex's relay when none of its own
+ * addresses answers; the relay is slow and capped.
+ */
+plexRelay: boolean, };
 
 /**
  * Keeping the library in step with the disk (PLAN.md F9).

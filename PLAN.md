@@ -1,6 +1,6 @@
 # ano-mp — Implementation Plan
 
-Status as of 2026-10-10: Phases 0–6c are built on macOS. Phases 0–3 are
+Status as of 2026-10-11: Phases 0–6c are built on macOS. Phases 0–3 are
 complete; the exit checks of Phases 4, 5, 6, 6b and 6c wait to be done in
 the app (each phase says what). Phase 7 (hardening) is under way: every step
 of its "Order of work" that needs no owner decision is done, and the signed
@@ -22,8 +22,18 @@ the documents (`docs/README.md`) written, and a porting chapter added to the
 developer guide ahead of Phases 8–10, with the Windows, Linux and iOS
 problems its inventory found fixed (2026-10-10). Phase 7d (added 2026-10-08)
 proposes forty more features (N1–N40) for the owner to choose from; none is
-accepted yet. Finished work's design notes and records are in
-`docs/design/`, linked from each phase.
+accepted yet. Phase 7e (playing music from a Jellyfin server, added
+2026-10-10) is built ahead of Phase 7's exit, at the owner's request
+(2026-10-11): 7e.2–7e.6 are done and tested offline against hand-made
+responses; 7e.1's test server, and the exit check in the app, are still to
+do. Phase 7f (playing music from a Plex server, added 2026-10-10) is
+built the same way at the owner's request (2026-10-11): 7f.2–7f.6 are done
+and tested offline against hand-made responses; 7f.1 read Plex's terms
+(nothing rules the app out; a §8.1 gate for the owner) and waits on a test
+server, as does the exit check. Its switch is withdrawn from Settings ›
+Features for now (2026-10-11, the owner's request; shown only while still
+on). Finished work's design notes and records are in `docs/design/`,
+linked from each phase.
 
 
 ## 1. Architecture
@@ -91,6 +101,7 @@ it holds and how it was built.
   scanner, browse, search, art and thumbnails, playlists, features,
   recommendations),
   `queue/`, `media.rs`, `metadata/` (online sources and their worker),
+  `servers/` (music servers as library sources, Phases 7e and 7f),
   `history/`, `remote/`, `shell/` (menus, mini player, opened files),
   `settings.rs`, `recording.rs`, `visualizer.rs`, `logging.rs`,
   `diagnostics.rs`, `bindings.rs`, `self_test.rs`, `dev.rs` (debug builds
@@ -115,7 +126,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 504 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 7 ignored live tests (one per online source) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 557 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 10 ignored live tests (one per online source, a Jellyfin server, plex.tv and a Plex server) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 93 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 268 pytest tests (`test-python.py`) | `scripts/tests/` |
 
@@ -344,18 +355,21 @@ Each item's proposal and its **Decision** line are in
 ## 5. Phased plan
 
 Each phase ends with a demonstrable result and green tests. A feature or
-setting the user can reach is done only when the user guide covers it
-(Phase 7c D1; `check-user-guide.py` and `guide.rs`'s test check it).
-Platform order: macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux
-(Phase 9), then Windows (Phase 10). Phase 7b (themes, effects,
-visualizations, recommendations, recording, similar artists, the effects
-workbench and search that finds features, P3) comes after Phase 7 (but was
-built ahead of its exit, at the owner's request) and before the ports, so
-those features are settled on macOS first. Phase 7c (documentation) runs
-alongside: its user guide (D1) is needed for the first release, and the
-developer guide and dictionary of classes follow. Phase 7d proposes more
-features (N1–N40) for the owner to choose from; those chosen follow Phase
-7b's placement. Xcode is not needed until Phase 8. Phase 11 (Bandcamp
+setting the user can reach is done only when the user guide covers it (Phase
+7c D1; `check-user-guide.py` and `guide.rs`'s test check it). Platform
+order: macOS (Phases 0–7), then iOS/iPadOS (Phase 8), then Linux (Phase 9),
+then Windows (Phase 10). Phase 7b (themes, effects, visualizations,
+recommendations, recording, similar artists, the effects workbench and
+search that finds features, P3) comes after Phase 7 (but was built ahead of
+its exit, at the owner's request) and before the ports, so those features
+are settled on macOS first. Phase 7c (documentation) runs alongside: its
+user guide (D1) is needed for the first release, and the developer guide and
+dictionary of classes follow. Phase 7d proposes more features (N1–N40) for
+the owner to choose from; those chosen follow Phase 7b's placement. Phase 7e
+(Jellyfin servers) follows Phase 7's exit and comes before the ports, and
+builds the library sources and audio cache that Phase 11 reuses. Phase 7f
+(Plex servers) follows Phase 7e, reusing what it builds, and also comes
+before the ports. Xcode is not needed until Phase 8. Phase 11 (Bandcamp
 streaming) is a feature, not a platform, and depends on Bandcamp's
 permission. Its engineering starts after Phase 7. The phases cover making
 the app work on each platform; packaging, signing and shipping it are all in
@@ -1529,6 +1543,463 @@ stored) before it is built, and a line in the privacy policy (§8.1).
   guide, the developer guide and the class dictionary in the same commit,
   and checked in the app as each item's exit says.
 
+### Phase 7e — Jellyfin servers
+Added 2026-10-10 at the owner's request. Goal: play the music on the user's
+own **Jellyfin server** next to the local library, streamed on demand,
+through the same browser, search, queue, gapless hand-off and Now Playing as
+local files. Jellyfin is free, self-hosted software whose REST API any
+client may use, so unlike Phase 11 nothing waits on a third party's
+permission.
+
+Scheduling: after Phase 7's exit and before the ports (Phases 8–10), as
+Phase 7b's features were, so the design settles on macOS first. Built ahead
+of Phase 7's exit at the owner's request (2026-10-11), as Phase 7b was. It
+is built platform-neutral, so the ports carry it. It builds the
+library-source kind, the audio cache and the download-first playback that
+Phase 11's design describes; Phase 7f, Phase 11 and N31/N32 then reuse them.
+
+**Where things stand** (to check in 7e.1):
+- The API: `POST /Users/AuthenticateByName` (or Quick Connect, which needs
+  no password typed into the app) returns an access token and user id; every
+  request sends
+  `Authorization: MediaBrowser Client=…, Device=…, DeviceId=…, Version=…, Token=…`.
+  `/Items` (with `IncludeItemTypes=Audio`, `Recursive=true`, paging and
+  `Fields`) lists the music; `/Audio/{id}/stream?static=true` serves the
+  original file and `/Audio/{id}/universal` transcodes to a container the
+  client names; `/Items/{id}/Images/Primary` serves art; `/Sessions/Playing`
+  and its `Progress` and `Stopped` calls report plays; the server is found
+  on the LAN by a UDP broadcast to port 7359.
+- Jellyfin 10.9 and later are supported (`jellyfin::MIN_VERSION`, checked
+  at sign-in; the user guide says the same); which calls each version has
+  (lyrics, for one) is checked in 7e.1 against a real server.
+
+**Design:**
+- **A Jellyfin server is a library source.** A migration adds a `kind` to
+  `folders` (`local`, `jellyfin`), as Phase 11 proposes, so tracks, albums,
+  artists, browse, FTS search, smart playlists and the queue work unchanged.
+  A Jellyfin track's `path` is its item id, never a URL; the server's
+  address and user id are the folder's, in place of a bookmark. Everything
+  that opens a track (`library::playback::track_play`, `queue/opening.rs`,
+  the scanner, art, Get Info) branches on the kind; a local track goes
+  through `access::open_folder` as now. Settle in 7e.2 whether 11.2 keeps
+  this model or separate tables, since both phases share it.
+- **Sync instead of scan.** "Refresh" pages through the server's music and
+  upserts tracks with the server's metadata (title, artists, album artist,
+  album, disc and track numbers, length, year, genres, the file's container,
+  bit rate and sample rate, and MusicBrainz ids where the server has them,
+  so Phase 4's links work without a lookup). Later syncs ask only for items
+  changed since the last; items gone from the server are removed, as a
+  rescan removes deleted files. The scanner's H22 rule holds: a sync that
+  would remove all of a server's tracks, or most of them, keeps them and
+  fails the source.
+- **Rust fetches, the core decodes** (as Phase 11): FFmpeg stays built
+  without networking (§4 #3) and the core never goes online. Rust downloads
+  the file through `http::Client` (a streaming GET on the same `Transport`,
+  sharing the offline backoff and the test fake) into the audio cache, and
+  the engine opens the cached file like any other, so gapless hand-off,
+  ReplayGain, effects and analysis work unchanged. The queue arms the next
+  track ahead, so it downloads while the current one plays. A track opens
+  through `Opening::Pending` (H11), with its own timeout for the download.
+- **Original or transcoded.** The original file (`static=true`) by default;
+  a transcode only when its format isn't one FFmpeg's build plays, or when
+  the user sets a maximum bit rate for connections away from home (a
+  setting, off by default). The cached copy is named by item id and the form
+  fetched.
+- **Audio cache** as Phase 11 describes it: in the app's container, kept
+  apart from the image cache but built like it (SHA-256 names, `.part` then
+  rename, least recently used evicted first), with its own budget, 1 GB by
+  default. The server is the user's own, so cached files may outlive the
+  session; "Keep available offline" on an album or playlist pins its files
+  in the cache (7e.6).
+- **Sign-in and secrets.** The user enters the server's address (or picks
+  one the LAN discovery found) and signs in with a password or Quick
+  Connect. The password is never stored; the access token goes in the
+  keychain through `metadata::keys` (so logging redacts it), keyed by
+  server, and the settings record only that one exists. The `DeviceId` is a
+  random id made once per install. Signing out calls `/Sessions/Logout`,
+  deletes the token, the source's rows and its cached audio.
+- **Plain http only on the LAN.** Tokens and audio cross the network, so an
+  `http://` address is accepted only for a local address (as the LAN remote
+  decides what is local), and anything else needs `https://`. Servers with
+  self-signed certificates are refused (owner's decision, 2026-10-11):
+  only certificates the system trusts.
+- **Unreachable is not empty** (H22): a server that doesn't answer gives its
+  source a `FolderState` saying so; its tracks stay and show dimmed unless
+  cached, and anything that picks tracks to play leaves the uncached ones
+  out, as `availability::unreadable` does.
+- **Art and details** go through the image cache and thumbnails (H17, with
+  `Art::origin` set), so the `anomp-art` handler still serves only pictures
+  already downloaded and the CSP doesn't change. Details are labelled with
+  the server's name, as Phase 4 labels its sources.
+- **Plays and favourites.** Reporting plays to the server
+  (`/Sessions/Playing…`) is a switch, on by default once the source exists
+  (the server is the user's own), so the server's play counts and other
+  clients stay current. Local history (O8), ratings and favourites stay
+  local, and nothing syncs back from the server (owner's decision,
+  2026-10-11: one way). The server's playlists come in as read-only
+  playlists.
+- **A feature switch** in `FeatureSettings`, off by default (it goes
+  online), checked where it acts; the Settings panel and the sidebar's
+  server entry hide while it is off.
+- **Logs and diagnostics**: the server's address and user name are written
+  at debug only (the formatter scrubs URL paths at info and above); "Copy
+  diagnostics" says how many servers there are and their versions, never
+  their addresses.
+- **Platforms.** macOS's sandbox already allows outgoing connections
+  (`com.apple.security.network.client`), and `Info.plist` already has an
+  `NSLocalNetworkUsageDescription` (for the LAN remote): reword it to cover
+  finding and reaching a server. iOS (Phase 8) needs the same Local Network
+  permission and the multicast entitlement for discovery, or offers address
+  entry only.
+- **Tests never touch the network**, as in Phase 4: the fake `Transport`
+  serves recorded responses from a test server (`metadata/fixtures/`, each
+  with its `manifest.json` entry, re-recorded by `record-fixtures.py`) and a
+  committed audio fixture. A `live_` test, `#[ignore]`d, reads a test
+  server's address and token from environment variables. The self-test (H14)
+  gets a stage that plays a cached Jellyfin track inside the sandbox.
+
+**Steps:**
+- [ ] 7e.1 Set up a test server (Jellyfin in Docker, with the fixtures'
+  chirp files and a few tagged albums) and check the API above against it:
+  authentication and Quick Connect, paging and changed-since queries, static
+  and transcoded streams, art, play reporting, lyrics, and the versions to
+  support. Add a row to Phase 4's sources table (what is fetched and stored,
+  no rate limit beyond `http::Client`'s) and a line to the privacy policy
+  (§8.1). *Partly done (2026-10-11):* the API was built from Jellyfin
+  10.10's documentation and is tested against hand-made responses in
+  `metadata/fixtures/jellyfin/` (`made_by_hand` in `manifest.json`); 10.9 is
+  the minimum (`jellyfin::MIN_VERSION`); the sources table's row and
+  `docs/release-decisions.md`'s privacy row are added. The owner signed in
+  to their own Jellyfin 10.11.10 server in `tauri dev` and synced it (42,806
+  tracks, 12 playlists). Still to do, needing Docker: the test server,
+  recording its responses over the hand-made ones (and correcting what
+  differs: `MinDateLastSaved`, which provider id holds the recording, how
+  `/Sessions/Playing/Stopped` counts a play, the transcode URL), and running
+  `cargo test live_jellyfin -- --ignored` against it (`JELLYFIN_URL`,
+  `JELLYFIN_USER`, `JELLYFIN_PASSWORD`). Lyrics from the server are left for
+  later.
+- [x] 7e.2 Design against what 7e.1 found: the library model shared with
+  Phase 11, two-way sync of favourites and play counts or not, self-signed
+  certificates. Write the migration. *Done 2026-10-11:* a `kind` on
+  `folders` (`local`, `jellyfin`; `plex` allowed for 7f), with
+  `server_sources`, `server_tracks`, `server_playlists` and
+  `offline_albums`/`offline_playlists` (migration 014); Phase 11 can add its
+  kind the same way. One-way sync and no self-signed certificates, as the
+  owner decided.
+- [x] 7e.3 Sign-in (address, LAN discovery, password and Quick Connect),
+  token storage and sync. The server's music shows up in browse, search and
+  the queue. *Done 2026-10-11* (`servers/address.rs`, `discovery.rs`,
+  `jellyfin.rs`, `sync.rs`, `commands.rs`): tracks are written through the
+  scanner's own `write_unfiled_track`, so browse, search, smart playlists
+  and MusicBrainz links work unchanged.
+- [x] 7e.4 Playback: download to the audio cache, then load through H11's
+  pending path; download the next track ahead; transcoding; failures and
+  offline behaviour as designed; play reporting. *Done 2026-10-11*
+  (`servers/cache.rs`, `fetch.rs`, `playing.rs`, `queue/opening.rs`).
+- [x] 7e.5 UI: the server in the sidebar with its sync status, dimmed tracks
+  while it is unreachable, the server's panel in Settings, its error
+  messages in `en.json`; the user guide, developer guide and class
+  dictionary in the same commits. *Done 2026-10-11:* Settings › Servers, the
+  sidebar's Servers, chapter 15 of the user guide, the developer guide's
+  "Music servers".
+- [x] 7e.6 "Keep available offline" for albums and playlists. *Done
+  2026-10-11* (`servers/offline.rs`, the album and playlist menus).
+- [ ] 7e.7 Optional: progressive playback (Phase 11's 11.6, built once for
+  both), if download-first start-up is too slow away from home.
+**As built** (2026-10-11): a server, as one user sees it, is a library
+folder of kind `jellyfin` whose `path` is a key naming no file
+(`jellyfin:<server id>/<user id>`) and whose tracks' `relative_path` is the
+server's item id. Code that walks or opens folders on disk asks for `kind =
+'local'`, and `access::open_folder` refuses any other kind. The token is in
+the keychain (`Account::Server`), the device id in the `servers.deviceId`
+settings row. `ServerSettings` (`app.servers`): reporting plays (on), a bit
+rate for servers away from home (0, the originals) and the cache's size (1
+GB). Servers have their own `http::Client`, with no rate limit to their
+host. Tests: 35 in `servers/` and the migration's, all offline; the
+self-test's "server track" stage decodes a track from the audio cache in the
+sandbox.
+**Known limits** (2026-10-11): lists dim a server's tracks while it can't be
+reached even when they're downloaded (which tracks are cached is on disk,
+not in the database), though the queue plays them; radio, smart playlists'
+play and Home's suggestions leave out every track of an unreachable server;
+Get Info reads a server track's file only once it has been played; play
+reports are best effort and aren't retried; a server whose address changes
+needs signing in again.
+
+**To do** (left on 2026-10-11, in this order):
+- [ ] Run a test server: Jellyfin 10.10 in Docker (the official
+  jellyfin/jellyfin image), its library the fixtures' chirp files and a few
+  tagged albums, Quick Connect turned on, and a test user. Docker isn't
+  installed on the dev machine yet.
+- [ ] Record the server's responses over the hand-made ones in
+  `app/src-tauri/src/metadata/fixtures/jellyfin/`, giving each a `url` entry
+  in `manifest.json` in place of `made_by_hand` (`record-fixtures.py` would
+  need the test server's address and token, which it doesn't take yet:
+  extend it, or record by hand and say how).
+- [ ] Correct what the real server does differently, each with its test:
+  whether `MinDateLastSaved` finds changed tracks (else a full sync each
+  time); which provider id holds the recording's MBID; whether
+  `/Sessions/Playing/Stopped` with a position counts a play; the MP3
+  transcode URL (`Jellyfin::mp3_url`); Quick Connect's calls; the minimum
+  version (`MIN_VERSION`, 10.9).
+- [ ] Run the live test against it, with `JELLYFIN_URL`, `JELLYFIN_USER`
+  and `JELLYFIN_PASSWORD` set:
+  `cargo test live_jellyfin -- --ignored`.
+- [ ] Check the exit (below) in a sandboxed bundle, with
+  `docs/bundle-checks.md`: it uses the real container and so the owner's
+  library, so ask first. Check too that the Local Network prompt appears for
+  discovery, and the self-test's "server track" stage passes there.
+- [ ] When 7e.1 and the exit are done: move this phase's design, steps as
+  built and known limits word for word to a new
+  docs/design/phase-7e-jellyfin.md, and link it here.
+- **Exit (to check in the app):** after signing in to a Jellyfin server, its
+  music appears in the library and plays through the queue alongside local
+  tracks, gapless between streamed tracks, with Now Playing and media keys
+  working, inside the sandboxed bundle. A server that goes away leaves its
+  tracks dimmed, not gone, and cached ones still play. Every test runs
+  offline.
+
+### Phase 7f — Plex servers
+Added 2026-10-10 at the owner's request. Goal: play the music on the user's
+**Plex Media Server** next to the local library, as Phase 7e does for
+Jellyfin: streamed on demand, through the same browser, search, queue,
+gapless hand-off and Now Playing as local files. Unlike Jellyfin, Plex is
+proprietary and signing in goes through the user's plex.tv account, so
+Plex's terms and plex.tv's part are checked first (7f.1).
+
+Scheduling: after Phase 7e and before the ports (Phases 8–10). It reuses
+7e's library-source kind, audio cache, download-first playback, sync,
+unreachable-source handling and server UI, so it is mostly a second client
+behind them; anything 7e built for Jellyfin alone that Plex also needs is
+made general here, not copied.
+
+**Where things stand** (to check in 7f.1):
+- Sign-in is plex.tv's PIN flow: `POST https://plex.tv/api/v2/pins` (with
+  `strong=true`) returns a code, the user approves it in their browser at
+  `https://app.plex.tv/auth` (opened with `openLink`, so no password is
+  typed into the app), and polling the pin returns the account's token.
+  `https://plex.tv/api/v2/resources` then lists the servers the account can
+  reach, each with its own access token and its connections (local, remote
+  and Plex's relay). Every request sends `X-Plex-Client-Identifier`,
+  `X-Plex-Product`, `X-Plex-Version` and `X-Plex-Token` headers.
+- A server's music: `/library/sections` (music libraries have type
+  `artist`), then `/library/sections/{id}/all?type=10` for its tracks, paged
+  by `X-Plex-Container-Start` and `X-Plex-Container-Size` and filtered by
+  `updatedAt`. A track's `Media` and `Part` give the file's container, codec
+  and bit rate, and the part's `/library/parts/…` key serves the original
+  file; `/music/:/transcode/universal` transcodes. Art comes from each
+  item's `thumb` (sized through `/photo/:/transcode`), plays are reported
+  through `/:/timeline` and `/:/scrobble`, ratings through `/:/rate`, and
+  lyrics are a stream of the track where the server has them.
+- Servers are found on the LAN by GDM (a UDP broadcast to port 32414) as
+  well as through plex.tv's list.
+- Each server has certificates for its `*.plex.direct` names, so https works
+  on the LAN without a self-signed certificate.
+- **Plex Pass.** Since April 2025 Plex has required Plex Pass (or a Remote
+  Watch Pass) to stream personal media from outside the server's network in
+  its own apps. Whether and how that applies to a third-party client is
+  checked in 7f.1; the app says so plainly rather than failing silently.
+- **Terms.** Plex documents its server API for developers, but whether a
+  commercial third-party client may use it and the plex.tv sign-in, may
+  cache audio, and what it must show, is read in 7f.1 and recorded as a §8.1
+  gate.
+
+**Design** (Phase 7e's, with these differences):
+- **A Plex server is a library source** of kind `plex` (7e.2's migration
+  allows for it, or a new one adds it). A track's `path` is its rating key,
+  never a URL. The folder holds the server's machine identifier rather than
+  an address, since a server's connections change: the address is chosen at
+  each sync and playback from plex.tv's list (local first, then remote, then
+  the relay if the user allows it) and remembered until it fails. There is
+  one source per music library the user picks, so a server with several can
+  be added in part.
+- **Sync** pages through each picked library's tracks changed since the last
+  sync, as 7e's does, and H22's rule holds. Plex's MusicBrainz ids (its
+  `Guid` entries, where the server's agent set them) feed Phase 4's links.
+- **Playback** downloads the part's original file into the audio cache, or a
+  transcode under 7e's rules, and opens it through H11's pending path.
+  Plex's relay is slow and capped, so it is used only when nothing else
+  answers, and the user is told.
+- **Two kinds of token.** The plex.tv account's token and each server's
+  access token go in the keychain through `metadata::keys`, keyed by account
+  and by server; the settings record only that they exist. The
+  `X-Plex-Client-Identifier` is a random id made once per install. Tokens go
+  in headers, never in URLs, and logging's redaction learns `X-Plex-Token`
+  (in a header or a query, with a test). Signing out removes the device from
+  the account and deletes the tokens, the sources' rows and their cached
+  audio.
+- **Https first.** A server's `plex.direct` connection is used when it has
+  one; plain http only for a local address, as in 7e, and only when the
+  server allows insecure connections.
+- **plex.tv is a third party.** Signing in and listing servers contact
+  plex.tv and nothing else does: the music comes from the user's own server,
+  or through Plex's relay. The privacy policy names it (§8.1).
+- **Plays, ratings and playlists** as 7e decides for Jellyfin: reporting
+  plays is a switch, on once the source exists; the server's audio playlists
+  come in read-only; Plex's 0–10 ratings map to the app's own only if 7e.2
+  chose two-way sync.
+- **A feature switch** of its own in `FeatureSettings`, off by default,
+  apart from Jellyfin's.
+- **Logs, diagnostics, platforms and tests** as 7e: addresses and user and
+  server names at debug only; "Copy diagnostics" counts servers and their
+  versions; GDM needs the same Local Network permission (and iOS's multicast
+  entitlement) as Jellyfin's discovery; tests use recorded responses from a
+  test server and from plex.tv in `metadata/fixtures/`, and `live_` tests
+  are `#[ignore]`d. The self-test (H14) gets a Plex stage only if its
+  playback path differs from 7e's.
+
+**What 7f.1's reading found** (2026-10-11, from Plex's Terms of Service and
+its API documentation at developer.plex.tv; no test server yet):
+- **Terms.** Plex's Terms of Service call software that calls a Plex Media
+  Server "Interfacing Software": its maker is liable for it and grants Plex
+  a licence to use, host, link to and promote it, its name included. Nothing
+  in them rules the app out, so the phase goes on. Three points are the
+  owner's to settle before a release that includes Plex (§8.1): the user's
+  licence to Plex is personal and non-commercial; Plex's marks need its
+  written permission (the app names Plex only to say which servers it plays
+  from, and shows no logo); and getting Plex Pass features without a Plex
+  Pass is forbidden, so the app never works around a server's refusal.
+- **Plex Pass.** Since 2025-04-29 Plex's own apps need a Plex Pass or a
+  Remote Watch Pass to stream video from a server away from home, with
+  Plexamp's music exempt; in November 2025 Plex said third-party clients
+  streaming remotely through its API would follow in 2026. The server
+  enforces it, so the app shows a server away from home refusing a track as
+  `plexPassNeeded` and plays at home as before. What the server answers is
+  checked against a test server.
+- **Sign-in.** Plex now recommends a JWT flow (a device key registered with
+  the PIN, tokens that last 7 days, refreshed by signing a nonce). The older
+  PIN flow still works, and the app uses it first: `POST
+  https://plex.tv/api/v2/pins?strong=true`, the user approving the code at
+  `https://app.plex.tv/auth#?clientID=…&code=…`, and `GET /api/v2/pins/{id}`
+  until it has an `authToken`; 7f.7 moves to JWT.
+  `https://clients.plex.tv/api/v2/resources?includeHttps=1&includeRelay=1`
+  lists the servers, each with its own `accessToken` and `connections`
+  (`uri`, `local`, `relay`), and `https://plex.tv/api/v2/user` names the
+  account. Every request sends `X-Plex-Client-Identifier`, `X-Plex-Product`,
+  `X-Plex-Version` and, once signed in, `X-Plex-Token`. Any `X-Plex-` header
+  may be a query parameter instead, which the app uses for paging alone
+  (`X-Plex-Container-Start` and `-Size`), never for the token. The API is
+  versioned (`X-Plex-Pms-Api-Version`; 1.0.0 needs PMS 1.41.9); the app
+  sends none, so it gets the long-standing responses.
+- **Signing out.** No documented call removes one device from an account, so
+  signing out deletes the tokens here, and the user guide says where to
+  remove the device at plex.tv.
+
+**Design as built** (7f.2–7f.6, 2026-10-11):
+- **Headers.** `http::Transport` sends a list of headers in place of one
+  `Authorization` value (`Client::get_with_headers`, `post_with_headers`,
+  `download_with_headers`; the `_with_auth` calls stay), so Plex's
+  `X-Plex-*` headers go through the same client, backoff and test fake.
+  Logging redacts `X-Plex-Token` as a header and as a query parameter.
+- **One source per music library** (migration 015): `server_sources` gains
+  `section` (the library's key; empty for Jellyfin) and `section_name`,
+  unique on server, user and section, and `connections` (the server's
+  connections as plex.tv last listed them, as JSON); `server_tracks` gains
+  `media_path` (the path that serves the file, which a Plex track's id
+  doesn't give). A Plex source's folder key is `plex:<machine id>/<account
+  id>/<section>`; the server's token is kept under `plex:<machine
+  id>/<account id>` and the account's under `plex-account:<account id>`.
+- **One switch per kind of server.** `FeatureSettings::plex`, off by
+  default; everything 7e checks against `features.jellyfin` asks whether the
+  source's own kind is on (`servers::kind_on`), and the Settings panel and
+  sidebar show while either is.
+- **A client per kind behind one interface** (`servers/api.rs`,
+  `ServerApi`): who the server is, the headers a fetch needs, where a
+  track's original file and MP3 transcode are, where a picture is, and
+  reporting plays, for Jellyfin and Plex alike, so `commands`, `fetch` and
+  `playing` don't branch on the kind beyond choosing the client.
+- **Connections** (`servers/plex.rs`): the address that last answered is
+  tried first, then the stored connections: local ones, then remote https
+  ones, then Plex's relay only while "Use Plex's relay" is on
+  (`ServerSettings::plex_relay`, off). Plain http only to a local address
+  and only when the server doesn't require https. A connection counts only
+  when `/identity` answers with the server's machine id. Each sync asks
+  plex.tv for the connections again; without plex.tv the stored ones are
+  used. A source playing through the relay says so in Settings.
+- **Pictures** are stored under a key naming no address (`plex://<machine
+  id><thumb path>`) and fetched through the server's `/photo/:/transcode` at
+  the connection in use, so a changed address doesn't download them again.
+- **Plays** go to `/:/timeline` (playing, then stopped with the position);
+  the server counts a play by its own rule, as Jellyfin's does.
+- **Discovery** by GDM (`servers/discovery.rs`) adds a server's address on
+  the local network to the connections plex.tv gave, for a server whose
+  local connections plex.tv doesn't list.
+
+**Plan of work** (2026-10-11, in this order):
+- [ ] 7f.1 Read Plex's terms and check the API against a test server.
+  *Partly done (2026-10-11):* the terms and the documentation are read
+  (above), the §8.1 gate and the privacy row are written, and Phase 4's
+  sources table has a row. Still to do, needing Docker and a Plex account: a
+  test server (Plex Media Server in Docker, claimed by a test account, with
+  the fixtures' chirp files and a few tagged albums), recording its and
+  plex.tv's responses over the hand-made ones in `metadata/fixtures/plex/`,
+  correcting what differs (each with its test: the `updatedAt>=` filter,
+  which `Guid` holds the recording's MBID, the MP3 transcode's URL and
+  profile, whether a timeline report counts a play, what a server away from
+  home answers without Plex Pass), and running `cargo test live_plex --
+  --ignored` against it.
+- [x] 7f.2 Make 7e general: the header list in `http`; migration 015;
+  `FolderKind::Plex`; the `plex` switch and `kind_on`; the `ServerApi`
+  interface with Jellyfin behind it; the sources' new columns, keys and
+  tokens. Every 7e test still passes unchanged in meaning. *Done
+  2026-10-11.*
+- [x] 7f.3 The Plex client (`servers/plex.rs`, `servers/plextv.rs`): the PIN
+  sign-in, the account, resources and connections, choosing a connection,
+  music libraries, tracks a page at a time and changed since a time, track
+  ids, audio playlists, original and transcoded files, pictures, play
+  reports and errors; GDM. Tested against hand-made responses in
+  `metadata/fixtures/plex/` (`made_by_hand` in `manifest.json`). *Done
+  2026-10-11.*
+- [x] 7f.4 Commands: start and finish the PIN sign-in, list the account's
+  servers with their music libraries, add the libraries the user picks (each
+  a source, synced at once), and sign out of a source (the server's token
+  goes with its last source, the account's with its last server). Sync,
+  playback, play reports, checks and "Keep available offline" work for Plex
+  sources through `ServerApi`. *Done 2026-10-11*
+  (`servers/plex_commands.rs`, `servers/commands.rs`).
+- [x] 7f.5 UI: Settings › Servers gains "Sign in with Plex" (the code, the
+  browser opened with `openWebLink`, then the servers and their music
+  libraries to pick), the relay switch, and Plex's sources in its list; the
+  sidebar lists them; error messages in `en.json`. The user guide (chapter
+  15, the errors appendix, the settings reference), the developer guide, the
+  class dictionary, the privacy chapter, `Info.plist`'s Local Network text
+  and `CHANGELOG.md` in the same change. *Done 2026-10-11*
+  (`settings/PlexSignIn.svelte`, `ServerOptions.svelte`).
+- [x] 7f.6 Run every check (`check-all.py --quick`, `cargo test`, clippy,
+  `npm run check`, `npm test`, `npm run lint`) and update §2's counts. *Done
+  2026-10-11:* all pass; the C++ suites and the full `check-all.py`
+  (sanitizers, fuzzers, bundle) weren't run, since nothing in `core/` or
+  `effects/` changed.
+- [ ] 7f.7 Optional: move to Plex's JWT sign-in (an Ed25519 device key in
+  the keychain, tokens refreshed before their 7 days are up), once 7f.1's
+  test server shows what it changes.
+**As built** (2026-10-11): 18 more tests, in `servers/` (the Plex and
+plex.tv clients, connections, GDM, `ServerApi`, a Plex library's sync, a
+Plex Pass refusal) and migration 015's, with log redaction's test covering
+`X-Plex-Token`; two `live_` tests (`live_plex_tv` with `PLEX_TOKEN`,
+`live_plex` with `PLEX_URL` and `PLEX_SERVER_TOKEN`). The self-test gets no
+Plex stage: a Plex track plays from the audio cache exactly as a Jellyfin
+one does.
+**Known limits** (2026-10-11): everything is checked against Plex's
+documentation and hand-made responses, not a real server (7f.1); signing out
+deletes the tokens here but doesn't remove the device from the account at
+plex.tv (no documented call; the user guide says where); the legacy PIN
+sign-in, whose token doesn't expire, is used until 7f.7; a track's sample
+rate isn't in Plex's track lists, so it shows once played; Plex's loudness
+analysis isn't read (ReplayGain comes from the app's own analysis); 7e's
+known limits hold for Plex sources too.
+**Withdrawn for now** (2026-10-11, the owner's request): Settings ›
+Features offers no Plex servers switch (`FeaturesOptions.svelte`'s
+`NOT_OFFERED`), unless it is still on, so it can be turned off; Find lists
+it only then. The code, setting and tests stay; §8.7 lists the steps to
+offer it again.
+- **Exit (to check in the app):** as Phase 7e's, with a Plex server: after
+  signing in through plex.tv, its music plays through the queue alongside
+  local and Jellyfin tracks, gapless, with Now Playing and media keys
+  working, inside the sandboxed bundle. A server that goes away leaves its
+  tracks dimmed, not gone, and cached ones still play. Every test runs
+  offline.
+
 ### Phase 8 — iOS and iPadOS
 - Install Xcode, the iOS Rust targets, and set up the Apple Developer
   account (§3).
@@ -1633,7 +2104,9 @@ terms allow it.
 Scheduling: this is a feature, not a platform. Engineering starts after
 Phase 7, so it doesn't hold up the first macOS release. It is built
 platform-neutral, so it works on every platform ported by then. Step 11.1 is
-for the owner and can take months to answer, so start it early.
+for the owner and can take months to answer, so start it early. Phase 7e
+(Jellyfin servers) builds the library-source kind, the audio cache and
+download-first playback described below first; this phase reuses them.
 
 **Where things stand** (checked 2026-09-26):
 - **Bandcamp has no API for fans.** `bandcamp.com/developer` lists only the
@@ -1765,6 +2238,8 @@ Revisit it against whatever the agreement actually provides.
 | ListenBrainz's Labs API (X5's similar artists) is experimental: slow (1–40 s), sometimes down, and its algorithm names may change | Off by default; cached 30 days with a stale fallback; a timeout backs the host off, and MusicBrainz's relations still show; the ignored `live_similar_artists` test catches a renamed algorithm (run before each release with the other live tests) |
 | Decoder behaviour differing across platforms | Same FFmpeg version and flags everywhere; the Phase 1 format tests run on every CI OS |
 | WebKitGTK (Linux) and WebView2 (Windows) behave differently from WKWebView | Keep the frontend to standard web APIs; run frontend smoke tests on each OS in CI |
+| Jellyfin's API changes between server versions, or a server is reached over plain http | Phase 7e supports stated server versions, checked against a test server and recorded fixtures; `http://` only for local addresses, `https://` otherwise; the Jellyfin code is one Rust module behind the library-source kind |
+| Plex's terms rule out a commercial third-party client, Plex Pass limits streaming away from home, or plex.tv's sign-in changes | Phase 7f reads the terms first (7f.1) and stops if they rule the app out; Plex Pass limits are shown plainly, never as a failure; the Plex code is one Rust module behind the library-source kind, so it can be dropped without touching local or Jellyfin playback |
 | Bandcamp refuses, limits or withdraws access (no API for fans; scraping forbidden) | Phase 11 starts only with written permission; the Bandcamp code is one Rust module behind the library-source kind, so it can be dropped without touching local playback; fallback 11.7 (purchases as local files) |
 | iOS sandbox limits on music files | Document picker import and bookmarks; the Apple Music library (DRM) is out of scope |
 | Losing the user's own data (picks, and later playlists, favourites and history) to a corrupt DB, a bad migration, or moved files | Copies before migrations and integrity checks (H10); ids kept across moves and renames (F10); export and import (F20) |
@@ -1837,6 +2312,16 @@ Each open item has a brief (options, what it blocks, what was checked) in
         notice (`discogs::NOTICE`) in the About screen or the app's terms
         too, and name Discogs in the privacy policy: album titles and
         artists are searched there with the user's own token.
+- [ ] **Plex's terms** (Phase 7f, if it ships): 7f.1 (2026-10-11) found
+      that Plex's Terms of Service allow "Interfacing Software" that calls
+      a Plex Media Server, at its maker's liability and with a licence to
+      Plex to use and promote it. Settle: whether the user's personal,
+      non-commercial licence fits a paid app; Plex's permission for the
+      app to name Plex ("Plex servers", no logo shown); and that the app
+      never works around Plex Pass (it shows a server's refusal as
+      `plexPassNeeded`). The privacy policy names plex.tv (sign-in and the
+      list of servers) and Plex's relay (`docs/release-decisions.md` has
+      both rows).
 - [ ] **Bandcamp agreement** (Phase 11, if it ships): written permission
       covering every platform it ships on, including the App Store (Review
       Guideline 5.2.3), with its caching and attribution rules followed. The
@@ -1995,6 +2480,12 @@ secrets exist.
    (TestFlight → App Store review).
 8. After release: watch crash reports (if enabled) and issue tracker; keep
    the previous version's artifacts available for rollback.
+
+To offer Plex again (Phase 7f, withdrawn for now):
+1. Remove `"plex"` from `NOT_OFFERED` (`FeaturesOptions.svelte`).
+2. Remove the `needs` condition from its Find entry (`find.ts`).
+3. Undo the two user-guide notes (chapters 11 and 15).
+4. Restore the `CHANGELOG.md` entry.
 
 ## 9. Maintenance
 

@@ -33,6 +33,9 @@ pub struct Facts {
     pub folders: BTreeMap<String, usize>,
     pub features: Vec<String>,
     pub sources: Vec<String>,
+    /// Each music server's kind and version (PLAN.md Phase 7e): never its
+    /// address, name or user.
+    pub servers: Vec<String>,
     pub database: Vec<(&'static str, String)>,
     /// Whether detailed logging is on (`logging::detailed`).
     pub detailed_log: bool,
@@ -77,6 +80,7 @@ pub fn render(facts: &Facts) -> String {
     );
     section("Features on", facts.features.clone());
     section("Online sources on", facts.sources.clone());
+    section("Music servers", facts.servers.clone());
     section("Database", pairs(&facts.database));
     let detailed = if facts.detailed_log { "on" } else { "off" };
     section("Logging", vec![format!("detailed: {detailed}")]);
@@ -225,6 +229,7 @@ fn gather<R: Runtime>(app: &AppHandle<R>) -> Facts {
     if let Some(library) = app.try_state::<LibraryState>() {
         let conn = library.conn();
         facts.counts = counts(&conn).unwrap_or_default();
+        facts.servers = crate::servers::versions(&conn).unwrap_or_default();
         if let Ok(services) = crate::metadata::settings::service_settings(&conn) {
             facts.sources = services
                 .sources
@@ -370,6 +375,7 @@ mod tests {
             folders: [("available".to_owned(), 2), ("missing".to_owned(), 1)].into(),
             features: vec!["cueSheets".into()],
             sources: vec![],
+            servers: vec!["jellyfin 10.10.7".into()],
             database: vec![("schema", "9".into())],
             detailed_log: true,
             log: vec!["t INFO  library: 3 folders".into()],
@@ -398,6 +404,9 @@ cueSheets
 
 ## Online sources on
 (none)
+
+## Music servers
+jellyfin 10.10.7
 
 ## Database
 schema: 9

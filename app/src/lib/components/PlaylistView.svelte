@@ -7,6 +7,7 @@
   // dialog, and its tracks can't be moved or removed by hand.
   import { untrack } from "svelte";
   import { PLAYLIST_NAME_MAX, playlists as api, queue, type PlaylistEntry } from "$lib/api";
+  import { offlineItems } from "$lib/featureMenu";
   import { count, t } from "$lib/i18n";
   import { fileName, formatTime } from "$lib/format";
   import { dropIndex, emptySelection, rowsFor, type Selection } from "$lib/selection";
@@ -28,6 +29,10 @@
 
   const playlist = $derived(collection.byId(ui.playlistId));
   const smart = $derived(playlist?.rules !== null && playlist?.rules !== undefined);
+  /** A music server's playlist changes only on the server (PLAN.md Phase 7e). */
+  const fromServer = $derived(playlist?.server !== undefined && playlist?.server !== null);
+  /** Its entries can't be added, moved or removed here. */
+  const fixed = $derived(smart || fromServer);
 
   let pages = $state.raw(new Map<number, PlaylistEntry[]>());
   let loaded = $state(false);
@@ -98,7 +103,7 @@
     });
 
   function commitName() {
-    if (playlist) void collection.rename(playlist, name);
+    if (playlist && !fromServer) void collection.rename(playlist, name);
     if (ui.renaming === playlist?.id) ui.renaming = null;
   }
 
@@ -108,6 +113,17 @@
     const items: MenuItem[] = [
       { label: t("menu.playNext"), action: () => collection.enqueue(current, true) },
       { label: t("menu.addToQueue"), action: () => collection.enqueue(current, false) },
+      ...offlineItems({ playlistId: current.id }),
+    ];
+    if (fromServer) {
+      items.push(
+        { separator: true },
+        { label: t("playlist.export"), action: () => collection.exportPlaylist(current) },
+      );
+      ui.openMenu(event, items);
+      return;
+    }
+    items.push(
       { separator: true },
       {
         label: t("playlist.rename"),
@@ -116,7 +132,7 @@
           nameInput?.select();
         },
       },
-    ];
+    );
     if (smart)
       items.push({
         label: t("playlist.editRules"),
@@ -147,7 +163,7 @@
     const current = playlist;
     const one = entries.length === 1 ? entries[0] : null;
     const items = trackMenu(entries, one ? () => playFrom(index) : undefined);
-    if (!smart) {
+    if (!fixed) {
       const itemIds = entries.map((entry) => entry.itemId).filter((id) => id !== null);
       items.push(
         { separator: true },
@@ -186,7 +202,7 @@
   // of this playlist dragged by the row move there.
   $effect(() => {
     const id = playlist?.id;
-    if (id === undefined || smart) return;
+    if (id === undefined || fixed) return;
     return registerDropTarget(`playlist-view:${id}`, {
       accepts: (payload) => payload.kind === "tracks" || payload.kind === "playlist",
       drop: (payload, event) =>
@@ -225,7 +241,7 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    if (smart || !playlist || (event.key !== "Delete" && event.key !== "Backspace")) return;
+    if (fixed || !playlist || (event.key !== "Delete" && event.key !== "Backspace")) return;
     const itemIds = entriesOf(rowsFor(selection, selection.focus))
       .map((entry) => entry.itemId)
       .filter((id) => id !== null);
@@ -253,6 +269,7 @@
             bind:value={name}
             maxlength={PLAYLIST_NAME_MAX}
             aria-label={t("playlist.name")}
+            readonly={fromServer}
             onblur={commitName}
             onkeydown={(event) => {
               if (event.key === "Enter") event.currentTarget.blur();
@@ -263,7 +280,11 @@
             }}
           />
           <span class="muted small">
-            {smart ? t("playlist.smart") : t("playlist.list")} · {count("count.tracks", total)}{total > 0
+            {fromServer && playlist.server
+              ? t("servers.fromServer", { server: playlist.server })
+              : smart
+                ? t("playlist.smart")
+                : t("playlist.list")} · {count("count.tracks", total)}{total > 0
               ? ` · ${formatTime(playlist.duration)}`
               : ""}
           </span>
@@ -291,7 +312,7 @@
     </header>
 
     {#if loaded && total === 0}
-      <div class="empty" data-drop={smart ? undefined : `playlist-view:${playlist.id}`}>
+      <div class="empty" data-drop={fixed ? undefined : `playlist-view:${playlist.id}`}>
         {#if smart}
           <p>{t("playlist.smartEmpty")}</p>
           <button onclick={() => (ui.dialog = { kind: "smartPlaylist", playlist })}>{t("playlist.editRules")}</button>
@@ -304,7 +325,7 @@
       <div
         class="list"
         class:dragging={moving !== null}
-        data-drop={smart ? undefined : `playlist-view:${playlist.id}`}
+        data-drop={fixed ? undefined : `playlist-view:${playlist.id}`}
         {onkeydown}
         onpointermove={(event) => moving && (moving = { ...moving, gap: gapAt(event.clientY) })}
         onpointerup={endMove}
@@ -335,7 +356,7 @@
                   class:lifted={moving?.rows.includes(index)}
                   class:gap-before={moving !== null && moving.gap === index}
                 >
-                  {#if !smart}
+                  {#if !fixed}
                     <button
                       class="handle icon"
                       title={t("queue.dragToMove")}

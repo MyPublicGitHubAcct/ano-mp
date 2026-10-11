@@ -397,6 +397,27 @@
     "discogs/search-in-rainbows.json": {
       "made_by_hand": "Discogs' search needs a token, so this was put together in the documented format from the three recorded releases (discogs.rs's fixtures)."
     },
+    "jellyfin/authenticate-by-name.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/items-audio-1.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/items-audio-2.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/items-audio-ids.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/items-playlists.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/playlist-items.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
+    "jellyfin/system-info-public.json": {
+      "made_by_hand": "hand-made from Jellyfin 10.10's API documentation, standing in for a test server's response until 7e.1 records one (PLAN.md Phase 7e); ids and names are invented"
+    },
     "listenbrainz/similar-artists-a74b1b7f-71a5-4011-9441-d0b5e4122711.json": {
       "url": "https://labs.api.listenbrainz.org/similar-artists/json?artist_mbids=a74b1b7f-71a5-4011-9441-d0b5e4122711&algorithm=session_based_days_7500_session_300_contribution_3_threshold_10_limit_100_filter_True_skip_30",
       "select": {
@@ -1316,6 +1337,36 @@
           "disambiguation": true
         }
       }
+    },
+    "plex/identity.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/pin-claimed.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/pin.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/playlist-items.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/playlists.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/resources.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/sections.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/tracks-1.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/tracks-2.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
+    },
+    "plex/user.json": {
+      "made_by_hand": "hand-made from Plex's API documentation (developer.plex.tv) and the responses its clients are known to get, standing in for a test server's until 7f.1 records one (PLAN.md Phase 7f); ids, names, tokens and addresses are invented"
     },
     "wikipedia/extract-in-rainbows.json": {
       "url": "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=extracts%7Cinfo&inprop=url&exintro=1&explaintext=1&redirects=1&titles=In%20Rainbows",

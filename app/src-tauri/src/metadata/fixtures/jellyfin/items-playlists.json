@@ -1,0 +1,24 @@
+{
+  "Items": [
+    {
+      "Name": "Road Trip",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5",
+      "IsFolder": true,
+      "Type": "Playlist",
+      "MediaType": "Audio",
+      "ChildCount": 2
+    },
+    {
+      "Name": "Holiday Videos",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5",
+      "IsFolder": true,
+      "Type": "Playlist",
+      "MediaType": "Video",
+      "ChildCount": 5
+    }
+  ],
+  "TotalRecordCount": 2,
+  "StartIndex": 0
+}

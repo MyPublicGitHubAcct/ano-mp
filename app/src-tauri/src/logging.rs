@@ -64,8 +64,10 @@ static DETAILED: Mutex<Option<DetailedLog>> = Mutex::new(None);
 static DETAILED_ON: AtomicBool = AtomicBool::new(false);
 
 /// Query parameters whose values are never written.
-const SECRET_PARAMETERS: [&str; 7] = [
+const SECRET_PARAMETERS: [&str; 8] = [
     "token",
+    // Plex's token, which its API also takes as a parameter (Phase 7f).
+    "x-plex-token",
     "access_token",
     "api_key",
     "apikey",
@@ -297,6 +299,13 @@ pub fn redact(text: &str) -> String {
     let text = redact_after(&text, "authorization\": \"", |c| c == '"');
     let text = redact_after(&text, "authorization\":\"", |c| c == '"');
     let text = redact_after(&text, "authorization=", |c| c == '&' || c.is_whitespace());
+    // Jellyfin's header quotes its token: `MediaBrowser …, Token="…"`.
+    let text = redact_after(&text, "token=\"", |c| c == '"');
+    // Plex's header (Phase 7f): `X-Plex-Token: …`, or as a pair `("X-Plex-Token", "…")`.
+    let text = redact_after(&text, "x-plex-token:", |c| {
+        c == '\n' || c == '"' || c == ',' || c.is_whitespace()
+    });
+    let text = redact_after(&text, "x-plex-token\", \"", |c| c == '"');
     let mut text = text;
     for name in SECRET_PARAMETERS {
         text = redact_parameter(&text, name);
@@ -569,6 +578,20 @@ mod tests {
             redact("{\"authorization\": \"Token xyz\"}"),
             "{\"authorization\": \"<redacted>\"}"
         );
+        // A music server's header (PLAN.md Phase 7e), wherever it shows.
+        let header = "MediaBrowser Client=\"ano-mp\", DeviceId=\"d\", Token=\"9f2c7e\"";
+        assert!(!redact(&format!("sent {header}")).contains("9f2c7e"));
+        assert!(!redact(&format!("Authorization: {header}")).contains("9f2c7e"));
+        // Plex's (Phase 7f): a header, a parameter, or a pair in a debug line.
+        assert_eq!(
+            redact("sent X-Plex-Token: 7b1e9c, then"),
+            "sent X-Plex-Token: <redacted>, then"
+        );
+        assert_eq!(
+            redact("GET http://10.0.0.2:32400/x?X-Plex-Token=7b1e9c&a=1"),
+            "GET http://10.0.0.2:32400/x?X-Plex-Token=<redacted>&a=1"
+        );
+        assert!(!redact("[(\"X-Plex-Token\", \"7b1e9c\")]").contains("7b1e9c"));
     }
 
     #[test]

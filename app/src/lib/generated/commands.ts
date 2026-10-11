@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Channel } from "@tauri-apps/api/core";
-import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, Practice, QueueState, RecentEntry, RecordingState, RecordingStopped, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck, WorkbenchFile } from "./ipc";
+import type { AlbumCard, AlbumDetails, AlbumPrefs, AnalysisProgress, ArtistCandidate, ArtistPage, BrowseFilter, BrowsePage, CoverChoices, CoverWall, DataImport, DbCheck, Discography, DiscoveredServer, DroppedPaths, EffectInfo, EffectsStatus, Favourites, FeaturePrefs, Folder, GroupKey, HealthReport, Highlights, ListenBrainzStatus, Lyrics, MarkKind, MetadataProgress, OfflineStatus, OutsideArtist, OutsideLinks, OutsideStatus, PlayerStatus, Playlist, PlaylistImport, PlaylistPage, PlexAccount, PlexPin, PlexServer, Practice, QueueState, QuickConnectStart, RecentEntry, RecordingState, RecordingStopped, Release, ReleaseCandidate, RemoteStatus, Repeat, RuleSpec, ScanReport, SearchKind, SearchResults, ServerCheck, ServerSummary, SignalPathPayload, SimilarAlbum, SimilarArtist, SimilarTrack, SleepRequest, SmartRules, Source, SourceCandidates, TopKind, TopPlayed, TrackAnalysis, TrackDetails, TrackPrefs, UpdateCheck, WorkbenchFile } from "./ipc";
 import type { AppSettings, CoverBasis, EffectsSettings, MetadataSettings, OutputStatus, ServiceSettings, SettingsPayload, SortRule, SortSettings, SourceId, Theme } from "./settings";
 
 /** Every command lib.rs registers, by its camelCase name. */
@@ -165,6 +165,22 @@ export const commands = {
   shellShortcuts: () => invoke<[string, string][]>("shell_shortcuts"),
   shellShowMain: () => invoke<void>("shell_show_main"),
   shellToggleMiniPlayer: () => invoke<void>("shell_toggle_mini_player"),
+  serversList: () => invoke<ServerSummary[]>("servers_list"),
+  serversDiscover: () => invoke<DiscoveredServer[]>("servers_discover"),
+  serversCheck: (args: { address: string }) => invoke<ServerCheck>("servers_check", args),
+  serversSignIn: (args: { address: string; user: string; password: string }) => invoke<Source>("servers_sign_in", args),
+  serversQuickConnectStart: (args: { address: string }) => invoke<QuickConnectStart>("servers_quick_connect_start", args),
+  serversQuickConnectFinish: (args: { address: string; secret: string }) => invoke<Source | null>("servers_quick_connect_finish", args),
+  serversSignOut: (args: { folderId: number }) => invoke<void>("servers_sign_out", args),
+  serversSync: (args: { folderId: number; full: boolean }) => invoke<ScanReport>("servers_sync", args),
+  serversOfflineStatus: () => invoke<OfflineStatus>("servers_offline_status"),
+  serversSetOffline: (args: { albumId?: number | null; playlistId?: number | null; on: boolean }) => invoke<OfflineStatus>("servers_set_offline", args),
+  serversClearCache: () => invoke<OfflineStatus>("servers_clear_cache"),
+  plexSignInStart: () => invoke<PlexPin>("plex_sign_in_start"),
+  plexSignInFinish: (args: { pinId: number }) => invoke<PlexAccount | null>("plex_sign_in_finish", args),
+  plexSignInCancel: (args: { accountId: string }) => invoke<void>("plex_sign_in_cancel", args),
+  plexServers: (args: { accountId: string }) => invoke<PlexServer[]>("plex_servers", args),
+  plexAdd: (args: { accountId: string; serverId: string; libraries: string[] }) => invoke<Source[]>("plex_add", args),
   remoteStatus: () => invoke<RemoteStatus>("remote_status"),
   remoteNewCode: () => invoke<RemoteStatus>("remote_new_code"),
   remoteForget: (args: { deviceId: number }) => invoke<RemoteStatus>("remote_forget", args),

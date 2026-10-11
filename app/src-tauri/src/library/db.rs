@@ -24,6 +24,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("migrations/011_queue_items.sql"),
     include_str!("migrations/012_art_thumbs.sql"),
     include_str!("migrations/013_outside_dismissed.sql"),
+    include_str!("migrations/014_server_sources.sql"),
+    include_str!("migrations/015_server_sections.sql"),
 ];
 
 /// How many copies `back_up` keeps: the newest two.
@@ -224,12 +226,17 @@ mod tests {
                 "kept_artists",
                 "listens_pending",
                 "mb_cache",
+                "offline_albums",
+                "offline_playlists",
                 "outside_dismissed",
                 "playlist_items",
                 "playlists",
                 "plays",
                 "queue_items",
                 "remote_devices",
+                "server_playlists",
+                "server_sources",
+                "server_tracks",
                 "settings",
                 "track_analysis",
                 "track_artists",
@@ -461,6 +468,114 @@ mod tests {
         .unwrap();
         let copy = Connection::open(dir.path().join("library.sqlite3.pre-13")).unwrap();
         assert_eq!(user_version(&copy), 12);
+    }
+
+    #[test]
+    fn folders_get_a_kind_and_servers_their_tables() {
+        // Migration 014 (PLAN.md Phase 7e), on a file, so the copy is written.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 13);
+        Connection::open(&path)
+            .unwrap()
+            .execute(
+                "INSERT INTO folders (path, added_at) VALUES ('/Music', 0)",
+                [],
+            )
+            .unwrap();
+        let conn = open(&path).unwrap();
+        let kind: String = conn
+            .query_row("SELECT kind FROM folders", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kind, "local");
+        assert!(conn
+            .execute(
+                "INSERT INTO folders (path, added_at, kind) VALUES ('x', 0, 'ftp')",
+                []
+            )
+            .is_err());
+
+        // A server's playlists go with it, through the cascade.
+        conn.execute_batch(
+            "INSERT INTO folders (id, path, added_at, kind) VALUES (7, 'jellyfin:s/u', 0, 'jellyfin');
+             INSERT INTO server_sources (folder_id, address, server_id, server_name, user_id,
+                                         user_name, added_at)
+             VALUES (7, 'http://192.168.1.2:8096', 's', 'Home', 'u', 'me', 0);
+             INSERT INTO playlists (id, name, created_at, updated_at) VALUES (3, 'Theirs', 0, 0);
+             INSERT INTO playlists (id, name, created_at, updated_at) VALUES (4, 'Mine', 0, 0);
+             INSERT INTO server_playlists (playlist_id, folder_id, item_id) VALUES (3, 7, 'p1');
+             DELETE FROM folders WHERE id = 7;",
+        )
+        .unwrap();
+        let left: Vec<String> = conn
+            .prepare("SELECT name FROM playlists")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(left, ["Mine"]);
+        let sources: i64 = conn
+            .query_row("SELECT count(*) FROM server_sources", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sources, 0);
+        let copy = Connection::open(dir.path().join("library.sqlite3.pre-14")).unwrap();
+        assert_eq!(user_version(&copy), 13);
+    }
+
+    #[test]
+    fn a_server_holds_a_source_per_music_library() {
+        // Migration 015 (PLAN.md Phase 7f), on a file, so the copy is written.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        file_at(&path, 14);
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "INSERT INTO folders (id, path, added_at, kind) VALUES (7, 'jellyfin:s/u', 0, 'jellyfin');
+                 INSERT INTO server_sources (folder_id, address, server_id, server_name, user_id,
+                                             user_name, added_at, sync_cursor)
+                 VALUES (7, 'http://192.168.1.2:8096', 's', 'Home', 'u', 'me', 0, 42);",
+            )
+            .unwrap();
+        let conn = open(&path).unwrap();
+        let (section, cursor): (String, i64) = conn
+            .query_row(
+                "SELECT section, sync_cursor FROM server_sources WHERE folder_id = 7",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((section.as_str(), cursor), ("", 42));
+        // Two libraries of one Plex server, as one user sees it.
+        conn.execute_batch(
+            "INSERT INTO folders (id, path, added_at, kind) VALUES (8, 'plex:m/a/1', 0, 'plex');
+             INSERT INTO folders (id, path, added_at, kind) VALUES (9, 'plex:m/a/2', 0, 'plex');
+             INSERT INTO server_sources (folder_id, address, server_id, server_name, user_id,
+                                         user_name, added_at, section, section_name, connections)
+             VALUES (8, 'https://x.plex.direct:32400', 'm', 'Den', 'a', 'me', 0, '1', 'Music', '[]'),
+                    (9, 'https://x.plex.direct:32400', 'm', 'Den', 'a', 'me', 0, '2', 'Live', '[]');",
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO server_sources (folder_id, address, server_id, server_name, user_id,
+                                             user_name, added_at, section)
+                 VALUES (7, 'x', 'm', 'Den', 'a', 'me', 0, '1')",
+                []
+            )
+            .is_err());
+        // Deleting a folder still takes its source with it.
+        conn.execute("DELETE FROM folders WHERE id = 8", [])
+            .unwrap();
+        let sources: i64 = conn
+            .query_row("SELECT count(*) FROM server_sources", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sources, 2);
+        conn.execute("UPDATE server_tracks SET media_path = NULL", [])
+            .unwrap();
+        let copy = Connection::open(dir.path().join("library.sqlite3.pre-15")).unwrap();
+        assert_eq!(user_version(&copy), 14);
     }
 
     #[test]

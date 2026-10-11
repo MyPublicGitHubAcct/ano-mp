@@ -16,8 +16,11 @@ switched it on, and what the logs and diagnostics contain.
   Mac. Turn it off, or clear it, in **Settings › Features**.
 - **Recommendations** (**More Like This**, **You might like**): from your
   library and history alone. Nothing leaves your Mac for them.
-- **Keys and tokens** (Discogs, ListenBrainz) are kept in the macOS
-  keychain, not in ano-mp's settings, and never written to the logs.
+- **Keys and tokens** (Discogs, ListenBrainz, a Jellyfin server's
+  sign-in, your Plex sign-in and your Plex servers') are kept in the macOS
+  keychain, not in ano-mp's settings, and never written to the logs. A
+  Jellyfin password isn't kept at all, and ano-mp never sees your Plex
+  password.
 - **Recordings** go only to the folder you chose.
 
 ## What goes online, and when
@@ -34,6 +37,9 @@ None is contacted for anything else.
 | ListenBrainz | **Send listens to ListenBrainz** | each listen: title, artist, album and their MusicBrainz ids, with your token | no |
 | ListenBrainz | **Recommendations from outside the library** | the MusicBrainz ids of your most-played artists | no |
 | GitHub | **Check for updates** | nothing but the request (GitHub sees your IP address) | no (only when you click) |
+| Your Jellyfin server | **Jellyfin servers**, while signed in | your user name and password when you sign in; then requests for its music, covers and files, and (with **Tell the server what plays**) which tracks start and stop | no |
+| plex.tv | **Plex servers**: signing in, and when a server is synced | ano-mp's name and an id made for this Mac when you sign in; then your Plex sign-in, to list your servers and where they can be reached | no |
+| Your Plex server | **Plex servers**, while signed in | ano-mp's name, this Mac's id and the server's sign-in with requests for its music, covers and files, and (with **Tell the server what plays**) which tracks start and stop; through Plex's relay only with **Use Plex's relay** on | no |
 
 Every service sees your Mac's IP address, as any website you visit does.
 
@@ -60,7 +66,9 @@ problems. **Show logs** in **Settings › About** opens its folder.
 **Copy diagnostics** (in **Settings › About**) copies a short report for a
 bug report: ano-mp's and macOS's versions, the output device, how many
 tracks, albums and folders the library has (and how many folders can't be
-read), which features and online sources are on, facts about the library's
+read), which features and online sources are on, how many music servers
+you've signed in to and their Jellyfin or Plex versions (never their
+addresses or names), facts about the library's
 database, whether detailed logging is on, and the log's last lines. It
 holds **no file paths, titles or artists**. You can read it before you
 paste it anywhere: it is plain text.

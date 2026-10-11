@@ -22,6 +22,7 @@ mod recording;
 mod remote;
 #[cfg(any(test, feature = "self-test"))]
 mod self_test;
+mod servers;
 mod settings;
 mod shell;
 mod theme;
@@ -86,6 +87,9 @@ pub fn run() {
                 log::error!("{error}");
             }
             if let Err(error) = history::init(app.handle()) {
+                log::error!("{error}");
+            }
+            if let Err(error) = servers::commands::init(app.handle()) {
                 log::error!("{error}");
             }
             remote::init(app.handle());
@@ -299,6 +303,22 @@ pub fn run() {
             shell::shell_shortcuts,
             shell::shell_show_main,
             shell::shell_toggle_mini_player,
+            servers::commands::servers_list,
+            servers::commands::servers_discover,
+            servers::commands::servers_check,
+            servers::commands::servers_sign_in,
+            servers::commands::servers_quick_connect_start,
+            servers::commands::servers_quick_connect_finish,
+            servers::commands::servers_sign_out,
+            servers::commands::servers_sync,
+            servers::commands::servers_offline_status,
+            servers::commands::servers_set_offline,
+            servers::commands::servers_clear_cache,
+            servers::plex_commands::plex_sign_in_start,
+            servers::plex_commands::plex_sign_in_finish,
+            servers::plex_commands::plex_sign_in_cancel,
+            servers::plex_commands::plex_servers,
+            servers::plex_commands::plex_add,
             remote::remote_status,
             remote::remote_new_code,
             remote::remote_forget,

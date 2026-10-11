@@ -88,6 +88,24 @@ Deleting a track cascades to every table keyed by it; `queue_items` has
 no foreign key, since the queue simply leaves out a track that has gone
 when it next loads.
 
+### Music servers (migrations 014, 015)
+
+| Table | Holds | Written by |
+|---|---|---|
+| `folders.kind` | `local` (a folder on disk), `jellyfin` (a server's library for one user), `plex` (one music library of a Plex server, for one account) | `library/mod.rs`, `servers/mod.rs` |
+| `server_sources` | a server folder's address (the one that answered last), server id and name, version, user id and name, `sync_cursor` (when the last finished sync started), and for Plex `section` and `section_name` (the music library) and `connections` (plex.tv's addresses for the server, JSON); unique on server, user and section | `servers/mod.rs`, `servers/sync.rs`, `servers/commands.rs` |
+| `server_tracks` | a server track's container ("flac", "mp3"…), its album picture's URL (or, for Plex, a key naming no address), and `media_path` (Plex: the part's path that serves the file) | `servers/sync.rs` |
+| `server_playlists` | which playlists are a server's (read-only), by its item id; a trigger deletes the playlist with its row | `servers/sync.rs` |
+| `offline_albums`, `offline_playlists` | what is kept offline | `servers/offline.rs` |
+
+A server track's `relative_path` is the server's item id and its
+`file_size` the file's on the server; it is never a URL. A server's
+token is in the keychain (entry "server jellyfin:<server>/<user>"),
+never in the database. A Plex server's token is kept per server and
+account ("server plex:<machine id>/<account id>"), shared by its music
+libraries' sources, and the account's own token as "server
+plex-account:<account id>".
+
 ### Settings rows
 
 The `settings` table holds JSON values by key. Each is read leniently:
@@ -100,6 +118,7 @@ fields that still parse are kept, the rest take their defaults.
 | `metadata.services` | which online sources are on, their order per kind of data, "match automatically" | `metadata/settings.rs` |
 | `player.queue` | the queue's current item, position, repeat, shuffle and volume (the list is `queue_items`) | `queue/mod.rs` |
 | `recording.folder` | the recordings' folder: its path and writable bookmark | `recording.rs` |
+| `servers.deviceId` | this install's random id, as music servers see it | `servers/mod.rs` |
 
 Keys and tokens (the Discogs token, the ListenBrainz token) are never in
 the database: they are in the macOS keychain under the service "ano-mp
@@ -130,6 +149,7 @@ which holds the owner's library: follow `docs/bundle-checks.md`.)
 | A damaged database, kept | the same folder, `library.sqlite3.damaged-<time>` | `library/recovery.rs` |
 | A recovery chosen for the next launch | the same folder, `library.recovery.json` | `library/recovery.rs` |
 | Downloaded pictures and thumbnails (500 MB budget, least recently used removed first) | `~/Library/Caches/dev.anomp.player/images/` | `metadata/images.rs`, `library/thumbs.rs` |
+| Music servers' tracks, downloaded to play (1 GB budget by default, least recently used removed first, except what is kept offline) | `~/Library/Caches/dev.anomp.player/audio/` | `servers/cache.rs` |
 | The cover of a track-change notification | `~/Library/Caches/dev.anomp.player/notification-cover.jpg` (or `.png`) | `shell/notifications.rs` |
 | The webview's own data (its cache, `localStorage`: folded sections and other per-window choices, `anomp.*` keys) | `~/Library/Caches/dev.anomp.player/WebKit/` and WebKit's folders | WebKit; `state/ui.svelte.ts` |
 | The log, and two older ones | `~/Library/Logs/dev.anomp.player/ano-mp.log` (a new file past 2 MB) | `logging.rs` |
@@ -138,6 +158,7 @@ which holds the owner's library: follow `docs/bundle-checks.md`.)
 | The self-test's scratch files | the temporary folder, removed after | `self_test.rs` |
 
 Everything in `Caches` can be deleted safely: pictures are downloaded
-again and thumbnails remade. Deleting `Application Support`'s folder
+again and thumbnails remade, and servers' tracks downloaded again when
+played (music kept offline is downloaded again at the next sync). Deleting `Application Support`'s folder
 starts the library from nothing (the user's folders must be added
 again).

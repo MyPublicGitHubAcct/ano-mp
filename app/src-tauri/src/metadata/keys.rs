@@ -1,6 +1,6 @@
 //! Keys for the sources that need one (a Discogs personal access token, a
-//! ListenBrainz user token for O8),
-//! kept in the OS keychain rather than the library database: a token can
+//! ListenBrainz user token for O8, a music server's access token for
+//! Phase 7e), kept in the OS keychain rather than the library database: a token can
 //! act on the user's account at the service, and the database is a plain
 //! file (PLAN.md 4.8). The settings record only whether a source has a key
 //! (`SourceSettings::has_key`).
@@ -14,31 +14,36 @@ use std::sync::Mutex;
 use super::settings::SourceId;
 use super::Error;
 
-/// The keychain entries' service; the account is the source id.
+/// The keychain entries' service; the account is `Account::id`.
 #[cfg(all(target_os = "macos", not(test)))]
 const SERVICE: &str = "ano-mp metadata";
 
 /// Whose key: a metadata source's, or another service's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Account {
     Source(SourceId),
     /// Listens sent to ListenBrainz (PLAN.md O8).
     ListenBrainz,
+    /// A music server's access token for one user, by the source's key
+    /// (`servers::folder_key`: "jellyfin:<server id>/<user id>").
+    Server(String),
 }
 
 impl Account {
     /// The keychain entry's account, which must never change.
-    fn id(self) -> &'static str {
+    fn id(&self) -> String {
         match self {
-            Account::Source(source) => source.as_str(),
-            Account::ListenBrainz => "listenbrainz",
+            Account::Source(source) => source.as_str().to_owned(),
+            Account::ListenBrainz => "listenbrainz".to_owned(),
+            Account::Server(key) => format!("server {key}"),
         }
     }
 
-    fn name(self) -> &'static str {
+    fn name(&self) -> &'static str {
         match self {
             Account::Source(source) => source.info().name,
             Account::ListenBrainz => "ListenBrainz",
+            Account::Server(_) => "server",
         }
     }
 }
@@ -66,7 +71,7 @@ pub fn get(account: impl Into<Account>) -> Result<Option<String>, Error> {
     if let Some(key) = cache.get(&account) {
         return Ok(key.clone());
     }
-    let key = store::read(account.id())?;
+    let key = store::read(&account.id())?;
     if let Some(key) = &key {
         crate::logging::keep_secret(key);
     }
@@ -91,8 +96,8 @@ pub fn set(account: impl Into<Account>, key: Option<&str>) -> Result<(), Error> 
     }
     let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     match key {
-        Some(key) => store::write(account.id(), key)?,
-        None => store::delete(account.id())?,
+        Some(key) => store::write(&account.id(), key)?,
+        None => store::delete(&account.id())?,
     }
     cache
         .get_or_insert_with(HashMap::new)

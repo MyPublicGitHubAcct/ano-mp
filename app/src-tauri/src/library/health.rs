@@ -46,7 +46,7 @@ pub struct HealthReport {
 #[serde(rename_all = "camelCase")]
 pub struct HealthTrack {
     pub track_id: i64,
-    /// Absolute.
+    /// Absolute; empty for a music server's track.
     pub path: String,
     pub title: String,
     pub artist: Option<String>,
@@ -89,9 +89,14 @@ fn health_track(row: &rusqlite::Row, detail: String) -> rusqlite::Result<HealthT
     let title: String = row.get(3)?;
     Ok(HealthTrack {
         track_id: row.get(0)?,
-        path: track_path(Path::new(&folder), &relative)
-            .to_string_lossy()
-            .into_owned(),
+        // A music server's track has no file here (PLAN.md Phase 7e).
+        path: if crate::servers::is_source_key(&folder) {
+            String::new()
+        } else {
+            track_path(Path::new(&folder), &relative)
+                .to_string_lossy()
+                .into_owned()
+        },
         title: title.rsplit('/').next().unwrap_or(&title).to_owned(),
         artist: row.get(4)?,
         album: row.get(5)?,

@@ -194,6 +194,17 @@ tags: **Use online services**, **Look up albums and artists
 automatically**, each source's switch and key, and the **Order** sources
 are tried in. See [chapter 6](06-online-information.md#turn-services-on-or-off).
 
+## Servers
+
+Jellyfin and Plex servers whose music plays next to your library. This
+section shows while **Jellyfin servers** or **Plex servers** is on in
+**Features**. Each server signed in to (for Plex, each music library
+added), with **Sync Now**, **Sync Everything** and **Sign Out**; **Add a
+server** (Jellyfin) and **Sign In with Plex**; **Tell the server what
+plays**; **Use Plex's relay**; **Away from home**; and **Space for
+downloaded music** with **Remove Downloaded Music**. See
+[chapter 15](15-music-servers.md).
+
 ## Features
 
 Features beyond the usual. Each can be turned off; online ones, and ones
@@ -225,6 +236,8 @@ four groups.
 | **Classical works** | Works and movements on album pages, **Composer** and **Work** in browsing, and a work shuffles as one. | On |
 | **Playback preferences** | Your own rules per track or album. ([chapter 3](03-playing-music.md#playback-preferences)) | On |
 | **Lyrics** | Lyrics from tags and .lrc files in the Now Playing view. ([chapter 5](05-track-and-album-details.md#lyrics)) | On |
+| **Jellyfin servers** | The music on your own Jellyfin server, next to your library, and the **Servers** section. Goes online. ([chapter 15](15-music-servers.md)) | Off |
+| **Plex servers** | Not offered in this version: the switch shows only while it is still on, so you can turn it off. ([chapter 15](15-music-servers.md)) | Off |
 
 **Listening and discovery**
 

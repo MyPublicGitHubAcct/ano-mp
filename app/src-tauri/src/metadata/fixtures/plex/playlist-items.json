@@ -1,0 +1,25 @@
+{
+  "MediaContainer": {
+    "size": 2,
+    "totalSize": 2,
+    "offset": 0,
+    "title": "Road Trip",
+    "playlistType": "audio",
+    "Metadata": [
+      {
+        "ratingKey": "1003",
+        "key": "/library/metadata/1003",
+        "type": "track",
+        "title": "DSD Chirp",
+        "playlistItemID": 1
+      },
+      {
+        "ratingKey": "1001",
+        "key": "/library/metadata/1001",
+        "type": "track",
+        "title": "Chirp One",
+        "playlistItemID": 2
+      }
+    ]
+  }
+}

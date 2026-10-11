@@ -1,0 +1,17 @@
+{
+  "id": 48213977,
+  "code": "7tq2bxkd8m3c5wq9rjf4p6zhn",
+  "product": "ano-mp",
+  "trusted": false,
+  "qr": "https://plex.tv/api/v2/pins/qr/7tq2bxkd8m3c5wq9rjf4p6zhn",
+  "clientIdentifier": "0123456789abcdef0123456789abcdef",
+  "location": {
+    "code": "GB",
+    "country": "United Kingdom"
+  },
+  "expiresIn": 1800,
+  "createdAt": "2026-10-11T09:00:00Z",
+  "expiresAt": "2026-10-11T09:30:00Z",
+  "authToken": null,
+  "newRegistration": null
+}

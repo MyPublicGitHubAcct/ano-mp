@@ -38,6 +38,10 @@ pub struct Playlist {
     pub duration: f64,
     pub created_at: i64,
     pub updated_at: i64,
+    /// The server it comes from (its name), for a music server's playlist,
+    /// which only a sync changes (PLAN.md Phase 7e).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
 }
 
 /// A track in a playlist, and which entry it is (a track can be listed
@@ -95,12 +99,15 @@ pub fn playlists(conn: &Connection) -> Result<Vec<Playlist>, Error> {
 
 /// Playlist `id`, with its count and length; `None` if there is none.
 pub fn playlist(conn: &Connection, id: i64) -> Result<Option<Playlist>, Error> {
-    let row: Option<(String, Option<String>, i64, i64, u32, f64)> = conn
+    let row: Option<(String, Option<String>, i64, i64, u32, f64, Option<String>)> = conn
         .query_row(
             "SELECT p.name, p.rules, p.created_at, p.updated_at,
                     (SELECT count(*) FROM playlist_items WHERE playlist_id = p.id),
                     (SELECT IFNULL(sum(t.duration), 0) FROM playlist_items i
-                     JOIN tracks t ON t.id = i.track_id WHERE i.playlist_id = p.id)
+                     JOIN tracks t ON t.id = i.track_id WHERE i.playlist_id = p.id),
+                    (SELECT s.server_name FROM server_playlists sp
+                     JOIN server_sources s ON s.folder_id = sp.folder_id
+                     WHERE sp.playlist_id = p.id)
              FROM playlists p WHERE p.id = ?1",
             [id],
             |row| {
@@ -111,11 +118,12 @@ pub fn playlist(conn: &Connection, id: i64) -> Result<Option<Playlist>, Error> {
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )
         .optional()?;
-    let Some((name, rules, created_at, updated_at, count, duration)) = row else {
+    let Some((name, rules, created_at, updated_at, count, duration, server)) = row else {
         return Ok(None);
     };
     // Rules this version can't read (a newer version's) match nothing.
@@ -140,6 +148,7 @@ pub fn playlist(conn: &Connection, id: i64) -> Result<Option<Playlist>, Error> {
         duration,
         created_at,
         updated_at,
+        server,
     }))
 }
 
@@ -147,8 +156,21 @@ fn require(conn: &Connection, id: i64) -> Result<Playlist, Error> {
     playlist(conn, id)?.ok_or_else(|| Error::Invalid(gone(Gone::Playlist)))
 }
 
-fn require_list(conn: &Connection, id: i64) -> Result<Playlist, Error> {
+/// Playlist `id`, unless it is a music server's, which only a sync changes.
+fn require_editable(conn: &Connection, id: i64) -> Result<Playlist, Error> {
     let playlist = require(conn, id)?;
+    if let Some(server) = &playlist.server {
+        return Err(Error::Invalid(coded(
+            "playlistReadOnly",
+            &[("server", serde_json::json!(server))],
+            format!("This playlist comes from {server}; change it there"),
+        )));
+    }
+    Ok(playlist)
+}
+
+fn require_list(conn: &Connection, id: i64) -> Result<Playlist, Error> {
+    let playlist = require_editable(conn, id)?;
     if playlist.rules.is_some() {
         return Err(Error::Invalid(coded(
             "smartTracks",
@@ -192,6 +214,7 @@ pub fn create(
 }
 
 pub fn rename(conn: &Connection, id: i64, name: &str) -> Result<Playlist, Error> {
+    require_editable(conn, id)?;
     let name = clean_name(name)?;
     conn.execute(
         "UPDATE playlists SET name = ?1, updated_at = ?2 WHERE id = ?3",
@@ -202,7 +225,7 @@ pub fn rename(conn: &Connection, id: i64, name: &str) -> Result<Playlist, Error>
 
 /// Replaces a smart playlist's rules.
 pub fn set_rules(conn: &Connection, id: i64, rules: &SmartRules) -> Result<Playlist, Error> {
-    if require(conn, id)?.rules.is_none() {
+    if require_editable(conn, id)?.rules.is_none() {
         return Err(Error::Invalid(coded(
             "notSmart",
             &[],
@@ -217,6 +240,9 @@ pub fn set_rules(conn: &Connection, id: i64, rules: &SmartRules) -> Result<Playl
 }
 
 pub fn delete(conn: &Connection, id: i64) -> Result<(), Error> {
+    if playlist(conn, id)?.is_some() {
+        require_editable(conn, id)?;
+    }
     conn.execute("DELETE FROM playlists WHERE id = ?1", [id])?;
     Ok(())
 }
@@ -463,7 +489,7 @@ fn resolve(conn: &Connection, base: &Path, entry: &str) -> Result<Option<i64>, E
     if let Some(path) = entry_path(base, &normalised, cfg!(windows)) {
         let path = lexical_clean(&path);
         let folders: Vec<(i64, String)> = conn
-            .prepare_cached("SELECT id, path FROM folders")?
+            .prepare_cached("SELECT id, path FROM folders WHERE kind = 'local'")?
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
         for (folder_id, folder) in folders {
@@ -561,7 +587,8 @@ pub fn export_m3u(conn: &Connection, id: i64, file: &Path) -> Result<usize, Erro
                 "SELECT f.path, t.relative_path, t.title, IFNULL(t.artist_credit, a.name),
                         t.duration, t.relative_path
                  FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 LEFT JOIN artists a ON a.id = t.artist_id WHERE t.id = ?1",
+                 LEFT JOIN artists a ON a.id = t.artist_id
+                 WHERE t.id = ?1 AND f.kind = 'local'",
                 [track_id],
                 |row| {
                     Ok((

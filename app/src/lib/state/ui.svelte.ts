@@ -36,6 +36,7 @@ export type SettingsSection =
   | "recording"
   | "visualizer"
   | "sources"
+  | "servers"
   | "features"
   | "general"
   | "about";

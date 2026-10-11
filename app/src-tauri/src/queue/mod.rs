@@ -380,10 +380,10 @@ fn load_finished<R: Runtime>(app: &AppHandle<R>, request: Request, result: Resul
     }
 }
 
-/// A track the queue asked to open is a cloud placeholder, downloading
-/// (`opening`, H12). Main thread.
+/// A track the queue asked to open is downloading: a cloud placeholder
+/// (`opening`, H12), or a music server's track (Phase 7e). Main thread.
 fn downloading<R: Runtime>(app: &AppHandle<R>, request: Request) {
-    log::info!("downloading a cloud placeholder to play it");
+    log::info!("downloading a track to play it");
     if let Err(error) = run(app, move |queue, _| queue.downloading(request)) {
         log::warn!("{error}");
     }
@@ -408,6 +408,7 @@ fn publish<R: Runtime>(app: &AppHandle<R>, queue: &mut Queue) {
         let _ = app.emit(QUEUE_CHANGED_EVENT, &state);
         crate::media::queue_changed(app, &state);
         crate::history::queue_changed(app, &state);
+        crate::servers::playing::queue_changed(app, &state);
         crate::recording::queue_changed(app, &state);
         crate::workbench::queue_changed(app, &state);
         // The album playing is looked up ahead of background work, and the
@@ -1360,8 +1361,12 @@ pub async fn folders_changed<R: Runtime>(app: &AppHandle<R>) {
         .try_state::<crate::library::availability::FolderStates>()
         .map(|states| states.unreadable())
         .unwrap_or_default();
+    // A server's track in the audio cache plays while the server is away.
     let Ok(missing) = on_library(app, move |library| {
-        crate::library::availability::tracks_in(&library.conn(), &ids, &unavailable)
+        let mut missing =
+            crate::library::availability::tracks_in(&library.conn(), &ids, &unavailable)?;
+        missing.retain(|&track_id| !library.is_cached(track_id));
+        Ok(missing)
     })
     .await
     else {

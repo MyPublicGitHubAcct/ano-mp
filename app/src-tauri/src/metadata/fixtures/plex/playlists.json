@@ -1,0 +1,22 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "Metadata": [
+      {
+        "ratingKey": "5001",
+        "key": "/playlists/5001/items",
+        "guid": "com.plexapp.agents.none://5001",
+        "type": "playlist",
+        "title": "Road Trip",
+        "summary": "",
+        "smart": false,
+        "playlistType": "audio",
+        "composite": "/playlists/5001/composite/1712000000",
+        "duration": 3000,
+        "leafCount": 2,
+        "addedAt": 1712000000,
+        "updatedAt": 1712000000
+      }
+    ]
+  }
+}

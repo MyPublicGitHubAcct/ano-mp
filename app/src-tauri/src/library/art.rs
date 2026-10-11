@@ -6,7 +6,10 @@
 //! `lookup` is the one place art comes from: the picture the user chose for
 //! the album, else the first found among the album-art sources in the order
 //! set in `metadata::settings`: embedded pictures, images in the album's
-//! folder, and covers already downloaded from the Cover Art Archive.
+//! folder, and covers already downloaded from the Cover Art Archive. A
+//! music server's tracks (PLAN.md Phase 7e) aren't files here: their
+//! picture is the one the server shows for them, which a sync downloads
+//! into the image cache, and stands in for the embedded one.
 //!
 //! The "Choose cover" dialog lists an album's pictures from each source
 //! (`local_candidates` here, the archive's in `coverartarchive`), shows them
@@ -232,7 +235,7 @@ impl Folders<'_> {
 /// pictures are shown while the online switch is off too
 /// (`ServiceSettings::sources_shown`).
 fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
-    let (settings, choice, files, covers) = {
+    let (settings, choice, files, covers, server_art) = {
         let conn = library.conn();
         let (choice, covers) = match key {
             ArtKey::Album(id) => (
@@ -246,12 +249,14 @@ fn find(library: &LibraryState, key: ArtKey) -> Result<Option<Art>, Error> {
             choice,
             track_files(&conn, key)?,
             covers,
+            server_art_urls(&conn, key)?,
         )
     };
     let mut album = AlbumSources {
         key,
         files,
         covers,
+        server_art,
         folders: Folders {
             library,
             open: HashMap::new(),
@@ -278,7 +283,31 @@ struct AlbumSources<'a> {
     files: Vec<TrackFile>,
     /// Cover Art Archive URLs that may hold its cover, best first.
     covers: Vec<String>,
+    /// Its music server's pictures (`server_tracks.art_url`), downloaded by
+    /// the sync: the embedded picture of a server's track.
+    server_art: Vec<String>,
     folders: Folders<'a>,
+}
+
+/// The pictures music servers show for the album's (or the track's) tracks,
+/// each once.
+fn server_art_urls(conn: &Connection, key: ArtKey) -> Result<Vec<String>, Error> {
+    let (sql, id) = match key {
+        ArtKey::Album(id) => (
+            "SELECT DISTINCT st.art_url FROM server_tracks st JOIN tracks t ON t.id = st.track_id
+             WHERE t.album_id = ?1 AND st.art_url IS NOT NULL LIMIT 3",
+            id,
+        ),
+        ArtKey::Track(id) => (
+            "SELECT art_url FROM server_tracks WHERE track_id = ?1 AND art_url IS NOT NULL",
+            id,
+        ),
+    };
+    let mut statement = conn.prepare_cached(sql)?;
+    let urls = statement
+        .query_map([id], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(urls)
 }
 
 /// The picture the user chose for album `album_id`: its source and reference
@@ -325,31 +354,47 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
         key,
         files,
         covers,
+        server_art,
         folders,
     } = album;
     match source {
-        SourceId::Embedded => files.iter().find_map(|file| {
-            let path = track_path(folders.root(file.folder_id)?, &file.relative);
-            // Reading a cloud placeholder would download it (H12): another
-            // of the album's files, or another source, may have the picture.
-            if anomp::file_is_dataless(&path) == Some(true) {
-                return None;
-            }
-            let picture = anomp::read_tags(&path, true).ok()?.picture?;
-            Some(Art {
-                mime_type: picture
-                    .mime_type
-                    .unwrap_or_else(|| "application/octet-stream".into()),
-                data: picture.data,
-                source,
-                chosen: false,
-                origin: Some(Origin::File {
+        SourceId::Embedded => files
+            .iter()
+            .find_map(|file| {
+                let path = track_path(folders.root(file.folder_id)?, &file.relative);
+                // Reading a cloud placeholder would download it (H12): another
+                // of the album's files, or another source, may have the picture.
+                if anomp::file_is_dataless(&path) == Some(true) {
+                    return None;
+                }
+                let picture = anomp::read_tags(&path, true).ok()?.picture?;
+                Some(Art {
+                    mime_type: picture
+                        .mime_type
+                        .unwrap_or_else(|| "application/octet-stream".into()),
+                    data: picture.data,
                     source,
-                    folder_id: file.folder_id,
-                    relative: file.relative.clone(),
-                }),
+                    chosen: false,
+                    origin: Some(Origin::File {
+                        source,
+                        folder_id: file.folder_id,
+                        relative: file.relative.clone(),
+                    }),
+                })
             })
-        }),
+            .or_else(|| {
+                let images = &folders.library.images;
+                server_art.iter().find_map(|url| {
+                    let (mime_type, data) = images.get(url)?;
+                    Some(Art {
+                        mime_type: mime_type.into(),
+                        data,
+                        source,
+                        chosen: false,
+                        origin: Some(Origin::Download { url: url.clone() }),
+                    })
+                })
+            }),
         // Only a picture in the album's folders (PLAN.md H4).
         SourceId::Folder => match reference {
             Some(reference) => {
@@ -492,10 +537,12 @@ pub fn local_candidates(
     match source {
         SourceId::Embedded => {
             let files = track_files(&library.conn(), ArtKey::Album(album_id))?;
+            let server_art = server_art_urls(&library.conn(), ArtKey::Album(album_id))?;
             let mut album = AlbumSources {
                 key: ArtKey::Album(album_id),
                 files,
                 covers: Vec::new(),
+                server_art,
                 folders: Folders {
                     library,
                     open: HashMap::new(),
@@ -684,10 +731,12 @@ fn candidate(
     reference: Option<&str>,
 ) -> Result<Option<Art>, Error> {
     let files = track_files(&library.conn(), ArtKey::Album(album_id))?;
+    let server_art = server_art_urls(&library.conn(), ArtKey::Album(album_id))?;
     let mut album = AlbumSources {
         key: ArtKey::Album(album_id),
         files,
         covers: Vec::new(),
+        server_art,
         folders: Folders {
             library,
             open: HashMap::new(),

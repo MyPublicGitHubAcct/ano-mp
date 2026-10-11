@@ -41,6 +41,13 @@ pub enum FolderState {
     /// It is there, but the app may not read it: permissions, or a
     /// bookmark another build of the app made (`rebookmark`).
     NoPermission,
+    /// A music server that doesn't answer (PLAN.md Phase 7e): off, away,
+    /// or the network down. Its tracks in the audio cache still play.
+    Unreachable,
+    /// A music server that no longer accepts the app's sign-in.
+    SignedOut,
+    /// A music server while its feature is turned off.
+    Off,
 }
 
 impl FolderState {
@@ -53,6 +60,9 @@ impl FolderState {
             FolderState::MostlyGone => "mostlyGone",
             FolderState::InTrash => "inTrash",
             FolderState::NoPermission => "noPermission",
+            FolderState::Unreachable => "unreachable",
+            FolderState::SignedOut => "signedOut",
+            FolderState::Off => "off",
         }
     }
 
@@ -64,6 +74,9 @@ impl FolderState {
             FolderState::MostlyGone,
             FolderState::InTrash,
             FolderState::NoPermission,
+            FolderState::Unreachable,
+            FolderState::SignedOut,
+            FolderState::Off,
         ]
         .into_iter()
         .find(|state| state.code() == code)
@@ -173,7 +186,7 @@ pub fn open_folder_with(
 ) -> Result<OpenFolder, Error> {
     let (stored, bookmark): (String, Option<Vec<u8>>) = conn
         .query_row(
-            "SELECT path, bookmark FROM folders WHERE id = ?1",
+            "SELECT path, bookmark FROM folders WHERE id = ?1 AND kind = 'local'",
             [folder_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -283,7 +296,7 @@ pub fn in_trash(path: &Path) -> bool {
 /// Opens the library folder that holds the file at `path`, or returns `None`
 /// if it is in none (e.g. a file the user picked directly).
 pub fn open_folder_of(conn: &Connection, path: &Path) -> Result<Option<OpenFolder>, Error> {
-    let mut statement = conn.prepare("SELECT id, path FROM folders")?;
+    let mut statement = conn.prepare("SELECT id, path FROM folders WHERE kind = 'local'")?;
     let folders = statement.query_map([], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     })?;
@@ -677,6 +690,9 @@ mod tests {
             FolderState::MostlyGone,
             FolderState::InTrash,
             FolderState::NoPermission,
+            FolderState::Unreachable,
+            FolderState::SignedOut,
+            FolderState::Off,
         ] {
             let error = crate::coded::folder_unavailable("/Music", state.code(), Some("why"));
             assert_eq!(FolderState::of_error(&error), Some(state));

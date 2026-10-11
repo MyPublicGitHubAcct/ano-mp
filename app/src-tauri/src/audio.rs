@@ -100,6 +100,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
             }
             Event::Position { position, duration } => {
                 crate::history::position(&app, position, duration);
+                crate::servers::playing::position(position);
                 crate::queue::tick(&app);
                 crate::workbench::position(&app, position);
                 app.emit(

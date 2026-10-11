@@ -184,7 +184,8 @@ fn carry_over(conn: &Connection, damaged: &Path) -> Result<(), Error> {
     conn.execute("ATTACH DATABASE ?1 AS damaged", [damaged.to_string_lossy()])?;
     let copied = conn.execute_batch(
         "INSERT OR IGNORE INTO main.folders (id, path, bookmark, added_at)
-             SELECT id, path, bookmark, added_at FROM damaged.folders;
+             SELECT id, path, bookmark, added_at FROM damaged.folders
+             WHERE path NOT LIKE 'jellyfin:%' AND path NOT LIKE 'plex:%';
          INSERT OR IGNORE INTO main.settings (key, value)
              SELECT key, value FROM damaged.settings;",
     );

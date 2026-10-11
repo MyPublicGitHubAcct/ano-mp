@@ -38,6 +38,19 @@ macOS no longer lets ano-mp read the folder (for example after it was
 renamed or moved, or ano-mp was reinstalled). Use **Locate…** and choose the
 folder, which gives ano-mp access again.
 
+**… can’t be reached. Tracks already downloaded still play.**
+The music server doesn't answer: it may be off, or you may be away from
+its network. Its tracks are kept; see
+[When the server can't be reached](15-music-servers.md#when-the-server-cant-be-reached).
+
+**… no longer accepts this sign-in: sign in again in Settings › Servers**
+The server refused ano-mp's sign-in, for example after your password
+changed. Sign in again in **Settings › Servers**.
+
+**This kind of server is turned off in Settings › Features**
+The track is on a music server, and **Jellyfin servers** or **Plex
+servers** (whichever it is) is off. Turn it on to play it.
+
 **That library folder is no longer in the library**
 The folder was removed while you were acting on it. Nothing to do.
 
@@ -71,6 +84,11 @@ Give the playlist a shorter name, or one that isn't empty.
 **… is too large for a playlist**
 The playlist file you imported is too big to be a playlist. Check you chose
 the right file.
+
+**This playlist comes from …: change it there**
+A music server's playlist changes only on the server. Change it in
+Jellyfin; the next sync brings the change. Or copy its tracks into a
+playlist of your own.
 
 **Not a smart playlist**
 Rules can only be edited for a smart playlist.
@@ -124,6 +142,93 @@ then record.
 **Nothing is playing: play a track to use it in the effects workbench.**
 **Use the Playing Track** takes the track that's playing. Play one, then
 click it again, or choose a file instead.
+
+## Music servers
+
+These are about Jellyfin and Plex servers
+([chapter 15](15-music-servers.md)).
+
+**… answered with an error (HTTP …)**
+The server had a problem with the request. Try again later; if it keeps
+happening, check the server's own log.
+
+**… can’t be reached**
+The server doesn't answer: check it's on, and that you're on its network
+or its address works from where you are.
+
+**…’s https certificate isn’t one the system trusts. Self-signed certificates aren’t supported: use a certificate from a certificate authority, or the server’s http address on your network.**
+The server's https certificate isn't one macOS trusts, often because it
+is self-signed. Give the server a certificate from a certificate
+authority (such as Let's Encrypt), or use its http:// address while on
+your network.
+
+**… no longer accepts this sign-in: sign in again in Settings › Servers**
+The server refused ano-mp's sign-in, for example after your password
+changed or the session was removed in Jellyfin. Sign in again.
+
+**A server outside your network needs an https:// address, so your password and music don’t cross the internet unprotected**
+Use the server's https:// address, or its http:// address while you're on
+its network.
+
+**Couldn’t look for servers on the network**
+ano-mp couldn't ask the local network for servers, perhaps because macOS
+doesn't allow it to use the local network (System Settings › Privacy &
+Security › Local Network). Type the server's address instead.
+
+**Nothing at that address answers as a Jellyfin server**
+Check the address, including its port (Jellyfin's is usually 8096 for
+http), and that the server is on.
+
+**Quick Connect is turned off on this server: sign in with your password, or ask its administrator to turn it on**
+Sign in with your user name and password, or turn on Quick Connect in
+Jellyfin's dashboard.
+
+**That isn’t a server address, such as http://192.168.1.10:8096**
+Type the address as the example shows: http:// or https://, the server's
+name or IP address, and its port if it has one.
+
+**The file is on the server: play it to see more about it**
+Get Info reads a server's track from its downloaded copy. Play the track,
+then open Get Info again.
+
+**The server didn’t accept that user name and password**
+Check them, and try again. They're the ones you use in Jellyfin's own
+apps.
+
+**Nothing at that address answers as this Plex server**
+Another device, or another Plex server, answers where this server used
+to. ano-mp tries the server's other addresses; if none answers, check the
+server is on, then sync again.
+
+**The Plex sign-in took too long. Start again.**
+The code from **Sign In with Plex** wasn't approved in time. Click **Sign
+In with Plex** again and approve it in the browser.
+
+**plex.tv no longer accepts this sign-in: sign in with Plex again in Settings › Servers**
+Your Plex account's sign-in was ended, for example after you changed your
+Plex password or removed ano-mp from your account's devices. Click **Sign
+In with Plex** again.
+
+**Your Plex account no longer reaches that server**
+The server was removed from your account, or its owner stopped sharing it
+with you, while you were adding its libraries.
+
+**… can’t be reached directly. To play through Plex’s relay, turn on “Use Plex’s relay” in Settings › Servers.**
+None of the server's own addresses answers, and Plex's relay is off. Turn
+on **Use Plex's relay** to play through it (slower, and at a lower bit
+rate), or go back to the server's network.
+
+**… won’t stream this away from its network. Plex may need a Plex Pass for that; it still plays on the server’s own network.**
+The Plex server refused to send the track while you're away from its
+network, which Plex may keep for Plex Pass subscribers. Play it on the
+server's network, keep it available offline before you leave, or see
+Plex's own pages about Plex Pass.
+
+**The server is already being synced**
+Wait for the sync to finish (the sidebar shows its progress).
+
+**This server runs Jellyfin …; ano-mp needs … or later**
+Update the server to the version ano-mp names, then sign in again.
 
 ## Settings, features and files you open
 

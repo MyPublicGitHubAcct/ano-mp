@@ -381,6 +381,36 @@ export const features = {
   remoteForget: (deviceId: number) => commands.remoteForget({ deviceId }),
 };
 
+// ---- Music servers (PLAN.md Phase 7e) -------------------------------------------
+
+export const servers = {
+  list: () => commands.serversList(),
+  /** Servers on the local network that answered. */
+  discover: () => commands.serversDiscover(),
+  /** Checks an address the user typed or picked, before signing in. */
+  check: (address: string) => commands.serversCheck({ address }),
+  signIn: (address: string, user: string, password: string) => commands.serversSignIn({ address, user, password }),
+  quickConnectStart: (address: string) => commands.serversQuickConnectStart({ address }),
+  /** The source once the code is approved; null while it waits. */
+  quickConnectFinish: (address: string, secret: string) => commands.serversQuickConnectFinish({ address, secret }),
+  signOut: (folderId: number) => commands.serversSignOut({ folderId }),
+  /** Its changes, or everything if `full`. */
+  sync: (folderId: number, full: boolean) => commands.serversSync({ folderId, full }),
+  offlineStatus: () => commands.serversOfflineStatus(),
+  setOffline: (target: { albumId?: number; playlistId?: number }, on: boolean) =>
+    commands.serversSetOffline({ albumId: target.albumId ?? null, playlistId: target.playlistId ?? null, on }),
+  clearCache: () => commands.serversClearCache(),
+  /** Plex (PLAN.md Phase 7f): a pin, and the plex.tv page where the user approves it. */
+  plexSignInStart: () => commands.plexSignInStart(),
+  /** The account once the pin is approved; null while it waits. */
+  plexSignInFinish: (pinId: number) => commands.plexSignInFinish({ pinId }),
+  /** Forgets the account's token unless a library of it was added. */
+  plexSignInCancel: (accountId: string) => commands.plexSignInCancel({ accountId }),
+  plexServers: (accountId: string) => commands.plexServers({ accountId }),
+  plexAdd: (accountId: string, serverId: string, libraries: string[]) =>
+    commands.plexAdd({ accountId, serverId, libraries }),
+};
+
 export const queue = {
   state: () => commands.queueState(),
   play: (trackIds: number[], start: number) => commands.queuePlay({ trackIds, start }),
@@ -485,6 +515,8 @@ type Events = {
   recording: RecordingState;
   /** A recording stopped on an error, or the menu couldn't start one. */
   "recording-failed": RecordingStopped;
+  /** A music server was added or removed, or a sync or offline download started or ended. */
+  "servers-changed": null;
 };
 
 /** Listens to a backend event; resolves to the function that stops. */

@@ -701,7 +701,9 @@ fn folder_node(
             groups: Some(Groups {
                 listing: Listing {
                     select: format!(
-                        "SELECT f.id, f.path, NULL, NULL,
+                        "SELECT f.id,
+                                IFNULL((SELECT s.server_name FROM server_sources s
+                                        WHERE s.folder_id = f.id), f.path), NULL, NULL,
                                 (SELECT count(*) FROM tracks t WHERE t.folder_id = f.id{})
                          FROM folders f",
                         extra.sql()

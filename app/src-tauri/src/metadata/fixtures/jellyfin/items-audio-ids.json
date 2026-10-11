@@ -1,0 +1,27 @@
+{
+  "Items": [
+    {
+      "Name": "Chirp One",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "b1f3a0e2c4d5e6f708192a3b4c5d6e7f",
+      "Type": "Audio",
+      "MediaType": "Audio"
+    },
+    {
+      "Name": "Opus Chirp",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "e4b6d3f5a7b8c9d0e1f2a3b4c5d6e7f8",
+      "Type": "Audio",
+      "MediaType": "Audio"
+    },
+    {
+      "Name": "DSD Chirp",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "f5c7e4a6b8c9d0e1f2a3b4c5d6e7f8a9",
+      "Type": "Audio",
+      "MediaType": "Audio"
+    }
+  ],
+  "TotalRecordCount": 3,
+  "StartIndex": 0
+}

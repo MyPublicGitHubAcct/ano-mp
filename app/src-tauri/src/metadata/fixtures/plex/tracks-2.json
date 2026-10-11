@@ -1,0 +1,56 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "totalSize": 3,
+    "offset": 2,
+    "allowSync": true,
+    "librarySectionID": 1,
+    "librarySectionTitle": "Music",
+    "Metadata": [
+      {
+        "ratingKey": "1003",
+        "key": "/library/metadata/1003",
+        "parentRatingKey": "1010",
+        "grandparentRatingKey": "999",
+        "type": "track",
+        "title": "DSD Chirp",
+        "grandparentTitle": "Another Signal",
+        "parentTitle": "Other Chirps",
+        "index": 2,
+        "parentIndex": 1,
+        "parentYear": 2023,
+        "thumb": "/library/metadata/1010/thumb/1712000000",
+        "parentThumb": "/library/metadata/1010/thumb/1712000000",
+        "grandparentThumb": "/library/metadata/999/thumb/1712000000",
+        "duration": 1500,
+        "addedAt": 1712000000,
+        "updatedAt": 1712000000,
+        "Media": [
+          {
+            "id": 829,
+            "duration": 1500,
+            "bitrate": 5645,
+            "audioChannels": 2,
+            "audioCodec": "dsf",
+            "container": "dsf",
+            "Part": [
+              {
+                "id": 829,
+                "key": "/library/parts/829/1712000000/file.dsf",
+                "duration": 1500,
+                "file": "/music/Other Chirps/02 DSD Chirp.dsf",
+                "size": 1058848,
+                "container": "dsf"
+              }
+            ]
+          }
+        ],
+        "Genre": [
+          {
+            "tag": "Ambient"
+          }
+        ]
+      }
+    ]
+  }
+}

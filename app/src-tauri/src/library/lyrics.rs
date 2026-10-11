@@ -106,7 +106,8 @@ pub fn lyrics(conn: &Connection, track_id: i64) -> Result<Option<Lyrics>, Error>
     let row: Option<(String, String, f64, Option<f64>)> = conn
         .query_row(
             "SELECT f.path, t.relative_path, t.range_start, t.range_end
-             FROM tracks t JOIN folders f ON f.id = t.folder_id WHERE t.id = ?1",
+             FROM tracks t JOIN folders f ON f.id = t.folder_id
+             WHERE t.id = ?1 AND f.kind = 'local'",
             [track_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )

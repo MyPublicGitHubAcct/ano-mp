@@ -1,0 +1,19 @@
+{
+  "id": 31415926,
+  "uuid": "a1b2c3d4e5f6a7b8",
+  "username": "mark",
+  "title": "mark",
+  "email": "test@example.invalid",
+  "locale": null,
+  "emailOnlyAuth": false,
+  "hasPassword": true,
+  "protected": false,
+  "thumb": "https://plex.tv/users/a1b2c3d4e5f6a7b8/avatar",
+  "authToken": "pQ7xYz3kLm9nB2vC4dF6",
+  "subscription": {
+    "active": false,
+    "status": "Inactive",
+    "plan": null,
+    "features": []
+  }
+}

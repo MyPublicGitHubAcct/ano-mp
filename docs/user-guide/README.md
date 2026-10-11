@@ -46,6 +46,8 @@ Keyboard shortcuts use the Mac's symbols: ⌘ Command, ⌥ Option, ⇧ Shift,
 13. [Privacy](13-privacy.md): what stays on your Mac and what goes online.
 14. [Troubleshooting and FAQ](14-troubleshooting.md): what to try when
     something goes wrong, and what to send with a bug report.
+15. [Music servers](15-music-servers.md): playing the music on your own
+    Jellyfin or Plex server, offline too.
 
 ## Appendices
 

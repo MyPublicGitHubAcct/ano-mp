@@ -1,0 +1,104 @@
+{
+  "MediaContainer": {
+    "size": 2,
+    "totalSize": 3,
+    "offset": 0,
+    "allowSync": true,
+    "librarySectionID": 1,
+    "librarySectionTitle": "Music",
+    "Metadata": [
+      {
+        "ratingKey": "1001",
+        "key": "/library/metadata/1001",
+        "parentRatingKey": "1000",
+        "grandparentRatingKey": "999",
+        "type": "track",
+        "title": "Chirp One",
+        "grandparentTitle": "Test Signal",
+        "parentTitle": "Chirps",
+        "index": 1,
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1000/thumb/1712000000",
+        "parentThumb": "/library/metadata/1000/thumb/1712000000",
+        "grandparentThumb": "/library/metadata/999/thumb/1712000000",
+        "duration": 1500,
+        "addedAt": 1712000000,
+        "updatedAt": 1712000000,
+        "Media": [
+          {
+            "id": 827,
+            "duration": 1500,
+            "bitrate": 193,
+            "audioChannels": 2,
+            "audioCodec": "flac",
+            "container": "flac",
+            "Part": [
+              {
+                "id": 827,
+                "key": "/library/parts/827/1712000000/file.flac",
+                "duration": 1500,
+                "file": "/music/Chirps/01 Chirp One.flac",
+                "size": 36202,
+                "container": "flac"
+              }
+            ]
+          }
+        ],
+        "originalTitle": "Test Signal feat. Guest",
+        "Genre": [
+          {
+            "tag": "Electronic"
+          }
+        ],
+        "Guid": [
+          {
+            "id": "mbid://7c1b4b62-8a3c-4b8e-9d5e-0c3a6f2b1e4d"
+          },
+          {
+            "id": "plex://track/5d07cc4a403c64029083f2a1"
+          }
+        ]
+      },
+      {
+        "ratingKey": "1002",
+        "key": "/library/metadata/1002",
+        "parentRatingKey": "1000",
+        "grandparentRatingKey": "999",
+        "type": "track",
+        "title": "Chirp Two",
+        "grandparentTitle": "Test Signal",
+        "parentTitle": "Chirps",
+        "index": 2,
+        "parentIndex": 1,
+        "parentYear": 2024,
+        "thumb": "/library/metadata/1000/thumb/1712000000",
+        "parentThumb": "/library/metadata/1000/thumb/1712000000",
+        "grandparentThumb": "/library/metadata/999/thumb/1712000000",
+        "duration": 1500,
+        "addedAt": 1712000000,
+        "updatedAt": 1712000000,
+        "Media": [
+          {
+            "id": 828,
+            "duration": 1500,
+            "bitrate": 128,
+            "audioChannels": 2,
+            "audioCodec": "mp3",
+            "container": "mp3",
+            "Part": [
+              {
+                "id": 828,
+                "key": "/library/parts/828/1712000000/file.mp3",
+                "duration": 1500,
+                "file": "/music/Chirps/02 Chirp Two.mp3",
+                "size": 24310,
+                "container": "mp3"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

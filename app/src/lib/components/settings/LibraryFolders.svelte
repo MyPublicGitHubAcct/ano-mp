@@ -23,6 +23,9 @@
     mostlyGone: "folderState.mostlyGone",
     inTrash: "folderState.inTrash",
     noPermission: "folderState.noPermission",
+    unreachable: "folderState.unreachable",
+    signedOut: "folderState.signedOut",
+    off: "folderState.off",
   };
 
   async function remove(folder: Folder) {
@@ -44,11 +47,11 @@
   }
 </script>
 
-{#if library.folders.length === 0}
+{#if library.localFolders.length === 0}
   <p class="muted">{t("folders.none")}</p>
 {:else}
   <ul class="folders card">
-    {#each library.folders as folder (folder.id)}
+    {#each library.localFolders as folder (folder.id)}
       <li class:missing={folder.available === false}>
         <span class="glyph"><Icon name={folder.available === false ? "warning" : "folder"} /></span>
         <span class="text">
@@ -103,7 +106,7 @@
     <Icon name="plus" />
     {t("folders.add")}
   </button>
-  <button onclick={() => library.scan(null)} disabled={library.scanning || library.folders.length === 0}>
+  <button onclick={() => library.scan(null)} disabled={library.scanning || library.localFolders.length === 0}>
     <Icon name="refresh" />
     {t("folders.rescanAll")}
   </button>

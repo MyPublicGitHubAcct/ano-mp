@@ -62,6 +62,9 @@ ring = "0.17"
 # Comparing versions for the update check (updates.rs); already in the
 # dependency tree through Tauri, so it adds no new code.
 semver = "1"
+# Parsing music servers' addresses (servers/address.rs, PLAN.md Phase 7e);
+# already in the dependency tree through Tauri, so it adds no new code.
+url = "2.5"
 # Embedded pictures as data: URLs in Get Info (PLAN.md F16); already in the
 # dependency tree through Tauri.
 base64 = "0.22"

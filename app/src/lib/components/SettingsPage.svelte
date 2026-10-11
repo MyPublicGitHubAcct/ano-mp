@@ -1,7 +1,7 @@
 <script lang="ts">
   // The settings (⌘,): the library's folders, its sort and grouping rules,
   // what lists and pages show, playback and the output device, the
-  // visualizer, the theme, recording, and the online sources. Sections are listed down the side
+  // visualizer, the theme, recording, the online sources and music servers. Sections are listed down the side
   // (along the top when narrow); every change is saved as it's made. The
   // section components share the styles of `Options` (`.field`, `.switch`,
   // `.hint`…). A found feature (PLAN.md X9) opens a section at a control,
@@ -23,6 +23,7 @@
   import LibraryFolders from "./settings/LibraryFolders.svelte";
   import PlaybackOptions from "./settings/PlaybackOptions.svelte";
   import RecordingOptions from "./settings/RecordingOptions.svelte";
+  import ServerOptions from "./settings/ServerOptions.svelte";
   import SortRules from "./settings/SortRules.svelte";
   import Options from "./settings/Options.svelte";
   import VisualizerOptions from "./settings/VisualizerOptions.svelte";
@@ -39,16 +40,19 @@
     { id: "recording", name: "settings.recording", about: "settings.recordingAbout" },
     { id: "visualizer", name: "settings.visualizer", about: "settings.visualizerAbout" },
     { id: "sources", name: "settings.sources", about: "settings.sourcesAbout" },
+    { id: "servers", name: "settings.servers", about: "settings.serversAbout" },
     { id: "features", name: "settings.features", about: "settings.featuresAbout" },
     { id: "about", name: "settings.about", about: "settings.aboutAbout" },
   ];
 
-  /** Appearance only while themes are on (PLAN.md X1), Recording while recording is (X6). */
+  /** Appearance only while themes are on (PLAN.md X1), Recording while recording is (X6), Servers while
+      Jellyfin or Plex servers are (Phases 7e, 7f). */
   const SECTIONS = $derived(
     ALL_SECTIONS.filter(
       (candidate) =>
         (candidate.id !== "appearance" || appSettings.current.features.themes) &&
-        (candidate.id !== "recording" || appSettings.current.features.recording),
+        (candidate.id !== "recording" || appSettings.current.features.recording) &&
+        (candidate.id !== "servers" || appSettings.current.features.jellyfin || appSettings.current.features.plex),
     ),
   );
 
@@ -130,6 +134,8 @@
             <GeneralOptions />
           {:else if section.id === "visualizer"}
             <VisualizerOptions />
+          {:else if section.id === "servers"}
+            <ServerOptions />
           {:else if section.id === "features"}
             <FeaturesOptions />
           {:else if section.id === "about"}

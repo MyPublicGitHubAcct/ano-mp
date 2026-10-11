@@ -22,6 +22,9 @@
     mostlyGone: "folderState.mostlyGone",
     inTrash: "folderState.inTrash",
     noPermission: "folderState.noPermission",
+    unreachable: "folderState.unreachable",
+    signedOut: "folderState.signedOut",
+    off: "folderState.off",
   };
 
   const reason = (folder: Folder) => {

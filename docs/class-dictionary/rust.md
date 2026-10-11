@@ -19,9 +19,17 @@ Back to the [index](README.md).
 
 Enum · [`app/src-tauri/src/metadata/keys.rs`](../../app/src-tauri/src/metadata/keys.rs) · [D2: Metadata](../developer-guide/06-rust-backend.md#metadata)
 
-Whose key is in the keychain: a metadata source's (the Discogs token) or
-ListenBrainz's. Keys never go in the settings JSON, and each read is
+Whose key is in the keychain: a metadata source's (the Discogs token),
+ListenBrainz's, or a music server's access token for one user (`Server`,
+by the source's key). Keys never go in the settings JSON, and each read is
 registered with `logging::keep_secret`.
+
+### `Account`
+
+Struct · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+A Plex account: its id and name, as plex.tv's `/api/v2/user` gives
+them.
 
 ### `AlbumCard`
 
@@ -139,6 +147,13 @@ reports progress, and holds the `quitting::Finished` that quitting waits
 for. The thread decodes each track once with the core's analyser, never a
 placeholder, and stores `track_analysis` and `album_analysis` in one
 transaction.
+
+### `Answer`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/discovery.rs`](../../app/src-tauri/src/servers/discovery.rs)
+
+A Jellyfin server's answer to the discovery broadcast: its address, id
+and name.
 
 ### `AppearanceSettings`
 
@@ -264,6 +279,28 @@ Struct · [`app/src-tauri/src/queue/opening.rs`](../../app/src-tauri/src/queue/o
 What the queue asks to open: a track, as current or next (with its
 crossfade), and the playback and feature settings.
 
+### `AudioCache`
+
+Struct · [`app/src-tauri/src/servers/cache.rs`](../../app/src-tauri/src/servers/cache.rs) · any thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+The audio cache: music servers' tracks downloaded for the engine to
+open, named by a SHA-256 of the source, item, size and form, written as
+`.part` then renamed, evicted least recently used first within a budget,
+except files kept offline and the last few opened.
+
+### `AuthenticationResult`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+Jellyfin's answer to signing in: the user, the access token and the
+server's id.
+
+### `Body`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+What a Plex server sends: everything inside a `MediaContainer`.
+
 ### `Bookmarks`
 
 Trait · [`app/src-tauri/src/library/access.rs`](../../app/src-tauri/src/library/access.rs) · any thread · [D2: Fakes](../developer-guide/12-testing.md#fakes)
@@ -277,6 +314,13 @@ Struct, sent to the UI · [`app/src-tauri/src/library/browse.rs`](../../app/src-
 
 A page of a browse node: its groups, then its tracks, and the node's
 total, so the virtual list can page through a large library.
+
+### `CachedName`
+
+Struct · [`app/src-tauri/src/servers/cache.rs`](../../app/src-tauri/src/servers/cache.rs)
+
+A track's cached file: what to fetch (`Form`) and the name it is kept
+under.
 
 ### `CacheEntries`
 
@@ -350,7 +394,9 @@ Struct · [`app/src-tauri/src/metadata/http.rs`](../../app/src-tauri/src/metadat
 The only way the app calls a web service: rate-limits per host, retries
 when a service is busy, backs off from an unreachable host, and caches
 JSON (on disk with `get_json`, in memory only and briefly with
-`get_json_fresh`, for Discogs). Built over a `Transport` and a `Clock`.
+`get_json_fresh`, for Discogs). `download` streams a body into a file and
+`set_interval` lets a user's own server take requests as fast as they
+come. Built over a `Transport` and a `Clock`.
 
 ### `Clock`
 
@@ -380,6 +426,14 @@ Enum, sent to and from the UI · [`app/src-tauri/src/library/smart.rs`](../../ap
 One smart playlist condition: genre, year, format, added within, heart,
 rating, play count, not played for, artist and so on. Each picks a fixed
 SQL fragment, its values bound.
+
+### `Connection`
+
+Struct · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+One of the addresses a Plex server answers at, as plex.tv lists it:
+its URI, whether it is on the server's own network, and whether it is
+Plex's relay. Kept as JSON in `server_sources.connections`.
 
 ### `Copy`
 
@@ -534,6 +588,14 @@ Struct · [`app/src-tauri/src/logging.rs`](../../app/src-tauri/src/logging.rs) �
 included and redacted, kept to a size with one old copy, until switched
 off or the next launch deletes it.
 
+### `Device`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+This install as servers see it: a random id made once (the
+`servers.deviceId` settings row) and a plain name for the kind of
+device.
+
 ### `DeviceInfo`
 
 Struct, sent to the UI · [`app/src-tauri/src/anomp.rs`](../../app/src-tauri/src/anomp.rs) · main thread · [D2: The engine on the main thread](../developer-guide/06-rust-backend.md#the-engine-on-the-main-thread)
@@ -541,6 +603,19 @@ Struct, sent to the UI · [`app/src-tauri/src/anomp.rs`](../../app/src-tauri/src
 The open output device: name, buffer size, the sizes it offers, sample
 rate and latency (`anomp_device_info`). Part of `OutputStatus` and
 `SignalPathPayload`.
+
+### `Directories`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A Plex server's `/library/sections`: its libraries.
+
+### `Directory`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+One library of a Plex server: its key, type (`artist` for music) and
+title.
 
 ### `Discography`
 
@@ -558,6 +633,13 @@ Discogs as a `ReleaseSource`, with the user's token. Its terms shape it:
 only the match is stored, its data is fetched fresh
 (`Client::get_json_fresh`) and never kept, its images are never fetched,
 and its credit is shown beside its data.
+
+### `Discovered`
+
+Struct, sent to the UI as `DiscoveredServer` · [`app/src-tauri/src/servers/discovery.rs`](../../app/src-tauri/src/servers/discovery.rs)
+
+A server that answered on the local network: its address (as
+`address::parse` gives it), id and name.
 
 ### `DisplaySettings`
 
@@ -688,6 +770,12 @@ Helper · [`app/src-tauri/src/recording.rs`](../../app/src-tauri/src/recording.r
 
 A track that became current while recording: its first mark and what the
 cue sheet calls it.
+
+### `Entry`
+
+Helper · [`app/src-tauri/src/servers/cache.rs`](../../app/src-tauri/src/servers/cache.rs)
+
+A cached track's file: its name, size and when it was last used.
 
 ### `EqualiserProfile`
 
@@ -842,8 +930,9 @@ waits for each, up to `quitting::WAIT` for all.
 
 Struct, sent to the UI · [`app/src-tauri/src/library/mod.rs`](../../app/src-tauri/src/library/mod.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
 
-A library folder as Settings › Library folders lists it: id, path, track
-count, placeholders not read, and its state.
+A library folder as Settings › Library folders lists it: id, path, kind
+(`FolderKind`), a server's name, track count, placeholders not read, and
+its state.
 
 ### `FolderAccess`
 
@@ -853,6 +942,14 @@ A resolved bookmark (`anomp_folder_access`): its folder can be read until
 this is dropped. Gives the folder's path now and whether the bookmark is
 stale. Made by `start_folder_access`; `library::access::System` wraps it
 for the rest of the app.
+
+### `FolderKind`
+
+Enum, sent to the UI · [`app/src-tauri/src/library/mod.rs`](../../app/src-tauri/src/library/mod.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+What a library folder is: a folder on disk (`Local`), a Jellyfin server's
+library as one user sees it (`Jellyfin`), or one music library of a Plex
+server (`Plex`), as `folders.kind` stores it.
 
 ### `Folders`
 
@@ -873,7 +970,8 @@ open until the scan ends.
 Enum, sent to the UI · [`app/src-tauri/src/library/access.rs`](../../app/src-tauri/src/library/access.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
 
 Whether a library folder can be read now, and if not why: available,
-missing, empty, mostly gone, in the Trash, or no permission (H22).
+missing, empty, mostly gone, in the Trash, or no permission (H22); for a
+music server, unreachable, signed out, or off with its feature (Phase 7e).
 `of_error` tells a "not now" from a broken file. Kept by
 `library::availability`.
 
@@ -892,11 +990,25 @@ Struct, sent to the UI · [`app/src-tauri/src/library/access.rs`](../../app/src-
 A folder's `FolderState`, with the system's words for it when there are
 any.
 
+### `Follower`
+
+Struct · [`app/src-tauri/src/servers/playing.rs`](../../app/src-tauri/src/servers/playing.rs) · the main thread
+
+Follows what plays and says what to report to a server: a track started,
+or stopped and how far it got. Separate from Tauri so tests drive it.
+
 ### `Font`
 
 Enum, a setting · [`app/src-tauri/src/theme.rs`](../../app/src-tauri/src/theme.rs)
 
 The fonts a theme can use; the frontend maps each to a font stack.
+
+### `Form`
+
+Enum · [`app/src-tauri/src/servers/cache.rs`](../../app/src-tauri/src/servers/cache.rs)
+
+What is fetched of a track: the original file, or an MP3 the server
+transcodes at a bit rate.
 
 ### `Found`
 
@@ -938,6 +1050,13 @@ browse path is a list of them.
 Helper · [`app/src-tauri/src/library/browse.rs`](../../app/src-tauri/src/library/browse.rs)
 
 The query for a node's groups, and the name of the group with no key.
+
+### `Guid`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+One of a Plex item's ids from other services (`mbid://…` for
+MusicBrainz).
 
 ### `HealthReport`
 
@@ -991,6 +1110,26 @@ Helper · [`app/src-tauri/src/metadata/http.rs`](../../app/src-tauri/src/metadat
 One host's rate-limit state: when the next request may go, and until when
 it is considered unreachable.
 
+### `Identity`
+
+Struct · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+Who answers at an address, as Plex's `/identity` says: the machine id
+and version.
+
+### `IdentityDto`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+`/identity` as served: the machine identifier and version, readable
+without a token.
+
+### `IdOnly`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+An item read for its id alone.
+
 ### `Image`
 
 Struct · [`app/src-tauri/src/metadata/coverartarchive.rs`](../../app/src-tauri/src/metadata/coverartarchive.rs) · [D2: Metadata](../developer-guide/06-rust-backend.md#metadata)
@@ -1006,6 +1145,13 @@ Struct · [`app/src-tauri/src/metadata/images.rs`](../../app/src-tauri/src/metad
 Pictures downloaded from services, and thumbnails, as files in the app's
 cache folder named by SHA-256, beyond a size budget least recently used
 first out. Losing it is harmless.
+
+### `ImageTags`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+An item's picture tags; the primary picture's tag makes its URL change
+when the picture does.
 
 ### `ImportReport`
 
@@ -1042,6 +1188,32 @@ Struct, sent to the UI · [`app/src-tauri/src/queue/model.rs`](../../app/src-tau
 
 A queue item: its uid (an item, not a track: a track can be queued twice)
 and its `TrackInfo`.
+
+### `Item`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A Jellyfin audio item as far as it is read: names, numbers, dates,
+length, genres, media sources, MusicBrainz ids, pictures and
+normalization gain; `Jellyfin::track` turns it into a `ServerTrack`.
+
+### `Item`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A Plex track as far as it is read: rating key, titles, numbers, years,
+length, pictures, media, genres and ids; `plex::track` turns it into a
+`ServerTrack`.
+
+### `Jellyfin`
+
+Struct · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs) · a blocking thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A conversation with one Jellyfin server through `http::Client`, with the
+`MediaBrowser` authorization header (which carries the token; tokens
+never go in URLs): public info, sign-in by password or Quick Connect,
+pages of tracks and ids, playlists, stream URLs, play reports and sign-
+out.
 
 ### `Job`
 
@@ -1085,6 +1257,20 @@ Enum, a setting · [`app/src-tauri/src/library/rules.rs`](../../app/src-tauri/sr
 What tracks are grouped by at one level of a sort rule: album artist,
 artist, album, genre, year, folder and so on.
 
+### `Library`
+
+Struct · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+One user's music on a Jellyfin server, as `sync` reads it
+(`ServerLibrary`).
+
+### `Library`
+
+Struct · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+One music library on a Plex server, as `sync` reads it
+(`ServerLibrary`).
+
 ### `LibrarySettings`
 
 Struct, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/settings.rs)
@@ -1097,8 +1283,8 @@ watch folders.
 Struct · [`app/src-tauri/src/library/commands.rs`](../../app/src-tauri/src/library/commands.rs) · any thread · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
 
 The library as Tauri manages it: the database's path, the shared
-connection for short queries, whether a scan runs, the art cache and the
-image cache. Commands borrow it; scans and long queries open connections
+connection for short queries, whether a scan runs, the art cache, the
+image cache and the audio cache (`ServerAudio`). Commands borrow it; scans and long queries open connections
 of their own (through `db`). Never hold its connection while waiting for
 the main thread.
 
@@ -1195,6 +1381,12 @@ Helper · [`app/src-tauri/src/media.rs`](../../app/src-tauri/src/media.rs) · ma
 The media controls and their `NowPlaying`, in a main-thread thread-local
 like the engine.
 
+### `Media`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A Plex track's media: length, bit rate, channels, container and parts.
+
 ### `MediaCommand`
 
 Enum · [`app/src-tauri/src/anomp.rs`](../../app/src-tauri/src/anomp.rs) · main thread · [D2: Platform code](../developer-guide/04-core.md#platform-code)
@@ -1211,6 +1403,18 @@ The OS's media controls (`anomp_media_controls`): publishes the track,
 playback, artwork and navigation, and passes the OS's commands to a
 handler. Main thread only. `media.rs` holds it behind its `Publisher`
 trait.
+
+### `MediaSource`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+An item's file: container, size, bit rate and streams.
+
+### `MediaStream`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A stream of a file: its type, sample rate, channels and bit rate.
 
 ### `MenuItem`
 
@@ -1283,6 +1487,12 @@ Struct · [`app/src-tauri/src/metadata/albums.rs`](../../app/src-tauri/src/metad
 
 MusicBrainz as a `ReleaseSource`, whose release is kept with the link.
 
+### `NameId`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+An artist or album artist of an item, read for its name.
+
 ### `Node`
 
 Helper · [`app/src-tauri/src/library/browse.rs`](../../app/src-tauri/src/library/browse.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
@@ -1305,6 +1515,13 @@ Struct · [`app/src-tauri/src/shell/mod.rs`](../../app/src-tauri/src/shell/mod.r
 
 What the Dock menu and the menu-bar controls show: the current track and
 what the transport can do.
+
+### `OfflineStatus`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/offline.rs`](../../app/src-tauri/src/servers/offline.rs)
+
+What is kept offline (albums, playlists), how many of its server tracks
+are downloaded, and the audio cache's files, bytes and budget.
 
 ### `OpenFolder`
 
@@ -1398,6 +1615,18 @@ Helper (service JSON) · [`app/src-tauri/src/metadata/wikipedia.rs`](../../app/s
 
 A page in a Wikipedia answer, as served.
 
+### `Page`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A page of Jellyfin items and how many there are in all.
+
+### `Page`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A page of Plex items and how many there are in all.
+
 ### `PairError`
 
 Enum · [`app/src-tauri/src/remote/mod.rs`](../../app/src-tauri/src/remote/mod.rs)
@@ -1426,6 +1655,13 @@ Helper · [`app/src-tauri/src/library/scanner.rs`](../../app/src-tauri/src/libra
 One track of a file: start, end, number, title, and what its cue sheet
 overrides (performer, album, album artist).
 
+### `Part`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A Plex media part: the path that serves the file, its size and
+container.
+
 ### `Pending`
 
 Helper · [`app/src-tauri/src/library/scanner.rs`](../../app/src-tauri/src/library/scanner.rs) · [D2: Adding a folder and its scan](../developer-guide/08-flows.md#adding-a-folder-and-its-scan)
@@ -1453,6 +1689,19 @@ Struct, sent to the UI · [`app/src-tauri/src/library/info.rs`](../../app/src-ta
 
 An embedded picture as Get Info shows it: type, MIME type, description,
 size, and a `data:` URL unless too large.
+
+### `Pin`
+
+Struct · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+A Plex sign-in under way: the pin's id, to ask about it, and its code.
+
+### `PinDto`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+A plex.tv pin as served: id, code, and the account's token once the user
+approved it.
 
 ### `Placeholders`
 
@@ -1502,7 +1751,7 @@ returns them to the UI at start-up and after a reload.
 Struct, sent to the UI · [`app/src-tauri/src/library/playlists.rs`](../../app/src-tauri/src/library/playlists.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
 
 A playlist (F1) or smart playlist (F2): id, name, rules if smart, track
-count and length.
+count and length, and the music server it comes from, if any (read-only).
 
 ### `PlaylistData`
 
@@ -1517,11 +1766,76 @@ Struct, sent to the UI · [`app/src-tauri/src/library/playlists.rs`](../../app/s
 A track in a playlist, and which entry it is (a track can be listed
 twice); no entry id in a smart playlist.
 
+### `PlaylistItem`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A Jellyfin playlist: id, name and media type (only audio ones come in).
+
 ### `PlaylistPage`
 
 Struct, sent to the UI · [`app/src-tauri/src/library/playlists.rs`](../../app/src-tauri/src/library/playlists.rs)
 
 A playlist and its entries, as its view shows it.
+
+### `Plex`
+
+Struct · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs) · a blocking thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A conversation with a Plex Media Server at one of its addresses through
+`http::Client`, with Plex's headers (`client_headers`; the token in
+`X-Plex-Token`, never in a URL): identity, music libraries, tracks a page
+at a time, playlists, part, transcode and picture URLs, and timeline
+reports.
+
+### `PlexAccount`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/plex_commands.rs`](../../app/src-tauri/src/servers/plex_commands.rs)
+
+A Plex account signed in to: its id and name.
+
+### `PlexAnswer`
+
+Struct · [`app/src-tauri/src/servers/discovery.rs`](../../app/src-tauri/src/servers/discovery.rs)
+
+A Plex server that answered GDM on the local network: its machine id
+and its plain http address there.
+
+### `PlexLibrary`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/plex_commands.rs`](../../app/src-tauri/src/servers/plex_commands.rs)
+
+A music library on a Plex server: its key, name, and whether it is a
+source already.
+
+### `PlexPin`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/plex_commands.rs`](../../app/src-tauri/src/servers/plex_commands.rs)
+
+A Plex sign-in under way: the pin's id, its code, and the plex.tv page
+where the user approves it, which the UI opens.
+
+### `PlexServer`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/plex_commands.rs`](../../app/src-tauri/src/servers/plex_commands.rs)
+
+A server a Plex account reaches: its id, name, version, whether the
+account owns it, its music libraries, and why they couldn't be listed.
+
+### `PlexTv`
+
+Struct · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs) · a blocking thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A conversation with plex.tv: making a pin and asking whether it was
+approved, the account, and the servers it reaches with their tokens and
+connections.
+
+### `Policy`
+
+Struct · [`app/src-tauri/src/servers/fetch.rs`](../../app/src-tauri/src/servers/fetch.rs)
+
+How tracks are fetched: the bit rate for servers away from home, if any,
+and which sources are known to be on the local network.
 
 ### `Position`
 
@@ -1570,6 +1884,19 @@ Struct, sent to the UI · [`app/src-tauri/src/metadata/jobs.rs`](../../app/src-t
 
 The worker's progress, as `metadata-progress` sends it: done of total
 since it was last idle, and what it works on now.
+
+### `ProviderIds`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+An item's MusicBrainz ids, as Jellyfin names them.
+
+### `PublicInfo`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+`/System/Info/Public`: the server's id, name, version and product,
+readable without signing in.
 
 ### `Published`
 
@@ -1623,6 +1950,27 @@ Struct, sent to the UI · [`app/src-tauri/src/queue/model.rs`](../../app/src-tau
 What the UI needs to show the queue and the current track: revisions, the
 list (whole when replaced) or its edits, the current item, repeat,
 shuffle, stop-after, the sleep timer and what was skipped.
+
+### `QuickConnect`
+
+Struct · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A Quick Connect sign-in under way: the code the user enters in another
+Jellyfin app, and the secret to ask about it with.
+
+### `QuickConnectStart`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/commands.rs`](../../app/src-tauri/src/servers/commands.rs)
+
+A Quick Connect sign-in started, for Settings: the code and the secret
+to finish with.
+
+### `QuickConnectState`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+Jellyfin's Quick Connect state: secret, code and whether the code was
+approved.
 
 ### `Raw`
 
@@ -2130,6 +2478,14 @@ Struct, sent to the UI · [`app/src-tauri/src/remote/mod.rs`](../../app/src-taur
 A paired phone: name, when paired and last seen. Only a hash of its token
 is kept.
 
+### `RemoteFile`
+
+Struct · [`app/src-tauri/src/servers/fetch.rs`](../../app/src-tauri/src/servers/fetch.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A server's track as fetching needs it: its server's kind, its source's
+key, item id, file size, container, the path that serves the file (Plex's
+part) and its length. `TrackPlay::remote` carries it.
+
 ### `RemoteServer`
 
 Struct · [`app/src-tauri/src/remote/mod.rs`](../../app/src-tauri/src/remote/mod.rs) · any thread · [D2: The LAN remote](../developer-guide/06-rust-backend.md#the-lan-remote)
@@ -2165,12 +2521,32 @@ Enum, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/set
 
 ReplayGain off, by track, or by album (falling back to the track gain).
 
+### `Report`
+
+Enum · [`app/src-tauri/src/servers/playing.rs`](../../app/src-tauri/src/servers/playing.rs)
+
+What to tell a server about a library track: it started, or stopped so
+many seconds in.
+
+### `Reporter`
+
+Struct, managed state · [`app/src-tauri/src/servers/playing.rs`](../../app/src-tauri/src/servers/playing.rs)
+
+The queue of reports for the thread that sends them, so the main thread
+never waits on a server.
+
 ### `Request`
 
 Struct · [`app/src-tauri/src/remote/http.rs`](../../app/src-tauri/src/remote/http.rs) · the remote's threads · [D2: The LAN remote](../developer-guide/06-rust-backend.md#the-lan-remote)
 
 A request as the remote's minimal HTTP/1.1 parser reads it: method, path,
 query and headers, with bounded sizes.
+
+### `Request`
+
+Struct · [`app/src-tauri/src/servers/api.rs`](../../app/src-tauri/src/servers/api.rs)
+
+A request to a server: its URL and the headers that say who asks.
 
 ### `Requests`
 
@@ -2192,6 +2568,29 @@ Helper · [`app/src-tauri/src/queue/opening.rs`](../../app/src-tauri/src/queue/o
 
 A track resolved on a blocking thread: how to play it, its folder (open),
 and whether it is a placeholder.
+
+### `Resolver`
+
+Trait · [`app/src-tauri/src/servers/address.rs`](../../app/src-tauri/src/servers/address.rs) · [D2: Fakes](../developer-guide/12-testing.md#fakes)
+
+Looking up a host's addresses: the system's (`System`) or a test's
+(`address::testing::FakeResolver`), for deciding whether a server is on
+the local network.
+
+### `Resource`
+
+Struct · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+A server a Plex account reaches, as plex.tv lists it: machine id, name,
+version, whether the account owns it, its own access token, whether it
+requires https, and its connections.
+
+### `ResourceDto`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+A plex.tv resource as served: a server, player or other device with
+its token and connections.
 
 ### `Response`
 
@@ -2325,6 +2724,12 @@ Struct, sent to the UI · [`app/src-tauri/src/library/search.rs`](../../app/src-
 
 A search's artists, albums and tracks, each with its total.
 
+### `Section`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs)
+
+A music library on a server: its key there and its name.
+
 ### `Seed`
 
 Enum · [`app/src-tauri/src/library/similar.rs`](../../app/src-tauri/src/library/similar.rs) · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
@@ -2352,6 +2757,81 @@ Struct · [`app/src-tauri/src/history/listenbrainz.rs`](../../app/src-tauri/src/
 The history thread's ListenBrainz sending state: its `http::Client`, when
 to retry, and the last error. Sends `listens_pending` in batches; a
 rejected token stops it until a new one is set.
+
+### `ServerApi`
+
+Enum · [`app/src-tauri/src/servers/api.rs`](../../app/src-tauri/src/servers/api.rs) · a blocking thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+One interface to a source's server, whatever its kind (`Jellyfin` or
+`Plex`): who answers, the sync's reader, how to fetch a track or a
+picture, play reports and sign-out.
+
+### `ServerAudio`
+
+Struct, in `LibraryState` · [`app/src-tauri/src/servers/fetch.rs`](../../app/src-tauri/src/servers/fetch.rs) · any thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+The audio cache and how tracks get into it: chooses the cached copy, the
+original or an MP3 transcode for a track (`choose`), and every name it
+could be cached under (`names`).
+
+### `ServerCheck`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/commands.rs`](../../app/src-tauri/src/servers/commands.rs)
+
+A server the user named, before signing in: the address as it will be
+used, its name and version, and whether it allows Quick Connect.
+
+### `ServerInfo`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs)
+
+Who a server says it is: id, name and version.
+
+### `ServerLibrary`
+
+Trait · [`app/src-tauri/src/servers/sync.rs`](../../app/src-tauri/src/servers/sync.rs) · a blocking thread · [D2: Fakes](../developer-guide/12-testing.md#fakes)
+
+A server's music a page at a time: tracks (changed since a time, if
+given), every track's id, and playlists. Jellyfin's is
+`jellyfin::Library`; tests use `sync::testing::FakeLibrary`.
+
+### `ServerPlaylist`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs)
+
+A playlist on a server: its id, name and tracks by the server's ids, in
+order.
+
+### `ServerSettings`
+
+Struct, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/settings.rs)
+
+Music servers' settings: whether plays are reported, the bit rate away
+from home (0 for the original files) and the audio cache's size.
+
+### `ServersState`
+
+Struct, managed state · [`app/src-tauri/src/servers/commands.rs`](../../app/src-tauri/src/servers/commands.rs) · any thread · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+What the servers' work shares: the HTTP client (apart from the metadata
+worker's), the sources being synced, when each last answered, and
+whether offline downloads run.
+
+### `ServerSummary`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/commands.rs`](../../app/src-tauri/src/servers/commands.rs)
+
+A server source as Settings and the sidebar show it: the source, its
+state and whether it is syncing.
+
+### `ServerTrack`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A track as a server describes it, in the terms the library keeps: names,
+numbers, date, length, genres, container, size, bit rate, MusicBrainz
+ids, its album's picture, the path that serves its file (Plex) and its
+gain. The sync writes it as a file's tags.
 
 ### `ServiceSettings`
 
@@ -2410,6 +2890,13 @@ Struct, sent to the UI · [`app/src-tauri/src/audio.rs`](../../app/src-tauri/src
 
 What the signal path panel shows: the engine's `SignalPath`, the device,
 and whether it plays through headphones.
+
+### `SignedIn`
+
+Struct · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs)
+
+A user signed in to a server: the token, the user's id and name, and the
+server's id.
 
 ### `SimilarAlbum`
 
@@ -2511,6 +2998,16 @@ Struct, sent to the UI · [`app/src-tauri/src/library/rules.rs`](../../app/src-t
 The sort rules (never empty) and the leading articles sorting ignores,
 stored as JSON in `settings` and edited in Settings › Sort rules.
 
+### `Source`
+
+Struct, sent to the UI · [`app/src-tauri/src/servers/mod.rs`](../../app/src-tauri/src/servers/mod.rs) · [D2: Music servers](../developer-guide/06-rust-backend.md#music-servers)
+
+A server source: its folder, kind, address, server id and name, version,
+user, music library (Plex's `section`), sync cursor, when it last synced,
+how many tracks it has, whether it plays through Plex's relay, and the
+server's other connections. Its token is in the keychain (`token`, kept
+under `token_key`, which a Plex server's libraries share).
+
 ### `SourceCandidates`
 
 Struct, sent to the UI · [`app/src-tauri/src/metadata/commands.rs`](../../app/src-tauri/src/metadata/commands.rs)
@@ -2611,6 +3108,26 @@ Struct · [`app/src-tauri/src/visualizer.rs`](../../app/src-tauri/src/visualizer
 
 The subscribed sinks, by id. The core analyses only while there is one.
 
+### `Synced`
+
+Struct · [`app/src-tauri/src/servers/sync.rs`](../../app/src-tauri/src/servers/sync.rs)
+
+What a sync did: a scan's report, and the albums whose picture changed.
+
+### `SyncError`
+
+Enum · [`app/src-tauri/src/servers/sync.rs`](../../app/src-tauri/src/servers/sync.rs)
+
+A sync's failure: the server's (which leaves the library as it was) or
+the database's.
+
+### `SyncOptions`
+
+Struct · [`app/src-tauri/src/servers/sync.rs`](../../app/src-tauri/src/servers/sync.rs)
+
+How to sync: everything rather than changes alone, and whether to remove
+tracks gone from the server even when `scanner::holds` would keep them.
+
 ### `System`
 
 Struct · [`app/src-tauri/src/library/access.rs`](../../app/src-tauri/src/library/access.rs) · any thread · [D2: The library](../developer-guide/06-rust-backend.md#the-library)
@@ -2618,11 +3135,24 @@ Struct · [`app/src-tauri/src/library/access.rs`](../../app/src-tauri/src/librar
 The real `Bookmarks`: the core's security-scoped bookmarks, through
 `anomp::FolderAccess`.
 
+### `System`
+
+Helper · [`app/src-tauri/src/servers/address.rs`](../../app/src-tauri/src/servers/address.rs)
+
+The system's resolver (`Resolver`), which answers `.local` names through
+mDNS on macOS.
+
 ### `SystemClock`
 
 Struct · [`app/src-tauri/src/metadata/http.rs`](../../app/src-tauri/src/metadata/http.rs)
 
 The real `Clock`.
+
+### `Tag`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plex.rs`](../../app/src-tauri/src/servers/plex.rs)
+
+A Plex tag, such as a genre.
 
 ### `TagParts`
 
@@ -2779,7 +3309,8 @@ Struct · [`app/src-tauri/src/library/playback.rs`](../../app/src-tauri/src/libr
 What the engine needs to play a library track: its file, its part after
 trims, its gain (ReplayGain from the tags or the analysis, with the user's
 offset) and what to skip. Made by `track_play`; turned into
-`anomp::TrackOptions`.
+`anomp::TrackOptions`. A music server's track carries its `RemoteFile`,
+and `LibraryState::track_play` points its path at the audio cache.
 
 ### `TrackPrefs`
 
@@ -2807,9 +3338,10 @@ numbers, length, format, rating, heart and folder. The commonest payload.
 Trait · [`app/src-tauri/src/metadata/http.rs`](../../app/src-tauri/src/metadata/http.rs) · [D2: Fakes](../developer-guide/12-testing.md#fakes)
 
 Fetches a URL, following redirects, with an optional `Authorization`
-(a response with an error status is still a response), and posts a body
-(ListenBrainz's submissions). Under every `Client`: the metadata
-worker's, ListenBrainz's sender's and the update check's. Ureq in the app
+(a response with an error status is still a response), posts a body
+(ListenBrainz's submissions), and streams a large body into a file
+(`download`, a music server's track). Under every `Client`: the metadata
+worker's, ListenBrainz's sender's, the update check's and the servers'. Ureq in the app
 (`UreqTransport`), a fake with recorded responses (`http::testing`) in
 tests, which never touch the network.
 
@@ -2868,6 +3400,18 @@ The data file F20 exports and imports: settings, sort rules, source
 settings, the user's picks, playlists, favourites, ratings, history,
 preferences, resume points and the queue, naming tracks by folder and path
 so they survive a rebuild.
+
+### `UserDto`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/jellyfin.rs`](../../app/src-tauri/src/servers/jellyfin.rs)
+
+A Jellyfin user, read for its id and name.
+
+### `UserDto`
+
+Helper (service JSON) · [`app/src-tauri/src/servers/plextv.rs`](../../app/src-tauri/src/servers/plextv.rs)
+
+plex.tv's account as served: id, user name and title.
 
 ### `VisualizerSettings`
 

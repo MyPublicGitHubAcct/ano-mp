@@ -24,7 +24,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use super::access::{self, Bookmarks, FolderState, FolderStatus};
 use super::commands::LibraryState;
-use super::{Error, Folder};
+use super::{Error, Folder, FolderKind};
 use crate::anomp::VolumeWatcher;
 
 /// Frontend event, without a payload: a folder's state changed.
@@ -106,9 +106,10 @@ impl FolderStates {
         self.lock().remove(&folder_id);
     }
 
-    /// Checks every folder in `folders` and records what it finds. A folder
-    /// a scan held stays held while it reads as there: only a scan, or the
-    /// user, changes that.
+    /// Checks every local folder in `folders` and records what it finds. A
+    /// folder a scan held stays held while it reads as there: only a scan,
+    /// or the user, changes that. Servers are checked by `servers`, which
+    /// records their states here too.
     pub fn check(
         &self,
         conn: &Connection,
@@ -116,7 +117,7 @@ impl FolderStates {
         bookmarks: &impl Bookmarks,
     ) -> Result<Changes, Error> {
         let mut changes = Changes::default();
-        for folder in folders {
+        for folder in folders.iter().filter(|f| f.kind == FolderKind::Local) {
             let mut status = access::check_folder(conn, folder.id, bookmarks)?;
             if status.state == FolderState::Available
                 && self.get(folder.id).state == FolderState::MostlyGone
@@ -143,9 +144,10 @@ pub fn folders_with_states(conn: &Connection, states: &FolderStates) -> Result<V
     Ok(folders)
 }
 
-/// Checks every folder now (a blocking call: not on the main thread, and
-/// not holding the shared connection), then acts on what changed
-/// (`changed`). Returns the folders with their states.
+/// Checks every folder now, and every music server that hasn't answered
+/// lately (a blocking call: not on the main thread, and not holding the
+/// shared connection), then acts on what changed (`changed`). Returns the
+/// folders with their states.
 pub fn refresh<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Folder>, String> {
     let library = app
         .try_state::<LibraryState>()
@@ -155,19 +157,15 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Folder>, String> {
         .ok_or("The library is not available")?;
     // A connection of its own: resolving a folder on a sleeping drive can
     // take seconds, and the shared one opens tracks for the main thread.
-    let (folders, changes) = {
-        let conn = super::db::open(library.db_path()).map_err(|e| e.to_string())?;
-        let folders = super::folders(&conn).map_err(|e| e.to_string())?;
-        let changes = states
-            .check(&conn, &folders, &access::System)
-            .map_err(|e| e.to_string())?;
-        (
-            folders_with_states(&conn, &states).map_err(|e| e.to_string())?,
-            changes,
-        )
-    };
+    let conn = super::db::open(library.db_path()).map_err(|e| e.to_string())?;
+    let folders = super::folders(&conn).map_err(|e| e.to_string())?;
+    let changes = states
+        .check(&conn, &folders, &access::System)
+        .map_err(|e| e.to_string())?;
     changed(app, changes, true);
-    Ok(folders)
+    // Servers say whether they answer (`servers::commands`).
+    crate::servers::commands::check_sources(app);
+    folders_with_states(&conn, &states).map_err(|e| e.to_string())
 }
 
 /// Acts on folders that came back or went: rescans (if `rescan`) and

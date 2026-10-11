@@ -1,7 +1,8 @@
 <script lang="ts">
   // The views (Home, Favourites, Artists, History…), the sort rules as library
   // views, the playlists (PLAN.md F1, F2), the library folders with add,
-  // rescan and remove, and scan progress; the online sources with what the
+  // rescan and remove, and scan progress; music servers (Phase 7e) with their
+  // state and sync; the online sources with what the
   // metadata worker is doing, and the settings.
   //
   // Tracks dragged from a list drop onto a playlist or the queue (F4). A
@@ -12,7 +13,7 @@
   // closed until opened; each viewer's choice is remembered.
   import { untrack } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
-  import { queue, type Folder, type Playlist } from "$lib/api";
+  import { queue, type Folder, type Playlist, type ServerSummary } from "$lib/api";
   import { FOLDER_SHORT } from "$lib/folders";
   import { count, t } from "$lib/i18n";
   import { keys } from "$lib/keys";
@@ -24,8 +25,10 @@
   import { features } from "$lib/state/features.svelte";
   import { player } from "$lib/state/player.svelte";
   import { appSettings } from "$lib/state/settings.svelte";
+  import { servers, sourceName as serverName } from "$lib/state/servers.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
-  import { loadPreference, savePreference, ui } from "$lib/state/ui.svelte";
+  import { loadPreference, savePreference, ui, type MenuItem } from "$lib/state/ui.svelte";
+  import { offlineItems } from "$lib/featureMenu";
   import Icon from "./Icon.svelte";
 
   function show(action: () => void) {
@@ -136,6 +139,14 @@
       { label: t("library.shuffle"), action: () => collection.play(playlist, true) },
       { label: t("menu.playNext"), action: () => collection.enqueue(playlist, true) },
       { label: t("menu.addToQueue"), action: () => collection.enqueue(playlist, false) },
+      ...offlineItems({ playlistId: playlist.id }),
+      // A music server's playlist changes only on the server (Phase 7e).
+      ...(playlist.server ? [] : editItems(playlist)),
+    ]);
+  }
+
+  function editItems(playlist: Playlist): MenuItem[] {
+    return [
       { separator: true },
       {
         label: t("playlist.rename"),
@@ -160,7 +171,7 @@
           if (yes) await collection.remove(playlist);
         },
       },
-    ]);
+    ];
   }
 
   function newMenu(event: MouseEvent) {
@@ -178,6 +189,19 @@
       okLabel: t("folders.removeOk"),
     });
     if (remove) library.removeFolder(folder);
+  }
+
+  /** A server's line: syncing, why it can't be reached, or its tracks (PLAN.md Phase 7e). */
+  function serverStatus(server: ServerSummary) {
+    if (server.syncing) return t("servers.syncing");
+    if (server.status.state !== "available") return t(FOLDER_SHORT[server.status.state]);
+    return server.syncedAt === null ? t("servers.notSynced") : count("count.tracks", server.trackCount);
+  }
+
+  /** Browses a server's tracks, as a folder's. */
+  function showServer(server: ServerSummary) {
+    const rule = library.ruleStartingWith("folder");
+    if (rule) library.navigate(rule.id, [{ key: server.folderId, name: serverName(server) }]);
   }
 
   function folderStatus(folder: Folder) {
@@ -331,7 +355,7 @@
       title={t("sidebar.rescanAll")}
       aria-label={t("sidebar.rescanAll")}
       onclick={() => library.scan(null)}
-      disabled={library.scanning || library.background || library.folders.length === 0}
+      disabled={library.scanning || library.background || library.localFolders.length === 0}
     >
       <Icon name="refresh" />
     </button>
@@ -348,7 +372,7 @@
     </p>
   {/if}
   <ul>
-    {#each library.folders as folder (folder.id)}
+    {#each library.localFolders as folder (folder.id)}
       <li class="folder" class:missing={folder.available === false}>
         <button
           class="item"
@@ -385,6 +409,52 @@
       <li><button class="item muted" onclick={() => library.addFolder()}>{t("sidebar.addFolderLong")}</button></li>
     {/each}
   </ul>
+
+  {#if appSettings.current.features.jellyfin || appSettings.current.features.plex}
+    <div class="section-heading">
+      <h2>{t("sidebar.servers")}</h2>
+      <button
+        class="icon"
+        title={t("sidebar.addServer")}
+        aria-label={t("sidebar.addServer")}
+        onclick={() => show(() => ui.showSettings("servers", "setting-addServer"))}
+      >
+        <Icon name="plus" />
+      </button>
+    </div>
+    <ul>
+      {#each servers.list as server (server.folderId)}
+        {@const unavailable = server.status.state !== "available" && server.status.state !== "mostlyGone"}
+        <li class="folder" class:missing={unavailable}>
+          <button
+            class="item"
+            class:active={isOpen(server.folderId)}
+            title={serverName(server)}
+            onclick={() => show(() => showServer(server))}
+          >
+            <span class="name with-icon">
+              {#if unavailable}<Icon name="warning" size="0.95rem" />{/if}
+              <span class="name">{serverName(server)}</span>
+            </span>
+            <span class="muted small">{serverStatus(server)}</span>
+          </button>
+          <button
+            class="icon hover-only"
+            title={t("servers.sync")}
+            aria-label={t("servers.sync")}
+            disabled={server.syncing}
+            onclick={() => servers.sync(server)}><Icon name="refresh" size="1rem" /></button
+          >
+        </li>
+      {:else}
+        <li>
+          <button class="item muted" onclick={() => show(() => ui.showSettings("servers", "setting-addServer"))}
+            >{t("sidebar.addServer")}</button
+          >
+        </li>
+      {/each}
+    </ul>
+  {/if}
 
   <div class="bottom">
     <button

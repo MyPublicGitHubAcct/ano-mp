@@ -71,12 +71,13 @@ modules declared under it) is left out.
 
 ### Rust backend
 
-- `app/src-tauri/src/`: [`AlbumFact`](rust.md#albumfact), [`AnalysisConfig`](rust.md#analysisconfig), [`AnalysisFrame`](rust.md#analysisframe), [`AppearanceSettings`](rust.md#appearancesettings), [`AppSettings`](rust.md#appsettings), [`Chapter`](rust.md#chapter), [`CollectionChanged`](rust.md#collectionchanged), [`CrossfeedLevel`](rust.md#crossfeedlevel), [`DataImport`](rust.md#dataimport), [`Density`](rust.md#density), [`DetailedLog`](rust.md#detailedlog), [`DeviceInfo`](rust.md#deviceinfo), [`DisplaySettings`](rust.md#displaysettings), [`DockMenu`](rust.md#dockmenu), [`EffectInfo`](rust.md#effectinfo), [`EffectParam`](rust.md#effectparam), [`EffectSettings`](rust.md#effectsettings), [`EffectsSettings`](rust.md#effectssettings), [`EffectsStatus`](rust.md#effectsstatus), [`EffectUnit`](rust.md#effectunit), [`Engine`](rust.md#engine), [`Entry`](rust.md#entry-3), [`EqualiserProfile`](rust.md#equaliserprofile), [`EqualiserSettings`](rust.md#equalisersettings), [`Event`](rust.md#event), [`Facts`](rust.md#facts), [`FeatureSettings`](rust.md#featuresettings), [`FileAnalysis`](rust.md#fileanalysis), [`FileInfo`](rust.md#fileinfo), [`FilePicture`](rust.md#filepicture), [`Finished`](rust.md#finished), [`FolderAccess`](rust.md#folderaccess), [`Font`](rust.md#font), [`Gone`](rust.md#gone), [`Inner`](rust.md#inner), [`LibrarySettings`](rust.md#librarysettings), [`LoadResult`](rust.md#loadresult), [`Media`](rust.md#media), [`MediaCommand`](rust.md#mediacommand), [`MediaControls`](rust.md#mediacontrols), [`MenuItem`](rust.md#menuitem), [`NowPlaying`](rust.md#nowplaying), [`Options`](rust.md#options), [`Outcome`](rust.md#outcome), [`OutputSettings`](rust.md#outputsettings), [`OutputStatus`](rust.md#outputstatus), [`Picture`](rust.md#picture), [`PlaybackSettings`](rust.md#playbacksettings), [`Player`](rust.md#player), [`PlayerState`](rust.md#playerstate), [`PlayerStatus`](rust.md#playerstatus), [`PositionPayload`](rust.md#positionpayload), [`Practice`](rust.md#practice), [`Prefs`](rust.md#prefs), [`Published`](rust.md#published), [`Publisher`](rust.md#publisher), [`RawAnalysisConfig`](rust.md#rawanalysisconfig), [`RawAnalysisFrame`](rust.md#rawanalysisframe), [`RawBookmark`](rust.md#rawbookmark), [`RawChapter`](rust.md#rawchapter), [`RawDeviceInfo`](rust.md#rawdeviceinfo), [`RawDockMenu`](rust.md#rawdockmenu), [`RawEffectInfo`](rust.md#raweffectinfo), [`RawEffectParam`](rust.md#raweffectparam), [`RawEngine`](rust.md#rawengine), [`RawEvent`](rust.md#rawevent), [`RawFileAnalysis`](rust.md#rawfileanalysis), [`RawFileInfo`](rust.md#rawfileinfo), [`RawFolderAccess`](rust.md#rawfolderaccess), [`RawMediaCommand`](rust.md#rawmediacommand), [`RawMediaControls`](rust.md#rawmediacontrols), [`RawMediaTrack`](rust.md#rawmediatrack), [`RawMenuItem`](rust.md#rawmenuitem), [`RawPicture`](rust.md#rawpicture), [`RawRecordFormat`](rust.md#rawrecordformat), [`RawRecording`](rust.md#rawrecording), [`RawRecordingMark`](rust.md#rawrecordingmark), [`RawSignalPath`](rust.md#rawsignalpath), [`RawTagField`](rust.md#rawtagfield), [`RawTags`](rust.md#rawtags), [`RawTrackOptions`](rust.md#rawtrackoptions), [`RawVolumeWatcher`](rust.md#rawvolumewatcher), [`RecordingFormat`](rust.md#recordingformat), [`RecordingKind`](rust.md#recordingkind), [`RecordingSettings`](rust.md#recordingsettings), [`RecordingState`](rust.md#recordingstate), [`RecordingStatus`](rust.md#recordingstatus), [`RecordingStopped`](rust.md#recordingstopped), [`ReplayGain`](rust.md#replaygain), [`ReplayGainMode`](rust.md#replaygainmode), [`Running`](rust.md#running), [`Scheme`](rust.md#scheme), [`Session`](rust.md#session), [`SettingsPayload`](rust.md#settingspayload), [`SettingsState`](rust.md#settingsstate), [`Shared`](rust.md#shared-1), [`SignalPath`](rust.md#signalpath), [`SignalPathPayload`](rust.md#signalpathpayload), [`Sink`](rust.md#sink), [`StoredFolder`](rust.md#storedfolder), [`Subscribers`](rust.md#subscribers), [`TagParts`](rust.md#tagparts), [`Tags`](rust.md#tags), [`Take`](rust.md#take), [`Theme`](rust.md#theme), [`ThemePalette`](rust.md#themepalette), [`TrackColumn`](rust.md#trackcolumn), [`TrackEndedPayload`](rust.md#trackendedpayload), [`TrackOptions`](rust.md#trackoptions), [`UpdateCheck`](rust.md#updatecheck), [`Updates`](rust.md#updates), [`VisualizerSettings`](rust.md#visualizersettings), [`VisualizerState`](rust.md#visualizerstate), [`VolumeWatcher`](rust.md#volumewatcher), [`WindowSettings`](rust.md#windowsettings), [`WorkbenchFile`](rust.md#workbenchfile)
+- `app/src-tauri/src/`: [`AlbumFact`](rust.md#albumfact), [`AnalysisConfig`](rust.md#analysisconfig), [`AnalysisFrame`](rust.md#analysisframe), [`AppearanceSettings`](rust.md#appearancesettings), [`AppSettings`](rust.md#appsettings), [`Chapter`](rust.md#chapter), [`CollectionChanged`](rust.md#collectionchanged), [`CrossfeedLevel`](rust.md#crossfeedlevel), [`DataImport`](rust.md#dataimport), [`Density`](rust.md#density), [`DetailedLog`](rust.md#detailedlog), [`DeviceInfo`](rust.md#deviceinfo), [`DisplaySettings`](rust.md#displaysettings), [`DockMenu`](rust.md#dockmenu), [`EffectInfo`](rust.md#effectinfo), [`EffectParam`](rust.md#effectparam), [`EffectSettings`](rust.md#effectsettings), [`EffectsSettings`](rust.md#effectssettings), [`EffectsStatus`](rust.md#effectsstatus), [`EffectUnit`](rust.md#effectunit), [`Engine`](rust.md#engine), [`Entry`](rust.md#entry-3), [`EqualiserProfile`](rust.md#equaliserprofile), [`EqualiserSettings`](rust.md#equalisersettings), [`Event`](rust.md#event), [`Facts`](rust.md#facts), [`FeatureSettings`](rust.md#featuresettings), [`FileAnalysis`](rust.md#fileanalysis), [`FileInfo`](rust.md#fileinfo), [`FilePicture`](rust.md#filepicture), [`Finished`](rust.md#finished), [`FolderAccess`](rust.md#folderaccess), [`Font`](rust.md#font), [`Gone`](rust.md#gone), [`Inner`](rust.md#inner), [`LibrarySettings`](rust.md#librarysettings), [`LoadResult`](rust.md#loadresult), [`Media`](rust.md#media), [`MediaCommand`](rust.md#mediacommand), [`MediaControls`](rust.md#mediacontrols), [`MenuItem`](rust.md#menuitem), [`NowPlaying`](rust.md#nowplaying), [`Options`](rust.md#options), [`Outcome`](rust.md#outcome), [`OutputSettings`](rust.md#outputsettings), [`OutputStatus`](rust.md#outputstatus), [`Picture`](rust.md#picture), [`PlaybackSettings`](rust.md#playbacksettings), [`Player`](rust.md#player), [`PlayerState`](rust.md#playerstate), [`PlayerStatus`](rust.md#playerstatus), [`PositionPayload`](rust.md#positionpayload), [`Practice`](rust.md#practice), [`Prefs`](rust.md#prefs), [`Published`](rust.md#published), [`Publisher`](rust.md#publisher), [`RawAnalysisConfig`](rust.md#rawanalysisconfig), [`RawAnalysisFrame`](rust.md#rawanalysisframe), [`RawBookmark`](rust.md#rawbookmark), [`RawChapter`](rust.md#rawchapter), [`RawDeviceInfo`](rust.md#rawdeviceinfo), [`RawDockMenu`](rust.md#rawdockmenu), [`RawEffectInfo`](rust.md#raweffectinfo), [`RawEffectParam`](rust.md#raweffectparam), [`RawEngine`](rust.md#rawengine), [`RawEvent`](rust.md#rawevent), [`RawFileAnalysis`](rust.md#rawfileanalysis), [`RawFileInfo`](rust.md#rawfileinfo), [`RawFolderAccess`](rust.md#rawfolderaccess), [`RawMediaCommand`](rust.md#rawmediacommand), [`RawMediaControls`](rust.md#rawmediacontrols), [`RawMediaTrack`](rust.md#rawmediatrack), [`RawMenuItem`](rust.md#rawmenuitem), [`RawPicture`](rust.md#rawpicture), [`RawRecordFormat`](rust.md#rawrecordformat), [`RawRecording`](rust.md#rawrecording), [`RawRecordingMark`](rust.md#rawrecordingmark), [`RawSignalPath`](rust.md#rawsignalpath), [`RawTagField`](rust.md#rawtagfield), [`RawTags`](rust.md#rawtags), [`RawTrackOptions`](rust.md#rawtrackoptions), [`RawVolumeWatcher`](rust.md#rawvolumewatcher), [`RecordingFormat`](rust.md#recordingformat), [`RecordingKind`](rust.md#recordingkind), [`RecordingSettings`](rust.md#recordingsettings), [`RecordingState`](rust.md#recordingstate), [`RecordingStatus`](rust.md#recordingstatus), [`RecordingStopped`](rust.md#recordingstopped), [`ReplayGain`](rust.md#replaygain), [`ReplayGainMode`](rust.md#replaygainmode), [`Running`](rust.md#running), [`Scheme`](rust.md#scheme), [`ServerSettings`](rust.md#serversettings), [`Session`](rust.md#session), [`SettingsPayload`](rust.md#settingspayload), [`SettingsState`](rust.md#settingsstate), [`Shared`](rust.md#shared-1), [`SignalPath`](rust.md#signalpath), [`SignalPathPayload`](rust.md#signalpathpayload), [`Sink`](rust.md#sink), [`StoredFolder`](rust.md#storedfolder), [`Subscribers`](rust.md#subscribers), [`TagParts`](rust.md#tagparts), [`Tags`](rust.md#tags), [`Take`](rust.md#take), [`Theme`](rust.md#theme), [`ThemePalette`](rust.md#themepalette), [`TrackColumn`](rust.md#trackcolumn), [`TrackEndedPayload`](rust.md#trackendedpayload), [`TrackOptions`](rust.md#trackoptions), [`UpdateCheck`](rust.md#updatecheck), [`Updates`](rust.md#updates), [`VisualizerSettings`](rust.md#visualizersettings), [`VisualizerState`](rust.md#visualizerstate), [`VolumeWatcher`](rust.md#volumewatcher), [`WindowSettings`](rust.md#windowsettings), [`WorkbenchFile`](rust.md#workbenchfile)
 - `app/src-tauri/src/history/`: [`Highlights`](rust.md#highlights), [`History`](rust.md#history), [`Host`](rust.md#host), [`ListenBrainzStatus`](rust.md#listenbrainzstatus), [`Listening`](rust.md#listening), [`Message`](rust.md#message), [`RecentEntry`](rust.md#recententry), [`RecentTrack`](rust.md#recenttrack), [`Sender`](rust.md#sender), [`TopEntry`](rust.md#topentry), [`TopKind`](rust.md#topkind), [`TopPlayed`](rust.md#topplayed), [`Tracker`](rust.md#tracker)
-- `app/src-tauri/src/library/`: [`AlbumCard`](rust.md#albumcard), [`AlbumDetails`](rust.md#albumdetails), [`AlbumHit`](rust.md#albumhit), [`AlbumIssue`](rust.md#albumissue), [`AlbumOrder`](rust.md#albumorder), [`AlbumPrefs`](rust.md#albumprefs), [`AlbumRef`](rust.md#albumref), [`AlbumSources`](rust.md#albumsources), [`AlbumTrack`](rust.md#albumtrack), [`AnalysisProgress`](rust.md#analysisprogress), [`AnalysisWorker`](rust.md#analysisworker), [`Art`](rust.md#art), [`ArtCache`](rust.md#artcache), [`ArtistAlbum`](rust.md#artistalbum), [`ArtistHit`](rust.md#artisthit), [`ArtistPage`](rust.md#artistpage), [`ArtistRef`](rust.md#artistref), [`ArtKey`](rust.md#artkey), [`Bookmarks`](rust.md#bookmarks), [`BrowsePage`](rust.md#browsepage), [`CacheEntries`](rust.md#cacheentries), [`Catalog`](rust.md#catalog), [`Changes`](rust.md#changes), [`ClearOnDrop`](rust.md#clearondrop), [`Condition`](rust.md#condition), [`Copy`](rust.md#copy), [`CopyInfo`](rust.md#copyinfo), [`CoverAlbum`](rust.md#coveralbum), [`CoverBasis`](rust.md#coverbasis), [`CoverCandidate`](rust.md#covercandidate), [`CoverSource`](rust.md#coversource), [`CoverWall`](rust.md#coverwall), [`CueFile`](rust.md#cuefile), [`CuePart`](rust.md#cuepart), [`CueSheet`](rust.md#cuesheet), [`CueTrack`](rust.md#cuetrack), [`DbCheck`](rust.md#dbcheck), [`DuplicateGroup`](rust.md#duplicategroup), [`Error`](rust.md#error), [`Events`](rust.md#events), [`ExternalFile`](rust.md#externalfile), [`FavouriteArtist`](rust.md#favouriteartist), [`Favourites`](rust.md#favourites) (marks.rs), [`Favourites`](rust.md#favourites-1) (transfer.rs), [`Field`](rust.md#field), [`Filter`](rust.md#filter), [`Folder`](rust.md#folder), [`Folders`](rust.md#folders), [`FolderScan`](rust.md#folderscan), [`FolderState`](rust.md#folderstate), [`FolderStates`](rust.md#folderstates), [`FolderStatus`](rust.md#folderstatus), [`Found`](rust.md#found), [`Grain`](rust.md#grain), [`Group`](rust.md#group), [`GroupKey`](rust.md#groupkey), [`Groups`](rust.md#groups), [`HealthReport`](rust.md#healthreport), [`HealthTrack`](rust.md#healthtrack), [`ImportReport`](rust.md#importreport) (playlists.rs), [`ImportReport`](rust.md#importreport-1) (transfer.rs), [`Known`](rust.md#known), [`Level`](rust.md#level), [`LibraryState`](rust.md#librarystate), [`Listing`](rust.md#listing), [`LyricLine`](rust.md#lyricline), [`Lyrics`](rust.md#lyrics), [`MarkKind`](rust.md#markkind), [`MissingFile`](rust.md#missingfile), [`MissingPool`](rust.md#missingpool), [`MusicBrainzIds`](rust.md#musicbrainzids), [`Node`](rust.md#node), [`OpenFolder`](rust.md#openfolder), [`Origin`](rust.md#origin), [`Params`](rust.md#params), [`Part`](rust.md#part), [`Pending`](rust.md#pending), [`PictureView`](rust.md#pictureview), [`Placeholders`](rust.md#placeholders), [`Playlist`](rust.md#playlist), [`PlaylistData`](rust.md#playlistdata), [`PlaylistEntry`](rust.md#playlistentry), [`PlaylistPage`](rust.md#playlistpage), [`Profile`](rust.md#profile), [`Query`](rust.md#query), [`QueueData`](rust.md#queuedata), [`ReadFile`](rust.md#readfile), [`Reason`](rust.md#reason), [`Recovered`](rust.md#recovered), [`Recovery`](rust.md#recovery), [`RecoveryState`](rust.md#recoverystate), [`Refs`](rust.md#refs), [`Relation`](rust.md#relation), [`Resolved`](rust.md#resolved), [`Row`](rust.md#row) (playback.rs), [`Row`](rust.md#row-1) (scanner.rs), [`Row`](rust.md#row-2) (thumbs.rs), [`RuleSpec`](rust.md#rulespec), [`ScanFailure`](rust.md#scanfailure), [`ScanOptions`](rust.md#scanoptions), [`ScanProgress`](rust.md#scanprogress), [`ScanReport`](rust.md#scanreport), [`Scored`](rust.md#scored), [`SearchKind`](rust.md#searchkind), [`SearchResults`](rust.md#searchresults), [`Seed`](rust.md#seed), [`SeedIndex`](rust.md#seedindex), [`SimilarAlbum`](rust.md#similaralbum), [`SimilarArtist`](rust.md#similarartist), [`SimilarTrack`](rust.md#similartrack), [`Size`](rust.md#size), [`SmartOrder`](rust.md#smartorder), [`SmartRules`](rust.md#smartrules), [`SortRule`](rust.md#sortrule), [`SortSettings`](rust.md#sortsettings), [`SourcedLink`](rust.md#sourcedlink), [`Started`](rust.md#started), [`State`](rust.md#state), [`System`](rust.md#system), [`Target`](rust.md#target), [`TrackAnalysis`](rust.md#trackanalysis), [`TrackDetails`](rust.md#trackdetails), [`TrackFacts`](rust.md#trackfacts), [`TrackFile`](rust.md#trackfile), [`TrackKey`](rust.md#trackkey), [`TrackPlay`](rust.md#trackplay), [`TrackPrefs`](rust.md#trackprefs), [`TrackRef`](rust.md#trackref), [`TrackSummary`](rust.md#tracksummary), [`Types`](rust.md#types), [`UserData`](rust.md#userdata), [`Watching`](rust.md#watching), [`WatchState`](rust.md#watchstate), [`Why`](rust.md#why)
+- `app/src-tauri/src/library/`: [`AlbumCard`](rust.md#albumcard), [`AlbumDetails`](rust.md#albumdetails), [`AlbumHit`](rust.md#albumhit), [`AlbumIssue`](rust.md#albumissue), [`AlbumOrder`](rust.md#albumorder), [`AlbumPrefs`](rust.md#albumprefs), [`AlbumRef`](rust.md#albumref), [`AlbumSources`](rust.md#albumsources), [`AlbumTrack`](rust.md#albumtrack), [`AnalysisProgress`](rust.md#analysisprogress), [`AnalysisWorker`](rust.md#analysisworker), [`Art`](rust.md#art), [`ArtCache`](rust.md#artcache), [`ArtistAlbum`](rust.md#artistalbum), [`ArtistHit`](rust.md#artisthit), [`ArtistPage`](rust.md#artistpage), [`ArtistRef`](rust.md#artistref), [`ArtKey`](rust.md#artkey), [`Bookmarks`](rust.md#bookmarks), [`BrowsePage`](rust.md#browsepage), [`CacheEntries`](rust.md#cacheentries), [`Catalog`](rust.md#catalog), [`Changes`](rust.md#changes), [`ClearOnDrop`](rust.md#clearondrop), [`Condition`](rust.md#condition), [`Copy`](rust.md#copy), [`CopyInfo`](rust.md#copyinfo), [`CoverAlbum`](rust.md#coveralbum), [`CoverBasis`](rust.md#coverbasis), [`CoverCandidate`](rust.md#covercandidate), [`CoverSource`](rust.md#coversource), [`CoverWall`](rust.md#coverwall), [`CueFile`](rust.md#cuefile), [`CuePart`](rust.md#cuepart), [`CueSheet`](rust.md#cuesheet), [`CueTrack`](rust.md#cuetrack), [`DbCheck`](rust.md#dbcheck), [`DuplicateGroup`](rust.md#duplicategroup), [`Error`](rust.md#error), [`Events`](rust.md#events), [`ExternalFile`](rust.md#externalfile), [`FavouriteArtist`](rust.md#favouriteartist), [`Favourites`](rust.md#favourites) (marks.rs), [`Favourites`](rust.md#favourites-1) (transfer.rs), [`Field`](rust.md#field), [`Filter`](rust.md#filter), [`Folder`](rust.md#folder), [`FolderKind`](rust.md#folderkind), [`Folders`](rust.md#folders), [`FolderScan`](rust.md#folderscan), [`FolderState`](rust.md#folderstate), [`FolderStates`](rust.md#folderstates), [`FolderStatus`](rust.md#folderstatus), [`Found`](rust.md#found), [`Grain`](rust.md#grain), [`Group`](rust.md#group), [`GroupKey`](rust.md#groupkey), [`Groups`](rust.md#groups), [`HealthReport`](rust.md#healthreport), [`HealthTrack`](rust.md#healthtrack), [`ImportReport`](rust.md#importreport) (playlists.rs), [`ImportReport`](rust.md#importreport-1) (transfer.rs), [`Known`](rust.md#known), [`Level`](rust.md#level), [`LibraryState`](rust.md#librarystate), [`Listing`](rust.md#listing), [`LyricLine`](rust.md#lyricline), [`Lyrics`](rust.md#lyrics), [`MarkKind`](rust.md#markkind), [`MissingFile`](rust.md#missingfile), [`MissingPool`](rust.md#missingpool), [`MusicBrainzIds`](rust.md#musicbrainzids), [`Node`](rust.md#node), [`OpenFolder`](rust.md#openfolder), [`Origin`](rust.md#origin), [`Params`](rust.md#params), [`Part`](rust.md#part), [`Pending`](rust.md#pending), [`PictureView`](rust.md#pictureview), [`Placeholders`](rust.md#placeholders), [`Playlist`](rust.md#playlist), [`PlaylistData`](rust.md#playlistdata), [`PlaylistEntry`](rust.md#playlistentry), [`PlaylistPage`](rust.md#playlistpage), [`Profile`](rust.md#profile), [`Query`](rust.md#query), [`QueueData`](rust.md#queuedata), [`ReadFile`](rust.md#readfile), [`Reason`](rust.md#reason), [`Recovered`](rust.md#recovered), [`Recovery`](rust.md#recovery), [`RecoveryState`](rust.md#recoverystate), [`Refs`](rust.md#refs), [`Relation`](rust.md#relation), [`Resolved`](rust.md#resolved), [`Row`](rust.md#row) (playback.rs), [`Row`](rust.md#row-1) (scanner.rs), [`Row`](rust.md#row-2) (thumbs.rs), [`RuleSpec`](rust.md#rulespec), [`ScanFailure`](rust.md#scanfailure), [`ScanOptions`](rust.md#scanoptions), [`ScanProgress`](rust.md#scanprogress), [`ScanReport`](rust.md#scanreport), [`Scored`](rust.md#scored), [`SearchKind`](rust.md#searchkind), [`SearchResults`](rust.md#searchresults), [`Seed`](rust.md#seed), [`SeedIndex`](rust.md#seedindex), [`SimilarAlbum`](rust.md#similaralbum), [`SimilarArtist`](rust.md#similarartist), [`SimilarTrack`](rust.md#similartrack), [`Size`](rust.md#size), [`SmartOrder`](rust.md#smartorder), [`SmartRules`](rust.md#smartrules), [`SortRule`](rust.md#sortrule), [`SortSettings`](rust.md#sortsettings), [`SourcedLink`](rust.md#sourcedlink), [`Started`](rust.md#started), [`State`](rust.md#state), [`System`](rust.md#system), [`Target`](rust.md#target), [`TrackAnalysis`](rust.md#trackanalysis), [`TrackDetails`](rust.md#trackdetails), [`TrackFacts`](rust.md#trackfacts), [`TrackFile`](rust.md#trackfile), [`TrackKey`](rust.md#trackkey), [`TrackPlay`](rust.md#trackplay), [`TrackPrefs`](rust.md#trackprefs), [`TrackRef`](rust.md#trackref), [`TrackSummary`](rust.md#tracksummary), [`Types`](rust.md#types), [`UserData`](rust.md#userdata), [`Watching`](rust.md#watching), [`WatchState`](rust.md#watchstate), [`Why`](rust.md#why)
 - `app/src-tauri/src/metadata/`: [`Account`](rust.md#account), [`AlbumFacts`](rust.md#albumfacts), [`AlbumLink`](rust.md#albumlink), [`Article`](rust.md#article), [`Artist`](rust.md#artist), [`ArtistCandidate`](rust.md#artistcandidate), [`ArtistHit`](rust.md#artisthit-1), [`ArtistInfo`](rust.md#artistinfo), [`ArtistLink`](rust.md#artistlink), [`CallContext`](rust.md#callcontext), [`Candidate`](rust.md#candidate) (matcher.rs), [`Candidate`](rust.md#candidate-1) (outside.rs), [`ChosenCover`](rust.md#chosencover), [`Client`](rust.md#client), [`Clock`](rust.md#clock), [`CoverChoices`](rust.md#coverchoices), [`Credit`](rust.md#credit) (artists.rs), [`Credit`](rust.md#credit-1) (musicbrainz.rs), [`Current`](rust.md#current), [`Decision`](rust.md#decision) (artists.rs), [`Decision`](rust.md#decision-1) (matcher.rs), [`Discography`](rust.md#discography), [`DiscogsReleases`](rust.md#discogsreleases), [`Entry`](rust.md#entry) (images.rs), [`Entry`](rust.md#entry-1) (jobs.rs), [`Error`](rust.md#error-1), [`Fetched`](rust.md#fetched) (coverartarchive.rs), [`Fetched`](rust.md#fetched-1) (wikipedia.rs), [`Host`](rust.md#host-1), [`HostState`](rust.md#hoststate), [`Image`](rust.md#image), [`ImageCache`](rust.md#imagecache), [`Job`](rust.md#job), [`Jobs`](rust.md#jobs), [`Kind`](rust.md#kind), [`Label`](rust.md#label), [`Links`](rust.md#links), [`LinkStatus`](rust.md#linkstatus), [`MetadataChanged`](rust.md#metadatachanged), [`MetadataSettings`](rust.md#metadatasettings), [`MetadataWorker`](rust.md#metadataworker), [`MusicBrainzReleases`](rust.md#musicbrainzreleases), [`OutsideArtist`](rust.md#outsideartist), [`OutsideLinks`](rust.md#outsidelinks), [`OutsideReason`](rust.md#outsidereason), [`OutsideStatus`](rust.md#outsidestatus), [`Owned`](rust.md#owned), [`Page`](rust.md#page), [`Priority`](rust.md#priority), [`Progress`](rust.md#progress), [`Query`](rust.md#query-1), [`Raw`](rust.md#raw), [`RawAlias`](rust.md#rawalias), [`RawArea`](rust.md#rawarea), [`RawArtist`](rust.md#rawartist), [`RawArtistEntry`](rust.md#rawartistentry), [`RawBrowsedGroup`](rust.md#rawbrowsedgroup), [`RawCoverArt`](rust.md#rawcoverart), [`RawCredit`](rust.md#rawcredit), [`RawFormat`](rust.md#rawformat), [`RawGenre`](rust.md#rawgenre), [`RawGroup`](rust.md#rawgroup), [`RawHit`](rust.md#rawhit), [`RawIdentifier`](rust.md#rawidentifier), [`RawImage`](rust.md#rawimage), [`RawLabel`](rust.md#rawlabel), [`RawLabelInfo`](rust.md#rawlabelinfo), [`RawLifeSpan`](rust.md#rawlifespan), [`RawLinks`](rust.md#rawlinks), [`RawListing`](rust.md#rawlisting), [`RawMedium`](rust.md#rawmedium), [`RawPage`](rust.md#rawpage), [`RawRecording`](rust.md#rawrecording-1), [`RawRelatedArtist`](rust.md#rawrelatedartist), [`RawRelation`](rust.md#rawrelation), [`RawRelease`](rust.md#rawrelease), [`RawReleaseGroup`](rust.md#rawreleasegroup), [`RawSearch`](rust.md#rawsearch), [`RawTrack`](rust.md#rawtrack), [`RawUrl`](rust.md#rawurl), [`RelatedArtist`](rust.md#relatedartist), [`Release`](rust.md#release), [`ReleaseCandidate`](rust.md#releasecandidate), [`ReleaseGroup`](rust.md#releasegroup), [`ReleaseGroupEntry`](rust.md#releasegroupentry), [`ReleaseGroupPage`](rust.md#releasegrouppage), [`ReleaseSource`](rust.md#releasesource), [`ReleaseTrack`](rust.md#releasetrack), [`Response`](rust.md#response) (http.rs), [`Response`](rust.md#response-1) (wikipedia.rs), [`SearchHit`](rust.md#searchhit), [`Seed`](rust.md#seed-1), [`ServiceSettings`](rust.md#servicesettings), [`Shared`](rust.md#shared), [`SimilarArtist`](rust.md#similarartist-1), [`SourceCandidates`](rust.md#sourcecandidates), [`SourcedArticle`](rust.md#sourcedarticle), [`SourceId`](rust.md#sourceid), [`SourceInfo`](rust.md#sourceinfo), [`SourceSettings`](rust.md#sourcesettings), [`State`](rust.md#state-1), [`Step`](rust.md#step), [`Subject`](rust.md#subject), [`SystemClock`](rust.md#systemclock), [`TauriHost`](rust.md#taurihost), [`Transport`](rust.md#transport), [`TransportError`](rust.md#transporterror), [`UreqTransport`](rust.md#ureqtransport), [`Usable`](rust.md#usable), [`Worker`](rust.md#worker)
 - `app/src-tauri/src/queue/`: [`Arming`](rust.md#arming), [`Ask`](rust.md#ask), [`Edit`](rust.md#edit), [`EnginePlayer`](rust.md#engineplayer), [`Entry`](rust.md#entry-2), [`InEngine`](rust.md#inengine), [`Item`](rust.md#item), [`ListLog`](rust.md#listlog), [`Loaded`](rust.md#loaded), [`Loading`](rust.md#loading), [`Opening`](rust.md#opening), [`Pick`](rust.md#pick), [`Player`](rust.md#player-1), [`Position`](rust.md#position), [`Queue`](rust.md#queue), [`QueueState`](rust.md#queuestate), [`Repeat`](rust.md#repeat), [`Requests`](rust.md#requests), [`Resolved`](rust.md#resolved-1), [`Saved`](rust.md#saved), [`SavedPlayer`](rust.md#savedplayer), [`Skipped`](rust.md#skipped), [`Sleep`](rust.md#sleep), [`SleepRequest`](rust.md#sleeprequest), [`SleepTimer`](rust.md#sleeptimer), [`Store`](rust.md#store), [`TrackInfo`](rust.md#trackinfo)
 - `app/src-tauri/src/remote/`: [`Command`](rust.md#command), [`PairError`](rust.md#pairerror), [`Pairing`](rust.md#pairing), [`RemoteDevice`](rust.md#remotedevice), [`RemoteServer`](rust.md#remoteserver), [`RemoteStatus`](rust.md#remotestatus), [`Request`](rust.md#request), [`Response`](rust.md#response-2), [`Running`](rust.md#running-1)
+- `app/src-tauri/src/servers/`: [`Account`](rust.md#account-1), [`Answer`](rust.md#answer), [`AudioCache`](rust.md#audiocache), [`AuthenticationResult`](rust.md#authenticationresult), [`Body`](rust.md#body), [`CachedName`](rust.md#cachedname), [`Connection`](rust.md#connection), [`Device`](rust.md#device), [`Directories`](rust.md#directories), [`Directory`](rust.md#directory), [`Discovered`](rust.md#discovered), [`Entry`](rust.md#entry-4), [`Follower`](rust.md#follower), [`Form`](rust.md#form), [`Guid`](rust.md#guid), [`Identity`](rust.md#identity), [`IdentityDto`](rust.md#identitydto), [`IdOnly`](rust.md#idonly), [`ImageTags`](rust.md#imagetags), [`Item`](rust.md#item-1) (jellyfin.rs), [`Item`](rust.md#item-2) (plex.rs), [`Jellyfin`](rust.md#jellyfin), [`Library`](rust.md#library) (jellyfin.rs), [`Library`](rust.md#library-1) (plex.rs), [`Media`](rust.md#media-1), [`MediaSource`](rust.md#mediasource), [`MediaStream`](rust.md#mediastream), [`NameId`](rust.md#nameid), [`OfflineStatus`](rust.md#offlinestatus), [`Page`](rust.md#page-1) (jellyfin.rs), [`Page`](rust.md#page-2) (plex.rs), [`Part`](rust.md#part-1), [`Pin`](rust.md#pin), [`PinDto`](rust.md#pindto), [`PlaylistItem`](rust.md#playlistitem), [`Plex`](rust.md#plex), [`PlexAccount`](rust.md#plexaccount), [`PlexAnswer`](rust.md#plexanswer), [`PlexLibrary`](rust.md#plexlibrary), [`PlexPin`](rust.md#plexpin), [`PlexServer`](rust.md#plexserver), [`PlexTv`](rust.md#plextv), [`Policy`](rust.md#policy), [`ProviderIds`](rust.md#providerids), [`PublicInfo`](rust.md#publicinfo), [`QuickConnect`](rust.md#quickconnect), [`QuickConnectStart`](rust.md#quickconnectstart), [`QuickConnectState`](rust.md#quickconnectstate), [`RemoteFile`](rust.md#remotefile), [`Report`](rust.md#report), [`Reporter`](rust.md#reporter), [`Request`](rust.md#request-1), [`Resolver`](rust.md#resolver), [`Resource`](rust.md#resource), [`ResourceDto`](rust.md#resourcedto), [`Section`](rust.md#section), [`ServerApi`](rust.md#serverapi), [`ServerAudio`](rust.md#serveraudio), [`ServerCheck`](rust.md#servercheck), [`ServerInfo`](rust.md#serverinfo), [`ServerLibrary`](rust.md#serverlibrary), [`ServerPlaylist`](rust.md#serverplaylist), [`ServersState`](rust.md#serversstate), [`ServerSummary`](rust.md#serversummary), [`ServerTrack`](rust.md#servertrack), [`SignedIn`](rust.md#signedin), [`Source`](rust.md#source), [`Synced`](rust.md#synced), [`SyncError`](rust.md#syncerror), [`SyncOptions`](rust.md#syncoptions), [`System`](rust.md#system-1), [`Tag`](rust.md#tag), [`UserDto`](rust.md#userdto) (jellyfin.rs), [`UserDto`](rust.md#userdto-1) (plextv.rs)
 - `app/src-tauri/src/shell/`: [`Checks`](rust.md#checks), [`DroppedPaths`](rust.md#droppedpaths), [`MenuState`](rust.md#menustate), [`NowSummary`](rust.md#nowsummary), [`SleepChoice`](rust.md#sleepchoice), [`TrayState`](rust.md#traystate)
 
 ### Frontend
@@ -84,10 +85,10 @@ modules declared under it) is left out.
 - `app/src/lib/`: [`ArtSize`](frontend.md#artsize), [`Block`](frontend.md#block), [`BrowsePath`](frontend.md#browsepath), [`Conditions`](frontend.md#conditions), [`ContrastIssue`](frontend.md#contrastissue), [`EffectId`](frontend.md#effectid), [`FeatureKey`](frontend.md#featurekey), [`FindEntry`](frontend.md#findentry), [`FindView`](frontend.md#findview), [`Found`](frontend.md#found), [`Inline`](frontend.md#inline), [`LinkTarget`](frontend.md#linktarget), [`ListEdit`](frontend.md#listedit), [`Lookup`](frontend.md#lookup), [`MenuTrack`](frontend.md#menutrack), [`Modifiers`](frontend.md#modifiers), [`Page`](frontend.md#page), [`PageAction`](frontend.md#pageaction), [`Place`](frontend.md#place), [`Platform`](frontend.md#platform), [`PlayAction`](frontend.md#playaction), [`PresetEffect`](frontend.md#preseteffect), [`RecordAction`](frontend.md#recordaction), [`RecordState`](frontend.md#recordstate), [`Rgb`](frontend.md#rgb), [`Selection`](frontend.md#selection), [`Typed`](frontend.md#typed)
 - `app/src/lib/components/`: [`AlbumCards`](frontend.md#albumcards), [`AlbumInfo`](frontend.md#albuminfo), [`AlbumWorks`](frontend.md#albumworks), [`Art`](frontend.md#art), [`ArtistPage`](frontend.md#artistpage), [`ArtistSimilar`](frontend.md#artistsimilar), [`ArtistsView`](frontend.md#artistsview), [`BrowsePane`](frontend.md#browsepane), [`ChooseCoverDialog`](frontend.md#choosecoverdialog), [`ContextMenu`](frontend.md#contextmenu), [`DbRepairDialog`](frontend.md#dbrepairdialog), [`Dialog`](frontend.md#dialog), [`Dialogs`](frontend.md#dialogs), [`DiscographyPage`](frontend.md#discographypage), [`DragGhost`](frontend.md#dragghost), [`FavouritesView`](frontend.md#favouritesview), [`FindArtistDialog`](frontend.md#findartistdialog), [`FindDetailsDialog`](frontend.md#finddetailsdialog), [`Fold`](frontend.md#fold), [`Header`](frontend.md#header), [`HealthView`](frontend.md#healthview), [`Heart`](frontend.md#heart), [`HistoryView`](frontend.md#historyview), [`HomeView`](frontend.md#homeview), [`Icon`](frontend.md#icon), [`LoopControls`](frontend.md#loopcontrols), [`LyricsPanel`](frontend.md#lyricspanel), [`MissingFolders`](frontend.md#missingfolders), [`MoreInGenre`](frontend.md#moreingenre), [`NoticesDialog`](frontend.md#noticesdialog), [`NowPlaying`](frontend.md#nowplaying), [`NowPlayingBar`](frontend.md#nowplayingbar), [`OutsideArtists`](frontend.md#outsideartists), [`PlaylistView`](frontend.md#playlistview), [`Popover`](frontend.md#popover), [`PracticePanel`](frontend.md#practicepanel), [`PrefsDialog`](frontend.md#prefsdialog), [`QueuePanel`](frontend.md#queuepanel), [`SearchResults`](frontend.md#searchresults), [`SeekBar`](frontend.md#seekbar), [`ServicesPanel`](frontend.md#servicespanel), [`SettingsPage`](frontend.md#settingspage), [`ShortcutsDialog`](frontend.md#shortcutsdialog), [`Sidebar`](frontend.md#sidebar), [`SignalPathPanel`](frontend.md#signalpathpanel), [`SimilarAlbums`](frontend.md#similaralbums), [`SimilarDialog`](frontend.md#similardialog), [`SleepTimerPanel`](frontend.md#sleeptimerpanel), [`SmartPlaylistDialog`](frontend.md#smartplaylistdialog), [`Stars`](frontend.md#stars), [`Toasts`](frontend.md#toasts), [`TrackInfoDialog`](frontend.md#trackinfodialog), [`TrackText`](frontend.md#tracktext), [`VirtualList`](frontend.md#virtuallist), [`Visualizer`](frontend.md#visualizer), [`VisualizerView`](frontend.md#visualizerview), [`WelcomeView`](frontend.md#welcomeview), [`WorkbenchView`](frontend.md#workbenchview)
 - `app/src/lib/components/dev/`: [`DevPage`](frontend.md#devpage)
-- `app/src/lib/components/settings/`: [`AboutOptions`](frontend.md#aboutoptions), [`AppearanceOptions`](frontend.md#appearanceoptions), [`DisplayOptions`](frontend.md#displayoptions), [`EffectsOptions`](frontend.md#effectsoptions), [`EqualiserOptions`](frontend.md#equaliseroptions), [`FeaturesOptions`](frontend.md#featuresoptions), [`GeneralOptions`](frontend.md#generaloptions), [`LibraryFolders`](frontend.md#libraryfolders), [`Options`](frontend.md#options), [`OrderedChoices`](frontend.md#orderedchoices), [`PlaybackOptions`](frontend.md#playbackoptions), [`RecordingOptions`](frontend.md#recordingoptions), [`SortRules`](frontend.md#sortrules), [`VisualizerOptions`](frontend.md#visualizeroptions)
+- `app/src/lib/components/settings/`: [`AboutOptions`](frontend.md#aboutoptions), [`AppearanceOptions`](frontend.md#appearanceoptions), [`DisplayOptions`](frontend.md#displayoptions), [`EffectsOptions`](frontend.md#effectsoptions), [`EqualiserOptions`](frontend.md#equaliseroptions), [`FeaturesOptions`](frontend.md#featuresoptions), [`GeneralOptions`](frontend.md#generaloptions), [`LibraryFolders`](frontend.md#libraryfolders), [`Options`](frontend.md#options), [`OrderedChoices`](frontend.md#orderedchoices), [`PlaybackOptions`](frontend.md#playbackoptions), [`PlexSignIn`](frontend.md#plexsignin), [`RecordingOptions`](frontend.md#recordingoptions), [`ServerOptions`](frontend.md#serveroptions), [`SortRules`](frontend.md#sortrules), [`VisualizerOptions`](frontend.md#visualizeroptions)
 - `app/src/lib/generated/`: [`generated/commands.ts`](frontend.md#generatedcommandsts), [`generated/ipc.ts`](frontend.md#generatedipcts), [`generated/settings.ts`](frontend.md#generatedsettingsts)
 - `app/src/lib/i18n/`: [`MessageKey`](frontend.md#messagekey), [`Params`](frontend.md#params)
-- `app/src/lib/state/`: [`AlbumRef`](frontend.md#albumref), [`ArtistRef`](frontend.md#artistref), [`Crumb`](frontend.md#crumb), [`Dialog`](frontend.md#dialog-1), [`DragPayload`](frontend.md#dragpayload), [`DropTarget`](frontend.md#droptarget), [`MainView`](frontend.md#mainview), [`MenuItem`](frontend.md#menuitem), [`SettingsSection`](frontend.md#settingssection), [`SimilarSeed`](frontend.md#similarseed), [`state/appearance.svelte.ts`](frontend.md#stateappearancesveltets), [`state/collection.svelte.ts`](frontend.md#statecollectionsveltets), [`state/drag.svelte.ts`](frontend.md#statedragsveltets), [`state/effects.svelte.ts`](frontend.md#stateeffectssveltets), [`state/features.svelte.ts`](frontend.md#statefeaturessveltets), [`state/library.svelte.ts`](frontend.md#statelibrarysveltets), [`state/metadata.svelte.ts`](frontend.md#statemetadatasveltets), [`state/player.svelte.ts`](frontend.md#stateplayersveltets), [`state/position.svelte.ts`](frontend.md#statepositionsveltets), [`state/recording.svelte.ts`](frontend.md#staterecordingsveltets), [`state/settings.svelte.ts`](frontend.md#statesettingssveltets), [`state/toasts.svelte.ts`](frontend.md#statetoastssveltets), [`state/ui.svelte.ts`](frontend.md#stateuisveltets), [`state/updates.svelte.ts`](frontend.md#stateupdatessveltets), [`state/visualizer.svelte.ts`](frontend.md#statevisualizersveltets), [`state/workbench.svelte.ts`](frontend.md#stateworkbenchsveltets), [`Toast`](frontend.md#toast)
+- `app/src/lib/state/`: [`AlbumRef`](frontend.md#albumref), [`ArtistRef`](frontend.md#artistref), [`Crumb`](frontend.md#crumb), [`Dialog`](frontend.md#dialog-1), [`DragPayload`](frontend.md#dragpayload), [`DropTarget`](frontend.md#droptarget), [`MainView`](frontend.md#mainview), [`MenuItem`](frontend.md#menuitem), [`SettingsSection`](frontend.md#settingssection), [`SimilarSeed`](frontend.md#similarseed), [`state/appearance.svelte.ts`](frontend.md#stateappearancesveltets), [`state/collection.svelte.ts`](frontend.md#statecollectionsveltets), [`state/drag.svelte.ts`](frontend.md#statedragsveltets), [`state/effects.svelte.ts`](frontend.md#stateeffectssveltets), [`state/features.svelte.ts`](frontend.md#statefeaturessveltets), [`state/library.svelte.ts`](frontend.md#statelibrarysveltets), [`state/metadata.svelte.ts`](frontend.md#statemetadatasveltets), [`state/player.svelte.ts`](frontend.md#stateplayersveltets), [`state/position.svelte.ts`](frontend.md#statepositionsveltets), [`state/recording.svelte.ts`](frontend.md#staterecordingsveltets), [`state/servers.svelte.ts`](frontend.md#stateserverssveltets), [`state/settings.svelte.ts`](frontend.md#statesettingssveltets), [`state/toasts.svelte.ts`](frontend.md#statetoastssveltets), [`state/ui.svelte.ts`](frontend.md#stateuisveltets), [`state/updates.svelte.ts`](frontend.md#stateupdatessveltets), [`state/visualizer.svelte.ts`](frontend.md#statevisualizersveltets), [`state/workbench.svelte.ts`](frontend.md#stateworkbenchsveltets), [`Toast`](frontend.md#toast)
 - `app/src/lib/visualizer/`: [`FlashGuard`](frontend.md#flashguard), [`Frame`](frontend.md#frame), [`Key`](frontend.md#key), [`Palette`](frontend.md#palette), [`Recurrence`](frontend.md#recurrence), [`Renderer`](frontend.md#renderer), [`Rgb`](frontend.md#rgb), [`Scene`](frontend.md#scene), [`TempoTracker`](frontend.md#tempotracker), [`Triad`](frontend.md#triad), [`Visualization`](frontend.md#visualization)
 - `app/src/routes/`: [`routes/+layout.svelte`](frontend.md#routeslayoutsvelte), [`routes/+page.svelte`](frontend.md#routespagesvelte)
 - `app/src/routes/dev/`: [`routes/dev/+page.svelte`](frontend.md#routesdevpagesvelte)
@@ -100,6 +101,7 @@ modules declared under it) is left out.
 
 - [`AboutOptions`](frontend.md#aboutoptions): Frontend, `app/src/lib/components/settings/AboutOptions.svelte`
 - [`Account`](rust.md#account): Rust backend, `app/src-tauri/src/metadata/keys.rs`
+- [`Account`](rust.md#account-1): Rust backend, `app/src-tauri/src/servers/plextv.rs`
 - [`AlbumCard`](rust.md#albumcard): Rust backend, `app/src-tauri/src/library/discover.rs`
 - [`AlbumCards`](frontend.md#albumcards): Frontend, `app/src/lib/components/AlbumCards.svelte`
 - [`AlbumDetails`](rust.md#albumdetails): Rust backend, `app/src-tauri/src/library/albums.rs`
@@ -166,6 +168,7 @@ modules declared under it) is left out.
 - [`anomp_track_options`](c-api.md#anomp_track_options): C API, `core/include/anomp/anomp.h`
 - [`anomp_volume_callback`](c-api.md#anomp_volume_callback): C API, `core/include/anomp/anomp.h`
 - [`anomp_volume_watcher`](c-api.md#anomp_volume_watcher): C API, `core/include/anomp/anomp.h`
+- [`Answer`](rust.md#answer): Rust backend, `app/src-tauri/src/servers/discovery.rs`
 - [`AppearanceOptions`](frontend.md#appearanceoptions): Frontend, `app/src/lib/components/settings/AppearanceOptions.svelte`
 - [`AppearanceSettings`](rust.md#appearancesettings): Rust backend, `app/src-tauri/src/theme.rs`
 - [`AppleBackend`](core.md#applebackend): Core (C++), `core/src/DockMenu_apple.mm`
@@ -192,12 +195,15 @@ modules declared under it) is left out.
 - [`ArtKey`](rust.md#artkey): Rust backend, `app/src-tauri/src/library/art.rs`
 - [`ArtSize`](frontend.md#artsize): Frontend, `app/src/lib/api.ts`
 - [`Ask`](rust.md#ask): Rust backend, `app/src-tauri/src/queue/opening.rs`
+- [`AudioCache`](rust.md#audiocache): Rust backend, `app/src-tauri/src/servers/cache.rs`
 - [`AudioEngine`](core.md#audioengine): Core (C++), `core/src/AudioEngine.h`
 - [`AudioEngine::DeviceInfo`](core.md#audioenginedeviceinfo): Core (C++), `core/src/AudioEngine.h`
+- [`AuthenticationResult`](rust.md#authenticationresult): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 
 ### B
 
 - [`Block`](frontend.md#block): Frontend, `app/src/lib/guide.ts`
+- [`Body`](rust.md#body): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`BookmarkHandle`](core.md#bookmarkhandle): Core (C++), `core/src/anomp_c_api.cpp`
 - [`Bookmarks`](rust.md#bookmarks): Rust backend, `app/src-tauri/src/library/access.rs`
 - [`BrowsePage`](rust.md#browsepage): Rust backend, `app/src-tauri/src/library/browse.rs`
@@ -206,6 +212,7 @@ modules declared under it) is left out.
 
 ### C
 
+- [`CachedName`](rust.md#cachedname): Rust backend, `app/src-tauri/src/servers/cache.rs`
 - [`CacheEntries`](rust.md#cacheentries): Rust backend, `app/src-tauri/src/library/art.rs`
 - [`CallContext`](rust.md#callcontext): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`Candidate`](rust.md#candidate): Rust backend, `app/src-tauri/src/metadata/matcher.rs`
@@ -225,6 +232,7 @@ modules declared under it) is left out.
 - [`Command`](rust.md#command): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`Condition`](rust.md#condition): Rust backend, `app/src-tauri/src/library/smart.rs`
 - [`Conditions`](frontend.md#conditions): Frontend, `app/src/lib/theme.ts`
+- [`Connection`](rust.md#connection): Rust backend, `app/src-tauri/src/servers/plextv.rs`
 - [`ContextMenu`](frontend.md#contextmenu): Frontend, `app/src/lib/components/ContextMenu.svelte`
 - [`ContrastIssue`](frontend.md#contrastissue): Frontend, `app/src/lib/theme.ts`
 - [`Copy`](rust.md#copy): Rust backend, `app/src-tauri/src/library/db.rs`
@@ -256,14 +264,18 @@ modules declared under it) is left out.
 - [`DelayLine`](effects.md#delayline): Effects (C++), `effects/src/Dsp.h`
 - [`Density`](rust.md#density): Rust backend, `app/src-tauri/src/theme.rs`
 - [`DetailedLog`](rust.md#detailedlog): Rust backend, `app/src-tauri/src/logging.rs`
+- [`Device`](rust.md#device): Rust backend, `app/src-tauri/src/servers/mod.rs`
 - [`DeviceInfo`](rust.md#deviceinfo): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`DevPage`](frontend.md#devpage): Frontend, `app/src/lib/components/dev/DevPage.svelte`
 - [`Dialog`](frontend.md#dialog): Frontend, `app/src/lib/components/Dialog.svelte`
 - [`Dialog`](frontend.md#dialog-1): Frontend, `app/src/lib/state/ui.svelte.ts`
 - [`Dialogs`](frontend.md#dialogs): Frontend, `app/src/lib/components/Dialogs.svelte`
+- [`Directories`](rust.md#directories): Rust backend, `app/src-tauri/src/servers/plex.rs`
+- [`Directory`](rust.md#directory): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`Discography`](rust.md#discography): Rust backend, `app/src-tauri/src/metadata/discography.rs`
 - [`DiscographyPage`](frontend.md#discographypage): Frontend, `app/src/lib/components/DiscographyPage.svelte`
 - [`DiscogsReleases`](rust.md#discogsreleases): Rust backend, `app/src-tauri/src/metadata/discogs.rs`
+- [`Discovered`](rust.md#discovered): Rust backend, `app/src-tauri/src/servers/discovery.rs`
 - [`DisplayOptions`](frontend.md#displayoptions): Frontend, `app/src/lib/components/settings/DisplayOptions.svelte`
 - [`DisplaySettings`](rust.md#displaysettings): Rust backend, `app/src-tauri/src/settings.rs`
 - [`DockMenu`](core.md#dockmenu): Core (C++), `core/src/DockMenu.h`
@@ -300,6 +312,7 @@ modules declared under it) is left out.
 - [`Entry`](rust.md#entry-1): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`Entry`](rust.md#entry-2): Rust backend, `app/src-tauri/src/queue/store.rs`
 - [`Entry`](rust.md#entry-3): Rust backend, `app/src-tauri/src/recording.rs`
+- [`Entry`](rust.md#entry-4): Rust backend, `app/src-tauri/src/servers/cache.rs`
 - [`Equaliser`](core.md#equaliser): Core (C++), `core/src/Equaliser.h`
 - [`Equaliser::Biquad`](core.md#equaliserbiquad): Core (C++), `core/src/Equaliser.h`
 - [`EqualiserOptions`](frontend.md#equaliseroptions): Frontend, `app/src/lib/components/settings/EqualiserOptions.svelte`
@@ -354,12 +367,15 @@ modules declared under it) is left out.
 - [`Folder`](rust.md#folder): Rust backend, `app/src-tauri/src/library/mod.rs`
 - [`FolderAccess`](core.md#folderaccess): Core (C++), `core/src/FolderAccess.h`
 - [`FolderAccess`](rust.md#folderaccess): Rust backend, `app/src-tauri/src/anomp.rs`
+- [`FolderKind`](rust.md#folderkind): Rust backend, `app/src-tauri/src/library/mod.rs`
 - [`Folders`](rust.md#folders): Rust backend, `app/src-tauri/src/library/art.rs`
 - [`FolderScan`](rust.md#folderscan): Rust backend, `app/src-tauri/src/library/scanner.rs`
 - [`FolderState`](rust.md#folderstate): Rust backend, `app/src-tauri/src/library/access.rs`
 - [`FolderStates`](rust.md#folderstates): Rust backend, `app/src-tauri/src/library/availability.rs`
 - [`FolderStatus`](rust.md#folderstatus): Rust backend, `app/src-tauri/src/library/access.rs`
+- [`Follower`](rust.md#follower): Rust backend, `app/src-tauri/src/servers/playing.rs`
 - [`Font`](rust.md#font): Rust backend, `app/src-tauri/src/theme.rs`
+- [`Form`](rust.md#form): Rust backend, `app/src-tauri/src/servers/cache.rs`
 - [`FormatRegistry`](core.md#formatregistry): Core (C++), `core/src/FormatRegistry.h`
 - [`Forwarder`](core.md#forwarder): Core (C++), `core/src/Log.cpp`
 - [`Found`](frontend.md#found): Frontend, `app/src/lib/find.ts`
@@ -377,6 +393,7 @@ modules declared under it) is left out.
 - [`Group`](rust.md#group): Rust backend, `app/src-tauri/src/library/browse.rs`
 - [`GroupKey`](rust.md#groupkey): Rust backend, `app/src-tauri/src/library/browse.rs`
 - [`Groups`](rust.md#groups): Rust backend, `app/src-tauri/src/library/browse.rs`
+- [`Guid`](rust.md#guid): Rust backend, `app/src-tauri/src/servers/plex.rs`
 
 ### H
 
@@ -396,17 +413,24 @@ modules declared under it) is left out.
 ### I
 
 - [`Icon`](frontend.md#icon): Frontend, `app/src/lib/components/Icon.svelte`
+- [`Identity`](rust.md#identity): Rust backend, `app/src-tauri/src/servers/plex.rs`
+- [`IdentityDto`](rust.md#identitydto): Rust backend, `app/src-tauri/src/servers/plex.rs`
+- [`IdOnly`](rust.md#idonly): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`Image`](rust.md#image): Rust backend, `app/src-tauri/src/metadata/coverartarchive.rs`
 - [`ImageCache`](rust.md#imagecache): Rust backend, `app/src-tauri/src/metadata/images.rs`
+- [`ImageTags`](rust.md#imagetags): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`ImportReport`](rust.md#importreport): Rust backend, `app/src-tauri/src/library/playlists.rs`
 - [`ImportReport`](rust.md#importreport-1): Rust backend, `app/src-tauri/src/library/transfer.rs`
 - [`InEngine`](rust.md#inengine): Rust backend, `app/src-tauri/src/queue/opening.rs`
 - [`Inline`](frontend.md#inline): Frontend, `app/src/lib/guide.ts`
 - [`Inner`](rust.md#inner): Rust backend, `app/src-tauri/src/updates.rs`
 - [`Item`](rust.md#item): Rust backend, `app/src-tauri/src/queue/model.rs`
+- [`Item`](rust.md#item-1): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`Item`](rust.md#item-2): Rust backend, `app/src-tauri/src/servers/plex.rs`
 
 ### J
 
+- [`Jellyfin`](rust.md#jellyfin): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`Job`](rust.md#job): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`Jobs`](rust.md#jobs): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`JuceRuntime`](core.md#juceruntime): Core (C++), `core/src/AudioEngine.h`
@@ -425,6 +449,8 @@ modules declared under it) is left out.
 - [`Level`](core.md#level): Core (C++), `core/src/Log.h`
 - [`Level`](rust.md#level): Rust backend, `app/src-tauri/src/library/rules.rs`
 - [`Lfo`](effects.md#lfo): Effects (C++), `effects/src/Dsp.h`
+- [`Library`](rust.md#library): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`Library`](rust.md#library-1): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`LibraryFolders`](frontend.md#libraryfolders): Frontend, `app/src/lib/components/settings/LibraryFolders.svelte`
 - [`LibrarySettings`](rust.md#librarysettings): Rust backend, `app/src-tauri/src/settings.rs`
 - [`LibraryState`](rust.md#librarystate): Rust backend, `app/src-tauri/src/library/commands.rs`
@@ -452,6 +478,7 @@ modules declared under it) is left out.
 - [`MainView`](frontend.md#mainview): Frontend, `app/src/lib/state/ui.svelte.ts`
 - [`MarkKind`](rust.md#markkind): Rust backend, `app/src-tauri/src/library/marks.rs`
 - [`Media`](rust.md#media): Rust backend, `app/src-tauri/src/media.rs`
+- [`Media`](rust.md#media-1): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`MediaCommand`](rust.md#mediacommand): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`MediaControls`](core.md#mediacontrols): Core (C++), `core/src/MediaControls.h`
 - [`MediaControls`](rust.md#mediacontrols): Rust backend, `app/src-tauri/src/anomp.rs`
@@ -460,6 +487,8 @@ modules declared under it) is left out.
 - [`MediaControls::Command`](core.md#mediacontrolscommand): Core (C++), `core/src/MediaControls.h`
 - [`MediaControls::Playback`](core.md#mediacontrolsplayback): Core (C++), `core/src/MediaControls.h`
 - [`MediaControls::State`](core.md#mediacontrolsstate): Core (C++), `core/src/MediaControls.h`
+- [`MediaSource`](rust.md#mediasource): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`MediaStream`](rust.md#mediastream): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`MenuItem`](frontend.md#menuitem): Frontend, `app/src/lib/state/ui.svelte.ts`
 - [`MenuItem`](rust.md#menuitem): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`MenuState`](rust.md#menustate): Rust backend, `app/src-tauri/src/shell/menu.rs`
@@ -479,6 +508,7 @@ modules declared under it) is left out.
 
 ### N
 
+- [`NameId`](rust.md#nameid): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`Node`](rust.md#node): Rust backend, `app/src-tauri/src/library/browse.rs`
 - [`NoticesDialog`](frontend.md#noticesdialog): Frontend, `app/src/lib/components/NoticesDialog.svelte`
 - [`NowPlaying`](frontend.md#nowplaying): Frontend, `app/src/lib/components/NowPlaying.svelte`
@@ -488,6 +518,7 @@ modules declared under it) is left out.
 
 ### O
 
+- [`OfflineStatus`](rust.md#offlinestatus): Rust backend, `app/src-tauri/src/servers/offline.rs`
 - [`OnePole`](effects.md#onepole): Effects (C++), `effects/src/Dsp.h`
 - [`OpenFolder`](rust.md#openfolder): Rust backend, `app/src-tauri/src/library/access.rs`
 - [`Opening`](rust.md#opening): Rust backend, `app/src-tauri/src/queue/model.rs`
@@ -511,6 +542,8 @@ modules declared under it) is left out.
 
 - [`Page`](frontend.md#page): Frontend, `app/src/lib/guide.ts`
 - [`Page`](rust.md#page): Rust backend, `app/src-tauri/src/metadata/wikipedia.rs`
+- [`Page`](rust.md#page-1): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`Page`](rust.md#page-2): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`PageAction`](frontend.md#pageaction): Frontend, `app/src/lib/find.ts`
 - [`PairError`](rust.md#pairerror): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`Pairing`](rust.md#pairing): Rust backend, `app/src-tauri/src/remote/mod.rs`
@@ -519,6 +552,7 @@ modules declared under it) is left out.
 - [`Params`](frontend.md#params): Frontend, `app/src/lib/i18n/index.ts`
 - [`Params`](rust.md#params): Rust backend, `app/src-tauri/src/library/browse.rs`
 - [`Part`](rust.md#part): Rust backend, `app/src-tauri/src/library/scanner.rs`
+- [`Part`](rust.md#part-1): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`Pending`](rust.md#pending): Rust backend, `app/src-tauri/src/library/scanner.rs`
 - [`Phaser`](effects.md#phaser): Effects (C++), `effects/src/Modulation.h`
 - [`Phaser::Channel`](effects.md#phaserchannel): Effects (C++), `effects/src/Modulation.h`
@@ -526,6 +560,8 @@ modules declared under it) is left out.
 - [`Pick`](rust.md#pick): Rust backend, `app/src-tauri/src/queue/radio.rs`
 - [`Picture`](rust.md#picture): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`PictureView`](rust.md#pictureview): Rust backend, `app/src-tauri/src/library/info.rs`
+- [`Pin`](rust.md#pin): Rust backend, `app/src-tauri/src/servers/plextv.rs`
+- [`PinDto`](rust.md#pindto): Rust backend, `app/src-tauri/src/servers/plextv.rs`
 - [`Place`](frontend.md#place): Frontend, `app/src/lib/find.ts`
 - [`Placeholders`](rust.md#placeholders): Rust backend, `app/src-tauri/src/library/scanner.rs`
 - [`Platform`](frontend.md#platform): Frontend, `app/src/lib/platform.ts`
@@ -550,8 +586,18 @@ modules declared under it) is left out.
 - [`Playlist`](rust.md#playlist): Rust backend, `app/src-tauri/src/library/playlists.rs`
 - [`PlaylistData`](rust.md#playlistdata): Rust backend, `app/src-tauri/src/library/transfer.rs`
 - [`PlaylistEntry`](rust.md#playlistentry): Rust backend, `app/src-tauri/src/library/playlists.rs`
+- [`PlaylistItem`](rust.md#playlistitem): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`PlaylistPage`](rust.md#playlistpage): Rust backend, `app/src-tauri/src/library/playlists.rs`
 - [`PlaylistView`](frontend.md#playlistview): Frontend, `app/src/lib/components/PlaylistView.svelte`
+- [`Plex`](rust.md#plex): Rust backend, `app/src-tauri/src/servers/plex.rs`
+- [`PlexAccount`](rust.md#plexaccount): Rust backend, `app/src-tauri/src/servers/plex_commands.rs`
+- [`PlexAnswer`](rust.md#plexanswer): Rust backend, `app/src-tauri/src/servers/discovery.rs`
+- [`PlexLibrary`](rust.md#plexlibrary): Rust backend, `app/src-tauri/src/servers/plex_commands.rs`
+- [`PlexPin`](rust.md#plexpin): Rust backend, `app/src-tauri/src/servers/plex_commands.rs`
+- [`PlexServer`](rust.md#plexserver): Rust backend, `app/src-tauri/src/servers/plex_commands.rs`
+- [`PlexSignIn`](frontend.md#plexsignin): Frontend, `app/src/lib/components/settings/PlexSignIn.svelte`
+- [`PlexTv`](rust.md#plextv): Rust backend, `app/src-tauri/src/servers/plextv.rs`
+- [`Policy`](rust.md#policy): Rust backend, `app/src-tauri/src/servers/fetch.rs`
 - [`Popover`](frontend.md#popover): Frontend, `app/src/lib/components/Popover.svelte`
 - [`Position`](rust.md#position): Rust backend, `app/src-tauri/src/queue/mod.rs`
 - [`PositionPayload`](rust.md#positionpayload): Rust backend, `app/src-tauri/src/audio.rs`
@@ -564,6 +610,8 @@ modules declared under it) is left out.
 - [`Priority`](rust.md#priority): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`Profile`](rust.md#profile): Rust backend, `app/src-tauri/src/library/similar.rs`
 - [`Progress`](rust.md#progress): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
+- [`ProviderIds`](rust.md#providerids): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`PublicInfo`](rust.md#publicinfo): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 - [`Published`](rust.md#published): Rust backend, `app/src-tauri/src/media.rs`
 - [`Publisher`](rust.md#publisher): Rust backend, `app/src-tauri/src/media.rs`
 
@@ -575,6 +623,9 @@ modules declared under it) is left out.
 - [`QueueData`](rust.md#queuedata): Rust backend, `app/src-tauri/src/library/transfer.rs`
 - [`QueuePanel`](frontend.md#queuepanel): Frontend, `app/src/lib/components/QueuePanel.svelte`
 - [`QueueState`](rust.md#queuestate): Rust backend, `app/src-tauri/src/queue/model.rs`
+- [`QuickConnect`](rust.md#quickconnect): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`QuickConnectStart`](rust.md#quickconnectstart): Rust backend, `app/src-tauri/src/servers/commands.rs`
+- [`QuickConnectState`](rust.md#quickconnectstate): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
 
 ### R
 
@@ -672,16 +723,23 @@ modules declared under it) is left out.
 - [`ReleaseSource`](rust.md#releasesource): Rust backend, `app/src-tauri/src/metadata/albums.rs`
 - [`ReleaseTrack`](rust.md#releasetrack): Rust backend, `app/src-tauri/src/metadata/musicbrainz.rs`
 - [`RemoteDevice`](rust.md#remotedevice): Rust backend, `app/src-tauri/src/remote/mod.rs`
+- [`RemoteFile`](rust.md#remotefile): Rust backend, `app/src-tauri/src/servers/fetch.rs`
 - [`RemoteServer`](rust.md#remoteserver): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`RemoteStatus`](rust.md#remotestatus): Rust backend, `app/src-tauri/src/remote/mod.rs`
 - [`Renderer`](frontend.md#renderer): Frontend, `app/src/lib/visualizer/types.ts`
 - [`Repeat`](rust.md#repeat): Rust backend, `app/src-tauri/src/queue/model.rs`
 - [`ReplayGain`](rust.md#replaygain): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`ReplayGainMode`](rust.md#replaygainmode): Rust backend, `app/src-tauri/src/settings.rs`
+- [`Report`](rust.md#report): Rust backend, `app/src-tauri/src/servers/playing.rs`
+- [`Reporter`](rust.md#reporter): Rust backend, `app/src-tauri/src/servers/playing.rs`
 - [`Request`](rust.md#request): Rust backend, `app/src-tauri/src/remote/http.rs`
+- [`Request`](rust.md#request-1): Rust backend, `app/src-tauri/src/servers/api.rs`
 - [`Requests`](rust.md#requests): Rust backend, `app/src-tauri/src/queue/opening.rs`
 - [`Resolved`](rust.md#resolved): Rust backend, `app/src-tauri/src/library/transfer.rs`
 - [`Resolved`](rust.md#resolved-1): Rust backend, `app/src-tauri/src/queue/opening.rs`
+- [`Resolver`](rust.md#resolver): Rust backend, `app/src-tauri/src/servers/address.rs`
+- [`Resource`](rust.md#resource): Rust backend, `app/src-tauri/src/servers/plextv.rs`
+- [`ResourceDto`](rust.md#resourcedto): Rust backend, `app/src-tauri/src/servers/plextv.rs`
 - [`Response`](rust.md#response): Rust backend, `app/src-tauri/src/metadata/http.rs`
 - [`Response`](rust.md#response-1): Rust backend, `app/src-tauri/src/metadata/wikipedia.rs`
 - [`Response`](rust.md#response-2): Rust backend, `app/src-tauri/src/remote/http.rs`
@@ -719,12 +777,24 @@ modules declared under it) is left out.
 - [`SearchKind`](rust.md#searchkind): Rust backend, `app/src-tauri/src/library/search.rs`
 - [`SearchResults`](frontend.md#searchresults): Frontend, `app/src/lib/components/SearchResults.svelte`
 - [`SearchResults`](rust.md#searchresults): Rust backend, `app/src-tauri/src/library/search.rs`
+- [`Section`](rust.md#section): Rust backend, `app/src-tauri/src/servers/mod.rs`
 - [`Seed`](rust.md#seed): Rust backend, `app/src-tauri/src/library/similar.rs`
 - [`Seed`](rust.md#seed-1): Rust backend, `app/src-tauri/src/metadata/outside.rs`
 - [`SeedIndex`](rust.md#seedindex): Rust backend, `app/src-tauri/src/library/similar.rs`
 - [`SeekBar`](frontend.md#seekbar): Frontend, `app/src/lib/components/SeekBar.svelte`
 - [`Selection`](frontend.md#selection): Frontend, `app/src/lib/selection.ts`
 - [`Sender`](rust.md#sender): Rust backend, `app/src-tauri/src/history/listenbrainz.rs`
+- [`ServerApi`](rust.md#serverapi): Rust backend, `app/src-tauri/src/servers/api.rs`
+- [`ServerAudio`](rust.md#serveraudio): Rust backend, `app/src-tauri/src/servers/fetch.rs`
+- [`ServerCheck`](rust.md#servercheck): Rust backend, `app/src-tauri/src/servers/commands.rs`
+- [`ServerInfo`](rust.md#serverinfo): Rust backend, `app/src-tauri/src/servers/mod.rs`
+- [`ServerLibrary`](rust.md#serverlibrary): Rust backend, `app/src-tauri/src/servers/sync.rs`
+- [`ServerOptions`](frontend.md#serveroptions): Frontend, `app/src/lib/components/settings/ServerOptions.svelte`
+- [`ServerPlaylist`](rust.md#serverplaylist): Rust backend, `app/src-tauri/src/servers/mod.rs`
+- [`ServerSettings`](rust.md#serversettings): Rust backend, `app/src-tauri/src/settings.rs`
+- [`ServersState`](rust.md#serversstate): Rust backend, `app/src-tauri/src/servers/commands.rs`
+- [`ServerSummary`](rust.md#serversummary): Rust backend, `app/src-tauri/src/servers/commands.rs`
+- [`ServerTrack`](rust.md#servertrack): Rust backend, `app/src-tauri/src/servers/mod.rs`
 - [`ServiceSettings`](rust.md#servicesettings): Rust backend, `app/src-tauri/src/metadata/settings.rs`
 - [`ServicesPanel`](frontend.md#servicespanel): Frontend, `app/src/lib/components/ServicesPanel.svelte`
 - [`Session`](rust.md#session): Rust backend, `app/src-tauri/src/recording.rs`
@@ -740,6 +810,7 @@ modules declared under it) is left out.
 - [`SignalPathPanel`](frontend.md#signalpathpanel): Frontend, `app/src/lib/components/SignalPathPanel.svelte`
 - [`SignalPathPayload`](rust.md#signalpathpayload): Rust backend, `app/src-tauri/src/audio.rs`
 - [`SignalTap`](core.md#signaltap): Core (C++), `core/src/SignalTap.h`
+- [`SignedIn`](rust.md#signedin): Rust backend, `app/src-tauri/src/servers/mod.rs`
 - [`SimilarAlbum`](rust.md#similaralbum): Rust backend, `app/src-tauri/src/library/similar.rs`
 - [`SimilarAlbums`](frontend.md#similaralbums): Frontend, `app/src/lib/components/SimilarAlbums.svelte`
 - [`SimilarArtist`](rust.md#similarartist): Rust backend, `app/src-tauri/src/library/similar.rs`
@@ -762,6 +833,7 @@ modules declared under it) is left out.
 - [`SortRule`](rust.md#sortrule): Rust backend, `app/src-tauri/src/library/rules.rs`
 - [`SortRules`](frontend.md#sortrules): Frontend, `app/src/lib/components/settings/SortRules.svelte`
 - [`SortSettings`](rust.md#sortsettings): Rust backend, `app/src-tauri/src/library/rules.rs`
+- [`Source`](rust.md#source): Rust backend, `app/src-tauri/src/servers/mod.rs`
 - [`SourceCandidates`](rust.md#sourcecandidates): Rust backend, `app/src-tauri/src/metadata/commands.rs`
 - [`SourcedArticle`](rust.md#sourcedarticle): Rust backend, `app/src-tauri/src/metadata/artists.rs`
 - [`SourcedLink`](rust.md#sourcedlink): Rust backend, `app/src-tauri/src/library/albums.rs`
@@ -788,6 +860,7 @@ modules declared under it) is left out.
 - [`state/player.svelte.ts`](frontend.md#stateplayersveltets): Frontend, `app/src/lib/state/player.svelte.ts`
 - [`state/position.svelte.ts`](frontend.md#statepositionsveltets): Frontend, `app/src/lib/state/position.svelte.ts`
 - [`state/recording.svelte.ts`](frontend.md#staterecordingsveltets): Frontend, `app/src/lib/state/recording.svelte.ts`
+- [`state/servers.svelte.ts`](frontend.md#stateserverssveltets): Frontend, `app/src/lib/state/servers.svelte.ts`
 - [`state/settings.svelte.ts`](frontend.md#statesettingssveltets): Frontend, `app/src/lib/state/settings.svelte.ts`
 - [`state/toasts.svelte.ts`](frontend.md#statetoastssveltets): Frontend, `app/src/lib/state/toasts.svelte.ts`
 - [`state/ui.svelte.ts`](frontend.md#stateuisveltets): Frontend, `app/src/lib/state/ui.svelte.ts`
@@ -799,11 +872,16 @@ modules declared under it) is left out.
 - [`StoredFolder`](rust.md#storedfolder): Rust backend, `app/src-tauri/src/recording.rs`
 - [`Subject`](rust.md#subject): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`Subscribers`](rust.md#subscribers): Rust backend, `app/src-tauri/src/visualizer.rs`
+- [`Synced`](rust.md#synced): Rust backend, `app/src-tauri/src/servers/sync.rs`
+- [`SyncError`](rust.md#syncerror): Rust backend, `app/src-tauri/src/servers/sync.rs`
+- [`SyncOptions`](rust.md#syncoptions): Rust backend, `app/src-tauri/src/servers/sync.rs`
 - [`System`](rust.md#system): Rust backend, `app/src-tauri/src/library/access.rs`
+- [`System`](rust.md#system-1): Rust backend, `app/src-tauri/src/servers/address.rs`
 - [`SystemClock`](rust.md#systemclock): Rust backend, `app/src-tauri/src/metadata/http.rs`
 
 ### T
 
+- [`Tag`](rust.md#tag): Rust backend, `app/src-tauri/src/servers/plex.rs`
 - [`TagParts`](core.md#tagparts): Core (C++), `core/src/TagReader.h`
 - [`TagParts`](rust.md#tagparts): Rust backend, `app/src-tauri/src/anomp.rs`
 - [`Tags`](rust.md#tags): Rust backend, `app/src-tauri/src/anomp.rs`
@@ -855,6 +933,8 @@ modules declared under it) is left out.
 - [`UreqTransport`](rust.md#ureqtransport): Rust backend, `app/src-tauri/src/metadata/http.rs`
 - [`Usable`](rust.md#usable): Rust backend, `app/src-tauri/src/metadata/jobs.rs`
 - [`UserData`](rust.md#userdata): Rust backend, `app/src-tauri/src/library/transfer.rs`
+- [`UserDto`](rust.md#userdto): Rust backend, `app/src-tauri/src/servers/jellyfin.rs`
+- [`UserDto`](rust.md#userdto-1): Rust backend, `app/src-tauri/src/servers/plextv.rs`
 
 ### V
 

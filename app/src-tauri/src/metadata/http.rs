@@ -8,8 +8,13 @@
 //! database (`cache`) and falls back to a stale copy offline; `get_json_fresh`
 //! keeps them in memory for a short while only, for services whose terms
 //! forbid keeping their data (Discogs).
+//!
+//! `download` streams a large body (a music server's audio file, PLAN.md
+//! Phase 7e) into a file instead of memory, with no overall time limit, and
+//! can be given up on part way.
 
 use std::collections::{HashMap, VecDeque};
+use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -35,6 +40,13 @@ pub const JSON_LIMIT: u64 = 8 << 20;
 
 /// Images larger than this are refused.
 pub const IMAGE_LIMIT: u64 = 32 << 20;
+
+/// The longest a download's body may take to arrive; the caller gives up
+/// sooner (the queue's `DOWNLOAD_TIMEOUT`), this only ends a stalled one.
+const DOWNLOAD_BODY_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// What a download writes at a time between checks that it's still wanted.
+const DOWNLOAD_CHUNK: usize = 64 << 10;
 
 /// Minimum time between requests to a host. MusicBrainz allows about one a
 /// second per IP address and answers 503 beyond it; Discogs 60 a minute
@@ -84,14 +96,27 @@ pub enum TransportError {
     Failed(String),
 }
 
-/// Fetches a URL, following redirects, with `auth` as the `Authorization`
-/// header if given. A response with an error status is still a response.
+/// A request's headers beyond `Accept` and `Content-Type`, as names and
+/// values: an `Authorization` header, or a service's own (Plex's
+/// `X-Plex-*`, PLAN.md Phase 7f). They carry tokens, so they are kept out
+/// of URLs, errors and cache keys.
+pub type Headers<'a> = &'a [(&'a str, &'a str)];
+
+/// `auth` as the `Authorization` header, if given.
+fn authorization(auth: Option<&str>) -> Vec<(&str, &str)> {
+    auth.map(|auth| ("Authorization", auth))
+        .into_iter()
+        .collect()
+}
+
+/// Fetches a URL, following redirects, with `headers`. A response with an
+/// error status is still a response.
 pub trait Transport: Send + Sync {
     fn get(
         &self,
         url: &str,
         accept: &str,
-        auth: Option<&str>,
+        headers: Headers,
         limit: u64,
     ) -> Result<Response, TransportError>;
 
@@ -101,27 +126,70 @@ pub trait Transport: Send + Sync {
         url: &str,
         content_type: &str,
         body: &[u8],
-        auth: Option<&str>,
+        headers: Headers,
         limit: u64,
     ) -> Result<Response, TransportError>;
+
+    /// GETs `url` and, if the status is 2xx, writes the body to `sink`, at
+    /// most `limit` bytes, failing once `cancelled` says so. Returns the
+    /// status; an error status's body isn't written. By default the body
+    /// is read whole and then written, which suits fakes.
+    fn download(
+        &self,
+        url: &str,
+        headers: Headers,
+        sink: &mut dyn Write,
+        limit: u64,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<u16, TransportError> {
+        let response = self.get(url, "*/*", headers, limit)?;
+        if (200..300).contains(&response.status) {
+            if cancelled() {
+                return Err(TransportError::Failed(CANCELLED.into()));
+            }
+            sink.write_all(&response.body)
+                .map_err(|error| TransportError::Failed(error.to_string()))?;
+        }
+        Ok(response.status)
+    }
 }
 
-/// The real transport.
-pub struct UreqTransport(ureq::Agent);
+/// The error of a download given up on.
+pub const CANCELLED: &str = "The download was cancelled";
+
+/// The real transport: one agent for requests, which must finish within
+/// 30 seconds, and one for downloads, whose bodies may take minutes.
+pub struct UreqTransport {
+    agent: ureq::Agent,
+    downloads: ureq::Agent,
+}
 
 impl UreqTransport {
     pub fn new() -> UreqTransport {
-        let tls = ureq::tls::TlsConfig::builder()
-            .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-            .build();
+        let tls = || {
+            ureq::tls::TlsConfig::builder()
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build()
+        };
         let config = ureq::Agent::config_builder()
             .user_agent(user_agent())
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(10)))
             .timeout_global(Some(Duration::from_secs(30)))
-            .tls_config(tls)
+            .tls_config(tls())
             .build();
-        UreqTransport(config.into())
+        let downloads = ureq::Agent::config_builder()
+            .user_agent(user_agent())
+            .http_status_as_error(false)
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_recv_response(Some(Duration::from_secs(30)))
+            .timeout_recv_body(Some(DOWNLOAD_BODY_TIMEOUT))
+            .tls_config(tls())
+            .build();
+        UreqTransport {
+            agent: config.into(),
+            downloads: downloads.into(),
+        }
     }
 }
 
@@ -141,12 +209,12 @@ impl Transport for UreqTransport {
         &self,
         url: &str,
         accept: &str,
-        auth: Option<&str>,
+        headers: Headers,
         limit: u64,
     ) -> Result<Response, TransportError> {
-        let mut request = self.0.get(url).header("Accept", accept);
-        if let Some(auth) = auth {
-            request = request.header("Authorization", auth);
+        let mut request = self.agent.get(url).header("Accept", accept);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
         }
         let response = request.call().map_err(transport_error)?;
         read_response(response, limit)
@@ -157,19 +225,53 @@ impl Transport for UreqTransport {
         url: &str,
         content_type: &str,
         body: &[u8],
-        auth: Option<&str>,
+        headers: Headers,
         limit: u64,
     ) -> Result<Response, TransportError> {
         let mut request = self
-            .0
+            .agent
             .post(url)
             .header("Content-Type", content_type)
             .header("Accept", "application/json");
-        if let Some(auth) = auth {
-            request = request.header("Authorization", auth);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
         }
         let response = request.send(body).map_err(transport_error)?;
         read_response(response, limit)
+    }
+
+    fn download(
+        &self,
+        url: &str,
+        headers: Headers,
+        sink: &mut dyn Write,
+        limit: u64,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<u16, TransportError> {
+        let mut request = self.downloads.get(url).header("Accept", "*/*");
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        let mut response = request.call().map_err(transport_error)?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            return Ok(status);
+        }
+        let mut reader = response.body_mut().with_config().limit(limit).reader();
+        let mut buffer = vec![0; DOWNLOAD_CHUNK];
+        loop {
+            if cancelled() {
+                return Err(TransportError::Failed(CANCELLED.into()));
+            }
+            let read = match std::io::Read::read(&mut reader, &mut buffer) {
+                Ok(0) => return Ok(status),
+                Ok(read) => read,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(TransportError::Unreachable(error.to_string())),
+            };
+            sink.write_all(&buffer[..read])
+                .map_err(|error| TransportError::Failed(error.to_string()))?;
+        }
     }
 }
 
@@ -240,6 +342,9 @@ pub struct Client {
     transport: Box<dyn Transport>,
     clock: Box<dyn Clock>,
     hosts: Mutex<HashMap<String, HostState>>,
+    /// Hosts with their own minimum time between requests, instead of
+    /// `request_interval`'s (the user's own music servers).
+    intervals: Mutex<HashMap<String, Duration>>,
     /// `get_json_fresh`'s copies: URL, body and when it was fetched, oldest
     /// first.
     fresh: Mutex<VecDeque<(String, String, Instant)>>,
@@ -251,8 +356,28 @@ impl Client {
             transport,
             clock,
             hosts: Mutex::new(HashMap::new()),
+            intervals: Mutex::new(HashMap::new()),
             fresh: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Sends requests to `host` at most once per `interval`, instead of
+    /// the rate a public service is held to: a server of the user's own
+    /// can take them as fast as they come.
+    pub fn set_interval(&self, host: &str, interval: Duration) {
+        self.intervals
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(host.to_owned(), interval);
+    }
+
+    fn interval(&self, host: &str) -> Duration {
+        self.intervals
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(host)
+            .copied()
+            .unwrap_or_else(|| request_interval(host))
     }
 
     fn hosts(&self) -> std::sync::MutexGuard<'_, HashMap<String, HostState>> {
@@ -274,15 +399,75 @@ impl Client {
         auth: Option<&str>,
         limit: u64,
     ) -> Result<Response, Error> {
-        self.send(url, |transport| transport.get(url, accept, auth, limit))
+        self.get_with_headers(url, accept, &authorization(auth), limit)
+    }
+
+    /// As `get`, sending `headers`.
+    pub fn get_with_headers(
+        &self,
+        url: &str,
+        accept: &str,
+        headers: Headers,
+        limit: u64,
+    ) -> Result<Response, Error> {
+        self.send(url, |transport| transport.get(url, accept, headers, limit))
     }
 
     /// POSTs `body` as JSON to `url` with `auth`, like `get_with_auth`
     /// (rate limits, busy retries, offline backoff).
     pub fn post_json(&self, url: &str, body: &str, auth: Option<&str>) -> Result<Response, Error> {
+        self.post_with_headers(url, "application/json", body, &authorization(auth))
+    }
+
+    /// POSTs `body` as `content_type` to `url` with `headers`, as
+    /// `post_json` does.
+    pub fn post_with_headers(
+        &self,
+        url: &str,
+        content_type: &str,
+        body: &str,
+        headers: Headers,
+    ) -> Result<Response, Error> {
         self.send(url, |transport| {
-            transport.post(url, "application/json", body.as_bytes(), auth, JSON_LIMIT)
+            transport.post(url, content_type, body.as_bytes(), headers, JSON_LIMIT)
         })
+    }
+
+    /// Streams the body of `url` into `sink` with `headers`, as
+    /// `get_with_headers` fetches (the rate limit and the offline backoff,
+    /// but no retries once a body has started), at most `limit` bytes.
+    /// Fails with `CANCELLED` once `cancelled` says so.
+    pub fn download_with_headers(
+        &self,
+        url: &str,
+        headers: Headers,
+        sink: &mut dyn Write,
+        limit: u64,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(), Error> {
+        let host = host_of(url).ok_or_else(|| Error::Invalid(format!("Not a URL: {url}")))?;
+        self.wait_turn(host)?;
+        match self
+            .transport
+            .download(url, headers, sink, limit, cancelled)
+        {
+            Ok(status) => {
+                self.mark_reachable(host);
+                if (200..300).contains(&status) {
+                    Ok(())
+                } else {
+                    Err(Error::Status {
+                        url: url.into(),
+                        status,
+                    })
+                }
+            }
+            Err(TransportError::Unreachable(message)) => {
+                self.mark_unreachable(host);
+                Err(Error::Offline(format!("{host}: {message}")))
+            }
+            Err(TransportError::Failed(message)) => Err(Error::Invalid(message)),
+        }
     }
 
     fn send(
@@ -402,7 +587,7 @@ impl Client {
                 }
             }
             let slot = state.next_request.map_or(now, |next| next.max(now));
-            state.next_request = Some(slot + request_interval(host));
+            state.next_request = Some(slot + self.interval(host));
             slot
         };
         if slot > now {
@@ -474,7 +659,7 @@ pub fn percent_encode(text: &str) -> String {
 }
 
 /// The host of an http(s) URL, e.g. "musicbrainz.org".
-fn host_of(url: &str) -> Option<&str> {
+pub fn host_of(url: &str) -> Option<&str> {
     let rest = url
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))?;
@@ -505,6 +690,8 @@ pub mod testing {
         pub requests: Arc<Mutex<Vec<(String, Duration)>>>,
         /// The `Authorization` header sent with each request.
         pub auths: Arc<Mutex<Vec<Option<String>>>>,
+        /// Every header sent with each request.
+        pub headers: Arc<Mutex<Vec<Vec<(String, String)>>>>,
         /// The bodies of POST requests.
         pub bodies: Arc<Mutex<Vec<String>>>,
         clock: Option<FakeClock>,
@@ -555,10 +742,20 @@ pub mod testing {
             &self,
             url: &str,
             _accept: &str,
-            auth: Option<&str>,
+            headers: Headers,
             _limit: u64,
         ) -> Result<Response, TransportError> {
-            self.auths.lock().unwrap().push(auth.map(str::to_owned));
+            let auth = headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("Authorization"))
+                .map(|(_, value)| (*value).to_owned());
+            self.auths.lock().unwrap().push(auth);
+            self.headers.lock().unwrap().push(
+                headers
+                    .iter()
+                    .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                    .collect(),
+            );
             let elapsed = self
                 .clock
                 .as_ref()
@@ -580,14 +777,14 @@ pub mod testing {
             url: &str,
             _content_type: &str,
             body: &[u8],
-            auth: Option<&str>,
+            headers: Headers,
             limit: u64,
         ) -> Result<Response, TransportError> {
             self.bodies
                 .lock()
                 .unwrap()
                 .push(String::from_utf8_lossy(body).into_owned());
-            self.get(url, "", auth, limit)
+            self.get(url, "", headers, limit)
         }
     }
 
@@ -779,6 +976,69 @@ mod tests {
         client.retry_now();
         transport.push_status(MB, 200, "{}");
         client.get(MB, "application/json", JSON_LIMIT).unwrap();
+    }
+
+    #[test]
+    fn hosts_can_have_their_own_rate() {
+        let (client, transport, _clock) = fake_client();
+        const HOME: &str = "http://192.168.1.2:8096/Items";
+        client.set_interval("192.168.1.2", Duration::ZERO);
+        for _ in 0..3 {
+            let _ = client.get(HOME, "application/json", JSON_LIMIT);
+        }
+        let times: Vec<Duration> = transport
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, at)| *at)
+            .collect();
+        assert_eq!(times, [Duration::ZERO; 3]);
+    }
+
+    #[test]
+    fn downloads_into_a_sink() {
+        let (client, transport, _clock) = fake_client();
+        const FILE: &str = "http://192.168.1.2:8096/Audio/a/stream?static=true";
+        transport.push_status(FILE, 200, "audio bytes");
+        let mut sink = Vec::new();
+        client
+            .download_with_headers(
+                FILE,
+                &[("Authorization", "MediaBrowser Token=\"t\"")],
+                &mut sink,
+                1 << 20,
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(sink, b"audio bytes");
+
+        // An error status writes nothing.
+        transport.push_status(FILE, 404, "not found");
+        let mut sink = Vec::new();
+        let error = client
+            .download_with_headers(FILE, &[], &mut sink, 1 << 20, &|| false)
+            .unwrap_err();
+        assert!(
+            matches!(error, Error::Status { status: 404, .. }),
+            "{error}"
+        );
+        assert!(sink.is_empty());
+
+        // Given up on.
+        transport.push_status(FILE, 200, "audio bytes");
+        let error = client
+            .download_with_headers(FILE, &[], &mut Vec::new(), 1 << 20, &|| true)
+            .unwrap_err();
+        assert_eq!(error.to_string(), CANCELLED);
+
+        // Unreachable: the host backs off, as for any request.
+        transport.push(FILE, Err(TransportError::Unreachable("down".into())));
+        let error = client
+            .download_with_headers(FILE, &[], &mut Vec::new(), 1 << 20, &|| false)
+            .unwrap_err();
+        assert!(matches!(error, Error::Offline(_)), "{error}");
+        assert_eq!(client.unreachable_hosts(), ["192.168.1.2"]);
     }
 
     #[test]

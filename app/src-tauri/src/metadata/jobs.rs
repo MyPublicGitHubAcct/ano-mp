@@ -1870,11 +1870,11 @@ mod tests {
             &self,
             url: &str,
             accept: &str,
-            auth: Option<&str>,
+            headers: crate::metadata::http::Headers,
             limit: u64,
         ) -> Result<Response, TransportError> {
             self.shared.stop();
-            self.transport.get(url, accept, auth, limit)
+            self.transport.get(url, accept, headers, limit)
         }
 
         fn post(
@@ -1882,11 +1882,11 @@ mod tests {
             url: &str,
             content_type: &str,
             body: &[u8],
-            auth: Option<&str>,
+            headers: crate::metadata::http::Headers,
             limit: u64,
         ) -> Result<Response, TransportError> {
             self.shared.stop();
-            self.transport.post(url, content_type, body, auth, limit)
+            self.transport.post(url, content_type, body, headers, limit)
         }
     }
 

@@ -116,7 +116,7 @@ fn start<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Watching>, String> {
     let states = app.try_state::<FolderStates>();
     let (roots, open) = {
         let conn = library.conn();
-        let folders = super::folders(&conn).map_err(|e| e.to_string())?;
+        let folders = super::local_folders(&conn).map_err(|e| e.to_string())?;
         let mut roots = Vec::new();
         let mut open = Vec::new();
         for folder in folders {

@@ -129,13 +129,16 @@
     </dl>
 
     <h3>{t("info.file")}</h3>
-    <div class="path">
-      <code>{path}</code>
-      <button onclick={() => attempt(() => revealItemInDir(track.path))}>
-        <Icon name="folder" size="1rem" />
-        {t("menu.showInFinder")}
-      </button>
-    </div>
+    <!-- A music server's track has no file here (PLAN.md Phase 7e). -->
+    {#if path !== ""}
+      <div class="path">
+        <code>{path}</code>
+        <button onclick={() => attempt(() => revealItemInDir(track.path))}>
+          <Icon name="folder" size="1rem" />
+          {t("menu.showInFinder")}
+        </button>
+      </div>
+    {/if}
 
     {#if links.length > 0}
       <h3>{t("info.musicbrainz")}</h3>

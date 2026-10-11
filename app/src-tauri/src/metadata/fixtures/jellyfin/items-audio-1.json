@@ -1,0 +1,209 @@
+{
+  "Items": [
+    {
+      "Name": "Chirp One",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "b1f3a0e2c4d5e6f708192a3b4c5d6e7f",
+      "DateCreated": "2026-09-30T18:22:41.0000000Z",
+      "Container": "flac",
+      "PremiereDate": "2024-03-01T00:00:00.0000000Z",
+      "ProductionYear": 2024,
+      "IndexNumber": 1,
+      "ParentIndexNumber": 1,
+      "Genres": [
+        "Electronic",
+        "Test"
+      ],
+      "RunTimeTicks": 15000000,
+      "ProviderIds": {
+        "MusicBrainzTrack": "7c1b4b62-8a3c-4b8e-9d5e-0c3a6f2b1e4d",
+        "MusicBrainzAlbum": "3f2e1d0c-9b8a-4f6e-8d7c-1b2a3c4d5e6f",
+        "MusicBrainzReleaseGroup": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "MusicBrainzArtist": "11111111-2222-4333-8444-555555555555",
+        "MusicBrainzAlbumArtist": "11111111-2222-4333-8444-555555555555"
+      },
+      "IsFolder": false,
+      "Type": "Audio",
+      "Artists": [
+        "Test Signal",
+        "Guest"
+      ],
+      "ArtistItems": [
+        {
+          "Name": "Test Signal",
+          "Id": "00000000000000000000000000000001"
+        },
+        {
+          "Name": "Guest",
+          "Id": "00000000000000000000000000000002"
+        }
+      ],
+      "Album": "Chirps",
+      "AlbumId": "c0ffee00c0ffee00c0ffee00c0ffee00",
+      "AlbumPrimaryImageTag": "9a8b7c6d",
+      "AlbumArtist": "Test Signal",
+      "AlbumArtists": [
+        {
+          "Name": "Test Signal",
+          "Id": "00000000000000000000000000000001"
+        }
+      ],
+      "ImageTags": {},
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "MediaSources": [
+        {
+          "Protocol": "File",
+          "Id": "b1f3a0e2c4d5e6f708192a3b4c5d6e7f",
+          "Type": "Default",
+          "Container": "flac",
+          "Size": 36202,
+          "Name": "Chirp One",
+          "IsRemote": false,
+          "RunTimeTicks": 15000000,
+          "SupportsTranscoding": true,
+          "SupportsDirectStream": true,
+          "SupportsDirectPlay": true,
+          "Bitrate": 193066,
+          "MediaStreams": [
+            {
+              "Codec": "flac",
+              "Type": "Audio",
+              "Index": 0,
+              "IsDefault": false,
+              "BitRate": 193066,
+              "Channels": 2,
+              "SampleRate": 44100
+            }
+          ]
+        }
+      ],
+      "NormalizationGain": -6.5
+    },
+    {
+      "Name": "Chirp Two",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "d3a5c2e4f6a7b8c9d0e1f2a3b4c5d6e7",
+      "DateCreated": "2026-09-30T18:22:41.0000000Z",
+      "Container": "mp3",
+      "PremiereDate": "2024-03-01T00:00:00.0000000Z",
+      "ProductionYear": 2024,
+      "IndexNumber": 2,
+      "ParentIndexNumber": 1,
+      "Genres": [
+        "Electronic"
+      ],
+      "RunTimeTicks": 15000000,
+      "ProviderIds": {},
+      "IsFolder": false,
+      "Type": "Audio",
+      "Artists": [
+        "Test Signal"
+      ],
+      "ArtistItems": [
+        {
+          "Name": "Test Signal",
+          "Id": "00000000000000000000000000000001"
+        }
+      ],
+      "Album": "Chirps",
+      "AlbumId": "c0ffee00c0ffee00c0ffee00c0ffee00",
+      "AlbumPrimaryImageTag": "9a8b7c6d",
+      "AlbumArtist": "Test Signal",
+      "AlbumArtists": [
+        {
+          "Name": "Test Signal",
+          "Id": "00000000000000000000000000000001"
+        }
+      ],
+      "ImageTags": {},
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "MediaSources": [
+        {
+          "Protocol": "File",
+          "Id": "d3a5c2e4f6a7b8c9d0e1f2a3b4c5d6e7",
+          "Type": "Default",
+          "Container": "mp3",
+          "Size": 13811,
+          "Name": "Chirp Two",
+          "IsRemote": false,
+          "RunTimeTicks": 15000000,
+          "SupportsTranscoding": true,
+          "SupportsDirectStream": true,
+          "SupportsDirectPlay": true,
+          "Bitrate": 128000,
+          "MediaStreams": [
+            {
+              "Codec": "mp3",
+              "Type": "Audio",
+              "Index": 0,
+              "IsDefault": false,
+              "BitRate": 128000,
+              "Channels": 2,
+              "SampleRate": 44100
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name": "Opus Chirp",
+      "ServerId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "Id": "e4b6d3f5a7b8c9d0e1f2a3b4c5d6e7f8",
+      "DateCreated": "2026-09-30T18:22:41.0000000Z",
+      "Container": "ogg",
+      "Genres": [],
+      "RunTimeTicks": 15000000,
+      "ProviderIds": {},
+      "IsFolder": false,
+      "Type": "Audio",
+      "Artists": [
+        "Another Signal"
+      ],
+      "ArtistItems": [
+        {
+          "Name": "Another Signal",
+          "Id": "00000000000000000000000000000001"
+        }
+      ],
+      "Album": "Other Chirps",
+      "AlbumId": "beef0000beef0000beef0000beef0000",
+      "AlbumArtists": [],
+      "ImageTags": {
+        "Primary": "1f2e3d4c"
+      },
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "MediaSources": [
+        {
+          "Protocol": "File",
+          "Id": "e4b6d3f5a7b8c9d0e1f2a3b4c5d6e7f8",
+          "Type": "Default",
+          "Container": "ogg",
+          "Size": 10476,
+          "Name": "Opus Chirp",
+          "IsRemote": false,
+          "RunTimeTicks": 15000000,
+          "SupportsTranscoding": true,
+          "SupportsDirectStream": true,
+          "SupportsDirectPlay": true,
+          "Bitrate": 64000,
+          "MediaStreams": [
+            {
+              "Codec": "opus",
+              "Type": "Audio",
+              "Index": 0,
+              "IsDefault": false,
+              "BitRate": 64000,
+              "Channels": 2,
+              "SampleRate": 48000
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "TotalRecordCount": 4,
+  "StartIndex": 0
+}

@@ -120,14 +120,31 @@ pub fn track_details(library: &LibraryState, track_id: i64) -> Result<Option<Tra
         return Ok(None);
     };
     let path = track_path(Path::new(&folder), &relative_path);
-    let read = {
-        let conn = library.conn();
-        let open = open_folder(&conn, folder_id);
-        drop(conn);
-        match open {
-            // Readable while `_open` lives.
-            Ok(_open) => anomp::read_file_info(&path),
-            Err(error) => Err(error.to_string()),
+    let remote = crate::servers::fetch::remote_file(&library.conn(), track_id)?;
+    let read = match remote {
+        // A music server's track (PLAN.md Phase 7e): its copy in the audio
+        // cache, if it has been played.
+        Some(remote) => {
+            let name = library.audio.choose(&remote).name;
+            if library.audio.cache.contains(&name) {
+                anomp::read_file_info(&library.audio.cache.path(&name))
+            } else {
+                Err(crate::coded::coded(
+                    "serverTrackNotDownloaded",
+                    &[],
+                    "The file is on the server: play it to see more about it",
+                ))
+            }
+        }
+        None => {
+            let conn = library.conn();
+            let open = open_folder(&conn, folder_id);
+            drop(conn);
+            match open {
+                // Readable while `_open` lives.
+                Ok(_open) => anomp::read_file_info(&path),
+                Err(error) => Err(error.to_string()),
+            }
         }
     };
     let (file, error) = match read {

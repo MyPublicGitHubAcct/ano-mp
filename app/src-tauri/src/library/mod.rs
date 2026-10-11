@@ -72,12 +72,48 @@ impl From<rusqlite::Error> for Error {
     }
 }
 
+/// What a library folder is (PLAN.md Phase 7e): a folder on disk, or a
+/// music server's library as one user sees it (`servers`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum FolderKind {
+    Local,
+    Jellyfin,
+    /// A music library on a Plex Media Server (PLAN.md Phase 7f).
+    Plex,
+}
+
+impl FolderKind {
+    /// As `folders.kind` stores it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FolderKind::Local => "local",
+            FolderKind::Jellyfin => "jellyfin",
+            FolderKind::Plex => "plex",
+        }
+    }
+
+    pub fn from_str(kind: &str) -> Option<FolderKind> {
+        [FolderKind::Local, FolderKind::Jellyfin, FolderKind::Plex]
+            .into_iter()
+            .find(|known| known.as_str() == kind)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
     pub id: i64,
+    /// Where a local folder is; a key naming no file for a server's
+    /// (`servers::folder_key`).
     pub path: String,
+    pub kind: FolderKind,
+    /// A server's name, as it calls itself, and for a Plex source the music
+    /// library's ("Den · Music"); `None` for a local folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub track_count: u32,
     /// Its tracks whose files were cloud placeholders when last seen, so
     /// their tags weren't read (PLAN.md H12).
@@ -94,26 +130,45 @@ pub struct Folder {
     pub status: Option<access::FolderStatus>,
 }
 
+/// Every library folder, local and server alike, ordered by path. A folder
+/// of a kind this version doesn't know (a later version's) is left out.
 pub fn folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
     let mut statement = conn.prepare(
         "SELECT id, path, last_scan_at,
                 (SELECT count(*) FROM tracks WHERE tracks.folder_id = folders.id),
                 (SELECT count(*) FROM tracks
-                 WHERE tracks.folder_id = folders.id AND tracks.dataless = 1)
+                 WHERE tracks.folder_id = folders.id AND tracks.dataless = 1),
+                kind,
+                (SELECT server_name || coalesce(' · ' || section_name, '')
+                 FROM server_sources s WHERE s.folder_id = folders.id)
          FROM folders ORDER BY path",
     )?;
     let rows = statement.query_map([], |row| {
-        Ok(Folder {
+        let Some(kind) = FolderKind::from_str(&row.get::<_, String>(5)?) else {
+            return Ok(None);
+        };
+        Ok(Some(Folder {
             id: row.get(0)?,
             path: row.get(1)?,
+            kind,
+            name: row.get(6)?,
             last_scan_at: row.get(2)?,
             track_count: row.get(3)?,
             dataless_count: row.get(4)?,
             available: None,
             status: None,
-        })
+        }))
     })?;
-    Ok(rows.collect::<Result<_, _>>()?)
+    let folders: Vec<Option<Folder>> = rows.collect::<Result<_, _>>()?;
+    Ok(folders.into_iter().flatten().collect())
+}
+
+/// The library's folders on disk, which scans walk and watchers watch.
+pub fn local_folders(conn: &Connection) -> Result<Vec<Folder>, Error> {
+    Ok(folders(conn)?
+        .into_iter()
+        .filter(|folder| folder.kind == FolderKind::Local)
+        .collect())
 }
 
 /// Adds the folder at the absolute `path` (resolving symlinks and `..`),
@@ -154,6 +209,8 @@ pub fn add_folder(conn: &Connection, path: &Path) -> Result<Folder, Error> {
     Ok(Folder {
         id: conn.last_insert_rowid(),
         path: text.to_owned(),
+        kind: FolderKind::Local,
+        name: None,
         track_count: 0,
         dataless_count: 0,
         last_scan_at: None,
@@ -177,7 +234,7 @@ pub fn relocate_folder(conn: &Connection, folder_id: i64, path: &Path) -> Result
     check_overlap(conn, &path, Some(folder_id))?;
     let bookmark = anomp::create_bookmark(&path).map_err(Error::Invalid)?;
     if conn.execute(
-        "UPDATE folders SET path = ?1, bookmark = ?2 WHERE id = ?3",
+        "UPDATE folders SET path = ?1, bookmark = ?2 WHERE id = ?3 AND kind = 'local'",
         params![text, bookmark, folder_id],
     )? == 0
     {
@@ -192,7 +249,7 @@ pub fn relocate_folder(conn: &Connection, folder_id: i64, path: &Path) -> Result
 /// Fails if `path` is inside, contains, or is a library folder other than
 /// `except`.
 fn check_overlap(conn: &Connection, path: &Path, except: Option<i64>) -> Result<(), Error> {
-    for existing in folders(conn)? {
+    for existing in local_folders(conn)? {
         let other = Path::new(&existing.path);
         let inside = paths::within(path, other);
         if Some(existing.id) != except && (inside.is_some() || paths::within(other, path).is_some())
@@ -230,7 +287,7 @@ pub fn remove_folder(conn: &mut Connection, folder_id: i64) -> Result<(), Error>
 /// and heart go to `kept_albums` and `kept_artists`, so they come back with
 /// the album or artist (`scanner::restore_kept`), e.g. after its files move
 /// to another library folder.
-fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TEMP TABLE IF NOT EXISTS orphan_albums (id INTEGER PRIMARY KEY);
          CREATE TEMP TABLE IF NOT EXISTS orphan_artists (id INTEGER PRIMARY KEY);
@@ -291,7 +348,8 @@ fn remove_orphans(conn: &Connection) -> rusqlite::Result<()> {
 #[serde(rename_all = "camelCase")]
 pub struct TrackSummary {
     pub id: i64,
-    /// Absolute path of the file.
+    /// Absolute path of the file; empty for a music server's track, which
+    /// has none (PLAN.md Phase 7e).
     pub path: String,
     pub title: Option<String>,
     pub artist: Option<String>,
@@ -357,11 +415,16 @@ pub(super) const TRACKS_FROM: &str = "FROM tracks t
 fn track_from_row(row: &rusqlite::Row) -> rusqlite::Result<TrackSummary> {
     let folder: String = row.get(1)?;
     let relative: String = row.get(2)?;
+    let path = if crate::servers::is_source_key(&folder) {
+        String::new()
+    } else {
+        track_path(Path::new(&folder), &relative)
+            .to_string_lossy()
+            .into_owned()
+    };
     Ok(TrackSummary {
         id: row.get(0)?,
-        path: track_path(Path::new(&folder), &relative)
-            .to_string_lossy()
-            .into_owned(),
+        path,
         title: row.get(3)?,
         artist: row.get(4)?,
         album: row.get(5)?,

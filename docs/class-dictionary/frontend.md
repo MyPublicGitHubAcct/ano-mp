@@ -636,6 +636,14 @@ A playlist (F1): rename, play, shuffle, and its tracks a page at a time,
 reordered by dragging; a smart playlist (F2) lists what matches its rules
 now.
 
+### `PlexSignIn`
+
+Svelte component · [`app/src/lib/components/settings/PlexSignIn.svelte`](../../app/src/lib/components/settings/PlexSignIn.svelte)
+
+Signing in to Plex: a pin approved on plex.tv in the browser, then the
+servers the account reaches with their music libraries, of which those
+picked are added. Settings › Servers' **Sign In with Plex** starts it.
+
 ### `Popover`
 
 Svelte component · [`app/src/lib/components/Popover.svelte`](../../app/src/lib/components/Popover.svelte)
@@ -784,6 +792,16 @@ TS type · [`app/src/lib/selection.ts`](../../app/src/lib/selection.ts) · [D2: 
 
 A list's multi-selection (F4): the rows selected, the anchor of a range,
 and the focus. `selection.ts`'s pure functions update it as Finder does.
+
+### `ServerOptions`
+
+Svelte component · [`app/src/lib/components/settings/ServerOptions.svelte`](../../app/src/lib/components/settings/ServerOptions.svelte)
+
+Settings › Servers: each server with its state, Sync Now, Sync
+Everything and Sign Out; adding a Jellyfin server by address or
+discovery, then a password or Quick Connect; Sign In with Plex
+(`PlexSignIn`); reporting plays, Plex's relay, the bit rate away from
+home, and the downloaded music.
 
 ### `ServicesPanel`
 
@@ -949,6 +967,15 @@ State module (`recording`) · [`app/src/lib/state/recording.svelte.ts`](../../ap
 
 Recording (X6): whether it runs and for how long, the folder, and starting
 and stopping.
+
+### `state/servers.svelte.ts`
+
+State module (`servers`) · [`app/src/lib/state/servers.svelte.ts`](../../app/src/lib/state/servers.svelte.ts) · [D2: State stores](../developer-guide/07-frontend.md#state-stores)
+
+Music servers with their state and sync, and what is kept offline,
+following `servers-changed`; syncing, signing out and keeping albums and
+playlists offline. `sourceName` names a source as lists show it ("Den ·
+Music" for a Plex library).
 
 ### `state/settings.svelte.ts`
 

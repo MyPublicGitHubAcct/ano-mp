@@ -358,6 +358,42 @@ The app outside its main page.
 - `help.rs`: the Help window (the bundled user guide).
 - `notifications.rs`: track-change notifications (opt-in).
 
+### `servers/`
+
+Music servers as library sources (Phases 7e, 7f): a Jellyfin server, as
+one user sees it, is a library folder of kind `jellyfin`, and each music
+library of a Plex server one of kind `plex`. See
+[the backend chapter](06-rust-backend.md#music-servers).
+
+- `mod.rs`: the neutral types (`ServerTrack`, `Source`, `Section`…), the
+  source rows (`server_sources`), the device id, the tokens' keychain
+  entries, and each kind's feature switch (`kind_on`).
+- `api.rs`: `ServerApi`, one interface to either kind: checks, the sync's
+  reader, fetch and picture requests, play reports, sign-out.
+- `address.rs`: which addresses a token may go to (https, or http on
+  the local network only).
+- `jellyfin.rs`: Jellyfin's REST API: sign-in, Quick Connect, paged
+  tracks, playlists, stream URLs, play reports, sign-out.
+- `plextv.rs`: plex.tv: the PIN sign-in, the account, and the servers it
+  reaches with their tokens and connections.
+- `plex.rs`: the Plex Media Server's API: identity, music libraries,
+  paged tracks, playlists, part and transcode URLs, pictures, timeline
+  reports, and choosing a connection (`connect`).
+- `discovery.rs`: finding Jellyfin servers by UDP broadcast on port
+  7359, and Plex servers by GDM on port 32414.
+- `sync.rs`: the server's version of a scan, through the scanner's
+  own write, with H22's hold rule and read-only playlists.
+- `cache.rs`: the audio cache: SHA-256 names, `.part` then rename,
+  least recently used evicted first.
+- `fetch.rs`: choosing the original or a transcode, and downloading a
+  track for the engine (`ServerAudio`).
+- `offline.rs`: albums and playlists kept offline.
+- `playing.rs`: telling the server what plays, on a thread of its own.
+- `commands.rs`: the commands, sync and checks in the background, the
+  server's `FolderState`, and `fetch_to_play` for the queue.
+- `plex_commands.rs`: signing in to Plex, listing the account's servers
+  and music libraries, and adding those picked.
+
 ### `remote/`
 
 Any change here needs the security review in `PLAN.md` §8.1.
@@ -457,6 +493,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
   appearance and the cover's accent.
 - `effects.svelte.ts`: the spectral freeze's Hold.
 - `recording.svelte.ts`: whether a recording runs, and its length.
+- `servers.svelte.ts`: music servers with their state and sync, and
+  what is kept offline (Phase 7e).
 - `workbench.svelte.ts`: the effects workbench's file, Play and Record,
   and a take that is running.
 - `visualizer.svelte.ts`: which visualization, full screen, its caption.
@@ -554,6 +592,11 @@ sections' shared styles.
 - `EqualiserOptions.svelte`: the equaliser.
 - `EffectsOptions.svelte`: the effects.
 - `RecordingOptions.svelte`: recording's folder and format.
+- `ServerOptions.svelte`: music servers: signing in (address,
+  discovery, password, Quick Connect) and out, syncing, Plex's relay,
+  and the downloaded music.
+- `PlexSignIn.svelte`: signing in to Plex in the browser, then picking
+  the servers' music libraries to add.
 - `VisualizerOptions.svelte`: the visualizer's options.
 - `FeaturesOptions.svelte`: every optional feature's switch and options.
 - `GeneralOptions.svelte`: menu-bar controls, mini player,

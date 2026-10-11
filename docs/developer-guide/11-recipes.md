@@ -217,6 +217,25 @@ as `menu` events. Items Rust runs itself (play, the sleep timer…) go in
 6. Describe the table in [chapter 9](09-data.md). Run `scripts/bench.py
    --only rust` if it touches what browsing or search reads.
 
+## A music server kind
+
+Jellyfin (Phase 7e) and Plex (Phase 7f) are two kinds behind one source,
+sync and cache ([chapter 6](06-rust-backend.md#music-servers)). A third:
+
+1. **A `FolderKind`** in `library/mod.rs`, allowed by `folders.kind`'s
+   check in a new migration, and its prefix in `servers::is_source_key`.
+2. **A client** beside `servers/jellyfin.rs` and `servers/plex.rs` that
+   turns the server's answers into `ServerTrack` and `ServerPlaylist`,
+   and implements `sync::ServerLibrary`; tests against recorded
+   responses in `metadata/fixtures/` with `manifest.json` entries.
+3. **A case in `servers/api.rs`'s `ServerApi`** for each of its calls
+   (check, library, fetch, picture, reports, sign-out), and in
+   `commands::reach` if the server's address changes.
+4. **A feature switch** of its own ([A feature switch](#a-feature-switch))
+   and its case in `servers::kind_on`, its sign-in commands, its errors
+   in `en.json` and the user guide, and its tokens through
+   `metadata::keys` (`Account::Server`).
+
 ## A metadata source
 
 A new online service is also an owner decision (its terms, `PLAN.md`

@@ -17,7 +17,10 @@ is made (§2's test counts too: `check-docs.py --counts` compares them).
 Phases 0–6c are built; Phase 7 (hardening, macOS) is under way and follows its
 "Order of work"; the signed release waits on the owner's §8.1 decisions.
 Phase 7b's features (X1–X9) are built; Phase 7c (documentation, D1–D4) is
-under way; Phase 7d's features (N1–N40) are proposals, none accepted yet.
+under way; Phase 7d's features (N1–N40) are proposals, none accepted yet;
+Phase 7e (Jellyfin servers) and Phase 7f (Plex servers, reusing what 7e
+built) are built ahead of Phase 7's exit; their test servers (7e.1,
+7f.1), exit checks and Plex's §8.1 terms decision wait.
 
 Finished work's design notes, steps as built and known limits go in
 `docs/design/` (`phase-<n>-<name>.md`, linked from the phase in `PLAN.md`, which
@@ -387,6 +390,29 @@ happens on its writer thread. The recordings' folder is a writable bookmark
 in its own `settings` row (`recording.folder`), never in `AppSettings`, and
 is held open (`Session`) for as long as files are written. Files are named
 by date and time, never by title, and logs give counts at info.
+
+**Music servers** (Phases 7e, 7f, `servers/`). A Jellyfin server, as one
+user sees it, is a library folder of kind `jellyfin`, and each music
+library of a Plex server one of kind `plex` (`folders.kind`): its `path`
+is a key naming no file and its tracks' `relative_path` the server's item
+id, never a URL. Code that walks or opens folders on disk asks for `kind =
+'local'` (`library::local_folders`), and `access::open_folder` refuses
+other kinds. Code that doesn't care which kind of server it talks to goes
+through `servers::api::ServerApi`, and each kind checks its own switch
+(`servers::kind_on`). Every server request goes through
+`ServersState.http` (`http::Client`), with the token in a header
+(`Authorization`, or Plex's `X-Plex-Token`), never a URL; tokens live in
+the keychain (`Account::Server`), a password never anywhere. plex.tv is
+called only to sign in and to list servers and their addresses; Plex's
+relay only while `ServerSettings::plex_relay` is on, and a Plex server's
+refusal away from home (Plex Pass) is shown, never worked around. Plain
+http only to a local address (`address::check`); self-signed certificates
+are refused. The core never goes online: a server's track plays from the
+audio cache (`fetch_to_play` from `queue::opening`), and its sync writes
+through the scanner's `write_unfiled_track`, keeping H22's hold rule. A server's playlists are
+read-only (`playlists::require_editable`). Tests use the fake `Transport`
+with responses in `metadata/fixtures/jellyfin/` and
+`metadata/fixtures/plex/`.
 
 **Optional features.** Each checks its switch in `FeatureSettings` where it acts
 (commands refuse, workers idle, the UI hides); a new one gets a switch there, off

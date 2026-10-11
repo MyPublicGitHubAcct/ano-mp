@@ -102,6 +102,17 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   under their headings: closed at first, then as you left them.
 - The sidebar's Now Playing item is hidden unless you turn it on in
   Settings › Display › Sidebar; the now-playing bar opens the same page.
+- Jellyfin servers: with Jellyfin servers on in Settings › Features, sign
+  in to your own Jellyfin server (10.9 or later) in Settings › Servers, by
+  password or Quick Connect, typing its address or finding it on your
+  network. Its music joins your library, search and playlists (its own
+  playlists read-only), and plays through the queue gaplessly, each track
+  downloaded as it plays and the next one ahead. The original files, or
+  MP3s at a bit rate you choose for a server away from home. Plays are
+  reported to the server (a switch); your history, ratings and favourites
+  stay on your Mac. A server that can't be reached keeps its tracks, and
+  downloaded ones still play; "Keep Available Offline" keeps an album or a
+  playlist downloaded. Self-signed certificates aren't supported.
 
 ### Fixed
 - More Like This and Playback Preferences… are on every album's menu:

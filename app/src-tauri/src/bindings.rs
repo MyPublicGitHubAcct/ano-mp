@@ -561,6 +561,17 @@ fn declare_types(cfg: &Config, settings: &BTreeSet<String>) -> Vec<Declared> {
         crate::recording::RecordingState,
         crate::recording::RecordingStopped,
         crate::workbench::WorkbenchFile,
+        crate::library::FolderKind,
+        crate::servers::Source,
+        crate::servers::commands::ServerSummary,
+        crate::servers::commands::ServerCheck,
+        crate::servers::commands::QuickConnectStart,
+        crate::servers::discovery::Discovered,
+        crate::servers::offline::OfflineStatus,
+        crate::servers::plex_commands::PlexPin,
+        crate::servers::plex_commands::PlexAccount,
+        crate::servers::plex_commands::PlexServer,
+        crate::servers::plex_commands::PlexLibrary,
     );
     collect.out
 }

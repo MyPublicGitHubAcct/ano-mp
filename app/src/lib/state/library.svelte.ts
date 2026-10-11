@@ -206,9 +206,14 @@ class LibraryStore {
       await this.scan(folder.id);
     });
 
-  /** Folders that can't be read now (H22). */
+  /** The folders on disk; music servers are listed apart (`servers`, PLAN.md Phase 7e). */
+  get localFolders(): Folder[] {
+    return this.folders.filter((folder) => folder.kind === "local");
+  }
+
+  /** Folders on disk that can't be read now (H22). */
   get unavailable(): Folder[] {
-    return this.folders.filter((folder) => folder.available === false);
+    return this.localFolders.filter((folder) => folder.available === false);
   }
 
   /** Folders none of whose tracks can be opened now, with why: lists show their tracks as unavailable (H22b). */

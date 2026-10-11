@@ -117,6 +117,18 @@
       title: t("feature.lyrics"),
       about: t("feature.lyricsAbout"),
     },
+    {
+      key: "jellyfin",
+      id: "7e",
+      title: t("feature.jellyfin"),
+      about: t("feature.jellyfinAbout"),
+    },
+    {
+      key: "plex",
+      id: "7f",
+      title: t("feature.plex"),
+      about: t("feature.plexAbout"),
+    },
   ];
 
   const LISTENING: Switch[] = [
@@ -187,6 +199,11 @@
       about: t("feature.similarArtistsAbout"),
     },
   ];
+
+  // Built but not offered for now (Phase 7f's Plex servers): no switch,
+  // unless it is still on, so it can be turned off.
+  const NOT_OFFERED: (keyof FeatureSettings)[] = ["plex"];
+  const offered = (item: Switch) => !NOT_OFFERED.includes(item.key) || Boolean(f[item.key]);
 
   const LOOK: Switch[] = [
     {
@@ -263,7 +280,7 @@
 </script>
 
 {#snippet switches(list: Switch[])}
-  {#each list as item (item.key)}
+  {#each list.filter(offered) as item (item.key)}
     <label class="switch">
       <input
         id="feature-{item.key}"

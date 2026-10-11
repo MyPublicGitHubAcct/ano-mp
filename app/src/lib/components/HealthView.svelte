@@ -50,7 +50,7 @@
           {#if track.detail}<span class="detail small">{track.detail}</span>{/if}
           <span class="path small" title={track.path}>{track.path}</span>
         </span>
-        <button onclick={() => reveal(track)}>{t("menu.showInFinder")}</button>
+        {#if track.path !== ""}<button onclick={() => reveal(track)}>{t("menu.showInFinder")}</button>{/if}
       </li>
     {/each}
   </ul>
