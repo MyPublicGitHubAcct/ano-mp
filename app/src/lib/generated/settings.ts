@@ -42,11 +42,21 @@ showDescriptions: boolean,
  * A "Now Playing" item in the sidebar (the now-playing bar opens the
  * same page either way).
  */
-sidebarNowPlaying: boolean, };
+sidebarNowPlaying: boolean, 
+/**
+ * Home's sections the user turned off; the rest show while their
+ * features are on, so a section added later shows unless hidden.
+ */
+hiddenOnHome: Array<HomeSection>, };
 
 export type TrackColumn = "trackNumber" | "artist" | "album" | "albumArtist" | "year" | "genre" | "duration" | "format" | "bitrate" | "sampleRate" | "playCount" | "lastPlayed" | "dateAdded" | "composer" | "rating";
 
 export type AlbumFact = "date" | "label" | "country" | "format" | "type";
+
+/**
+ * A section of the Home page, in the order it shows them.
+ */
+export type HomeSection = "outside" | "onThisDay" | "recentlyPlayed" | "yearAgo" | "forgotten" | "addedWeek" | "addedMonth" | "addedEarlier" | "neverPlayed" | "forYou";
 
 export type PlaybackSettings = { replayGain: ReplayGainMode, 
 /**

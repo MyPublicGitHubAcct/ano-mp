@@ -31,6 +31,11 @@ something to show, in this order:
 The history parts need **Listening history** on. If every part is off,
 Home says which features to turn on.
 
+To hide a part you don't want, such as **Added this month**, click
+**Choose sections…** at the top of Home, or go to **Settings › Display**,
+and turn it off under **Sections to show**. A hidden part stays hidden
+even while its feature is on.
+
 Click an album's cover to open it, or its play button to play it.
 Right-click for more.
 

@@ -9,6 +9,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
 ## [Unreleased]
 
 ### Added
+- Home's sections can be hidden one by one (Added this month, Never
+  played, You might like and the rest) under Sections to show in
+  Settings › Display, or with Choose sections… on Home. A hidden section
+  isn't fetched.
 - The first release: a music player for macOS that plays MP3, FLAC, AAC,
   ALAC, Opus, Vorbis, WAV, AIFF and WMA gaplessly, with a library of your
   folders, playlists and smart playlists, details and covers from

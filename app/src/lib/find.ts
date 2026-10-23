@@ -221,6 +221,7 @@ export const INDEX: FindEntry[] = [
   setting("display", "albumFacts", "display.releaseFacts"),
   setting("display", "descriptions", "display.descriptions"),
   setting("display", "sidebarNowPlaying", "display.sidebarNowPlaying"),
+  setting("display", "hiddenOnHome", "display.showOnHome"),
 
   section("appearance"),
   setting("appearance", "theme", "appearance.themes"),

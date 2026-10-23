@@ -645,8 +645,8 @@ A server that answered on the local network: its address (as
 
 Struct, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/settings.rs)
 
-What lists and pages show: track columns, album facts, descriptions, and
-Now Playing in the sidebar.
+What lists and pages show: track columns, album facts, descriptions,
+Now Playing in the sidebar, and the Home sections hidden.
 
 ### `DockMenu`
 
@@ -1088,6 +1088,12 @@ Writes plays into `plays`, and sends listens to ListenBrainz, on a thread
 of its own, managed by Tauri. Quitting waits for it
 (`quitting::Finished`), and writes what it left if it is stuck in a
 request.
+
+### `HomeSection`
+
+Enum, a setting · [`app/src-tauri/src/settings.rs`](../../app/src-tauri/src/settings.rs)
+
+A section of the Home page, in the order it shows them.
 
 ### `Host`
 

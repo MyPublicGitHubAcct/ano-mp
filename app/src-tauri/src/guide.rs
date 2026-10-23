@@ -146,6 +146,19 @@ const FACTS: &[(&str, &str)] = &[
     ("type", "column.type"),
 ];
 
+const HOME_SECTIONS: &[(&str, &str)] = &[
+    ("outside", "home.outside"),
+    ("onThisDay", "home.onThisDay"),
+    ("recentlyPlayed", "history.recent"),
+    ("yearAgo", "home.yearAgo"),
+    ("forgotten", "home.forgotten"),
+    ("addedWeek", "home.addedWeek"),
+    ("addedMonth", "home.addedMonth"),
+    ("addedEarlier", "home.addedEarlier"),
+    ("neverPlayed", "home.neverPlayed"),
+    ("forYou", "home.forYou"),
+];
+
 const REPLAY_GAIN: &[(&str, &str)] = &[
     ("off", "playback.rgOff"),
     ("track", "playback.rgTrack"),
@@ -321,6 +334,13 @@ const APP_ROWS: &[Row] = &[
         "display.sidebarNowPlaying",
         Shown::Switch,
         "",
+    ),
+    row(
+        "settings.display",
+        "app.display.hiddenOnHome",
+        "display.hiddenOnHome",
+        Shown::Custom(|value, labels| list(value, HOME_SECTIONS, labels, "display.none")),
+        "any of Home's sections",
     ),
     // The theme's name, built-in preset and colours: the theme itself.
     row(

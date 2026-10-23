@@ -88,7 +88,7 @@ removes views you added.
 
 ## Display
 
-What track lists and album pages show.
+What track lists, album pages and Home show.
 
 - **Track list columns**: what lists show beside each track's title, in
   order: **Track number**, **Artist**, **Album**, **Album artist**,
@@ -106,6 +106,14 @@ What track lists and album pages show.
   Wikipedia on album and artist pages. On at first.
 - **Show Now Playing in the sidebar**: a **Now Playing** item in the
   sidebar. The player bar opens the same view either way. Off at first.
+- **Sections to show** (under **Home**): which parts of
+  [Home](02-finding-music.md#home) appear, each with its own switch:
+  **Beyond your library**, **Released on this day**, **Recently played**,
+  **A year ago today**, **Not played for a year**, **Added this week**,
+  **Added this month**, **Added earlier**, **Never played** and **You
+  might like**. All on at first. A part also needs its feature on in
+  **Features**, and something to show. **Choose sections…** on Home opens
+  this list.
 
 ## Appearance
 

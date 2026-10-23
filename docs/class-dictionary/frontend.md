@@ -213,8 +213,8 @@ worker, cached for a week.
 
 Svelte component · [`app/src/lib/components/settings/DisplayOptions.svelte`](../../app/src/lib/components/settings/DisplayOptions.svelte)
 
-Settings › Display: track list columns, the album summary's facts, and
-whether descriptions and biographies show.
+Settings › Display: track list columns, the album summary's facts,
+whether descriptions and biographies show, and Home's sections.
 
 ### `DragGhost`
 
@@ -407,8 +407,9 @@ month with "Play these", and everything played recently.
 Svelte component · [`app/src/lib/components/HomeView.svelte`](../../app/src/lib/components/HomeView.svelte)
 
 Home: ways into the library besides browsing, each while its feature is
-on: outside artists, on this day, recently played, highlights, recently
-added, never played, and albums like what the user plays.
+on and the user hasn't hidden it: outside artists, on this day, recently
+played, highlights, recently added, never played, and albums like what
+the user plays.
 
 ### `Icon`
 

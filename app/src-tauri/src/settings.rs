@@ -377,6 +377,9 @@ pub struct DisplaySettings {
     /// A "Now Playing" item in the sidebar (the now-playing bar opens the
     /// same page either way).
     pub sidebar_now_playing: bool,
+    /// Home's sections the user turned off; the rest show while their
+    /// features are on, so a section added later shows unless hidden.
+    pub hidden_on_home: Vec<HomeSection>,
 }
 
 impl Default for DisplaySettings {
@@ -388,6 +391,7 @@ impl Default for DisplaySettings {
             album_facts: vec![Date, Label, Country, AlbumFact::Format, Type],
             show_descriptions: true,
             sidebar_now_playing: false,
+            hidden_on_home: Vec::new(),
         }
     }
 }
@@ -432,6 +436,33 @@ pub enum AlbumFact {
     Format,
     /// Album, EP, live…
     Type,
+}
+
+/// A section of the Home page, in the order it shows them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum HomeSection {
+    /// Artists outside the library like the ones played (X5).
+    Outside,
+    /// Albums released on this day in earlier years (O17).
+    OnThisDay,
+    /// What was played last (O16).
+    RecentlyPlayed,
+    /// What was playing a year ago today (O8).
+    YearAgo,
+    /// Favourites not played for a year (O8).
+    Forgotten,
+    /// Albums added in the last week (O15).
+    AddedWeek,
+    /// Albums added in the last month, before this week (O15).
+    AddedMonth,
+    /// Albums added before this month (O15).
+    AddedEarlier,
+    /// Albums never played (O8).
+    NeverPlayed,
+    /// Albums like what the user plays, not played lately (X4).
+    ForYou,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -569,6 +600,9 @@ impl AppSettings {
         }
         if !all_different(&display.album_facts) {
             return invalid("An album fact is repeated".into());
+        }
+        if !all_different(&display.hidden_on_home) {
+            return invalid("A Home section is repeated".into());
         }
         let playback = &self.playback;
         for (name, db) in [
@@ -917,6 +951,10 @@ mod tests {
         };
         assert!(error(|s| s.display.track_columns = vec![TrackColumn::Year; 2]).contains("column"));
         assert!(error(|s| s.display.album_facts = vec![AlbumFact::Date; 2]).contains("fact"));
+        assert!(
+            error(|s| s.display.hidden_on_home = vec![HomeSection::AddedMonth; 2])
+                .contains("Home section")
+        );
         assert!(error(|s| s.playback.preamp = 15.5).contains("preamp"));
         assert!(error(|s| s.playback.untagged_gain = f64::NAN).contains("untagged"));
         assert!(error(|s| s.output.device = Some(" ".into())).contains("device"));
@@ -958,7 +996,8 @@ mod tests {
                     "trackColumns": ["year", "mood", "genre", "year", 7, "bitrate"],
                     "albumFacts": "date",
                     "showDescriptions": false,
-                    "density": "compact"
+                    "density": "compact",
+                    "hiddenOnHome": ["addedMonth", "someday", "forYou", "addedMonth"]
                 },
                 "playback": {"replayGain": "smart", "preamp": 99, "untaggedGain": -6},
                 "output": {"device": "Speakers", "bufferSize": "big"},
@@ -975,6 +1014,10 @@ mod tests {
         assert_eq!(settings.display.album_facts, defaults.display.album_facts);
         assert!(!settings.display.show_descriptions);
         assert!(!settings.display.sidebar_now_playing, "off unless stored");
+        assert_eq!(
+            settings.display.hidden_on_home,
+            [HomeSection::AddedMonth, HomeSection::ForYou]
+        );
         assert_eq!(settings.playback.replay_gain, ReplayGainMode::Off);
         assert_eq!(settings.playback.preamp, 0.0);
         assert_eq!(settings.playback.untagged_gain, -6.0);
@@ -1085,6 +1128,7 @@ mod bindings {
         declare::<DisplaySettings>(&cfg, out);
         declare::<TrackColumn>(&cfg, out);
         declare::<AlbumFact>(&cfg, out);
+        declare::<HomeSection>(&cfg, out);
         declare::<PlaybackSettings>(&cfg, out);
         declare::<ReplayGainMode>(&cfg, out);
         declare::<OutputSettings>(&cfg, out);

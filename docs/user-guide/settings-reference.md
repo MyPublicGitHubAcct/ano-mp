@@ -41,6 +41,7 @@ section's settings back to the values below.
 | Album facts | Release date, Label and catalogue number, Country, Format, Type | any of the facts, in any order |
 | Show album descriptions and artist biographies | On | On or off |
 | Show Now Playing in the sidebar | Off | On or off |
+| Sections hidden on Home | None | any of Home's sections |
 
 ## Appearance
 

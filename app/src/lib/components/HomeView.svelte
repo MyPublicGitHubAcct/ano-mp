@@ -7,7 +7,8 @@
   // today, favourites not played for a year), recently added grouped by
   // this week, this month and earlier (O15), albums never played (O8),
   // and albums like what the user plays, not played lately (X4). The
-  // recommendations fold away, closed until opened.
+  // recommendations fold away, closed until opened. Each section can be
+  // hidden in Settings › Display (`hiddenOnHome`), and isn't fetched then.
   import { count, t } from "$lib/i18n";
   import { untrack } from "svelte";
   import {
@@ -16,14 +17,17 @@
     queue,
     type AlbumCard,
     type Highlights,
+    type HomeSection,
     type RecentEntry,
     type OutsideArtist,
     type SimilarAlbum,
   } from "$lib/api";
   import { FOLDER_SHORT, unavailableEntryState, unavailableState } from "$lib/folders";
+  import { HOME_SECTIONS, homeSectionAvailable } from "$lib/home";
   import { reasonsText } from "$lib/similar";
   import { features } from "$lib/state/features.svelte";
   import { library } from "$lib/state/library.svelte";
+  import { appSettings } from "$lib/state/settings.svelte";
   import { attempt } from "$lib/state/toasts.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import AlbumCards from "./AlbumCards.svelte";
@@ -32,6 +36,18 @@
   import OutsideArtists from "./OutsideArtists.svelte";
 
   const f = $derived(features.on);
+  const hidden = $derived(appSettings.display.hiddenOnHome);
+
+  /** Whether a section shows: its features are on and the user hasn't hidden it. */
+  const shows = (section: HomeSection) => homeSectionAvailable(section, f) && !hidden.includes(section);
+
+  // What to fetch, as booleans, so saving an unrelated setting fetches nothing.
+  const wantOnThisDay = $derived(shows("onThisDay"));
+  const wantRecent = $derived(shows("recentlyPlayed"));
+  const wantAdded = $derived(shows("addedWeek") || shows("addedMonth") || shows("addedEarlier"));
+  const wantHighlights = $derived(shows("yearAgo") || shows("forgotten") || shows("neverPlayed"));
+  const wantForYou = $derived(shows("forYou"));
+  const wantOutside = $derived(shows("outside"));
 
   let onThisDay = $state.raw<AlbumCard[] | null>(null);
   let recent = $state.raw<RecentEntry[] | null>(null);
@@ -48,28 +64,28 @@
       library.version,
       library.unreadableKey,
       features.historyVersion,
-      f.onThisDay,
-      f.recentlyPlayed,
-      f.recentlyAdded,
-      f.listeningHistory,
-      f.recommendations,
+      wantOnThisDay,
+      wantRecent,
+      wantAdded,
+      wantHighlights,
+      wantForYou,
     ];
     untrack(async () => {
       [onThisDay, recent, added, highlights, forYou] = await Promise.all([
-        f.onThisDay ? quiet(api.onThisDay(new Date())) : null,
-        f.listeningHistory && f.recentlyPlayed ? quiet(api.recentlyPlayed(12)) : null,
-        f.recentlyAdded ? quiet(api.recentlyAdded(120)) : null,
-        f.listeningHistory ? quiet(api.highlights()) : null,
-        f.recommendations ? quiet(api.forYou()) : null,
+        wantOnThisDay ? quiet(api.onThisDay(new Date())) : null,
+        wantRecent ? quiet(api.recentlyPlayed(12)) : null,
+        wantAdded ? quiet(api.recentlyAdded(120)) : null,
+        wantHighlights ? quiet(api.highlights()) : null,
+        wantForYou ? quiet(api.forYou()) : null,
       ]);
     });
   });
 
   // Apart from the rest: ListenBrainz can take a while to answer.
   $effect(() => {
-    void [library.version, features.historyVersion, f.outsideRecommendations];
+    void [library.version, features.historyVersion, wantOutside];
     untrack(async () => {
-      outsideArtists = f.outsideRecommendations ? ((await quiet(outside.forYou())) ?? []) : [];
+      outsideArtists = wantOutside ? ((await quiet(outside.forYou())) ?? []) : [];
     });
   });
 
@@ -77,16 +93,16 @@
   const addedGroups = $derived.by(() => {
     if (!added) return [];
     const now = Date.now() / 1000;
-    const groups: { name: string; albums: AlbumCard[] }[] = [
-      { name: t("home.addedWeek"), albums: [] },
-      { name: t("home.addedMonth"), albums: [] },
-      { name: t("home.addedEarlier"), albums: [] },
+    const groups: { id: HomeSection; name: string; albums: AlbumCard[] }[] = [
+      { id: "addedWeek", name: t("home.addedWeek"), albums: [] },
+      { id: "addedMonth", name: t("home.addedMonth"), albums: [] },
+      { id: "addedEarlier", name: t("home.addedEarlier"), albums: [] },
     ];
     for (const album of added) {
       const age = now - (album.at ?? 0);
       groups[age < 7 * 86400 ? 0 : age < 31 * 86400 ? 1 : 2].albums.push(album);
     }
-    return groups.filter((group) => group.albums.length > 0);
+    return groups.filter((group) => group.albums.length > 0 && shows(group.id));
   });
 
   const recentAlbums = $derived(
@@ -107,19 +123,15 @@
     (forYou ?? []).map(({ album, reasons }) => ({ ...album, note: reasonsText(reasons, t) })),
   );
 
-  const nothing = $derived(
-    !f.recommendations &&
-      !f.outsideRecommendations &&
-      !f.onThisDay &&
-      !f.recentlyAdded &&
-      !(f.listeningHistory && f.recentlyPlayed) &&
-      !f.listeningHistory,
-  );
+  const nothing = $derived(!HOME_SECTIONS.some(({ id }) => homeSectionAvailable(id, f)));
+  const allHidden = $derived(!nothing && !HOME_SECTIONS.some(({ id }) => shows(id)));
+  const chooseSections = () => ui.showSettings("display", "setting-hiddenOnHome");
 </script>
 
 <section class="home" aria-labelledby="home-heading">
   <header>
     <h1 id="home-heading">{t("home.title")}</h1>
+    <button onclick={chooseSections}><Icon name="sliders" /> {t("home.chooseSections")}</button>
   </header>
 
   {#if nothing}
@@ -128,9 +140,14 @@
       <button class="link" onclick={() => ui.showSettings("features")}>{t("health.settingsFeatures")}</button>
       {t("home.nothingAfter")}
     </p>
+  {:else if allHidden}
+    <p class="muted">
+      {t("home.allHidden")}
+      <button class="link" onclick={chooseSections}>{t("home.chooseSections")}</button>
+    </p>
   {/if}
 
-  {#if outsideArtists.length > 0}
+  {#if wantOutside && outsideArtists.length > 0}
     <Fold key="home.outside" heading={t("home.outside")}>
       <OutsideArtists
         artists={outsideArtists}
@@ -140,12 +157,12 @@
     </Fold>
   {/if}
 
-  {#if onThisDay && onThisDay.length > 0}
+  {#if wantOnThisDay && onThisDay && onThisDay.length > 0}
     <h2>{t("home.onThisDay")}</h2>
     <AlbumCards albums={onThisDay} label={t("home.onThisDay")} />
   {/if}
 
-  {#if recent && recent.length > 0}
+  {#if wantRecent && recent && recent.length > 0}
     <h2>{t("history.recent")}</h2>
     {#if recentAlbums.length > 0}<AlbumCards albums={recentAlbums} label={t("history.recent")} />{/if}
     {#if recentTracks.length > 0}
@@ -165,12 +182,12 @@
     {/if}
   {/if}
 
-  {#if highlights && highlights.yearAgo.length > 0}
+  {#if shows("yearAgo") && highlights && highlights.yearAgo.length > 0}
     <h2>{t("home.yearAgo")}</h2>
     <AlbumCards albums={highlights.yearAgo} label={t("home.yearAgoLabel")} />
   {/if}
 
-  {#if highlights && highlights.forgotten.length > 0}
+  {#if shows("forgotten") && highlights && highlights.forgotten.length > 0}
     <h2>{t("home.forgotten")}</h2>
     <AlbumCards albums={highlights.forgotten} label={t("home.forgottenLabel")} />
   {/if}
@@ -180,12 +197,12 @@
     <AlbumCards albums={group.albums} label={group.name} />
   {/each}
 
-  {#if highlights && highlights.neverPlayed.length > 0}
+  {#if shows("neverPlayed") && highlights && highlights.neverPlayed.length > 0}
     <h2>{t("home.neverPlayed")}</h2>
     <AlbumCards albums={highlights.neverPlayed} label={t("home.neverPlayed")} />
   {/if}
 
-  {#if forYouCards.length > 0}
+  {#if wantForYou && forYouCards.length > 0}
     <Fold key="home.forYou" heading={t("home.forYou")}>
       <AlbumCards albums={forYouCards} label={t("home.forYouLabel")} />
     </Fold>

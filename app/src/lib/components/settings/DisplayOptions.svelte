@@ -1,14 +1,22 @@
 <script lang="ts">
   // What track lists show besides the title (as columns when wide, under
-  // the title when narrow), what an album's summary line says, and whether
-  // Wikipedia's descriptions and biographies show.
+  // the title when narrow), what an album's summary line says, whether
+  // Wikipedia's descriptions and biographies show, and Home's sections.
   import { t } from "$lib/i18n";
   import { ALBUM_FACTS, TRACK_COLUMNS, columnAvailable, columnText, textColumns } from "$lib/columns";
-  import type { Track } from "$lib/api";
+  import { HOME_SECTIONS } from "$lib/home";
+  import type { HomeSection, Track } from "$lib/api";
   import { appSettings } from "$lib/state/settings.svelte";
   import OrderedChoices from "./OrderedChoices.svelte";
 
   const display = $derived(appSettings.display);
+
+  /** Shows or hides one of Home's sections, keeping the others' choices. */
+  const showOnHome = (section: HomeSection, show: boolean) =>
+    appSettings.save((next) => {
+      const hidden = next.display.hiddenOnHome.filter((id) => id !== section);
+      next.display.hiddenOnHome = show ? hidden : [...hidden, section];
+    });
 
   /** A made-up track for the preview. */
   const SAMPLE: Track = {
@@ -116,6 +124,23 @@
     <span class="hint">{t("display.sidebarNowPlayingHint")}</span>
   </span>
 </label>
+
+<h3>{t("home.title")}</h3>
+<div class="field stacked" id="setting-hiddenOnHome">
+  <span class="label">{t("display.showOnHome")}</span>
+  {#each HOME_SECTIONS as section (section.id)}
+    <label class="switch">
+      <input
+        type="checkbox"
+        checked={!display.hiddenOnHome.includes(section.id)}
+        disabled={appSettings.saving}
+        onchange={(event) => showOnHome(section.id, event.currentTarget.checked)}
+      />
+      <span class="title">{section.name}</span>
+    </label>
+  {/each}
+  <p class="hint">{t("display.showOnHomeHint")}</p>
+</div>
 
 <div class="actions">
   <button onclick={() => appSettings.reset("display")} disabled={appSettings.saving}>{t("settings.reset")}</button>

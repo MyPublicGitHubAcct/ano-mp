@@ -438,6 +438,7 @@ single-page app per window.
 - `effects.ts`: the effects' presets, slider scales and value display.
 - `equaliser.ts`: the equaliser's presets and band labels.
 - `featureMenu.ts`: the menu items the optional features add.
+- `home.ts`: Home's sections, in order, and the features each needs.
 - `find.ts`: finding a feature from the search box (X9): the index of
   views, Settings sections and settings, menu items and switches, its
   matching and ranking, and where each result opens. Pure, for `npm test`.
@@ -518,7 +519,8 @@ Svelte 5 rune stores, each a singleton following its backend events.
 - `TrackText.svelte`: a track row's text and columns.
 - `SearchResults.svelte`: search results, 150 ms after typing stops,
   with the features `find.ts` finds above them.
-- `HomeView.svelte`: Home's sections, each while its feature is on.
+- `HomeView.svelte`: Home's sections, each while its feature is on and
+  the user hasn't hidden it.
 - `ArtistsView.svelte`: every artist, filterable.
 - `ArtistPage.svelte`: an artist's page: facts, biography, albums.
 - `ArtistSimilar.svelte`: an artist page's similar artists.
@@ -586,7 +588,7 @@ sections' shared styles.
 - `LibraryFolders.svelte`: folders, rescans, file watching, export and
   import.
 - `SortRules.svelte`: the sort and grouping rules and ignored articles.
-- `DisplayOptions.svelte`: what lists and album pages show.
+- `DisplayOptions.svelte`: what lists, album pages and Home show.
 - `AppearanceOptions.svelte`: the theme picker and editor.
 - `PlaybackOptions.svelte`: the output device, buffer, ReplayGain.
 - `EqualiserOptions.svelte`: the equaliser.
