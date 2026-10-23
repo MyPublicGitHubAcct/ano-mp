@@ -7,7 +7,10 @@
 //! the album, else the first found among the album-art sources in the order
 //! set in `metadata::settings`: embedded pictures, images in the album's
 //! folder, and covers already downloaded from the Cover Art Archive. A
-//! music server's tracks (PLAN.md Phase 7e) aren't files here: their
+//! picture that isn't an image the webview shows (damaged, or an unknown
+//! format) is passed over. The metadata worker downloads an album's cover
+//! only while no local source ahead of the archive has one
+//! (`shows_local_art`). A music server's tracks (PLAN.md Phase 7e) aren't files here: their
 //! picture is the one the server shows for them, which a sync downloads
 //! into the image cache, and stands in for the embedded one.
 //!
@@ -30,7 +33,7 @@ use super::thumbs::Size;
 use super::{track_path, Error};
 use crate::anomp;
 use crate::metadata::settings::{self, Kind, SourceId};
-use crate::metadata::{coverartarchive, folder_art};
+use crate::metadata::{coverartarchive, folder_art, images};
 
 /// The URI scheme the webview loads art from.
 pub const SCHEME: &str = "anomp-art";
@@ -204,6 +207,32 @@ pub fn lookup(library: &LibraryState, key: ArtKey) -> Result<Option<Arc<Art>>, E
     Ok(art)
 }
 
+/// Whether album `album_id` shows a picture from a source ahead of the Cover
+/// Art Archive in the order (by default its files' or its folder's), so the
+/// metadata worker needn't download its cover. Never when the user chose
+/// its picture: a chosen archive image is fetched even so. Reads the files
+/// as `lookup` does, but leaves the cache as it was, so a background run
+/// doesn't push out the art the UI is showing.
+pub fn shows_local_art(library: &LibraryState, album_id: i64) -> Result<bool, Error> {
+    let key = ArtKey::Album(album_id);
+    let order = {
+        let conn = library.conn();
+        if chosen_art(&conn, album_id)?.is_some() {
+            return Ok(false);
+        }
+        settings::service_settings(&conn)?.sources_shown(Kind::AlbumArt)
+    };
+    let source = match library.art.get(key) {
+        Some(cached) => cached.map(|art| art.source),
+        None => find(library, key)?.map(|art| art.source),
+    };
+    let place = |source| order.iter().position(|shown| *shown == source);
+    Ok(match source.and_then(place) {
+        Some(found) => place(SourceId::CoverArtArchive).is_none_or(|archive| found < archive),
+        None => false,
+    })
+}
+
 /// A file of the album or track: its library folder and path within it.
 struct TrackFile {
     folder_id: i64,
@@ -368,10 +397,14 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
                     return None;
                 }
                 let picture = anomp::read_tags(&path, true).ok()?.picture?;
+                // A damaged picture, or one the webview can't show, leaves
+                // the album to the next file or source.
+                let Some(mime_type) = images::image_type(&picture.data) else {
+                    log::debug!("not an image the app shows: {}", path.display());
+                    return None;
+                };
                 Some(Art {
-                    mime_type: picture
-                        .mime_type
-                        .unwrap_or_else(|| "application/octet-stream".into()),
+                    mime_type: mime_type.into(),
                     data: picture.data,
                     source,
                     chosen: false,
@@ -458,9 +491,17 @@ fn from_source(source: SourceId, reference: Option<&str>, album: &mut AlbumSourc
     }
 }
 
-/// The folder picture at `path` in library folder `folder_id` (at `root`).
+/// The folder picture at `path` in library folder `folder_id` (at `root`),
+/// unless it's a cloud placeholder (H12) or not an image the webview shows.
 fn folder_picture(source: SourceId, folder_id: i64, root: &Path, path: &Path) -> Option<Art> {
-    let (mime_type, data) = folder_art::read(path)?;
+    if anomp::file_is_dataless(path) == Some(true) {
+        return None;
+    }
+    let (_, data) = folder_art::read(path)?;
+    let Some(mime_type) = images::image_type(&data) else {
+        log::debug!("not an image the app shows: {}", path.display());
+        return None;
+    };
     let relative = super::scanner::relative_path(root, path);
     Some(Art {
         mime_type: mime_type.into(),
@@ -864,7 +905,11 @@ mod tests {
             disc.join("01.flac"),
         )
         .unwrap();
-        std::fs::write(root.join("Artist/Album/cover.jpg"), b"jpeg bytes").unwrap();
+        std::fs::write(
+            root.join("Artist/Album/cover.jpg"),
+            b"\xFF\xD8\xFF jpeg bytes",
+        )
+        .unwrap();
 
         let library = test_library::Library::from_conn(db::open_in_memory().unwrap());
         let folder_id = library.add_folder(root.to_str().unwrap());
@@ -909,7 +954,7 @@ mod tests {
             lookup(&library, album).unwrap().unwrap()
         };
         assert_eq!(art.mime_type, "image/jpeg");
-        assert_eq!(art.data, b"jpeg bytes");
+        assert_eq!(art.data, b"\xFF\xD8\xFF jpeg bytes");
 
         // The user's choice beats the order.
         let choose = |source: &str, reference: Option<&str>| {
@@ -938,6 +983,68 @@ mod tests {
         assert_eq!(mime(&library, album).as_deref(), Some("image/jpeg"));
         library.conn().execute("DELETE FROM album_art", []).unwrap();
         assert_eq!(mime(&library, album), None);
+    }
+
+    fn set_art_order(library: &LibraryState, order: Vec<SourceId>) {
+        let conn = library.conn();
+        let mut settings = settings::service_settings(&conn).unwrap();
+        settings.order.insert(Kind::AlbumArt, order);
+        settings::save_service_settings(&conn, settings).unwrap();
+    }
+
+    #[test]
+    fn passes_over_a_picture_that_is_not_an_image() {
+        let (dir, library, album) = album_with_two_pictures();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        set_art_order(&library, vec![SourceId::Folder, SourceId::Embedded]);
+        let album = ArtKey::Album(album);
+        std::fs::write(root.join("Artist/Album/cover.jpg"), b"<html>").unwrap();
+        assert_eq!(mime(&library, album).as_deref(), Some("image/png"));
+        {
+            let conn = library.conn();
+            let mut settings = settings::service_settings(&conn).unwrap();
+            settings.source_mut(SourceId::Embedded).unwrap().enabled = false;
+            settings::save_service_settings(&conn, settings).unwrap();
+        }
+        assert_eq!(mime(&library, album), None);
+    }
+
+    #[test]
+    fn says_whether_a_local_picture_comes_before_the_archive() {
+        let (dir, library, album_id) = album_with_two_pictures();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let shows = || {
+            library.art.clear();
+            shows_local_art(&library, album_id).unwrap()
+        };
+        assert!(shows(), "embedded, by default");
+        set_art_order(
+            &library,
+            vec![SourceId::CoverArtArchive, SourceId::Embedded],
+        );
+        assert!(!shows(), "the archive comes first");
+        set_art_order(&library, vec![SourceId::Folder, SourceId::CoverArtArchive]);
+        assert!(shows());
+        std::fs::write(root.join("Artist/Album/cover.jpg"), b"<html>").unwrap();
+        assert!(!shows(), "not an image");
+
+        // What the UI looked up is used, and the cache left as it was.
+        set_art_order(&library, vec![SourceId::Embedded]);
+        library.art.clear();
+        assert!(shows_local_art(&library, album_id).unwrap());
+        assert_eq!(library.art.get(ArtKey::Album(album_id)), None);
+        lookup(&library, ArtKey::Album(album_id)).unwrap();
+        assert!(shows_local_art(&library, album_id).unwrap());
+
+        // The user's choice is theirs to have fetched.
+        library
+            .conn()
+            .execute(
+                "INSERT INTO album_art (album_id, source, reference) VALUES (?1, 'embedded', NULL)",
+                [album_id],
+            )
+            .unwrap();
+        assert!(!shows());
     }
 
     #[test]
@@ -1090,7 +1197,11 @@ mod tests {
     fn lists_serves_and_chooses_candidates() {
         let (dir, library, album_id) = album_with_two_pictures();
         let root = std::fs::canonicalize(dir.path()).unwrap();
-        std::fs::write(root.join("Artist/Album/CD1/back.png"), b"png bytes").unwrap();
+        std::fs::write(
+            root.join("Artist/Album/CD1/back.png"),
+            b"\x89PNG\r\n\x1a\n png bytes",
+        )
+        .unwrap();
         std::fs::write(root.join("Artist/Album/notes.txt"), b"text").unwrap();
 
         let embedded = local_candidates(&library, album_id, SourceId::Embedded).unwrap();
@@ -1124,7 +1235,7 @@ mod tests {
                 &format!("{album}/folder"),
                 Some("ref=Artist%2FAlbum%2FCD1%2Fback.png")
             ),
-            (StatusCode::OK, b"png bytes".to_vec())
+            (StatusCode::OK, b"\x89PNG\r\n\x1a\n png bytes".to_vec())
         );
         assert_eq!(get(&format!("{album}/embedded"), None).0, StatusCode::OK);
         // Readable by the visualizer's canvas.
@@ -1154,7 +1265,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             shown(&library),
-            (SourceId::Folder, true, b"png bytes".to_vec())
+            (
+                SourceId::Folder,
+                true,
+                b"\x89PNG\r\n\x1a\n png bytes".to_vec()
+            )
         );
         for bad in [
             (SourceId::Folder, Some("Artist/Album/notes.txt")),
@@ -1194,7 +1309,11 @@ mod tests {
         let (dir, library, album_id) = album_with_two_pictures();
         let root = std::fs::canonicalize(dir.path()).unwrap();
         let elsewhere = tempfile::tempdir().unwrap();
-        std::fs::write(elsewhere.path().join("secret.png"), b"secret").unwrap();
+        std::fs::write(
+            elsewhere.path().join("secret.png"),
+            b"\x89PNG\r\n\x1a\n secret",
+        )
+        .unwrap();
         // A picture and a folder in the album leading out of the library,
         // and another album's picture under the root.
         symlink(
@@ -1252,7 +1371,7 @@ mod tests {
             let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
             assert_eq!(
                 (art.chosen, &art.data[..]),
-                (false, &b"jpeg bytes"[..]),
+                (false, &b"\xFF\xD8\xFF jpeg bytes"[..]),
                 "{reference}"
             );
         }
@@ -1286,7 +1405,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = std::fs::canonicalize(dir.path()).unwrap();
         std::fs::create_dir_all(root.join("Album/CD2")).unwrap();
-        std::fs::write(root.join("Album/CD2/back.png"), b"png bytes").unwrap();
+        std::fs::write(
+            root.join("Album/CD2/back.png"),
+            b"\x89PNG\r\n\x1a\n png bytes",
+        )
+        .unwrap();
         let test = test_library::Library::from_conn(db::open_in_memory().unwrap());
         let folder_id = test.add_folder(root.to_str().unwrap());
         for (disc, name) in [(1, "01"), (1, "02"), (1, "03"), (1, "04"), (2, "01")] {
@@ -1310,7 +1433,10 @@ mod tests {
         )
         .unwrap();
         let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
-        assert_eq!((art.chosen, &art.data[..]), (true, &b"png bytes"[..]));
+        assert_eq!(
+            (art.chosen, &art.data[..]),
+            (true, &b"\x89PNG\r\n\x1a\n png bytes"[..])
+        );
     }
 
     /// The scanner follows links out of the library folder
@@ -1325,7 +1451,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::create_dir_all(&elsewhere).unwrap();
         std::fs::write(elsewhere.join("01.flac"), b"not read").unwrap();
-        std::fs::write(elsewhere.join("cover.jpg"), b"jpeg bytes").unwrap();
+        std::fs::write(elsewhere.join("cover.jpg"), b"\xFF\xD8\xFF jpeg bytes").unwrap();
         std::os::unix::fs::symlink(&elsewhere, root.join("Linked")).unwrap();
 
         let test = test_library::Library::from_conn(db::open_in_memory().unwrap());
@@ -1346,7 +1472,7 @@ mod tests {
         let art = lookup(&library, ArtKey::Album(album_id)).unwrap().unwrap();
         assert_eq!(
             (art.source, &art.data[..]),
-            (SourceId::Folder, &b"jpeg bytes"[..])
+            (SourceId::Folder, &b"\xFF\xD8\xFF jpeg bytes"[..])
         );
         assert!(matches!(
             &art.origin,

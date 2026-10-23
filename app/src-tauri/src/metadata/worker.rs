@@ -62,6 +62,16 @@ impl<R: Runtime> Host for TauriHost<R> {
         }
     }
 
+    fn shows_local_art(&mut self, album_id: i64) -> bool {
+        let Some(library) = self.app.try_state::<LibraryState>() else {
+            return false;
+        };
+        crate::library::art::shows_local_art(&library, album_id).unwrap_or_else(|error| {
+            log::warn!("{error}");
+            false
+        })
+    }
+
     fn metadata_changed(&mut self, changed: &MetadataChanged) {
         let _ = self.app.emit(METADATA_CHANGED_EVENT, changed);
         crate::media::art_changed(&self.app, &changed.albums);

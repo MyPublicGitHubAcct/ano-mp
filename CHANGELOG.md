@@ -119,6 +119,11 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   playlist downloaded. Self-signed certificates aren't supported.
 
 ### Fixed
+- An album's cover is no longer downloaded from the Cover Art Archive
+  when the album has a picture of its own (embedded in its files, or a
+  cover image in its folder) ahead of the archive in the Album art order.
+  A damaged picture, embedded or in the folder, is passed over for the
+  next source instead of showing as a broken image.
 - An album without album artist tags whose guest tracks credit its artist
   ("Noisia" and "Noisia and Phace") is one album under that artist, no
   longer split in two, or filed under Various Artists when there are three

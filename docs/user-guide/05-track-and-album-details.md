@@ -58,7 +58,10 @@ you change it in **Settings › Online sources** (**Album art**):
 3. **Cover Art Archive**: the cover of the album's release on MusicBrainz,
    downloaded (needs the album matched on MusicBrainz).
 
-The first picture found is shown.
+The first picture found is shown. A picture that is damaged, or isn't a
+JPEG, PNG, GIF or WebP image, is passed over for the next. A cover is
+downloaded only for an album that has no picture of its own ahead of the
+Cover Art Archive in the order; the album's details are still looked up.
 
 ### Choose a cover
 

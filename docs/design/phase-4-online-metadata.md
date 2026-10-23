@@ -337,7 +337,8 @@ Lyrics (e.g. LRCLIB) are out of scope for Phase 4.
     doesn't make an accepted match be looked at again; covers are
     downloaded even when a local picture comes first in the order (the
     DB doesn't record which albums have embedded art), so a library of
-    more than about 5,000 albums can churn the 500 MB image cache; 4.6's
+    more than about 5,000 albums can churn the 500 MB image cache (fixed
+    2026-10-23: `Job::Cover` asks `art::shows_local_art` as it runs); 4.6's
     "Use automatic" (`clear_link`) should drop the album from `ArtCache`
     itself, since the worker only does that once it has re-matched; on
     Windows (WebView2's HTTP cache persists across launches) the scan

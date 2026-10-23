@@ -414,6 +414,10 @@ pub trait Host {
     /// Album `album_id`'s art may be different now: forget any copy kept.
     /// Called at once, before the batch naming the album is sent.
     fn art_changed(&mut self, album_id: i64);
+    /// Whether album `album_id` shows a picture from a source ahead of the
+    /// Cover Art Archive, so its cover isn't downloaded
+    /// (`library::art::shows_local_art`).
+    fn shows_local_art(&mut self, album_id: i64) -> bool;
     fn metadata_changed(&mut self, changed: &MetadataChanged);
     fn progress(&mut self, progress: &Progress);
 }
@@ -699,6 +703,14 @@ impl<H: Host> Worker<H> {
         }
     }
 
+    /// Whether album `album_id`'s cover should be downloaded: `needs_cover`,
+    /// and it doesn't show a local picture that comes first. The second
+    /// reads files, so it's asked as the job runs, not as it's queued.
+    fn wants_cover(&mut self, album_id: i64, now: i64, force: bool) -> Result<bool, Error> {
+        Ok(needs_cover(&self.conn, &self.images, album_id, now, force)?
+            && !self.host.shows_local_art(album_id))
+    }
+
     /// Does `job` if it's still needed. Returns the job that follows it.
     fn attempt(&mut self, job: Job, user: bool) -> Result<Option<Job>, Error> {
         let settings = settings::service_settings(&self.conn)?;
@@ -735,7 +747,7 @@ impl<H: Host> Worker<H> {
                 if needs_match(&self.conn, album_id, now, user)? {
                     self.match_album(album_id)?;
                 }
-                if usable.cover_art && needs_cover(&self.conn, &self.images, album_id, now, user)? {
+                if usable.cover_art && self.wants_cover(album_id, now, user)? {
                     return Ok(Some(Job::Cover(album_id)));
                 }
                 self.description_next(&usable, album_id, now, user)
@@ -747,7 +759,7 @@ impl<H: Host> Worker<H> {
                         false => Ok(None),
                     };
                 }
-                if needs_cover(&self.conn, &self.images, album_id, now, user)?
+                if self.wants_cover(album_id, now, user)?
                     && coverartarchive::fetch_album_art(
                         &self.client,
                         &self.conn,
@@ -1235,6 +1247,8 @@ mod tests {
     #[derive(Default)]
     struct Recorded {
         art: Vec<i64>,
+        /// Albums `shows_local_art` says show a local picture.
+        local_art: HashSet<i64>,
         changed: Vec<MetadataChanged>,
         progress: Vec<Progress>,
     }
@@ -1251,6 +1265,9 @@ mod tests {
     impl Host for FakeHost {
         fn art_changed(&mut self, album_id: i64) {
             self.0.lock().unwrap().art.push(album_id);
+        }
+        fn shows_local_art(&mut self, album_id: i64) -> bool {
+            self.0.lock().unwrap().local_art.contains(&album_id)
         }
         fn metadata_changed(&mut self, changed: &MetadataChanged) {
             self.0.lock().unwrap().changed.push(changed.clone());
@@ -1680,6 +1697,34 @@ mod tests {
         assert_eq!(test.transport.urls().len(), requests);
         let recorded = test.host.take();
         assert!(recorded.changed.is_empty() && recorded.art.is_empty());
+    }
+
+    #[test]
+    fn an_album_showing_a_local_picture_is_matched_but_gets_no_cover() {
+        let mut test = Test::new(library(&[]));
+        test.host.0.lock().unwrap().local_art.insert(1);
+        serve_search(&test.transport);
+        for (id, _) in RELEASES {
+            test.serve_jpeg(&release_front_url(id));
+        }
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        assert_eq!(test.link(1).unwrap().status, LinkStatus::Matched);
+        let urls = test.transport.urls();
+        assert!(
+            !urls.iter().any(|url| url.contains("coverartarchive.org")),
+            "{urls:?}"
+        );
+        assert_eq!(test.host.take().art, [1], "matched only");
+
+        // Without the local picture (gone, or the archive moved ahead of
+        // it), the next run downloads the cover.
+        test.host.0.lock().unwrap().local_art.clear();
+        test.shared.enrich_library();
+        assert_eq!(test.run(), Step::Idle);
+        let release = test.link(1).unwrap().external_id.unwrap();
+        assert!(test.images.contains(&release_front_url(&release)));
+        assert_eq!(test.host.take().art, [1]);
     }
 
     #[test]

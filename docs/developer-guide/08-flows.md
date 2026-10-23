@@ -246,7 +246,9 @@ sequenceDiagram
    `none`.
 4. The job returns its follow-up, run at once: `Job::Cover` fetches the
    front cover from the Cover Art Archive into the image cache
-   (`coverartarchive.rs`, `images.rs`), then `Job::Description` (the
+   (`coverartarchive.rs`, `images.rs`), unless the album shows a picture
+   from a source ahead of the archive (`Host::shows_local_art`, which asks
+   `art::shows_local_art` as the job runs), then `Job::Description` (the
    release group's Wikipedia article) and the Discogs match when they
    are wanted.
 5. `Host::art_changed` (`metadata/worker.rs`) drops the album's cached art
