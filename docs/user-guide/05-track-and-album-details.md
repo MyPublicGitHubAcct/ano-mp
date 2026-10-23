@@ -92,9 +92,11 @@ setting off or on reads every file again.
   artist tags) is listed under each of them on the **Artists** page; the
   first is its main artist. The track keeps the credit as the tag wrote it.
 - An album is filed under its **album artist** tag. Without one, it is filed
-  under **Various Artists** when the files say it is a compilation, or when
-  three or more artists share an album title in one folder; otherwise under
-  the track's artist.
+  under **Various Artists** when the files say it is a compilation. Tracks
+  that share an album title in one folder stay together under the artist
+  every one of them credits (an album by "Noisia" with tracks by "Noisia
+  and Phace"); with no such artist, under **Various Artists** when three or
+  more artists share the title; otherwise under each track's artist.
 - An artist's page lists their own albums, and under **Appears on** the
   other albums they are on.
 - With **Classical works** on, the **Composer** view groups by composer and

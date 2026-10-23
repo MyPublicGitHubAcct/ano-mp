@@ -40,8 +40,10 @@
 //! or a multi-valued ARTISTS tag) lists each in `track_artists`, the first
 //! as the track's artist, keeping the tag's text as its credit. A file
 //! without an album artist tag is filed under "Various Artists" when it is
-//! marked as a compilation, or when its album title has three or more track
-//! artists in its folder (`regroup_compilations`), else under its artist.
+//! marked as a compilation; else, by its album title in its folder
+//! (`regroup_compilations`), under the artist every track credits ("Noisia",
+//! "Noisia and Phace"), or "Various Artists" for three or more track
+//! artists, else under its artist.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -1317,25 +1319,65 @@ fn various_artists(tx: &Transaction) -> rusqlite::Result<i64> {
 }
 
 /// Files a folder's tracks that have no album artist tag and aren't marked
-/// as compilations: under "Various Artists" where their album title has
-/// `COMPILATION_ARTISTS` or more track artists in one folder of the
-/// library folder, else under their own artist. Moves only tracks whose
-/// filing changes.
+/// as compilations, by album title in one folder of the library folder:
+/// under the title's lead artist where it has one (`lead_artist`), else
+/// under "Various Artists" where it has `COMPILATION_ARTISTS` or more track
+/// artists, else under their own artist. Moves only tracks whose filing
+/// changes.
 fn regroup_compilations(tx: &Transaction, folder_id: i64) -> rusqlite::Result<()> {
     struct Row {
         id: i64,
         relative: String,
         artist_id: Option<i64>,
+        artist: Option<String>,
+        credit: Option<String>,
         album_artist_id: Option<i64>,
         title: String,
         release_id: Option<String>,
         release_group_id: Option<String>,
     }
+
+    /// Of a group's main artists, the one on the most tracks (the first
+    /// by id on a tie) whose name every other track's credit names
+    /// (`credits_name`), as a guest's tracks credit the album's artist
+    /// ("Noisia" and "Noisia and Phace"). None where no artist is on
+    /// every track, or the group has only one.
+    fn lead_artist(group: &[&Row]) -> Option<i64> {
+        let mut counts: HashMap<i64, (usize, &str)> = HashMap::new();
+        for row in group {
+            if let (Some(id), Some(name)) = (row.artist_id, row.artist.as_deref()) {
+                counts.entry(id).or_insert((0, name)).0 += 1;
+            }
+        }
+        if counts.len() < 2 {
+            return None;
+        }
+        let mut candidates: Vec<(i64, usize, &str)> = counts
+            .into_iter()
+            .map(|(id, (count, name))| (id, count, name))
+            .collect();
+        candidates.sort_by_key(|&(id, count, _)| (std::cmp::Reverse(count), id));
+        candidates
+            .into_iter()
+            .find(|&(id, _, name)| {
+                group.iter().all(|row| {
+                    row.artist_id == Some(id)
+                        || row
+                            .credit
+                            .as_deref()
+                            .is_some_and(|credit| credits_name(credit, name))
+                })
+            })
+            .map(|(id, _, _)| id)
+    }
+
     let rows: Vec<Row> = tx
         .prepare_cached(
-            "SELECT t.id, t.relative_path, t.artist_id, t.album_artist_id, album.title,
+            "SELECT t.id, t.relative_path, t.artist_id, artist.name,
+                    IFNULL(t.artist_credit, artist.name), t.album_artist_id, album.title,
                     album.musicbrainz_release_id, album.musicbrainz_release_group_id
              FROM tracks t JOIN albums album ON album.id = t.album_id
+             LEFT JOIN artists artist ON artist.id = t.artist_id
              WHERE t.folder_id = ?1 AND t.album_artist_tagged = 0 AND t.compilation = 0",
         )?
         .query_map([folder_id], |row| {
@@ -1343,10 +1385,12 @@ fn regroup_compilations(tx: &Transaction, folder_id: i64) -> rusqlite::Result<()
                 id: row.get(0)?,
                 relative: row.get(1)?,
                 artist_id: row.get(2)?,
-                album_artist_id: row.get(3)?,
-                title: row.get(4)?,
-                release_id: row.get(5)?,
-                release_group_id: row.get(6)?,
+                artist: row.get(3)?,
+                credit: row.get(4)?,
+                album_artist_id: row.get(5)?,
+                title: row.get(6)?,
+                release_id: row.get(7)?,
+                release_group_id: row.get(8)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -1361,10 +1405,13 @@ fn regroup_compilations(tx: &Transaction, folder_id: i64) -> rusqlite::Result<()
     }
     let mut various = None;
     for group in groups.values() {
+        let lead = lead_artist(group);
         let artists: HashSet<i64> = group.iter().filter_map(|row| row.artist_id).collect();
         let compilation = artists.len() >= COMPILATION_ARTISTS;
         for row in group {
-            let wanted = if compilation {
+            let wanted = if lead.is_some() {
+                lead
+            } else if compilation {
                 Some(match various {
                     Some(id) => id,
                     None => *various.insert(various_artists(tx)?),
@@ -1389,6 +1436,20 @@ fn regroup_compilations(tx: &Transaction, folder_id: i64) -> rusqlite::Result<()
         }
     }
     Ok(())
+}
+
+/// Whether an artist credit ("Noisia and Phace", "Phace & Noisia") names
+/// the artist `name` as whole words, ignoring case.
+fn credits_name(credit: &str, name: &str) -> bool {
+    let credit = credit.to_lowercase();
+    let name = name.to_lowercase();
+    if name.is_empty() {
+        return false;
+    }
+    let word = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+    credit.match_indices(name.as_str()).any(|(at, _)| {
+        !word(credit[..at].chars().next_back()) && !word(credit[at + name.len()..].chars().next())
+    })
 }
 
 /// Gives albums and artists that came back the picks the user made for
@@ -2613,6 +2674,79 @@ mod tests {
             .unwrap();
         write(&mut library, "hits/2.flac", &tags("Two", "B", "Hits"));
         assert_eq!(album_artists(&library)[0], ("Hits".into(), "A".into()));
+    }
+
+    #[test]
+    fn an_album_with_guests_is_filed_under_the_artist_on_every_track() {
+        let mut library = Library::new(&[]);
+        write(
+            &mut library,
+            "r/1.flac",
+            &tags("One", "Noisia", "Resonance"),
+        );
+        write(
+            &mut library,
+            "r/2.flac",
+            &tags("Two", "Noisia", "Resonance"),
+        );
+        write(
+            &mut library,
+            "r/3.flac",
+            &tags("Three", "Noisia and Phace", "Resonance"),
+        );
+        let found = album_artists(&library);
+        assert!(
+            found
+                .iter()
+                .all(|(album, artist)| album == "Resonance" && artist == "Noisia"),
+            "{found:?}"
+        );
+
+        // More guests than COMPILATION_ARTISTS: still the lead's album.
+        write(
+            &mut library,
+            "r/4.flac",
+            &tags("Four", "Phace & NOISIA", "Resonance"),
+        );
+        write(
+            &mut library,
+            "r/5.flac",
+            &tags("Five", "Noisia feat. Foreign Beggars", "Resonance"),
+        );
+        let found = album_artists(&library);
+        assert!(
+            found.iter().all(|(_, artist)| artist == "Noisia"),
+            "{found:?}"
+        );
+        let albums: i64 = library
+            .conn
+            .query_row(
+                "SELECT count(*) FROM albums WHERE title = 'Resonance'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(albums, 1);
+
+        // A track that doesn't credit them makes it a compilation again.
+        write(&mut library, "r/6.flac", &tags("Six", "Phace", "Resonance"));
+        let found = album_artists(&library);
+        assert!(
+            found.iter().all(|(_, artist)| artist == VARIOUS_ARTISTS),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn credits_name_whole_words_ignoring_case() {
+        assert!(credits_name("Noisia and Phace", "Noisia"));
+        assert!(credits_name("Phace & noisia", "NOISIA"));
+        assert!(credits_name("Noisia", "Noisia"));
+        assert!(credits_name("Mefjus, Noisia & Phace", "Noisia"));
+        assert!(!credits_name("Noisiax and Phace", "Noisia"));
+        assert!(!credits_name("Phace", "Noisia"));
+        assert!(!credits_name("Abba", "Ab"));
+        assert!(!credits_name("Anything", ""));
     }
 
     #[test]

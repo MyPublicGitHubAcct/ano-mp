@@ -119,6 +119,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   playlist downloaded. Self-signed certificates aren't supported.
 
 ### Fixed
+- An album without album artist tags whose guest tracks credit its artist
+  ("Noisia" and "Noisia and Phace") is one album under that artist, no
+  longer split in two, or filed under Various Artists when there are three
+  or more such credits. Rescan the folder to regroup it.
 - More Like This and Playback Preferences… are on every album's menu:
   album cards (Home, Favourites, an album's "More like this", the More
   Like This window) and the albums on an artist's page had left them out.

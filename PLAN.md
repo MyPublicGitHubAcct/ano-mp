@@ -126,7 +126,7 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 557 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 10 ignored live tests (one per online source, a Jellyfin server, plex.tv and a Plex server) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 559 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 10 ignored live tests (one per online source, a Jellyfin server, plex.tv and a Plex server) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 93 frontend tests (`npm test`, pure modules) | `app/tests/` |
 | the scripts' 268 pytest tests (`test-python.py`) | `scripts/tests/` |
 

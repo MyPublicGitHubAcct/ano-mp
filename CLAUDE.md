@@ -412,7 +412,8 @@ audio cache (`fetch_to_play` from `queue::opening`), and its sync writes
 through the scanner's `write_unfiled_track`, keeping H22's hold rule. A server's playlists are
 read-only (`playlists::require_editable`). Tests use the fake `Transport`
 with responses in `metadata/fixtures/jellyfin/` and
-`metadata/fixtures/plex/`.
+`metadata/fixtures/plex/`; a made-up token gitleaks flags goes in
+`.gitleaks.toml`'s allowlist by its exact text, never a whole file.
 
 **Optional features.** Each checks its switch in `FeatureSettings` where it acts
 (commands refuse, workers idle, the UI hides); a new one gets a switch there, off

@@ -1,0 +1,18 @@
+# gitleaks' configuration: its default rules, less the made-up tokens the
+# tests use. Read by `check-all.py` (the history) and the pre-commit hook
+# (the staged changes). Allow a token by its exact text, never a whole file,
+# so a real one added beside it is still caught.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake server tokens in the tests and their fixtures"
+regexes = [
+    # Jellyfin's access token (metadata/fixtures/jellyfin/, servers/).
+    '''^6a1f0c9e8d7b4a3f2e1d0c9b8a7f6e5d$''',
+    # plex.tv's user token (metadata/fixtures/plex/).
+    '''^pQ7xYz3kLm9nB2vC4dF6$''',
+    # A Plex server's access token (metadata/fixtures/plex/, servers/).
+    '''^srvTok3n8Kq2Lm5Np7Rs$''',
+]
