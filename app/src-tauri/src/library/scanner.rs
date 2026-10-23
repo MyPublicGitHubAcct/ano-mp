@@ -158,6 +158,7 @@ pub struct ScanReport {
     /// Set when the folder couldn't be scanned, or the scan kept tracks it
     /// didn't find (PLAN.md H22): why.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub unavailable: Option<FolderStatus>,
 }
 

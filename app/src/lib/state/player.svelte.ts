@@ -60,9 +60,18 @@ class PlayerStore {
   }
 
   apply(state: QueueState) {
-    if (state.revision <= this.#revision && state.items === null) return; // stale
-    this.#revision = state.revision;
+    // A state older than the last (an answer to `queue_state` that events
+    // overtook) brings its list if that is newer, and nothing else.
+    const stale = state.revision <= this.#revision;
+    if (stale && state.items === null) return;
     this.#applyList(state);
+    if (!stale) this.#applyTransport(state);
+    for (const skipped of state.skipped)
+      toasts.show(t("queue.skippedTrack", { title: skipped.title, error: errorText(skipped.error) }));
+  }
+
+  #applyTransport(state: QueueState) {
+    this.#revision = state.revision;
     this.current = state.current;
     this.currentItem = state.currentItem;
     this.shuffle = state.shuffle;
@@ -77,8 +86,6 @@ class PlayerStore {
     this.radio = state.radio;
     this.stopAfter = state.stopAfter;
     this.sleep = state.sleep;
-    for (const skipped of state.skipped)
-      toasts.show(t("queue.skippedTrack", { title: skipped.title, error: errorText(skipped.error) }));
   }
 
   /** Takes the list from a state: whole, or as edits to the copy. A missed

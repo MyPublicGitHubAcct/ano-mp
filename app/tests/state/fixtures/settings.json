@@ -1,0 +1,505 @@
+{
+  "get": {
+    "defaults": {
+      "appearance": {
+        "followSystemContrast": true,
+        "saved": [],
+        "theme": {
+          "accentFromCover": false,
+          "dark": {
+            "accent": "#7f9cff",
+            "accentText": "#0d0d10",
+            "bg": "#151517",
+            "border": "#333338",
+            "danger": "#ef5350",
+            "heart": "#ff6f9a",
+            "star": "#f5b83d",
+            "surface": "#1e1e21",
+            "surface2": "#2a2a2e",
+            "text": "#ececef",
+            "textFaint": "#6c6c74",
+            "textMuted": "#a0a0a8"
+          },
+          "density": "regular",
+          "font": "system",
+          "light": {
+            "accent": "#3056d3",
+            "accentText": "#ffffff",
+            "bg": "#f6f6f7",
+            "border": "#dcdce1",
+            "danger": "#c62828",
+            "heart": "#d0265f",
+            "star": "#a86800",
+            "surface": "#ffffff",
+            "surface2": "#e9e9ec",
+            "text": "#18181b",
+            "textFaint": "#85858d",
+            "textMuted": "#686870"
+          },
+          "name": "Standard",
+          "preset": "system",
+          "radius": 6,
+          "scheme": "system",
+          "textSize": 15
+        }
+      },
+      "display": {
+        "albumFacts": [
+          "date",
+          "label",
+          "country",
+          "format",
+          "type"
+        ],
+        "hiddenOnHome": [],
+        "showDescriptions": true,
+        "sidebarNowPlaying": false,
+        "trackColumns": [
+          "trackNumber",
+          "artist",
+          "album",
+          "duration"
+        ]
+      },
+      "effects": {
+        "chorus": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.5,
+            "rate": 0.8
+          }
+        },
+        "echo": {
+          "enabled": false,
+          "mix": 0.3,
+          "params": {
+            "feedback": 0.35,
+            "spread": 0.5,
+            "time": 375.0,
+            "tone": 0.6
+          }
+        },
+        "flanger": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.7,
+            "feedback": 0.5,
+            "rate": 0.25
+          }
+        },
+        "freeze": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "fade": 0.3
+          }
+        },
+        "lofi": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "bits": 8.0,
+            "sampleRate": 11025.0
+          }
+        },
+        "phaser": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.8,
+            "feedback": 0.4,
+            "rate": 0.4
+          }
+        },
+        "reverb": {
+          "enabled": false,
+          "mix": 0.25,
+          "params": {
+            "damping": 0.4,
+            "preDelay": 20.0,
+            "size": 0.6,
+            "width": 1.0
+          }
+        },
+        "tremolo": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "depth": 0.5,
+            "rate": 5.0,
+            "stereo": 0.0
+          }
+        }
+      },
+      "equaliser": {
+        "enabled": false,
+        "followOutput": false,
+        "headphones": {
+          "gains": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "preamp": 0.0,
+          "preset": "flat"
+        },
+        "speakers": {
+          "gains": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "preamp": 0.0,
+          "preset": "flat"
+        }
+      },
+      "features": {
+        "classical": true,
+        "crossfeed": "off",
+        "crossfeedHeadphonesOnly": true,
+        "cueSheets": true,
+        "effects": false,
+        "effectsWorkbench": true,
+        "healthReport": true,
+        "jellyfin": false,
+        "libraryRadio": true,
+        "listenbrainz": false,
+        "listeningHistory": true,
+        "loudnessAnalysis": false,
+        "lyrics": true,
+        "matchSampleRate": false,
+        "moreInGenre": true,
+        "onThisDay": true,
+        "outsideRecommendations": false,
+        "playbackPreferences": true,
+        "plex": false,
+        "practiceMode": false,
+        "radioAfterQueue": false,
+        "recentlyAdded": true,
+        "recentlyPlayed": true,
+        "recommendations": true,
+        "recording": false,
+        "remoteControl": false,
+        "remotePort": 8765,
+        "segueShuffle": true,
+        "signalPath": true,
+        "similarArtists": true,
+        "skipSilence": false,
+        "skipSilenceAfter": 5,
+        "themes": true,
+        "topPlayed": true,
+        "updateCheck": false,
+        "waveformSeekBar": true
+      },
+      "library": {
+        "rescanAtLaunch": true,
+        "watchFolders": true
+      },
+      "output": {
+        "bufferSize": null,
+        "device": null
+      },
+      "playback": {
+        "crossfade": 0.0,
+        "preamp": 0.0,
+        "preventClipping": true,
+        "replayGain": "off",
+        "untaggedGain": 0.0
+      },
+      "recording": {
+        "bitrateKbps": 256,
+        "bits": 32,
+        "cueSheet": true,
+        "format": "wav"
+      },
+      "servers": {
+        "awayKbps": 0,
+        "cacheMb": 1024,
+        "plexRelay": false,
+        "reportPlays": true
+      },
+      "visualizer": {
+        "calm": false,
+        "colorsFromCover": true,
+        "coverBasis": "year",
+        "cycleSeconds": 0,
+        "frameRate": 60,
+        "sensitivity": 1.0,
+        "visualization": "bars"
+      },
+      "window": {
+        "menuBarControls": false,
+        "miniPlayerOnTop": false,
+        "trackNotifications": false,
+        "visualizerNoteSeen": false
+      }
+    },
+    "settings": {
+      "appearance": {
+        "followSystemContrast": true,
+        "saved": [],
+        "theme": {
+          "accentFromCover": false,
+          "dark": {
+            "accent": "#7f9cff",
+            "accentText": "#0d0d10",
+            "bg": "#151517",
+            "border": "#333338",
+            "danger": "#ef5350",
+            "heart": "#ff6f9a",
+            "star": "#f5b83d",
+            "surface": "#1e1e21",
+            "surface2": "#2a2a2e",
+            "text": "#ececef",
+            "textFaint": "#6c6c74",
+            "textMuted": "#a0a0a8"
+          },
+          "density": "regular",
+          "font": "system",
+          "light": {
+            "accent": "#3056d3",
+            "accentText": "#ffffff",
+            "bg": "#f6f6f7",
+            "border": "#dcdce1",
+            "danger": "#c62828",
+            "heart": "#d0265f",
+            "star": "#a86800",
+            "surface": "#ffffff",
+            "surface2": "#e9e9ec",
+            "text": "#18181b",
+            "textFaint": "#85858d",
+            "textMuted": "#686870"
+          },
+          "name": "Standard",
+          "preset": "system",
+          "radius": 6,
+          "scheme": "system",
+          "textSize": 15
+        }
+      },
+      "display": {
+        "albumFacts": [
+          "date",
+          "label",
+          "country",
+          "format",
+          "type"
+        ],
+        "hiddenOnHome": [],
+        "showDescriptions": true,
+        "sidebarNowPlaying": false,
+        "trackColumns": [
+          "trackNumber",
+          "artist",
+          "album",
+          "duration"
+        ]
+      },
+      "effects": {
+        "chorus": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.5,
+            "rate": 0.8
+          }
+        },
+        "echo": {
+          "enabled": false,
+          "mix": 0.3,
+          "params": {
+            "feedback": 0.35,
+            "spread": 0.5,
+            "time": 375.0,
+            "tone": 0.6
+          }
+        },
+        "flanger": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.7,
+            "feedback": 0.5,
+            "rate": 0.25
+          }
+        },
+        "freeze": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "fade": 0.3
+          }
+        },
+        "lofi": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "bits": 8.0,
+            "sampleRate": 11025.0
+          }
+        },
+        "phaser": {
+          "enabled": false,
+          "mix": 0.5,
+          "params": {
+            "depth": 0.8,
+            "feedback": 0.4,
+            "rate": 0.4
+          }
+        },
+        "reverb": {
+          "enabled": false,
+          "mix": 0.25,
+          "params": {
+            "damping": 0.4,
+            "preDelay": 20.0,
+            "size": 0.6,
+            "width": 1.0
+          }
+        },
+        "tremolo": {
+          "enabled": false,
+          "mix": 1.0,
+          "params": {
+            "depth": 0.5,
+            "rate": 5.0,
+            "stereo": 0.0
+          }
+        }
+      },
+      "equaliser": {
+        "enabled": false,
+        "followOutput": false,
+        "headphones": {
+          "gains": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "preamp": 0.0,
+          "preset": "flat"
+        },
+        "speakers": {
+          "gains": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "preamp": 0.0,
+          "preset": "flat"
+        }
+      },
+      "features": {
+        "classical": true,
+        "crossfeed": "off",
+        "crossfeedHeadphonesOnly": true,
+        "cueSheets": true,
+        "effects": false,
+        "effectsWorkbench": true,
+        "healthReport": true,
+        "jellyfin": false,
+        "libraryRadio": true,
+        "listenbrainz": false,
+        "listeningHistory": true,
+        "loudnessAnalysis": true,
+        "lyrics": true,
+        "matchSampleRate": false,
+        "moreInGenre": true,
+        "onThisDay": true,
+        "outsideRecommendations": false,
+        "playbackPreferences": true,
+        "plex": false,
+        "practiceMode": false,
+        "radioAfterQueue": false,
+        "recentlyAdded": true,
+        "recentlyPlayed": true,
+        "recommendations": true,
+        "recording": false,
+        "remoteControl": false,
+        "remotePort": 8765,
+        "segueShuffle": true,
+        "signalPath": true,
+        "similarArtists": true,
+        "skipSilence": false,
+        "skipSilenceAfter": 5,
+        "themes": true,
+        "topPlayed": true,
+        "updateCheck": false,
+        "waveformSeekBar": true
+      },
+      "library": {
+        "rescanAtLaunch": true,
+        "watchFolders": true
+      },
+      "output": {
+        "bufferSize": null,
+        "device": null
+      },
+      "playback": {
+        "crossfade": 0.0,
+        "preamp": 0.0,
+        "preventClipping": true,
+        "replayGain": "off",
+        "untaggedGain": 0.0
+      },
+      "recording": {
+        "bitrateKbps": 256,
+        "bits": 32,
+        "cueSheet": true,
+        "format": "wav"
+      },
+      "servers": {
+        "awayKbps": 0,
+        "cacheMb": 1024,
+        "plexRelay": false,
+        "reportPlays": true
+      },
+      "visualizer": {
+        "calm": false,
+        "colorsFromCover": true,
+        "coverBasis": "year",
+        "cycleSeconds": 0,
+        "frameRate": 60,
+        "sensitivity": 1.0,
+        "visualization": "scope"
+      },
+      "window": {
+        "menuBarControls": false,
+        "miniPlayerOnTop": false,
+        "trackNotifications": false,
+        "visualizerNoteSeen": false
+      }
+    }
+  },
+  "refused": "A track list column is repeated"
+}

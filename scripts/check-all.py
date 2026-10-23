@@ -10,7 +10,7 @@ check-developer-guide.py, class-dictionary.py --check, plan-items.py
 test suites: the core (CMake debug preset, clang-tidy through lint-cpp.py
 and ctest, then ctest again under ASan and UBSan, and under TSan, then each fuzz target for a
 minute), the frontend (svelte-check,
-ESLint, npm test and the build), THIRD_PARTY_NOTICES (make-notices.py
+ESLint, npm test, the state modules' Vitest tests and the build), THIRD_PARTY_NOTICES (make-notices.py
 --check), the Rust crate (clippy, cargo test,
 and cargo deny over its dependencies), and on CI the sandboxed bundle's
 self-test (self-test-bundle.py). CI runs this and nothing else, so
@@ -87,6 +87,8 @@ STEPS = [
     Step("frontend check", ["npm", "run", "check"], cwd=APP, quick=False),
     Step("frontend lint", ["npm", "run", "lint"], cwd=APP, quick=False),
     Step("frontend tests", ["npm", "test"], cwd=APP, quick=False),
+    # The rune modules (state/*.svelte.ts) under Vitest (PLAN.md H13).
+    Step("frontend state tests", ["npm", "run", "test:state"], cwd=APP, quick=False),
     # Before the Rust steps: Tauri embeds app/build when the crate compiles.
     Step("frontend build", ["npm", "run", "build"], cwd=APP, quick=False),
     # After the core's configure (JUCE, TagLib, …) and the frontend build

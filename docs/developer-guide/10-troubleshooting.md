@@ -92,8 +92,10 @@ cargo test queue::model
 cargo test a_file_moved_to_another_folder_keeps_its_track -- --nocapture
 cargo test live_ -- --ignored  # the live checks against the real services
 
-# Frontend (from app/)
+# Frontend (from app/): a pure module's file, or a state module's, or one test by name
 node --test tests/queueEdits.test.mjs
+npm run test:state -- tests/state/player.spec.ts
+npm run test:state -- -t "a missed version"
 
 # Scripts (from the repo root)
 scripts/test-python.py scripts/tests/test_check_docs.py

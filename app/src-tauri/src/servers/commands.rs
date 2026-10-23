@@ -216,10 +216,17 @@ fn record<R: Runtime>(app: &AppHandle<R>, folder_id: i64, outcome: Result<(), &s
 pub(super) fn require_kind<R: Runtime>(app: &AppHandle<R>, kind: FolderKind) -> Result<(), String> {
     if super::kind_on(&settings::current(app).features, kind) {
         Ok(())
-    } else if kind == FolderKind::Plex {
-        Err(feature_off("plex", "Plex servers"))
     } else {
-        Err(feature_off("jellyfin", "Jellyfin servers"))
+        Err(kind_off(kind))
+    }
+}
+
+/// The error a command refuses with while servers of `kind` are turned off.
+pub(super) fn kind_off(kind: FolderKind) -> String {
+    if kind == FolderKind::Plex {
+        feature_off("plex", "Plex servers")
+    } else {
+        feature_off("jellyfin", "Jellyfin servers")
     }
 }
 

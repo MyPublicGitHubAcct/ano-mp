@@ -67,7 +67,7 @@ def test_paths_are_recognised(docs, code, path):
         ".cpp",
         "--ld-path=x/y",
         "core/src/PlayerEngine.*",
-        "doctor.py",
+        "library.recovery.json",
         "Contents/MacOS/ano-mp",
     ],
 )
@@ -166,6 +166,7 @@ def test_stated_counts_come_from_section_2(docs):
         "# Plan\n## 2. Current state\n"
         "| 115 passing Catch2 tests, also clean | `core/tests` |\n"
         "| 25 frontend tests (`npm test`) | `app/tests` |\n"
+        "| 40 Vitest tests of the rune modules (`npm run test:state`) | `app/tests/state` |\n"
         "| 406 passing `cargo test` tests (…) | `app/src-tauri/src` |\n"
         "| One entry point …, the scripts' 102 pytest tests (`test-python.py`) | `scripts/` |\n"
         "## 3. Prerequisites\n| 999 passing Catch2 tests |\n"
@@ -173,6 +174,7 @@ def test_stated_counts_come_from_section_2(docs):
     assert docs.stated_counts(plan) == {
         "Catch2 tests": 115,
         "frontend tests": 25,
+        "state tests": 40,
         "cargo tests": 406,
         "script tests": 102,
     }
@@ -183,12 +185,26 @@ def test_suite_outputs_are_counted(docs):
     listed = "a: test\n417 tests, 0 benchmarks\n0 tests, 0 benchmarks\n1 test, 0 benchmarks\n"
     assert docs.cargo_list_count(listed) == 418
     assert docs.node_pass_count("ℹ tests 25\nℹ pass 25\nℹ fail 0\n") == 25
+    assert (
+        docs.vitest_pass_count(" Test Files  15 passed (15)\n      Tests  105 passed (105)\n")
+        == 105
+    )
+    assert docs.vitest_pass_count("      Tests  1 failed | 2 skipped | 22 passed (25)\n") == 22
+    coloured = "\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[32m105 passed\x1b[39m\x1b[22m\x1b[90m (105)\x1b[39m\n"
+    assert docs.vitest_pass_count(coloured) == 105
+    assert docs.vitest_pass_count("      Tests  3 failed (3)\n") is None
     assert docs.pytest_collected("...\n102 tests collected in 0.2s\n") == 102
 
 
 def test_count_problems_name_each_stale_count(docs):
-    stated = {"Catch2 tests": 115, "cargo tests": 405, "frontend tests": 25}
-    actual = {"Catch2 tests": 115, "cargo tests": 406, "frontend tests": 25, "script tests": 102}
+    stated = {"Catch2 tests": 115, "cargo tests": 405, "frontend tests": 25, "state tests": 40}
+    actual = {
+        "Catch2 tests": 115,
+        "cargo tests": 406,
+        "frontend tests": 25,
+        "state tests": 40,
+        "script tests": 102,
+    }
     assert docs.count_problems(stated, actual) == [
         "PLAN.md §2: 405 cargo tests, but the suite has 406",
         "PLAN.md §2: no count of script tests",
@@ -201,6 +217,7 @@ def test_suite_counts_subtract_the_ignored_rust_tests(docs, monkeypatch, tmp_pat
         ("cargo", "test", "--", "--list", "--ignored"): "11 tests, 0 benchmarks\n",
         ("ctest", "--preset", "debug", "-N"): "Total Tests: 115\n",
         ("npm", "test"): "ℹ pass 25\n",
+        ("npm", "run", "test:state"): "      Tests  40 passed (40)\n",
     }
 
     def run(command, cwd):
@@ -215,6 +232,7 @@ def test_suite_counts_subtract_the_ignored_rust_tests(docs, monkeypatch, tmp_pat
         "Catch2 tests": 115,
         "cargo tests": 406,
         "frontend tests": 25,
+        "state tests": 40,
         "script tests": 102,
     }
 

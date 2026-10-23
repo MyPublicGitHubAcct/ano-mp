@@ -903,6 +903,30 @@ mod tests {
         .unwrap();
     }
 
+    /// What `settings_get` sends once a change is saved, and the error
+    /// `settings_save` refuses settings with, for the frontend's tests.
+    #[test]
+    fn ui_fixtures() {
+        use crate::ui_fixtures::{record, sample};
+        let conn = db::open_in_memory().unwrap();
+        let mut saved = AppSettings::default();
+        saved.features.loudness_analysis = true;
+        saved.features.waveform_seek_bar = true;
+        saved.visualizer.visualization = "scope".into();
+        store(&conn, &saved).unwrap();
+        let get = SettingsPayload {
+            settings: load(&conn).unwrap(),
+            defaults: AppSettings::default(),
+        };
+        let mut refused = get.settings.clone();
+        refused.display.track_columns = vec![TrackColumn::Year, TrackColumn::Year];
+        let error = refused.validate().map_err(|e| e.to_string()).unwrap_err();
+        record(
+            "settings",
+            &[("get", sample(&get)), ("refused", sample(&error))],
+        );
+    }
+
     #[test]
     fn defaults_until_something_is_saved_and_round_trip() {
         let conn = db::open_in_memory().unwrap();

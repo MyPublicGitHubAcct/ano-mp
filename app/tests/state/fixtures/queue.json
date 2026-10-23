@@ -1,0 +1,272 @@
+{
+  "added": {
+    "current": 0,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 1",
+      "trackId": 1,
+      "uid": 1
+    },
+    "edits": [
+      {
+        "at": 2,
+        "items": [
+          {
+            "album": null,
+            "albumId": null,
+            "artist": null,
+            "artistId": null,
+            "duration": 60.0,
+            "title": "Track 4",
+            "trackId": 4,
+            "uid": 4
+          }
+        ],
+        "kind": "insert"
+      }
+    ],
+    "hasNext": true,
+    "hasPrevious": false,
+    "items": null,
+    "length": 3,
+    "listVersion": 3,
+    "loaded": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 3,
+    "shuffle": false,
+    "skipped": [],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": []
+  },
+  "advanced": {
+    "current": 1,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 3",
+      "trackId": 3,
+      "uid": 3
+    },
+    "edits": null,
+    "hasNext": true,
+    "hasPrevious": true,
+    "items": null,
+    "length": 3,
+    "listVersion": 3,
+    "loaded": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 4,
+    "shuffle": false,
+    "skipped": [],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": []
+  },
+  "full": {
+    "current": 0,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 1",
+      "trackId": 1,
+      "uid": 1
+    },
+    "edits": null,
+    "hasNext": true,
+    "hasPrevious": false,
+    "items": [
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 1",
+        "trackId": 1,
+        "uid": 1
+      },
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 2",
+        "trackId": 2,
+        "uid": 2
+      },
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 3",
+        "trackId": 3,
+        "uid": 3
+      }
+    ],
+    "length": 3,
+    "listVersion": 1,
+    "loaded": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 1,
+    "shuffle": false,
+    "skipped": [],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": []
+  },
+  "removed": {
+    "current": 0,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 1",
+      "trackId": 1,
+      "uid": 1
+    },
+    "edits": [
+      {
+        "at": 1,
+        "count": 1,
+        "kind": "remove"
+      }
+    ],
+    "hasNext": true,
+    "hasPrevious": false,
+    "items": null,
+    "length": 2,
+    "listVersion": 2,
+    "loaded": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 2,
+    "shuffle": false,
+    "skipped": [],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": []
+  },
+  "resynced": {
+    "current": 1,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 3",
+      "trackId": 3,
+      "uid": 3
+    },
+    "edits": null,
+    "hasNext": true,
+    "hasPrevious": true,
+    "items": [
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 1",
+        "trackId": 1,
+        "uid": 1
+      },
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 3",
+        "trackId": 3,
+        "uid": 3
+      },
+      {
+        "album": null,
+        "albumId": null,
+        "artist": null,
+        "artistId": null,
+        "duration": 60.0,
+        "title": "Track 4",
+        "trackId": 4,
+        "uid": 4
+      }
+    ],
+    "length": 3,
+    "listVersion": 4,
+    "loaded": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 5,
+    "shuffle": false,
+    "skipped": [],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": []
+  },
+  "skipped": {
+    "current": 1,
+    "currentItem": {
+      "album": null,
+      "albumId": null,
+      "artist": null,
+      "artistId": null,
+      "duration": 60.0,
+      "title": "Track 2",
+      "trackId": 2,
+      "uid": 2
+    },
+    "edits": null,
+    "hasNext": false,
+    "hasPrevious": false,
+    "items": null,
+    "length": 2,
+    "listVersion": 1,
+    "loaded": false,
+    "loading": true,
+    "playing": true,
+    "radio": false,
+    "repeat": "off",
+    "resumeAt": 0.0,
+    "revision": 2,
+    "shuffle": false,
+    "skipped": [
+      {
+        "error": "{\"code\":\"openTimedOut\",\"message\":\"The file took more than 20 s to open\",\"params\":{\"seconds\":20.0}}",
+        "title": "Track 1",
+        "trackId": 1,
+        "uid": 1
+      }
+    ],
+    "sleep": null,
+    "stopAfter": null,
+    "unavailable": [
+      1
+    ]
+  }
+}

@@ -25,9 +25,10 @@ untracked ones included unless ignored; a file that is only on disk
 
 With --counts, also compares the test counts PLAN.md §2 states with the
 suites: `ctest --preset debug -N`, `cargo test -- --list` (less its
-ignored tests), `npm test`'s pass count and the scripts' collected pytest
-tests. That needs the core's debug build, the crate's tests built and
-app/node_modules, so it is a full check-all step, not a quick one.
+ignored tests), `npm test`'s and `npm run test:state`'s pass counts and
+the scripts' collected pytest tests. That needs the core's debug build,
+the crate's tests built and app/node_modules, so it is a full check-all
+step, not a quick one.
 
 Lists every problem it finds and exits non-zero if there are any. Changes
 nothing.
@@ -101,11 +102,6 @@ IGNORED_PREFIXES = (
 # build writes, and files the app writes at run time.
 NOT_IN_REPO = {
     # Planned scripts (PLAN.md §9.2).
-    "audit-deps.py",
-    "bump-pin.py",
-    "check-pins.py",
-    "doctor.py",
-    "record-fixtures.py",
     "sync-ffmpeg-frameworks.py",
     # In the fetched TagLib and JUCE trees.
     "shortenfile.cpp",
@@ -285,6 +281,7 @@ STATED_COUNTS = [
     ("Catch2 tests", re.compile(r"^\| (\d+) passing Catch2 tests", re.MULTILINE)),
     ("cargo tests", re.compile(r"^\| (\d+) passing `cargo test` tests", re.MULTILINE)),
     ("frontend tests", re.compile(r"^\| (\d+) frontend tests", re.MULTILINE)),
+    ("state tests", re.compile(r"^\| (\d+) Vitest tests", re.MULTILINE)),
     ("script tests", re.compile(r"the scripts' (\d+) pytest tests")),
 ]
 
@@ -318,6 +315,13 @@ def node_pass_count(output):
     return int(match.group(1)) if match else None
 
 
+def vitest_pass_count(output):
+    """`vitest run`: "Tests  N passed (M)", after any failed or skipped ones."""
+    output = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    match = re.search(r"^\s*Tests\s+(?:.*\|\s*)?(\d+) passed", output, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
 def pytest_collected(output):
     """`pytest --collect-only -q`: "N tests collected"."""
     match = re.search(r"(\d+) tests? collected", output)
@@ -341,6 +345,7 @@ def suite_counts(root=REPO_ROOT):
         "Catch2 tests": ctest_count(run(["ctest", "--preset", "debug", "-N"], root)),
         "cargo tests": listed - ignored,
         "frontend tests": node_pass_count(run(["npm", "test"], root / "app")),
+        "state tests": vitest_pass_count(run(["npm", "run", "test:state"], root / "app")),
         "script tests": pytest_collected(
             run([sys.executable, "scripts/test-python.py", "--collect-only", "-q"], root)
         ),

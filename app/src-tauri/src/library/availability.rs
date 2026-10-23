@@ -399,4 +399,48 @@ mod tests {
         states.set(id, FolderStatus::AVAILABLE, &mut changes);
         assert_eq!(changes.returned, [id]);
     }
+
+    /// What `library_folders` answers for a folder that is there and one
+    /// whose drive is unplugged, and `library_sort_settings` before any
+    /// change, for the frontend's tests.
+    #[test]
+    fn ui_fixtures() {
+        use crate::ui_fixtures::{record, sample};
+        let conn = db::open_in_memory().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let (here, away) = (dir.path().join("Here"), dir.path().join("Away"));
+        std::fs::create_dir(&here).unwrap();
+        std::fs::write(here.join("a.flac"), "").unwrap();
+        folder(&conn, &here, 2);
+        folder(&conn, &away, 1);
+        let states = FolderStates::default();
+        let folders = super::super::folders(&conn).unwrap();
+        states
+            .check(&conn, &folders, &FakeBookmarks::default())
+            .unwrap();
+        let listed: Vec<Folder> = folders_with_states(&conn, &states)
+            .unwrap()
+            .into_iter()
+            .map(|mut folder| {
+                // Paths that don't change from run to run, and macOS's
+                // words for a missing folder on every system.
+                let name = Path::new(&folder.path).file_name().unwrap();
+                folder.path = format!("/Users/me/Music/{}", name.to_string_lossy());
+                if let Some(status) = folder.status.as_mut().filter(|s| s.detail.is_some()) {
+                    status.detail = Some("No such file or directory (os error 2)".into());
+                }
+                folder
+            })
+            .collect();
+        let away = listed.iter().find(|f| f.path.ends_with("Away")).unwrap();
+        assert_eq!(away.available, Some(false));
+        let sort = super::super::rules::sort_settings(&conn).unwrap();
+        record(
+            "library",
+            &[
+                ("folders", sample(&listed)),
+                ("sortSettings", sample(&sort)),
+            ],
+        );
+    }
 }

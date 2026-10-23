@@ -104,6 +104,7 @@ impl FolderState {
 pub struct FolderStatus {
     pub state: FolderState,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub detail: Option<String>,
 }
 

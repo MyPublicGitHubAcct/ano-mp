@@ -229,6 +229,7 @@ npm run tauri dev            # run the desktop app
 npm run check                # svelte-check / TypeScript
 npm run lint                 # ESLint (eslint.config.js)
 npm test                     # frontend unit tests (node --test tests/, plain .mjs)
+npm run test:state           # the rune modules (lib/state/*.svelte.ts) under Vitest (tests/state/*.spec.ts)
 cd src-tauri && cargo test   # Rust tests, including the C API wrappers
 cargo clippy --all-targets -- -D warnings  # Rust lint, as check-all runs it
 cargo deny check             # advisories, licences, bans, sources (deny.toml)
@@ -366,7 +367,11 @@ gets `#[cfg_attr(test, ts(rename = "…"))]`) and `generated/commands.ts` (a typ
 wrapper per command in `generate_handler!`, read from its signature with syn).
 `cargo test` fails while any is stale: regenerate (`ANOMP_WRITE_BINDINGS=1 cargo
 test bindings`) and commit; never edit them by hand. `api.ts` calls
-`commands.*`, never `invoke` with a string. A new setting goes in `AppSettings`
+`commands.*`, never `invoke` with a string. The state tests' payloads
+(`app/tests/state/fixtures/`) are recorded the same way, by each module's
+`ui_fixtures` test (`ui_fixtures.rs`; `ANOMP_WRITE_BINDINGS=1 cargo test
+ui_fixtures`), and the tests fake commands by their wrappers' names
+(`tests/state/backend.ts`), never by `invoke` strings. A new setting goes in `AppSettings`
 with a default and a `validate` rule; stored values are read leniently, so no
 migration is needed. The UI reads settings through `state/settings.svelte.ts`,
 loaded in `routes/+layout.ts` before any page renders.

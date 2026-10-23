@@ -133,6 +133,10 @@ under `## [Unreleased]`; rename it when tagging (PLAN.md §8.7).
   Like This window) and the albums on an artist's page had left them out.
 - Right-clicking inside a window such as More Like This shows its menu;
   the menu used to open behind the window.
+- The playing bar no longer goes back to an earlier track, or an earlier
+  shuffle or repeat setting, when the queue changes just as the window
+  opens or catches up with the queue; it waited for the next change to
+  put it right.
 - Album covers from a picture in the album's folder are read only from
   that album's own folders, and never through a symbolic link that leads
   elsewhere, so a cover can't show a picture from outside the library

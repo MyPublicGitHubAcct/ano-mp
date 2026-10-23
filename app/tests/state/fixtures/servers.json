@@ -1,0 +1,75 @@
+{
+  "albumKept": {
+    "albums": [
+      1
+    ],
+    "cacheBudget": 1073741824,
+    "cacheBytes": 0,
+    "cacheFiles": 0,
+    "downloaded": 0,
+    "playlists": [],
+    "tracks": 2
+  },
+  "jellyfinOff": "{\"code\":\"featureOff\",\"message\":\"Jellyfin servers is turned off in Settings › Features\",\"params\":{\"feature\":\"jellyfin\",\"name\":\"Jellyfin servers\"}}",
+  "list": [
+    {
+      "address": "https://192-168-1-20.a1b2c3.plex.direct:32400",
+      "folderId": 2,
+      "kind": "plex",
+      "section": "1",
+      "sectionName": "Music",
+      "serverId": "9d3f1c7a5b2e4f6081a3c5e7f9b1d3e5a7c9e1f3",
+      "serverName": "Den",
+      "status": {
+        "state": "available"
+      },
+      "syncCursor": null,
+      "syncedAt": null,
+      "syncing": false,
+      "trackCount": 0,
+      "userId": "31415926",
+      "userName": "mark",
+      "version": "1.41.9.9961",
+      "viaRelay": false
+    },
+    {
+      "address": "http://192.168.1.20:8096",
+      "folderId": 1,
+      "kind": "jellyfin",
+      "section": "",
+      "sectionName": null,
+      "serverId": "4c5e9a1b2d3f4a5b6c7d8e9f0a1b2c3d",
+      "serverName": "Living Room",
+      "status": {
+        "state": "available"
+      },
+      "syncCursor": 1760000000,
+      "syncedAt": 1760000060,
+      "syncing": false,
+      "trackCount": 2,
+      "userId": "5f1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "userName": "mark",
+      "version": "10.10.7",
+      "viaRelay": false
+    }
+  ],
+  "offline": {
+    "albums": [],
+    "cacheBudget": 1073741824,
+    "cacheBytes": 0,
+    "cacheFiles": 0,
+    "downloaded": 0,
+    "playlists": [],
+    "tracks": 0
+  },
+  "synced": {
+    "added": 2,
+    "dataless": 0,
+    "failed": [],
+    "folderId": 1,
+    "moved": 0,
+    "removed": 0,
+    "unchanged": 0,
+    "updated": 0
+  }
+}

@@ -254,3 +254,9 @@ flowchart LR
   pure modules (`lib/*.ts`, `lib/visualizer/*.ts`) as Node runs them;
   components have no unit tests. [Chapter 12](12-testing.md) lists what
   each file covers.
+- `npm run test:state`: Vitest over `tests/state/*.spec.ts`, the rune
+  stores (`lib/state/*.svelte.ts`) compiled by SvelteKit's plugin, with
+  each command answered by a fake backend through Tauri's IPC mocks and
+  payloads recorded from the Rust tests.
+  [Chapter 12](12-testing.md#the-state-modules-apptestsstate) says how to
+  write one.

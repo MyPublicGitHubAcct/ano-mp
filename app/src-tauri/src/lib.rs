@@ -26,6 +26,8 @@ mod servers;
 mod settings;
 mod shell;
 mod theme;
+#[cfg(test)]
+mod ui_fixtures;
 mod updates;
 mod visualizer;
 mod workbench;

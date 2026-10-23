@@ -91,6 +91,24 @@ tests in `core/tests/CMakeLists.txt`; there is no globbing, and
 2. The payload type derives `TS` and is in `declare_types`; regenerate.
 3. Add it to `api.ts`'s `Events` map, then listen with `on(…)` in the
    store that follows it (inside its `connect`).
+4. The store's state test sends it (`backend.emit`) and checks what
+   changes (next recipe).
+
+## A state module's test
+
+1. **The file**: `app/tests/state/<store>.spec.ts`, importing the store
+   inside each test, after `fakeBackend()`
+   ([chapter 12](12-testing.md#the-state-modules-apptestsstate)).
+2. **Answer each command** the store calls (`answer`, `fail`). Where
+   the backend builds the payload, record it: a sample in the module's
+   `ui_fixtures` test (or a new `ui_fixtures` test calling
+   `crate::ui_fixtures::record`, its file in `FILES`), built as the
+   command builds it; regenerate with `ANOMP_WRITE_BINDINGS=1 cargo test
+   ui_fixtures` and type it in `tests/state/fixtures.ts`.
+3. **Drive it** through the store's methods and `backend.emit`, then
+   check the state, the commands' arguments (`argsOf`) and the toasts,
+   with text from `t`.
+4. **The count**: `PLAN.md` §2's Vitest tests (`check-docs.py --counts`).
 
 ## A setting
 

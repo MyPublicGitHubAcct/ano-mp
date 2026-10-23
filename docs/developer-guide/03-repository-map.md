@@ -13,8 +13,9 @@ remove a source file, change this page in the same commit.
 ## Top-level folders
 
 - `app/`: the Tauri application: the Svelte frontend (`app/src/`), the
-  Rust backend (`app/src-tauri/`), the frontend's tests (`app/tests/`),
-  and npm's and Tauri's configuration. Chapters 6 and 7.
+  Rust backend (`app/src-tauri/`), the frontend's tests (`app/tests/`,
+  with the state modules' Vitest tests in `app/tests/state/`), and npm's
+  and Tauri's configuration. Chapters 6 and 7.
 - `core/`: `anomp_core`, the C++ audio core: its one public header
   (`core/include/anomp/anomp.h`), its sources (`core/src/`), Catch2 tests
   and their fixtures (`core/tests/`) and fuzz targets (`core/fuzz/`).
@@ -183,6 +184,9 @@ scanning, and the bridge between the UI and the core. Commands are the
   while they are stale.
 - `guide.rs`: test-only: generates the user guide's settings reference
   from the defaults and `en.json`, and fails while it is stale.
+- `ui_fixtures.rs`: test-only: writes the payloads that each module's
+  `ui_fixtures` test builds into `app/tests/state/fixtures/`, for the
+  frontend's state tests, and fails while they are stale.
 
 ### Commands over the library's features
 

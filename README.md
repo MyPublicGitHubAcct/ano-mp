@@ -141,6 +141,7 @@ ID signing and notarization ([PLAN.md](PLAN.md) §8).
 | Backend tests (Rust) | `cargo test` | `app/src-tauri/` |
 | Live checks against the online services | `cargo test live_ -- --ignored` | `app/src-tauri/` |
 | Frontend tests | `npm test` | `app/` |
+| The state modules' tests (Vitest) | `npm run test:state` | `app/` |
 | Frontend type check and lint | `npm run check`, `npm run lint` | `app/` |
 | Format after editing (add `--check` to only report) | `scripts/format-cpp.py`, `scripts/format-rust.py`, `scripts/format-python.py`, `scripts/format-frontend.py` | repo root |
 | Every check, as CI runs it (`--quick`: what the pre-commit hook runs) | `scripts/check-all.py` | repo root |

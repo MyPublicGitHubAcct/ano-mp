@@ -41,6 +41,7 @@ pub struct Playlist {
     /// The server it comes from (its name), for a music server's playlist,
     /// which only a sync changes (PLAN.md Phase 7e).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub server: Option<String>,
 }
 

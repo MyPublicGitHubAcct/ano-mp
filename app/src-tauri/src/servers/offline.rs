@@ -204,4 +204,61 @@ mod tests {
         assert!(missing(&conn, &audio).unwrap().is_empty());
         assert!(super::keep(&conn, &audio).unwrap().is_empty());
     }
+
+    /// What `servers_list` answers for a synced Jellyfin source and a Plex
+    /// one, the sync's report (as `servers_sync` answers),
+    /// `servers_offline_status` before and after an album is kept offline,
+    /// and what a command answers while Jellyfin is turned off, for the
+    /// frontend's tests.
+    #[test]
+    fn ui_fixtures() {
+        use crate::library::access::FolderStatus;
+        use crate::library::FolderKind;
+        use crate::servers::commands::{kind_off, ServerSummary};
+        use crate::servers::testing::add_plex_source;
+        use crate::ui_fixtures::{record, sample};
+        let mut conn = db::open_in_memory().unwrap();
+        let folder = add_test_source(&mut conn);
+        add_plex_source(&mut conn, "1", "Music");
+        let server = FakeLibrary::default();
+        *server.tracks.borrow_mut() =
+            vec![track("a", "One", "Chirps"), track("b", "Two", "Chirps")];
+        let synced = sync(&mut conn, &server, folder, SyncOptions::default(), |_| {}).unwrap();
+        let list: Vec<ServerSummary> = crate::servers::sources(&conn)
+            .unwrap()
+            .into_iter()
+            .map(|mut source| {
+                // The sync's times, fixed so that the file doesn't change.
+                source.sync_cursor = source.sync_cursor.map(|_| 1_760_000_000);
+                source.synced_at = source.synced_at.map(|_| 1_760_000_060);
+                ServerSummary {
+                    source,
+                    status: FolderStatus::AVAILABLE,
+                    syncing: false,
+                }
+            })
+            .collect();
+        assert_eq!(list.len(), 2);
+
+        let dir = tempfile::tempdir().unwrap();
+        let audio = ServerAudio::new(AudioCache::new(dir.path().to_path_buf(), 1 << 30));
+        let none = status(&conn, &audio).unwrap();
+        let album: i64 = conn
+            .query_row("SELECT id FROM albums WHERE title = 'Chirps'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        set_album(&conn, album, true).unwrap();
+        let kept = status(&conn, &audio).unwrap();
+        record(
+            "servers",
+            &[
+                ("list", sample(&list)),
+                ("synced", sample(&synced.report)),
+                ("offline", sample(&none)),
+                ("albumKept", sample(&kept)),
+                ("jellyfinOff", sample(kind_off(FolderKind::Jellyfin))),
+            ],
+        );
+    }
 }

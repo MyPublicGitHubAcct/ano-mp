@@ -68,7 +68,7 @@ cargo test scanner::                     # one module's tests
 cargo clippy --all-targets -- -D warnings
 
 # Frontend (from app/)
-npm run check && npm run lint && npm test
+npm run check && npm run lint && npm test && npm run test:state
 
 # Everything CI runs
 scripts/check-all.py           # --quick for the fast checks only

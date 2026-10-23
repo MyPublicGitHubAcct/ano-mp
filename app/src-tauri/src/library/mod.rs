@@ -113,6 +113,7 @@ pub struct Folder {
     /// A server's name, as it calls itself, and for a Plex source the music
     /// library's ("Den · Music"); `None` for a local folder.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub name: Option<String>,
     pub track_count: u32,
     /// Its tracks whose files were cloud placeholders when last seen, so
@@ -124,9 +125,11 @@ pub struct Folder {
     /// folder on an unplugged drive, or moved where the app can't follow,
     /// which the user can locate again.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub available: Option<bool>,
     /// Why, where checked (PLAN.md H22, `availability`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub status: Option<access::FolderStatus>,
 }
 

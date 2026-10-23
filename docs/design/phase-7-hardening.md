@@ -911,6 +911,76 @@ this file gets in the way.
     `node --test` can't compile. IPC is faked with
     `@tauri-apps/api/mocks` (`mockIPC`), using payloads recorded from
     the Rust tests.
+    - **Done 2026-10-23.** Vitest 5.0.5 (pinned exactly; it supports Vite
+      8), run by `npm run test:state` with
+      `app/tests/state/vitest.config.ts`: SvelteKit's plugin compiles the
+      runes and resolves `$lib`, Svelte's browser build
+      (`resolve.conditions`) runs `$effect`s, and jsdom (the 30.1.0 already
+      pinned) gives Tauri's mocks a `window`. The files are `*.spec.ts`,
+      since Node 26's test runner takes any `*.test.ts` under `tests/` for
+      `npm test`'s, which is unchanged (93 tests). It is a full
+      `check-all.py` step ("frontend state tests"), and `check-docs.py
+      --counts` reads Vitest's pass count.
+    - The fake backend (`tests/state/backend.ts`) installs `mockIPC`, with
+      its events, and answers each command by its wrapper's name in
+      `generated/commands.ts`, the arguments and reply typed from the
+      wrapper; `api.ts` is unchanged. `setup.ts` resets the module registry
+      before each test, so each imports fresh singletons, and fails a test
+      whose store invoked a command it didn't answer. `reactive.svelte.ts`
+      runs `$effect`s under `$effect.root` with `flushSync`, imported inside
+      each test: the reset gives each test its own copy of Svelte's runtime.
+    - Payloads recorded from the Rust tests, as planned: `ui_fixtures.rs`
+      (test-only) checks `app/tests/state/fixtures/*.json`, or writes them
+      under `ANOMP_WRITE_BINDINGS=1` (`cargo test ui_fixtures`), and a
+      `ui_fixtures` test in each module builds its samples as the command
+      does:
+      - `settings.rs`: `settings_get` after a change was saved, and the
+        error a refused save gets;
+      - `queue/model.rs`, with the queue's fake player: the whole list, a
+        removal, an addition, the next track, the whole list again, and a
+        track that timed out (a coded error);
+      - `library/availability.rs`: the folders, one unplugged, and the sort
+        rules;
+      - `servers/offline.rs`: a Jellyfin and a Plex source, a sync's report,
+        the offline status before and after keeping an album, and the error
+        while Jellyfin is off (`kind_off`, split from `require_kind` for
+        it).
+      - Times, temporary paths and the system's words are pinned, so a rerun
+        changes nothing. Small records no backend logic builds are literals
+        typed from `ipc.ts`.
+    - Tests: 105, covering all 17 modules (`status.spec.ts` holds `updates`
+      and `metadata`; `player.spec.ts` covers `position`): settings
+      (loading, saving a copy, a refused save shown through `errorText`,
+      resetting a section, `settings-changed`, the visualizer's old
+      per-viewer choices); the player (events applied, edits by
+      `listVersion`, a missed or misfitting edit asking for the whole state,
+      a skipped track's coded error, the controls' commands) and the
+      position (its events re-run only what reads it); features (a switch
+      turned off seen by what reads it, the analysis, the waveforms' cache);
+      toasts, servers, library, ui, collection, recording, effects, updates,
+      metadata, workbench, visualizer, appearance (with a `matchMedia`
+      stand-in) and drag (with `elementFromPoint`). And 5 Rust tests: the
+      four writers and one for files no test writes.
+    - Untested: the system's dialogs and the window's API, which are plugin
+      commands the fake doesn't answer: collection's import and export,
+      recording's and the workbench's choosers, full screen.
+    - Found:
+      - Fixed: `player.apply` let a whole state older than the last one
+        applied put back its current item, shuffle, repeat and the rest.
+        That is a `queue_state` answer that `queue-changed` events overtook,
+        at connect or on a resync. It now takes only its list, and only if
+        that is newer ("an answer the events overtook doesn't undo them").
+      - Fixed: svelte-check, comparing the recorded payloads with the
+        generated types, showed 12 fields typed as always sent that Rust
+        leaves out when empty (`skip_serializing_if`): `QueueState`'s
+        `loading`, `playing` and `downloading`; `QueueItem`'s `skip`,
+        `reason` and `external`; `Folder`'s `name`, `available` and
+        `status`; `FolderStatus.detail`, `ScanReport.unavailable` and
+        `Playlist.server`. They take `ts(optional)` (`ts(optional =
+        nullable)` for the booleans), so `ipc.ts` has `field?: T`; no
+        frontend code relied on the old types.
+      - Not fixed: `npm audit` lists Vite 8.3.1's and DOMPurify's advisories
+        (through mermaid), which the lockfile had before; Vitest adds none.
   - P2: Playwright smoke tests against `vite dev` with the same mocks,
     run in WebKit: browse, search, queue edits, settings. This is §6's
     mitigation for WebKitGTK and WebView2 differences, and they run on

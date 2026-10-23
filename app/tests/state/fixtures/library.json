@@ -1,0 +1,111 @@
+{
+  "folders": [
+    {
+      "available": false,
+      "datalessCount": 0,
+      "id": 2,
+      "kind": "local",
+      "lastScanAt": null,
+      "path": "/Users/me/Music/Away",
+      "status": {
+        "detail": "No such file or directory (os error 2)",
+        "state": "missing"
+      },
+      "trackCount": 1
+    },
+    {
+      "available": true,
+      "datalessCount": 0,
+      "id": 1,
+      "kind": "local",
+      "lastScanAt": null,
+      "path": "/Users/me/Music/Here",
+      "status": {
+        "state": "available"
+      },
+      "trackCount": 2
+    }
+  ],
+  "sortSettings": {
+    "ignoredArticles": [
+      "The",
+      "A"
+    ],
+    "rules": [
+      {
+        "albumOrder": "title",
+        "id": "album-artist",
+        "levels": [
+          "albumArtist",
+          "album"
+        ],
+        "name": "Album artist",
+        "trackOrder": [
+          "discNumber",
+          "trackNumber",
+          "title",
+          "path"
+        ]
+      },
+      {
+        "albumOrder": "title",
+        "id": "genre",
+        "levels": [
+          "genre",
+          "albumArtist",
+          "album"
+        ],
+        "name": "Genre",
+        "trackOrder": [
+          "discNumber",
+          "trackNumber",
+          "title",
+          "path"
+        ]
+      },
+      {
+        "albumOrder": "title",
+        "id": "year",
+        "levels": [
+          "year",
+          "album"
+        ],
+        "name": "Year",
+        "trackOrder": [
+          "discNumber",
+          "trackNumber",
+          "title",
+          "path"
+        ]
+      },
+      {
+        "albumOrder": "title",
+        "id": "folder",
+        "levels": [
+          "folder"
+        ],
+        "name": "Folder",
+        "trackOrder": [
+          "path"
+        ]
+      },
+      {
+        "albumOrder": "title",
+        "id": "composer",
+        "levels": [
+          "composer",
+          "work"
+        ],
+        "name": "Composer",
+        "trackOrder": [
+          "album",
+          "discNumber",
+          "movement",
+          "trackNumber",
+          "title",
+          "path"
+        ]
+      }
+    ]
+  }
+}

@@ -126,8 +126,9 @@ Test suites (`check-docs.py --counts` compares these with the suites):
 | Suite | Location |
 |---|---|
 | 159 passing Catch2 tests (136 of the core's, 23 of the effects library's), also clean under ASan, UBSan and TSan | `core/tests`, `effects/tests` |
-| 559 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 10 ignored live tests (one per online source, a Jellyfin server, plex.tv and a Plex server) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
+| 567 passing `cargo test` tests, plus 8 ignored benchmarks (50,000 tracks), 10 ignored live tests (one per online source, a Jellyfin server, plex.tv and a Plex server) and the exit test's ignored helper (run in a child process) | `app/src-tauri/src` |
 | 93 frontend tests (`npm test`, pure modules) | `app/tests/` |
+| 105 Vitest tests of the rune modules (`npm run test:state`, `lib/state/*.svelte.ts`), against a fake backend answering with payloads the Rust tests record | `app/tests/state/` |
 | the scripts' 268 pytest tests (`test-python.py`) | `scripts/tests/` |
 
 ## 3. Prerequisites
@@ -571,8 +572,8 @@ Waiting on the owner, in the order the owner takes them (set 2026-10-03):
   `queue/model.rs` not split (H19), having changed little.
 - Next: the owner's items above, in order; then Parts 0–3 of the signed
   release as decisions arrive. Engineering left that needs no decision: H19
-  as modules are touched, M2's `sync-ffmpeg-frameworks.py`, H13's P2 tests
-  and H8's edition move.
+  as modules are touched, M2's `sync-ffmpeg-frameworks.py`, H13's Playwright
+  tests and H8's edition move.
 
 **Hardening items** (from the 2026-09-27 review; priorities as in
 §4.7). CI runs each check through `check-all.py` (M4), so a local run
@@ -592,7 +593,7 @@ matches it.
 | H10 | Library DB safety: backups before migrations, checks, pruning | robustness | S–M | P1 | Done 2026-10-02 |
 | H11 | Open files off the main thread | robustness | M | P1 | Done 2026-10-02 |
 | H12 | Cloud, network and removable folders | robustness | M | P1 | Done 2026-10-02; SMB and real placeholders are owner checks |
-| H13 | Frontend lint, format and tests | maintenance | M | P1 lint, P2 tests | P1 done 2026-10-02; P2 open (below) |
+| H13 | Frontend lint, format and tests | maintenance | M | P1 lint, P2 tests | P1 done 2026-10-02; P2's Vitest tests done 2026-10-23; Playwright open (below) |
 | H14 | A self-test of the sandboxed bundle in CI | robustness | M | P2 | Done 2026-10-02 |
 | H15 | Typed IPC end to end | maintenance | S–M | P2 | Done 2026-10-03 |
 | H16 | Queue storage and updates that scale | efficiency | M | P2 | Done 2026-10-03 |
@@ -610,14 +611,17 @@ The open items and parts:
 
 - **H8's remainder.** Move to Rust edition 2024 in one separate commit.
 - **H13's P2 part.**
-  - P2: Vitest for the rune modules (`state/*.svelte.ts`), which plain
-    `node --test` can't compile. IPC is faked with
-    `@tauri-apps/api/mocks` (`mockIPC`), using payloads recorded from
-    the Rust tests.
-  - P2: Playwright smoke tests against `vite dev` with the same mocks,
+  - P2: Vitest for the rune modules (`state/*.svelte.ts`). **Done
+    2026-10-23**: 105 tests of the 17 modules (`npm run test:state`),
+    against a fake backend (`mockIPC`) answering with payloads recorded from
+    the Rust tests. They found two bugs, both fixed: a late `queue_state`
+    answer undid newer events, and the generated types had 12 fields as
+    always sent that Rust leaves out. The record is in
+    [docs/design/phase-7-hardening.md](docs/design/phase-7-hardening.md).
+  - P2, open: Playwright smoke tests against `vite dev` with the same mocks,
     run in WebKit: browse, search, queue edits, settings. This is §6's
-    mitigation for WebKitGTK and WebView2 differences, and they run on
-    each OS's CI job from Phases 9–10.
+    mitigation for WebKitGTK and WebView2 differences, and they run on each
+    OS's CI job from Phases 9–10.
 - **H19 Split the largest modules**, when they are next changed, with no
   change in behaviour:
   - `metadata/jobs.rs` (2,347 lines), by job kind;

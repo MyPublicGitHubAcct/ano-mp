@@ -1,8 +1,9 @@
-# Built or generated, or not the frontend's (src-tauri is Rust's, formatted
-# by scripts/format-rust.py).
+# Built or generated (the state tests' fixtures by `cargo test`), or not the
+# frontend's (src-tauri is Rust's, formatted by scripts/format-rust.py).
 build/
 .svelte-kit/
 node_modules/
 src-tauri/
 src/lib/generated/
+tests/state/fixtures/
 package-lock.json

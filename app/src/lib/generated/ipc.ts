@@ -459,7 +459,7 @@ path: string, kind: FolderKind,
  * A server's name, as it calls itself, and for a Plex source the music
  * library's ("Den · Music"); `None` for a local folder.
  */
-name: string | null, trackCount: number, 
+name?: string, trackCount: number, 
 /**
  * Its tracks whose files were cloud placeholders when last seen, so
  * their tags weren't read (PLAN.md H12).
@@ -474,11 +474,11 @@ lastScanAt: number | null,
  * folder on an unplugged drive, or moved where the app can't follow,
  * which the user can locate again.
  */
-available: boolean | null, 
+available?: boolean, 
 /**
  * Why, where checked (PLAN.md H22, `availability`).
  */
-status: FolderStatus | null, };
+status?: FolderStatus, };
 
 /**
  * What a library folder is (PLAN.md Phase 7e): a folder on disk, or a
@@ -494,7 +494,7 @@ export type FolderState = "available" | "missing" | "empty" | "mostlyGone" | "in
 /**
  * A folder's state, with the system's words for it when there are any.
  */
-export type FolderStatus = { state: FolderState, detail: string | null, };
+export type FolderStatus = { state: FolderState, detail?: string, };
 
 export type Group = { 
 /**
@@ -769,7 +769,7 @@ duration: number, createdAt: number, updatedAt: number,
  * The server it comes from (its name), for a music server's playlist,
  * which only a sync changes (PLAN.md Phase 7e).
  */
-server: string | null, };
+server?: string, };
 
 /**
  * A track in a playlist, and which entry it is (a track can be listed
@@ -885,16 +885,16 @@ title: string, artist: string | null, artistId: number | null, album: string | n
 /**
  * Passed over in album and shuffle play; it still plays when chosen.
  */
-skip: boolean, 
+skip?: boolean, 
 /**
  * Why library radio picked it ("same label, 1994").
  */
-reason: string | null, 
+reason?: string, 
 /**
  * A file outside the library, opened from the Finder (F5): its track
  * id is negative and only good for this session.
  */
-external: boolean, };
+external?: boolean, };
 
 /**
  * What the UI needs to show the queue and the current track.
@@ -942,15 +942,15 @@ loaded: boolean,
 /**
  * The current item is being opened, to play if `playing` (H11).
  */
-loading: boolean, 
+loading?: boolean, 
 /**
  * While loading: whether it will play once it's open.
  */
-playing: boolean, 
+playing?: boolean, 
 /**
  * While loading: it's a cloud placeholder, downloading (H12).
  */
-downloading: boolean, resumeAt: number, 
+downloading?: boolean, resumeAt: number, 
 /**
  * Library radio keeps adding tracks as the queue runs out.
  */
@@ -1218,7 +1218,7 @@ dataless: number,
  * Set when the folder couldn't be scanned, or the scan kept tracks it
  * didn't find (PLAN.md H22): why.
  */
-unavailable: FolderStatus | null, };
+unavailable?: FolderStatus, };
 
 export type SearchKind = "artists" | "albums" | "tracks";
 

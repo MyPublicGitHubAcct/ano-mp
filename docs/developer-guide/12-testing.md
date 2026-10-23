@@ -20,6 +20,7 @@ folders are temporary directories.
 | Rust's tests | `cargo test` (in `app/src-tauri`) | a `tests` module in each file | every backend module, the C API wrappers against the real core, the generated files |
 | Rust's ignored tests | `cargo test -- --ignored` | `library/bench.rs`, `live_*` | the 50,000-track benchmarks; one live check per online service |
 | The frontend's tests | `npm test` (in `app/`) | `app/tests/*.test.mjs` | the pure modules |
+| The state modules' tests | `npm run test:state` (in `app/`) | `app/tests/state/*.spec.ts` | the rune stores (`lib/state/`), against a fake backend |
 | The scripts' tests | `scripts/test-python.py` | `scripts/tests/` | every script, each repo check once against the real tree |
 
 ### The core (`core/tests/`)
@@ -98,6 +99,64 @@ estimate), `visualizations` (the musical analysis) and `safety` (the
 flash guard). Components have no unit tests; `npm run check` type-checks
 them.
 
+### The state modules (`app/tests/state/`)
+
+The rune stores (`lib/state/*.svelte.ts`) need Svelte's compiler, which
+`node --test` doesn't run, so they have a suite of their own: Vitest
+(`npm run test:state`, configured by `tests/state/vitest.config.ts`)
+under jsdom, with SvelteKit's plugin compiling the runes and resolving
+`$lib`, and Svelte's browser build, whose `$effect`s run. The files are
+`*.spec.ts` because Node's test runner takes any `*.test.ts` under
+`tests/` for its own. There is a file per store (`status.spec.ts` holds
+the updates' and the metadata worker's; `player.spec.ts` covers
+`position.svelte.ts` too).
+
+`api.ts` runs as it does in the app. `backend.ts`'s `FakeBackend`
+installs Tauri's IPC mocks (`@tauri-apps/api/mocks`) and answers each
+command by its wrapper's name in `generated/commands.ts`, its arguments
+and reply typed from the wrapper:
+
+```ts
+const backend = fakeBackend()
+  .answer("settingsGet", settingsFixtures.get) // a reply
+  .answer("settingsSave", ({ settings }) => settings); // or one made from the arguments
+backend.fail("queueNext", coded("trackGone")); // what a Rust Err(String) rejects with
+const { player } = await import("$lib/state/player.svelte");
+player.connect();
+await settle(); // replies arrive, listeners are registered
+await backend.emit("queue-changed", queueFixtures.removed);
+expect(backend.argsOf("queueSeek")).toEqual([{ seconds: 60 }]);
+```
+
+- **Import the store inside the test**, after `fakeBackend()`. The
+  stores are singletons, so `setup.ts` resets the module registry before
+  each test (and empties `localStorage`); a static import would keep one
+  store for the whole file.
+- **Answer every command the store calls.** An unanswered one rejects,
+  and `setup.ts` fails the test, naming it, so a store that starts
+  calling something new shows up. Replies and payloads are copied, as
+  the real IPC deserializes them.
+- **Effects**: `reactive.svelte.ts`'s `watch(read)` runs `read` in an
+  `$effect` under `$effect.root` and counts its runs, as a component
+  would; `flush()` is `flushSync`. Import it inside the test as well:
+  the registry's reset gives each test a fresh copy of Svelte's runtime,
+  and a static import would drive another copy than the store's.
+- **Payloads** come from `fixtures.ts`, the JSON the Rust tests record
+  (below), typed with the generated types. A small record no backend
+  logic builds (a `PlayerStatus`, a `Playlist`) is a literal typed from
+  `generated/ipc.ts`, so svelte-check catches a field that changes; a
+  coded error no fixture records is `coded(code, params)`.
+- **Test behaviour**: the commands sent and their arguments, the state
+  after a reply or an event, errors shown through `errorText`. Compare
+  text with `t(key, params)`, never with English.
+- **Timers**: `vi.useFakeTimers({ toFake: ["setInterval",
+  "clearInterval"] })` for a store that polls; `settle` needs the real
+  `setTimeout`.
+- The fake answers the app's commands only, so the system's dialogs
+  (`@tauri-apps/plugin-dialog`) and the window's API (full screen) stay
+  untested; jsdom has no layout, so `drag.spec.ts` supplies
+  `elementFromPoint`, and `appearance.spec.ts` supplies `matchMedia`.
+
 ### The scripts (`scripts/tests/`)
 
 pytest, pinned and run through `uvx` by `scripts/test-python.py`. Each
@@ -121,6 +180,15 @@ by name.
   `self_test.rs` embeds every audio fixture.
 - **Fuzzer finds** (`core/tests/fixtures/fuzz/`): inputs that once
   crashed a fuzz target, kept as regression tests.
+- **The state tests' payloads** (`app/tests/state/fixtures/`): JSON
+  written by a `ui_fixtures` test in each module that builds them
+  (`settings.rs`; `queue/model.rs`, with the queue's fake player;
+  `servers/offline.rs`, over a synced test source;
+  `library/availability.rs`), through `ui_fixtures.rs`'s `record`. Like
+  the bindings, `cargo test` fails while one is stale, and
+  `ANOMP_WRITE_BINDINGS=1 cargo test ui_fixtures` rewrites them. Times,
+  temporary paths and the system's words are pinned, so a rerun changes
+  nothing. Only what the state tests use is recorded.
 - **Service responses** (`app/src-tauri/src/metadata/fixtures/`): real
   responses, trimmed, each with its `manifest.json` entry saying how it
   was made; `scripts/record-fixtures.py` re-records them and `--check`
@@ -144,6 +212,7 @@ by name.
 | `visualizer.rs`'s `FakeSink` | the page's channel | `visualizer.rs` tests |
 | `LibraryState::for_tests` | the app's library state over a test connection | `library/commands.rs` |
 | a fake encoder | FFmpeg's encoder, failing on demand | `core/tests/RecorderTests.cpp` |
+| `FakeBackend` | the backend, for the state tests: commands answered by their wrappers' names, events through Tauri's mocks | `app/tests/state/backend.ts` |
 
 ## Benchmarks
 

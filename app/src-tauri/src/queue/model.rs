@@ -101,12 +101,14 @@ pub struct TrackInfo {
     pub duration: f64,
     /// Passed over in album and shuffle play; it still plays when chosen.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub skip: bool,
     /// Adjacent items with the same unit shuffle as one block, in order.
     #[serde(skip)]
     pub unit: Option<i64>,
     /// Why library radio picked it ("same label, 1994").
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub reason: Option<String>,
     /// A long track's saved position, where it starts (F17).
     #[serde(skip)]
@@ -114,6 +116,7 @@ pub struct TrackInfo {
     /// A file outside the library, opened from the Finder (F5): its track
     /// id is negative and only good for this session.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub external: bool,
 }
 
@@ -330,12 +333,15 @@ pub struct QueueState {
     pub loaded: bool,
     /// The current item is being opened, to play if `playing` (H11).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub loading: bool,
     /// While loading: whether it will play once it's open.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub playing: bool,
     /// While loading: it's a cloud placeholder, downloading (H12).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub downloading: bool,
     pub resume_at: f64,
     /// Library radio keeps adding tracks as the queue runs out.
@@ -3340,5 +3346,54 @@ mod tests {
         let mut p = Fake::default();
         queue.add(&mut p, infos([3]), false);
         assert_eq!(queue.items.last().unwrap().uid, 41);
+    }
+
+    /// States as `queue-changed` sends them, for the frontend's tests: the
+    /// whole list, two edits after it, the next track, the whole list again
+    /// (as `queue_state` answers), and a track skipped with a coded error.
+    #[test]
+    fn ui_fixtures() {
+        use crate::ui_fixtures::{record, sample};
+        let mut p = Fake::default();
+        let mut queue = Queue::new(1);
+        queue.replace(&mut p, infos([1, 2, 3]), 0, true);
+        let full = queue.state();
+        queue.remove(&mut p, &[uid_of(&queue, 2)]);
+        let removed = queue.take_state().unwrap();
+        queue.add(&mut p, infos([4]), false);
+        let added = queue.take_state().unwrap();
+        queue.next(&mut p);
+        let advanced = queue.take_state().unwrap();
+        let resynced = queue.state();
+        assert_eq!(
+            (full.list_version, removed.list_version, added.list_version),
+            (1, 2, 3)
+        );
+        assert_eq!(
+            (advanced.current, advanced.items.is_none()),
+            (Some(1), true)
+        );
+        assert!(removed.edits.is_some() && added.edits.is_some());
+
+        let mut p = pending();
+        let mut opening = Queue::new(1);
+        opening.set_clock(100.0);
+        opening.replace(&mut p, infos([1, 2]), 0, true);
+        opening.state();
+        opening.check_loads(&mut p, 100.0 + LOAD_TIMEOUT);
+        let skipped = opening.take_state().unwrap();
+        assert!(crate::coded::is(&skipped.skipped[0].error, "openTimedOut"));
+
+        record(
+            "queue",
+            &[
+                ("full", sample(&full)),
+                ("removed", sample(&removed)),
+                ("added", sample(&added)),
+                ("advanced", sample(&advanced)),
+                ("resynced", sample(&resynced)),
+                ("skipped", sample(&skipped)),
+            ],
+        );
     }
 }
