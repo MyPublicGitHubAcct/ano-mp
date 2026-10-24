@@ -27,7 +27,7 @@ jobs:
     # Cargo's).
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Every commit, for gitleaks.
           fetch-depth: 0
@@ -39,7 +39,7 @@ jobs:
           brew install ninja nasm pkg-config uv gitleaks llvm@22
           rustup toolchain install
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -47,7 +47,7 @@ jobs:
 
       # build-ffmpeg.sh skips the build when BUILD_INFO matches its pin.
       - name: Restore FFmpeg
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: third_party/ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/build-ffmpeg.sh') }}
@@ -59,7 +59,7 @@ jobs:
       # timestamps; the repo's own files are rebuilt after checkout.
       # build/_downloads holds the pinned tarballs (cmake/Fetch.cmake).
       - name: Restore core build
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             build/_downloads
@@ -71,7 +71,7 @@ jobs:
           restore-keys: core-${{ runner.os }}-
 
       - name: Restore Cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
