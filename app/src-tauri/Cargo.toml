@@ -27,7 +27,7 @@ undocumented_unsafe_blocks = "warn"
 type_complexity = "allow"
 
 [build-dependencies]
-tauri-build = { version = "=2.7.0", features = [] }
+tauri-build = { version = "=2.7.2", features = [] }
 cmake = "0.1"
 
 [dependencies]
@@ -41,12 +41,12 @@ serde_json = "1"
 # Logging (PLAN.md H9): the facade, written to a rotating file in the
 # app's log directory by tauri-plugin-log.
 log = "0.4"
-tauri-plugin-log = "=2.10.0"
+tauri-plugin-log = "=2.10.1"
 tauri-plugin-dialog = "=2.7.3"
 # Opens web links (a biography's Wikipedia article) in the browser.
 tauri-plugin-opener = "=2.5.5"
 # Bundled so every platform (including iOS) gets the same SQLite.
-rusqlite = { version = "0.40", features = ["bundled", "functions"] }
+rusqlite = { version = "0.41", features = ["bundled", "functions"] }
 walkdir = "2.5"
 # Unicode folding for library sort keys; already in the dependency tree via
 # Tauri's `url`, so they add no new code.
@@ -67,7 +67,7 @@ semver = "1"
 url = "2.5"
 # Embedded pictures as data: URLs in Get Info (PLAN.md F16); already in the
 # dependency tree through Tauri.
-base64 = "0.22"
+base64 = "0.23"
 # Watching library folders while the app runs (PLAN.md F9): FSEvents on
 # macOS, inotify and ReadDirectoryChangesW in Phases 9 and 10.
 notify = "8"
@@ -103,7 +103,7 @@ ts-rs = { version = "12", default-features = false, features = ["serde-compat"] 
 # Reads the commands' signatures for their generated TypeScript wrappers
 # (bindings.rs, app/src/lib/generated/commands.ts; PLAN.md H15). Test-only;
 # the same version Tauri's and serde's macros already build.
-syn = { version = "=2.0.119", default-features = false, features = ["full", "parsing", "printing", "clone-impls"] }
+syn = { version = "=3.0.6", default-features = false, features = ["full", "parsing", "printing", "clone-impls"] }
 
 [features]
 # `--self-test`: a check of the sandboxed bundle that CI runs (PLAN.md H14,
